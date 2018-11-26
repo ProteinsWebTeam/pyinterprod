@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import logging
+import random
+import string
 from typing import Generator
 
 import cx_Oracle
@@ -136,5 +138,43 @@ def insert_proteins(url: str, db: ProteinDatabase):
         )
 
     con.commit()
+    cur.close()
+    con.close()
+
+
+def delete_proteins(url: str, table: str, column: str="PROTEIN_AC"):
+    suffix = ''.join(random.choices(string.ascii_uppercase, k=6))
+
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    logging.info("create INTERPRO.{}_{}".format(table, suffix))
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.{0}_{1} AS
+        SELECT *
+        FROM INTERPRO.{0}
+        WHERE {2} NOT IN (
+          SELECT OLD_PROTEIN_AC
+          FROM INTERPRO.PROTEIN_CHANGES
+          WHERE FLAG = 'D'
+        )
+        """.format(table, suffix, column)
+    )
+
+    logging.info("delete from INTERPRO.{}".format(table))
+    cur.execute(
+        """
+        DELETE FROM INTERPRO.{}
+        WHERE {} IN (
+          SELECT OLD_PROTEIN_AC
+          FROM INTERPRO.PROTEIN_CHANGES
+          WHERE FLAG = 'D'
+        )
+        """.format(table, column)
+    )
+    con.commit()
+
+    logging.info("complete")
     cur.close()
     con.close()

@@ -6,9 +6,7 @@ import os
 from multiprocessing import Process
 from typing import Union
 
-from .io import ProteinDatabase
-from .interpro import get_proteins, insert_proteins
-from .uniprot import read_flat_file
+from . import interpro, io, uniprot
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,16 +16,16 @@ logging.basicConfig(
 
 
 def load_proteins_from_flat_files(swissprot_path: str, trembl_path: str,
-                                  database: ProteinDatabase):
-    count = database.insert(read_flat_file(swissprot_path))
+                                  database: io.ProteinDatabase):
+    count = database.insert(uniprot.read_flat_file(swissprot_path))
     logging.info("Swiss-Prot: {} proteins".format(count))
 
-    count = database.insert(read_flat_file(trembl_path))
+    count = database.insert(uniprot.read_flat_file(trembl_path))
     logging.info("TrEMBL: {} proteins".format(count))
 
 
-def load_proteins_from_database(url: str, database: ProteinDatabase):
-    count = database.insert(get_proteins(url))
+def load_proteins_from_database(url: str, database: io.ProteinDatabase):
+    count = database.insert(interpro.get_proteins(url))
     logging.info("database: {} proteins".format(count))
 
 
@@ -36,8 +34,8 @@ def update(url: str, swissprot_path: str, trembl_path: str,
     if dir:
         os.makedirs(dir, exist_ok=True)
 
-    old_db = ProteinDatabase(dir=dir)
-    new_db = ProteinDatabase(dir=dir)
+    old_db = io.ProteinDatabase(dir=dir)
+    new_db = io.ProteinDatabase(dir=dir)
 
     p1 = Process(target=load_proteins_from_flat_files,
                  args=(swissprot_path, trembl_path, new_db))
@@ -56,7 +54,11 @@ def update(url: str, swissprot_path: str, trembl_path: str,
     ))
     old_db.drop()
 
-    insert_proteins(url, new_db)
+    interpro.insert_proteins(url, new_db)
     new_db.drop()
 
     logging.info("complete")
+
+
+def delete(url: str):
+    interpro.delete_proteins(url, table="MATCH", column="PROTEIN_AC")
