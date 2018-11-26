@@ -4,7 +4,7 @@
 import logging
 import random
 import string
-from typing import Generator
+from typing import Generator, List
 
 import cx_Oracle
 
@@ -142,7 +142,7 @@ def insert_proteins(url: str, db: ProteinDatabase):
     con.close()
 
 
-def delete_proteins(url: str, table: str, column: str="PROTEIN_AC"):
+def delete_proteins(url: str, table: str, column: str):
     suffix = ''.join(random.choices(string.ascii_uppercase, k=6))
 
     con = cx_Oracle.connect(url)
@@ -178,3 +178,61 @@ def delete_proteins(url: str, table: str, column: str="PROTEIN_AC"):
     logging.info("complete")
     cur.close()
     con.close()
+
+
+def get_child_tables(url: str, owner: str, table: str) -> List[dict]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME
+        FROM ALL_CONS_COLUMNS
+        WHERE OWNER = :1
+          AND CONSTRAINT_NAME IN (
+              SELECT CONSTRAINT_NAME
+              FROM ALL_CONSTRAINTS
+              WHERE CONSTRAINT_TYPE = 'R'
+                AND R_CONSTRAINT_NAME IN (
+                  SELECT CONSTRAINT_NAME
+                  FROM ALL_CONSTRAINTS
+                  WHERE CONSTRAINT_TYPE IN ('P', 'U')
+                    AND OWNER = :1
+                    AND TABLE_NAME = :2
+          )
+        ) 
+        """,
+        (owner, table)
+    )
+
+    cols = ("name", "constraint", "column")
+    tables = [dict(zip(cols, row)) for row in cur]
+
+    cur.close()
+    con.close()
+    return tables
+
+
+def toggle_constraint(url: str, owner: str, table: str, constraint: str,
+                      enable: bool=True) -> bool:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    b = False
+    try:
+        cur.execute(
+            """
+            ALTER TABLE {}.{} {} CONSTRAINT {}
+            """.format(
+                owner, table,
+                "ENABLE" if enable else "DISABLE",
+                constraint
+            )
+        )
+    except cx_Oracle.DatabaseError:
+        pass
+    else:
+        b = True
+    finally:
+        cur.close()
+        con.close()
+        return b

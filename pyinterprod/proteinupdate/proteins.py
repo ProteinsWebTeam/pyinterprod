@@ -61,4 +61,12 @@ def update(url: str, swissprot_path: str, trembl_path: str,
 
 
 def delete(url: str):
+    tables = interpro.get_child_tables(url, "INTERPRO", "PROTEIN")
+
+    for t in tables:
+        interpro.toggle_constraint(url, "INTERPRO", t["name"], t["constraint"], False)
+
     interpro.delete_proteins(url, table="MATCH", column="PROTEIN_AC")
+
+    for t in tables:
+        interpro.toggle_constraint(url, "INTERPRO", t["name"], t["constraint"], True)
