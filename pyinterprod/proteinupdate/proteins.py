@@ -40,7 +40,7 @@ def update(url: str, swissprot_path: str, trembl_path: str,
 
     t1 = Thread(target=load_proteins_from_flat_files,
                  args=(swissprot_path, trembl_path, new_db))
-    t1 = Thread(target=load_proteins_from_database,
+    t2 = Thread(target=load_proteins_from_database,
                  args=(url, old_db))
 
     t1.start()
