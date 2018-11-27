@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import asyncio
 import logging
 import os
 from multiprocessing import Process
@@ -58,6 +59,17 @@ def update(url: str, swissprot_path: str, trembl_path: str,
     new_db.drop()
 
     logging.info("complete")
+
+
+def count(url: str):
+    tables = interpro.get_child_tables(url, "INTERPRO", "PROTEIN")
+    aws = [interpro.count_table(url, t["name"]) for t in tables]
+
+    loop = asyncio.get_event_loop()
+    future = asyncio.gather(*aws)
+    res = loop.run_until_complete(future)
+    loop.close()
+    print(res)
 
 
 def delete(url: str):

@@ -16,7 +16,7 @@ def get_proteins(url: str) -> Generator:
     cur = con.cursor()
     cur.execute(
         """
-        SELECT 
+        SELECT
           NAME, PROTEIN_AC, DBCODE, LEN, FRAGMENT, TAX_ID, CRC64
         FROM INTERPRO.PROTEIN
         """
@@ -199,7 +199,7 @@ def get_child_tables(url: str, owner: str, table: str) -> List[dict]:
                     AND OWNER = :1
                     AND TABLE_NAME = :2
           )
-        ) 
+        )
         """,
         (owner, table)
     )
@@ -236,3 +236,17 @@ def toggle_constraint(url: str, owner: str, table: str, constraint: str,
         cur.close()
         con.close()
         return b
+
+async def count_table(url: str, table: str) -> int:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM INTERPRO.{}
+        """.format(table)
+    )
+    cnt = cur.fetchone()[0]
+    cur.close()
+    con.close()
+    return cnt
