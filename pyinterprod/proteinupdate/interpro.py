@@ -46,10 +46,10 @@ def insert_proteins(url: str, db: ProteinDatabase):
     cur.execute("TRUNCATE TABLE INTERPRO.PROTEIN_NEW")
 
     items = []
-    logging.info("track sequence changes")
+    count = 0
     for accession in db.get_sequence_changes():
         items.append(('S', accession, accession))
-
+        count += 1
         if len(items) == max_items:
             cur.executemany(
                 """
@@ -60,10 +60,13 @@ def insert_proteins(url: str, db: ProteinDatabase):
                 items
             )
             items = []
+    logging.info("sequence changes: {}".format(count))
 
-    logging.info("track annotation changes")
-    for accession in db.get_annotation_changes():
+    count = 0
+    for row in db.get_annotation_changes():
+        accession, name, is_reviewed, length, is_fragment = row
         items.append(('A', accession, accession))
+        count += 1
 
         if len(items) == max_items:
             cur.executemany(
@@ -75,10 +78,12 @@ def insert_proteins(url: str, db: ProteinDatabase):
                 items
             )
             items = []
+    logging.info("annotation changes: {}".format(count))
 
-    logging.info("track deleted proteins")
+    count = 0
     for accession in db.get_deleted():
         items.append(('D', accession, None))
+        count += 1
 
         if len(items) == max_items:
             cur.executemany(
@@ -90,6 +95,7 @@ def insert_proteins(url: str, db: ProteinDatabase):
                 items
             )
             items = []
+    logging.info("deleted proteins: {}".format(count))
 
     if items:
         cur.executemany(
@@ -101,11 +107,11 @@ def insert_proteins(url: str, db: ProteinDatabase):
             items
         )
 
-    logging.info("track new proteins")
     # TODO: remove datetime when TIMESTAMP is not in the table
     from datetime import datetime
     timestamp = datetime.today()
     items = []
+    count = 0
     for row in db.get_new():
         items.append((
             row[0],                     # accession
@@ -114,9 +120,10 @@ def insert_proteins(url: str, db: ProteinDatabase):
             'Y' if row[5] else 'N',     # sequence status (fragment)
             row[3],                     # crc64
             row[4],                     # length
-            timestamp,                   # timestamp
+            timestamp,                  # timestamp
             row[6]                      # taxon ID
         ))
+        count += 1
 
         if len(items) == max_items:
             cur.executemany(
@@ -127,6 +134,7 @@ def insert_proteins(url: str, db: ProteinDatabase):
                 items
             )
             items = []
+    logging.info("new proteins: {}".format(count))
 
     if items:
         cur.executemany(
@@ -237,14 +245,19 @@ def toggle_constraint(url: str, owner: str, table: str, constraint: str,
         con.close()
         return b
 
-async def count_table(url: str, table: str) -> int:
+async def count_table(url: str, table: str, column: str) -> int:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
         """
         SELECT COUNT(*)
         FROM INTERPRO.{}
-        """.format(table)
+        WHERE {} IN (
+            SELECT OLD_PROTEIN_AC
+            FROM INTERPRO.PROTEIN_CHANGES
+            WHERE FLAG = 'D'
+        )
+        """.format(table, column)
     )
     cnt = cur.fetchone()[0]
     cur.close()

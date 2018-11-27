@@ -55,8 +55,12 @@ def update(url: str, swissprot_path: str, trembl_path: str,
     ))
     old_db.drop()
 
+    logging.info("track changes")
     interpro.insert_proteins(url, new_db)
     new_db.drop()
+
+    logging.info("evaluate tables")
+    count(url)
 
     logging.info("complete")
 
@@ -69,7 +73,9 @@ def count(url: str):
     future = asyncio.gather(*aws)
     res = loop.run_until_complete(future)
     loop.close()
-    print(res)
+
+    for t, r in zip(tables, res):
+        logging.info("{:<20}{:>10}".format(t["name"], r))
 
 
 def delete(url: str):
