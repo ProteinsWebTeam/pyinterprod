@@ -201,7 +201,7 @@ def get_child_tables(url: str, owner: str, table: str) -> List[dict]:
           )
         )
         """,
-        dict(owner=owner, tabnme=table)
+        dict(owner=owner, tabname=table)
     )
 
     cols = ("name", "constraint", "column")
