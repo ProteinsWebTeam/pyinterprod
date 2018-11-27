@@ -4,7 +4,7 @@
 import asyncio
 import logging
 import os
-from multiprocessing import Process
+from threading import Thread
 from typing import Union
 
 from . import interpro, io, uniprot
@@ -38,16 +38,16 @@ def update(url: str, swissprot_path: str, trembl_path: str,
     old_db = io.ProteinDatabase(dir=dir)
     new_db = io.ProteinDatabase(dir=dir)
 
-    p1 = Process(target=load_proteins_from_flat_files,
+    t1 = Thread(target=load_proteins_from_flat_files,
                  args=(swissprot_path, trembl_path, new_db))
-    p2 = Process(target=load_proteins_from_database,
+    t1 = Thread(target=load_proteins_from_database,
                  args=(url, old_db))
 
-    p1.start()
-    p2.start()
+    t1.start()
+    t2.start()
 
-    p1.join()
-    p2.join()
+    t1.join()
+    t2.join()
 
     new_db.insert(old_db.iter(), suffix="_old")
     logging.info("databases merged (size needed: {} bytes)".format(
