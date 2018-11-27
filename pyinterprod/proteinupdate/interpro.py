@@ -187,7 +187,7 @@ def get_child_tables(url: str, owner: str, table: str) -> List[dict]:
         """
         SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME
         FROM ALL_CONS_COLUMNS
-        WHERE OWNER = :1
+        WHERE OWNER = :owner
           AND CONSTRAINT_NAME IN (
               SELECT CONSTRAINT_NAME
               FROM ALL_CONSTRAINTS
@@ -196,12 +196,12 @@ def get_child_tables(url: str, owner: str, table: str) -> List[dict]:
                   SELECT CONSTRAINT_NAME
                   FROM ALL_CONSTRAINTS
                   WHERE CONSTRAINT_TYPE IN ('P', 'U')
-                    AND OWNER = :1
-                    AND TABLE_NAME = :2
+                    AND OWNER = :owner
+                    AND TABLE_NAME = :tabname
           )
         )
         """,
-        (owner, table)
+        dict(owner=owner, tabnme=table)
     )
 
     cols = ("name", "constraint", "column")
