@@ -189,6 +189,9 @@ def prepare_deletion(url: str, db: ProteinDatabase) -> int:
         """
     )
 
+    cur.exec("DBMS_STATS.GATHER_TABLE_STATS",
+             ("INTERPRO", "PROTEIN_TO_DELETE"))
+
     cur.close()
     con.close()
     return count
