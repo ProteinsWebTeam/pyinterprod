@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import logging
+from concurrent import futures
 from typing import Generator, List
 
 import cx_Oracle
@@ -114,10 +115,22 @@ def insert_proteins(url: str, db: ProteinDatabase) -> int:
     return count
 
 
-def delete_proteins(url: str, table: str, column: str, stop: int,
-                    step: int=1000):
+def delete_proteins(url: str, table: str, column: str, step: int=1000):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
+    cur.execute()
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM INTERPRO.{}
+        WHERE {} IN (
+            SELECT PROTEIN_AC
+            FROM INTERPRO.PROTEIN_TO_DELETE
+        )
+        """.format(table, column)
+    )
+    stop = cur.fetchone()[0]
+
     for i in range(0, stop, step):
         cur.execute(
             """
@@ -222,7 +235,7 @@ def get_child_tables(url: str, owner: str, table: str) -> List[dict]:
     cur = con.cursor()
     cur.execute(
         """
-        SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME
+        SELECT OWNER, TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME
         FROM ALL_CONS_COLUMNS
         WHERE OWNER = :owner
           AND CONSTRAINT_NAME IN (
@@ -241,7 +254,7 @@ def get_child_tables(url: str, owner: str, table: str) -> List[dict]:
         dict(owner=owner, tabname=table)
     )
 
-    cols = ("name", "constraint", "column")
+    cols = ("owner", "name", "constraint", "column")
     tables = [dict(zip(cols, row)) for row in cur]
 
     cur.close()
@@ -276,16 +289,35 @@ def toggle_constraint(url: str, owner: str, table: str, constraint: str,
         con.close()
 
 
-def count_proteins_to_delete(url: str) -> int:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT COUNT(*)
-        FROM INTERPRO.PROTEIN_TO_DELETE
-        """
-    )
-    count = cur.fetchone()[0]
-    cur.close()
-    con.close()
-    return count
+def get_tables_with_proteins_to_delete(url: str) -> List[dict]:
+    tables = get_child_tables(url, "INTERPRO", "PROTEIN")
+    tables.append({
+        "owner": "INTERPRO",
+        "name": "PROTEIN",
+        "column": "PROTEIN_AC"
+    })
+
+    n = len(tables)
+    tables_to_process = []
+    with futures.ThreadPoolExecutor(max_workers=n) as executor:
+        future_to_idx = {}
+        for i, t in enumerate(tables):
+            future = executor.submit(count_rows_to_delete, url,
+                                     t["name"], t["column"])
+            future_to_idx[future] = i
+
+        done, not_done = futures.wait(future_to_idx)
+        if not_done:
+            raise RuntimeError("error in table(s): ".format(
+                ", ".join([
+                    tables[future_to_idx[f]]["name"]
+                    for f in not_done]
+                )
+            ))
+
+        for future in done:
+            if future.result():
+                i = future_to_idx[future]
+                tables_to_process.append(tables[i])
+
+    return tables_to_process

@@ -71,66 +71,59 @@ def update(url: str, swissprot_path: str, trembl_path: str,
     new_db.drop()
 
 
-def _count(url: str) -> list:
-    tables = interpro.get_child_tables(url, "INTERPRO", "PROTEIN")
-    n = len(tables)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=n) as executor:
-        futures_to_index = {
-            executor.submit(
-                interpro.count_rows_to_delete,
-                url,
-                t["name"],
-                t["column"]
-            ): i
-            for i, t in enumerate(tables)
-        }
-
-        for future in concurrent.futures.as_completed(futures_to_index):
-            i = futures_to_index[future]
-            tables[i]["count"] = future.result()
-
-    return tables
-
-
 def delete(url: str):
-    count = interprodb.count_proteins_to_delete(url)
-    logging.info("{} proteins to delete".format(count))
+    tables = interprodb.get_tables_with_proteins_to_delete(url)
 
-    tables = interprodb.get_child_tables(url, "INTERPRO", "PROTEIN")
+    if tables:
 
-    logging.info("disabling referential constraints")
-    for t in tables:
-        interprodb.toggle_constraint(url, owner="INTERPRO", table=t["name"],
-                                     constraint=t["constraint"], enable=False)
-
-    logging.info("deleting proteins")
-    n = len(tables) + 1
-    all_done = True
-    with futures.ThreadPoolExecutor(max_workers=n) as executor:
-        future_to_idx = {}
-        for i, t in enumerate(tables):
-            future = executor.submit(interprodb.delete_proteins, url,
-                                     t["name"], t["column"], count)
-            future_to_idx[future] = i
-
-        future_to_idx[-1] = executor.submit(interprodb.delete_proteins, url,
-                                            "PROTEIN", "PROTEIN_AC", count)
-
-        for future in futures.as_completed(future_to_idx):
-            i = future_to_idx[future]
-            name = "PROTEIN" if i == -1 else tables[i]["name"]
-
-            if future.done():
-                logging.info("{} table done".format(name))
-            else:
-                logging.info("{} table exited".format(name))
-                all_done = False
-
-    if all_done:
-        logging.info("enabling referential constraints")
+        logging.info("disabling referential constraints")
         for t in tables:
-            interprodb.toggle_constraint(url, owner="INTERPRO",
-                                         table=t["name"],
-                                         constraint=t["constraint"],
-                                         enable=True)
+            try:
+                contraint = t["constraint"]
+            except KeyError:
+                # The table does not have a constraint to disable
+                continue
+            else:
+                interprodb.toggle_constraint(url,
+                                             owner=t["owner"],
+                                             table=t["name"],
+                                             constraint=contraint,
+                                             enable=False)
+
+        logging.info("deleting proteins")
+        n = len(tables)
+        all_done = True
+        with futures.ThreadPoolExecutor(max_workers=n) as executor:
+            future_to_idx = {}
+            for i, t in enumerate(tables):
+                future = executor.submit(interprodb.delete_proteins,
+                                         url, t["name"], t["column"])
+                future_to_idx[future] = i
+
+                for future in futures.as_completed(future_to_idx):
+                    i = future_to_idx[future]
+                    name = tables[i]["name"]
+
+                    if future.done():
+                        logging.info("{} table done".format(name))
+                    else:
+                        logging.info("{} table exited".format(name))
+                        all_done = False
+
+        if all_done:
+            logging.info("enabling referential constraints")
+            for t in tables:
+                try:
+                    contraint = t["constraint"]
+                except KeyError:
+                    # The table does not have a constraint to enable
+                    continue
+                else:
+                    interprodb.toggle_constraint(url,
+                                                 owner=t["owner"],
+                                                 table=t["name"],
+                                                 constraint=contraint,
+                                                 enable=True)
+        else:
+            raise RuntimeError("some tables were not processed")
 
