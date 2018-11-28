@@ -4,7 +4,7 @@
 import logging
 import os
 from concurrent import futures
-from threading import Thread
+from multiprocessing import Process
 from typing import Union
 
 from . import interprodb, io, uniprotdb
@@ -39,16 +39,16 @@ def update(url: str, swissprot_path: str, trembl_path: str,
     old_db = io.ProteinDatabase(dir=dir)
     new_db = io.ProteinDatabase(dir=dir)
 
-    t1 = Thread(target=load_proteins_from_flat_files,
-                args=(swissprot_path, trembl_path, new_db))
-    t2 = Thread(target=load_proteins_from_database,
-                args=(url, old_db))
+    p1 = Process(target=load_proteins_from_flat_files,
+                 args=(swissprot_path, trembl_path, new_db))
+    p2 = Process(target=load_proteins_from_database,
+                 args=(url, old_db))
 
-    t1.start()
-    t2.start()
+    p1.start()
+    p2.start()
 
-    t1.join()
-    t2.join()
+    p1.join()
+    p2.join()
 
     logging.info("merging databases")
     new_db.insert(old_db.iter(), suffix="_old")
