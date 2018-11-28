@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import asyncio
+import concurrent.futures
 import logging
 import os
 from threading import Thread
@@ -65,17 +65,25 @@ def update(url: str, swissprot_path: str, trembl_path: str,
     logging.info("complete")
 
 
-def count(url: str):
+def count(url: str) -> list:
     tables = interpro.get_child_tables(url, "INTERPRO", "PROTEIN")
-    aws = [interpro.count_table(url, t["name"]) for t in tables]
+    n = len(tables)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n) as executor:
+        futures_to_index = {
+            executor.submit(
+                interpro.count_rows_to_delete,
+                url,
+                t["name"],
+                t["column"]
+            ): i
+            for i, t in enumerate(tables)
+        }
 
-    loop = asyncio.get_event_loop()
-    future = asyncio.gather(*aws)
-    res = loop.run_until_complete(future)
-    loop.close()
+        for future in concurrent.futures.as_completed(futures_to_index):
+            i = futures_to_index[future]
+            tables[i]["count"] = future.result()
 
-    for t, r in zip(tables, res):
-        logging.info("{:<20}{:>10}".format(t["name"], r))
+    return tables
 
 
 def delete(url: str):

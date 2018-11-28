@@ -245,7 +245,8 @@ def toggle_constraint(url: str, owner: str, table: str, constraint: str,
         con.close()
         return b
 
-async def count_table(url: str, table: str, column: str) -> int:
+
+def count_rows_to_delete(url: str, table: str, column: str) -> int:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
@@ -263,3 +264,18 @@ async def count_table(url: str, table: str, column: str) -> int:
     cur.close()
     con.close()
     return cnt
+
+
+def update_proteins(url: str, db: ProteinDatabase):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    for db.get_annotation_changes():
+    cur.close()
+    con.close()
+
+
+def add_proteins(url: str, db: ProteinDatabase):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.close()
+    con.close()

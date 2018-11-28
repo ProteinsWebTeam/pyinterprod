@@ -90,7 +90,7 @@ class ProteinDatabase(object):
                 """
                 SELECT accession
                 FROM protein_old
-                EXCEPT 
+                EXCEPT
                 SELECT accession
                 FROM protein
                 """
@@ -126,27 +126,27 @@ class ProteinDatabase(object):
         with sqlite3.connect(self.path) as con:
             cur = con.execute(
                 """
-                SELECT 
-                  accession
+                SELECT
+                  accession, p1.crc64
                 FROM protein AS p1
-                INNER JOIN protein_old AS p2 
+                INNER JOIN protein_old AS p2
                   USING (accession)
                 WHERE p1.crc64 != p2.crc64
                 """
             )
 
             for row in cur:
-                yield row[0]
+                yield row
 
     def get_annotation_changes(self) -> Generator[Tuple, None, None]:
         with sqlite3.connect(self.path) as con:
             cur = con.execute(
                 """
-                SELECT 
-                  accession, p1.identifier, p1.is_reviewed, p1.length, 
+                SELECT
+                  accession, p1.identifier, p1.is_reviewed, p1.length,
                   p1.is_fragment
                 FROM protein AS p1
-                INNER JOIN protein_old AS p2 
+                INNER JOIN protein_old AS p2
                   USING (accession)
                 WHERE p1.identifier != p2.identifier
                   OR p1.is_reviewed != p2.is_reviewed
