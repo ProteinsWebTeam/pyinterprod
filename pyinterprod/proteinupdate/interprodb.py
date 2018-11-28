@@ -130,6 +130,7 @@ def delete_proteins(url: str, table: str, column: str, stop: int,
             """.format(table, column),
             (i, i+step-1)
         )
+        logging.info("{}: {} / {}".format(table, min(i+step, stop), stop))
     con.commit()
     cur.close()
     con.close()
