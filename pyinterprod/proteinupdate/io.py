@@ -122,36 +122,23 @@ class ProteinDatabase(object):
             for row in cur:
                 yield row
 
-    def get_sequence_changes(self) -> Generator[Tuple, None, None]:
+    def get_changes(self) -> Generator[Tuple, None, None]:
         with sqlite3.connect(self.path) as con:
             cur = con.execute(
                 """
                 SELECT
-                  accession, p1.crc64
-                FROM protein AS p1
-                INNER JOIN protein_old AS p2
-                  USING (accession)
-                WHERE p1.crc64 != p2.crc64
-                """
-            )
-
-            for row in cur:
-                yield row
-
-    def get_annotation_changes(self) -> Generator[Tuple, None, None]:
-        with sqlite3.connect(self.path) as con:
-            cur = con.execute(
-                """
-                SELECT
-                  accession, p1.identifier, p1.is_reviewed, p1.length,
-                  p1.is_fragment
+                  accession, p1.identifier, p1.is_reviewed, p1.crc64, 
+                  p1.length, p1.is_fragment, p1.tax_id
                 FROM protein AS p1
                 INNER JOIN protein_old AS p2
                   USING (accession)
                 WHERE p1.identifier != p2.identifier
                   OR p1.is_reviewed != p2.is_reviewed
+                  OR p1.crc64 != p2.crc64
                   OR p1.length != p2.length
                   OR p1.is_fragment != p2.is_fragment
+                  OR p1.tax_id != p2.tax_id
+  
                 """
             )
 
