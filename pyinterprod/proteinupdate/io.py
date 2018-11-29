@@ -110,7 +110,7 @@ class ProteinDatabase(object):
                   crc64,
                   length,
                   is_fragment,
-                  tax_id
+                  taxon_id
                 FROM protein
                 WHERE accession NOT IN (
                   SELECT accession
@@ -127,8 +127,8 @@ class ProteinDatabase(object):
             cur = con.execute(
                 """
                 SELECT
-                  accession, p1.identifier, p1.is_reviewed, p1.crc64, 
-                  p1.length, p1.is_fragment, p1.tax_id
+                  accession, p1.identifier, p1.is_reviewed, p1.crc64,
+                  p1.length, p1.is_fragment, p1.taxon_id
                 FROM protein AS p1
                 INNER JOIN protein_old AS p2
                   USING (accession)
@@ -137,8 +137,8 @@ class ProteinDatabase(object):
                   OR p1.crc64 != p2.crc64
                   OR p1.length != p2.length
                   OR p1.is_fragment != p2.is_fragment
-                  OR p1.tax_id != p2.tax_id
-  
+                  OR p1.taxon_id != p2.taxon_id
+
                 """
             )
 
