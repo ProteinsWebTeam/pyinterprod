@@ -48,7 +48,7 @@ def update_proteins(url: str, db: ProteinDatabase) -> int:
         cur.execute(
             """
             UPDATE INTERPRO.PROTEIN
-            SET 
+            SET
               NAME = :1,
               DBCODE = :2,
               CRC64 = :3,
@@ -99,7 +99,7 @@ def insert_proteins(url: str, db: ProteinDatabase) -> int:
             cur.executemany(
                 """
                 INSERT INTO INTERPRO.PROTEIN (
-                  PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT, 
+                  PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT,
                   STRUCT_FLAG, TAX_ID
                 )
                 VALUES (:1, :2, :3, :4, :5, :6, 'N', :7)
@@ -203,8 +203,8 @@ def prepare_deletion(url: str, db: ProteinDatabase) -> int:
         """
     )
 
-    cur.exec("DBMS_STATS.GATHER_TABLE_STATS",
-             ("INTERPRO", "PROTEIN_TO_DELETE"))
+    cur.callproc("DBMS_STATS.GATHER_TABLE_STATS",
+                 ("INTERPRO", "PROTEIN_TO_DELETE"))
 
     cur.close()
     con.close()
