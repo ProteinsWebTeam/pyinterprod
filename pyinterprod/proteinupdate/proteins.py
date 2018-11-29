@@ -75,7 +75,6 @@ def delete(url: str):
     tables = interprodb.get_tables_with_proteins_to_delete(url)
 
     if tables:
-
         logging.info("disabling referential constraints")
         for t in tables:
             try:
@@ -100,15 +99,15 @@ def delete(url: str):
                                          url, t["name"], t["column"])
                 future_to_idx[future] = i
 
-                for future in futures.as_completed(future_to_idx):
-                    i = future_to_idx[future]
-                    name = tables[i]["name"]
+            for future in futures.as_completed(future_to_idx):
+                i = future_to_idx[future]
+                name = tables[i]["name"]
 
-                    if future.done():
-                        logging.info("{} table done".format(name))
-                    else:
-                        logging.info("{} table exited".format(name))
-                        all_done = False
+                if future.done():
+                    logging.info("{} table done".format(name))
+                else:
+                    logging.info("{} table exited".format(name))
+                    all_done = False
 
         if all_done:
             logging.info("enabling referential constraints")
@@ -126,4 +125,3 @@ def delete(url: str):
                                                  enable=True)
         else:
             raise RuntimeError("some tables were not processed")
-
