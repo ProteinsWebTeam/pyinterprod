@@ -154,7 +154,7 @@ def prepare_deletion(url: str, db: ProteinDatabase) -> int:
     cur = con.cursor()
 
     try:
-        cur.execute("INTERPRO.PROTEIN_TO_DELETE")
+        cur.execute("DROP TABLE INTERPRO.PROTEIN_TO_DELETE")
     except cx_Oracle.DatabaseError:
         pass
     finally:
