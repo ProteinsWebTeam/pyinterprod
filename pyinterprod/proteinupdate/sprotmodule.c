@@ -61,6 +61,9 @@ static PyObject *sprot_load(PyObject *self, PyObject *args) {
         return NULL;
     }
 
+    char *errmsg;
+    sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errmsg);
+
     char buffer[1024];
     char month[4];
     char *str, *token, *saveptr, *ptr;
@@ -204,6 +207,7 @@ static PyObject *sprot_load(PyObject *self, PyObject *args) {
     }
 
     fclose(fp);
+    sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errmsg);
     sqlite3_finalize(stmt);
     sqlite3_close(db);
     return PyLong_FromUnsignedLong(num_entries);
