@@ -69,13 +69,14 @@ def delete(url: str):
                                              enable=False)
 
         logging.info("deleting proteins")
+        count = interprodb.count_proteins_to_delete(url)
         n = len(tables)
         all_done = True
         with futures.ThreadPoolExecutor(max_workers=n) as executor:
             future_to_idx = {}
             for i, t in enumerate(tables):
                 future = executor.submit(interprodb.delete_proteins,
-                                         url, t["name"], t["column"])
+                                         url, t["name"], t["column"], count)
                 future_to_idx[future] = i
 
             for future in futures.as_completed(future_to_idx):

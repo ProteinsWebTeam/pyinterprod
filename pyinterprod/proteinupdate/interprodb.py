@@ -129,22 +129,10 @@ def insert_proteins(url: str, db: ProteinDatabase) -> int:
     return count
 
 
-def delete_proteins(url: str, table: str, column: str, step: int=1000):
+def delete_proteins(url: str, table: str, column: str, stop: int,
+                    step: int=1000):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    cur.execute()
-    cur.execute(
-        """
-        SELECT COUNT(*)
-        FROM INTERPRO.{}
-        WHERE {} IN (
-            SELECT PROTEIN_AC
-            FROM INTERPRO.PROTEIN_TO_DELETE
-        )
-        """.format(table, column)
-    )
-    stop = cur.fetchone()[0]
-
     for i in range(0, stop, step):
         cur.execute(
             """
@@ -237,6 +225,21 @@ def count_rows_to_delete(url: str, table: str, column: str) -> int:
             FROM INTERPRO.PROTEIN_TO_DELETE
         )
         """.format(table, column)
+    )
+    cnt = cur.fetchone()[0]
+    cur.close()
+    con.close()
+    return cnt
+
+
+def count_proteins_to_delete(url: str) -> int:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM INTERPRO.PROTEIN_TO_DELETE
+        """
     )
     cnt = cur.fetchone()[0]
     cur.close()
