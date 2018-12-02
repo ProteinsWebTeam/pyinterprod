@@ -12,13 +12,16 @@ class ProteinDatabase(object):
                  dir: Union[str, None]=None):
         if path:
             self.path = path
+            self.temporary = False
         else:
             fd, self.path = mkstemp(dir=dir)
             os.close(fd)
             os.remove(self.path)
+            self.temporary = True
 
     def __del__(self):
-        self.drop()
+        if self.temporary:
+            self.drop()
 
     @property
     def size(self) -> int:
