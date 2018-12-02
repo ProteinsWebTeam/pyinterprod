@@ -10,7 +10,7 @@ setup(
     description="",
     long_description="",
     ext_modules=[
-        Extension("pyinterprod.sprot",
+        Extension("pyinterprod.proteinupdate.sprot",
                   ["pyinterprod/proteinupdate/sprotmodule.c"],
                   extra_link_args=["-lsqlite3"])
     ],
