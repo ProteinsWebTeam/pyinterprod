@@ -109,6 +109,19 @@ def insert_proteins(url: str, db: ProteinDatabase) -> int:
             )
             items = []
 
+    if items:
+        # TIMESTAMP and USERSTAMP will be set to their DEFAULT
+        cur.executemany(
+            """
+            INSERT INTO INTERPRO.PROTEIN (
+              PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT,
+              STRUCT_FLAG, TAX_ID
+            )
+            VALUES (:1, :2, :3, :4, :5, :6, 'N', :7)
+            """,
+            items
+        )
+
     con.commit()
     cur.close()
     con.close()
