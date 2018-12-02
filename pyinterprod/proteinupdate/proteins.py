@@ -4,10 +4,9 @@
 import logging
 import os
 from concurrent import futures
-from multiprocessing import Process
 from typing import Union
 
-from . import interprodb, io, uniprotdb
+from . import interprodb, io, sprot, uniprotdb
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,39 +35,33 @@ def update(url: str, swissprot_path: str, trembl_path: str,
         os.makedirs(dir, exist_ok=True)
 
     logging.info("loading proteins")
-    old_db = io.ProteinDatabase(dir=dir)
-    new_db = io.ProteinDatabase(dir=dir)
 
-    p1 = Process(target=load_proteins_from_flat_files,
-                 args=(swissprot_path, trembl_path, new_db))
-    p2 = Process(target=load_proteins_from_database,
-                 args=(url, old_db))
+    db = io.ProteinDatabase(dir=dir)
+    count = db.insert(interprodb.get_proteins(url), suffix="_old")
+    logging.info("InterPro: {} proteins".format(count))
 
-    p1.start()
-    p2.start()
+    db.create()
+    count = sprot.load(swissprot_path, db.path, "protein")
+    logging.info("Swiss-Prot: {} proteins".format(count))
 
-    p1.join()
-    p2.join()
+    count = sprot.load(trembl_path, db.path, "protein")
+    logging.info("TrEMBL: {} proteins".format(count))
 
-    logging.info("merging databases")
-    new_db.insert(old_db.iter(), suffix="_old")
-    logging.info("disk space used: {} bytes".format(new_db.size +
-                                                    old_db.size))
-    old_db.drop()
+    logging.info("disk space used: {} bytes".format(db.size))
 
     logging.info("update changes")
-    count = interprodb.update_proteins(url, new_db)
+    count = interprodb.update_proteins(url, db)
     logging.info("{} proteins updated".format(count))
 
     logging.info("add new proteins")
-    count = interprodb.insert_proteins(url, new_db)
+    count = interprodb.insert_proteins(url, db)
     logging.info("{} proteins added".format(count))
 
     logging.info("add proteins to delete")
-    count = interprodb.prepare_deletion(url, new_db)
+    count = interprodb.prepare_deletion(url, db)
     logging.info("{} proteins to delete".format(count))
 
-    new_db.drop()
+    db.drop()
 
 
 def delete(url: str):
