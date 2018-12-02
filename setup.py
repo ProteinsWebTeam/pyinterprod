@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os
-from setuptools import setup, Extension
+from setuptools import Extension, find_packages, setup
 
 setup(
     name="pyinterprod",
     version="1.0",
     description="",
     long_description="",
+    packages=find_packages(),
     ext_modules=[
         Extension("pyinterprod.proteinupdate.sprot",
                   ["pyinterprod/proteinupdate/sprotmodule.c"],
