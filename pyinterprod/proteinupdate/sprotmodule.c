@@ -102,40 +102,40 @@ static PyObject *sprot_load(PyObject *self, PyObject *args) {
                 }
             }
 
-        } else if (strncmp(buffer, "DT", 2) == 0) {
-            ptr = strstr(buffer, "sequence version");
-            if (ptr != NULL) {
-                e.day = atoi(&buffer[5]);
-                strncpy(month, &buffer[8], 3);
-                month[3] = 0;
-
-                if (strcmp(month, "JAN") == 0)
-                    e.month = 1;
-                else if (strcmp(month, "FEB") == 0)
-                    e.month = 2;
-                else if (strcmp(month, "MAR") == 0)
-                    e.month = 3;
-                else if (strcmp(month, "APR") == 0)
-                    e.month = 4;
-                else if (strcmp(month, "MAY") == 0)
-                    e.month = 5;
-                else if (strcmp(month, "JUN") == 0)
-                    e.month = 6;
-                else if (strcmp(month, "JUL") == 0)
-                    e.month = 7;
-                else if (strcmp(month, "AUG") == 0)
-                    e.month = 8;
-                else if (strcmp(month, "SEP") == 0)
-                    e.month = 9;
-                else if (strcmp(month, "OCT") == 0)
-                    e.month = 10;
-                else if (strcmp(month, "NOV") == 0)
-                    e.month = 11;
-                else
-                    e.month = 12;
-
-                e.year = atoi(&buffer[12]);
-            }
+        // } else if (strncmp(buffer, "DT", 2) == 0) {
+        //     ptr = strstr(buffer, "sequence version");
+        //     if (ptr != NULL) {
+        //         e.day = atoi(&buffer[5]);
+        //         strncpy(month, &buffer[8], 3);
+        //         month[3] = 0;
+        //
+        //         if (strcmp(month, "JAN") == 0)
+        //             e.month = 1;
+        //         else if (strcmp(month, "FEB") == 0)
+        //             e.month = 2;
+        //         else if (strcmp(month, "MAR") == 0)
+        //             e.month = 3;
+        //         else if (strcmp(month, "APR") == 0)
+        //             e.month = 4;
+        //         else if (strcmp(month, "MAY") == 0)
+        //             e.month = 5;
+        //         else if (strcmp(month, "JUN") == 0)
+        //             e.month = 6;
+        //         else if (strcmp(month, "JUL") == 0)
+        //             e.month = 7;
+        //         else if (strcmp(month, "AUG") == 0)
+        //             e.month = 8;
+        //         else if (strcmp(month, "SEP") == 0)
+        //             e.month = 9;
+        //         else if (strcmp(month, "OCT") == 0)
+        //             e.month = 10;
+        //         else if (strcmp(month, "NOV") == 0)
+        //             e.month = 11;
+        //         else
+        //             e.month = 12;
+        //
+        //         e.year = atoi(&buffer[12]);
+        //     }
         } else if (strncmp(buffer, "DE   Flags:", 11) == 0) {
             ptr = strstr(buffer, "Fragment");
             if (ptr != NULL)
@@ -189,20 +189,6 @@ static PyObject *sprot_load(PyObject *self, PyObject *args) {
             // e.day = 0;
             // e.month = 0;
             // e.year = 0;
-
-            // printf("%d: %s\t%s\t%c\t%c\t%d-%02d-%02d\t%d\t%u\t%s\n",
-            //     arr_idx,
-            //     e.accession,
-            //     e.crc64,
-            //     e.is_reviewed ? 'S' : 'T',
-            //     e.is_fragment ? 'Y' : 'N',
-            //     e.year,
-            //     e.month,
-            //     e.day,
-            //     e.taxon_id,
-            //     e.length,
-            //     e.identifier
-            // );
         }
     }
 
