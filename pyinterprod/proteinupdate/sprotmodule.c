@@ -166,13 +166,14 @@ static PyObject *sprot_load(PyObject *self, PyObject *args) {
             }
         } else if (strncmp(buffer, "//", 2) == 0) {
             // test that rc (returned by sqlite_bind*) == SQLITE_OK
-            sqlite3_bind_text(stmt, 1, e.identifier, -1, SQLITE_STATIC);
-            sqlite3_bind_text(stmt, 2, e.accession, -1, SQLITE_STATIC);
+            sqlite3_bind_text(stmt, 1, e.accession, -1, SQLITE_STATIC);
+            sqlite3_bind_text(stmt, 2, e.identifier, -1, SQLITE_STATIC);
             sqlite3_bind_int(stmt, 3, e.is_reviewed);
-            sqlite3_bind_int(stmt, 4, e.is_fragment);
+            sqlite3_bind_text(stmt, 4, e.crc64, -1, SQLITE_STATIC);
             sqlite3_bind_int(stmt, 5, e.length);
-            sqlite3_bind_int(stmt, 6, e.taxon_id);
-            sqlite3_bind_text(stmt, 7, e.crc64, -1, SQLITE_STATIC);
+            sqlite3_bind_int(stmt, 6, e.is_fragment);
+            sqlite3_bind_int(stmt, 7, e.taxon_id);
+
             sqlite3_step(stmt);
             sqlite3_reset(stmt);
 
