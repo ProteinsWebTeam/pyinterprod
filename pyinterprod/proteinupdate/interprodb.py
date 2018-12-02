@@ -19,7 +19,7 @@ def get_proteins(url: str) -> Generator:
     cur.execute(
         """
         SELECT
-          NAME, PROTEIN_AC, DBCODE, LEN, FRAGMENT, TAX_ID, CRC64
+          PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT, TAX_ID
         FROM INTERPRO.PROTEIN
         """
     )
@@ -30,8 +30,8 @@ def get_proteins(url: str) -> Generator:
             row[1],
             1 if row[2] == 'S' else 0,
             row[3],
-            1 if row[4] == 'Y' else 0,
-            row[5],
+            row[4],
+            1 if row[5] == 'Y' else 0,
             row[6]
         )
 
@@ -96,6 +96,7 @@ def insert_proteins(url: str, db: ProteinDatabase) -> int:
         count += 1
 
         if len(items) == _MAX_ITEMS:
+            # TIMESTAMP and USERSTAMP will be set to their DEFAULT
             cur.executemany(
                 """
                 INSERT INTO INTERPRO.PROTEIN (
