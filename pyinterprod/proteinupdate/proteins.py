@@ -6,27 +6,13 @@ import os
 from concurrent import futures
 from typing import Union
 
-from . import interprodb, io, sprot, uniprotdb
+from . import interprodb, io, sprot
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s: %(levelname)s: %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
-
-
-def load_proteins_from_flat_files(swissprot_path: str, trembl_path: str,
-                                  database: io.ProteinDatabase):
-    count = database.insert(uniprotdb.read_flat_file(swissprot_path))
-    logging.info("Swiss-Prot: {} proteins".format(count))
-
-    count = database.insert(uniprotdb.read_flat_file(trembl_path))
-    logging.info("TrEMBL: {} proteins".format(count))
-
-
-def load_proteins_from_database(url: str, database: io.ProteinDatabase):
-    count = database.insert(interprodb.get_proteins(url))
-    logging.info("InterPro: {} proteins".format(count))
 
 
 def update(url: str, swissprot_path: str, trembl_path: str,
