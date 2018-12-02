@@ -49,13 +49,13 @@ class Entry(object):
         self.crc64 = self.prog_sq.search(buffer).group(1)
 
         return (
-            self.identifier,
             self.accession,
+            self.identifier,
             1 if self.is_reviewed else 0,
+            self.crc64,
             self.length,
             1 if self.is_fragment else 0,
-            self.taxon_id,
-            self.crc64
+            self.taxon_id
         )
 
 
