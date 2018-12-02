@@ -35,13 +35,13 @@ class ProteinDatabase(object):
             con.execute(
                 """
                 CREATE TABLE IF NOT EXISTS protein{} (
-                  identifier TEXT NOT NULL,
                   accession TEXT NOT NULL PRIMARY KEY,
+                  identifier TEXT NOT NULL,
                   is_reviewed INTEGER NOT NULL,
+                  crc64 TEXT NOT NULL,
                   length INTEGER NOT NULL,
                   is_fragment INTEGER NOT NULL,
-                  taxon_id INTEGER NOT NULL,
-                  crc64 TEXT NOT NULL
+                  taxon_id INTEGER NOT NULL
                 )
                 """.format(suffix)
             )
