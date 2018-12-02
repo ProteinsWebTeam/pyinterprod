@@ -12,9 +12,6 @@ typedef struct entry_t {
     char crc64[17];             // Sixty-four bit cyclic redundancy checksum
     short int is_reviewed;
     short int is_fragment;
-    short int day;
-    short int month;
-    short int year;
     int taxon_id;               // Taxon ID
     int length;                 // Sequence length
     char identifier[17];        // Entry name
@@ -65,14 +62,25 @@ static PyObject *sprot_load(PyObject *self, PyObject *args) {
     sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errmsg);
 
     char buffer[1024];
-    char month[4];
     char *str, *token, *saveptr, *ptr;
     char delimiters[] = " ";
     unsigned int i;
     entry_t e;
+    short int reset_entry = 1;
 
     while (fgets(buffer, 1024, fp)) {
         rtrim(buffer);
+
+        if (reset_entry) {
+            memset(e.accession, 0, sizeof(e.accession));
+            memset(e.identifier, 0, sizeof(e.identifier));
+            memset(e.crc64, 0, sizeof(e.crc64));
+            e.is_fragment = 0;
+            e.is_reviewed = 0;
+            e.taxon_id = 0;
+            e.length = 0;
+            reset_entry = 0;
+        }
 
         if (strncmp(buffer, "ID", 2) == 0) {
             i = 0;
@@ -91,51 +99,13 @@ static PyObject *sprot_load(PyObject *self, PyObject *args) {
                 i++;
             }
         } else if (strncmp(buffer, "AC", 2) == 0) {
-            for (i = 0, str = buffer; ; str = NULL, i++) {
-                token = strtok_r(str, delimiters, &saveptr);
-                if (token == NULL)
-                    break;
-                else if (i && !strlen(e.accession)) {
-                    // Remove the semi-colon
-                    strncpy(e.accession, token, strlen(token)-1);
-                    break;
-                }
+            if (!strlen(e.accession)) {
+                token = strtok(buffer, delimiters);
+                token = strtok(NULL, delimiters);
+                // Skip last charachter as it's a semi-colon
+                strncpy(e.accession, token, strlen(token)-1);
+                e.accession[strlen(token)-1] = '\0';
             }
-
-        // } else if (strncmp(buffer, "DT", 2) == 0) {
-        //     ptr = strstr(buffer, "sequence version");
-        //     if (ptr != NULL) {
-        //         e.day = atoi(&buffer[5]);
-        //         strncpy(month, &buffer[8], 3);
-        //         month[3] = 0;
-        //
-        //         if (strcmp(month, "JAN") == 0)
-        //             e.month = 1;
-        //         else if (strcmp(month, "FEB") == 0)
-        //             e.month = 2;
-        //         else if (strcmp(month, "MAR") == 0)
-        //             e.month = 3;
-        //         else if (strcmp(month, "APR") == 0)
-        //             e.month = 4;
-        //         else if (strcmp(month, "MAY") == 0)
-        //             e.month = 5;
-        //         else if (strcmp(month, "JUN") == 0)
-        //             e.month = 6;
-        //         else if (strcmp(month, "JUL") == 0)
-        //             e.month = 7;
-        //         else if (strcmp(month, "AUG") == 0)
-        //             e.month = 8;
-        //         else if (strcmp(month, "SEP") == 0)
-        //             e.month = 9;
-        //         else if (strcmp(month, "OCT") == 0)
-        //             e.month = 10;
-        //         else if (strcmp(month, "NOV") == 0)
-        //             e.month = 11;
-        //         else
-        //             e.month = 12;
-        //
-        //         e.year = atoi(&buffer[12]);
-        //     }
         } else if (strncmp(buffer, "DE   Flags:", 11) == 0) {
             ptr = strstr(buffer, "Fragment");
             if (ptr != NULL)
@@ -166,6 +136,7 @@ static PyObject *sprot_load(PyObject *self, PyObject *args) {
             }
         } else if (strncmp(buffer, "//", 2) == 0) {
             // test that rc (returned by sqlite_bind*) == SQLITE_OK
+            printf(">%s >%s\n", e.accession, e.identifier);
             sqlite3_bind_text(stmt, 1, e.accession, -1, SQLITE_STATIC);
             sqlite3_bind_text(stmt, 2, e.identifier, -1, SQLITE_STATIC);
             sqlite3_bind_int(stmt, 3, e.is_reviewed);
@@ -178,18 +149,7 @@ static PyObject *sprot_load(PyObject *self, PyObject *args) {
             sqlite3_reset(stmt);
 
             num_entries++;
-
-            // Reset entry for next record
-            memset(e.accession, 0, sizeof(e.accession));
-            memset(e.identifier, 0, sizeof(e.identifier));
-            memset(e.crc64, 0, sizeof(e.crc64));
-            e.is_fragment = 0;
-            e.is_reviewed = 0;
-            e.taxon_id = 0;
-            e.length = 0;
-            // e.day = 0;
-            // e.month = 0;
-            // e.year = 0;
+            reset_entry = 1;
         }
     }
 
