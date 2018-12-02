@@ -151,6 +151,26 @@ def delete_proteins(url: str, table: str, column: str, stop: int,
     con.close()
 
 
+def recreate_table(url: str, table: str, column: str, suffix: str="__tmp"):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.{0}{1} AS
+        SELECT * FROM INTERPRO.{0}
+        WHERE {2} NOT IN (
+            SELECT ACCESSION
+            FROM INTERPRO.PROTEIN_TO_DELETE
+        )
+        """.format(table, suffix, column)
+    )
+
+    # TODO: recreate constraints, indexes
+
+    cur.close()
+    con.close()
+
+
 def prepare_deletion(url: str, db: ProteinDatabase) -> int:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
