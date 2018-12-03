@@ -136,7 +136,6 @@ static PyObject *sprot_load(PyObject *self, PyObject *args) {
             }
         } else if (strncmp(buffer, "//", 2) == 0) {
             // test that rc (returned by sqlite_bind*) == SQLITE_OK
-            printf(">%s >%s\n", e.accession, e.identifier);
             sqlite3_bind_text(stmt, 1, e.accession, -1, SQLITE_STATIC);
             sqlite3_bind_text(stmt, 2, e.identifier, -1, SQLITE_STATIC);
             sqlite3_bind_int(stmt, 3, e.is_reviewed);
