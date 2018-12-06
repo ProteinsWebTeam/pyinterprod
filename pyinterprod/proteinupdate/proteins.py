@@ -4,7 +4,7 @@
 import logging
 import os
 from concurrent import futures
-from typing import Union
+from typing import Optional
 
 from . import interprodb, io, sprot
 
@@ -15,8 +15,8 @@ logging.basicConfig(
 )
 
 
-def update(url: str, swissprot_path: str, trembl_path: str,
-           dir: Union[str, None]=None):
+def track_changes(url: str, swissprot_path: str, trembl_path: str,
+                  dir: Optional[str]=None):
     if dir:
         os.makedirs(dir, exist_ok=True)
 
@@ -90,7 +90,6 @@ def delete(url: str):
                     all_done = False
 
         if all_done:
-            logging.info("enabling referential constraints")
             for t in tables:
                 try:
                     contraint = t["constraint"]
@@ -98,6 +97,9 @@ def delete(url: str):
                     # The table does not have a constraint to enable
                     continue
                 else:
+                    logging.info("enabling: {}.{}.{}".format(t["owner"],
+                                                             t["name"],
+                                                             contraint))
                     interprodb.toggle_constraint(url,
                                                  owner=t["owner"],
                                                  table=t["name"],
