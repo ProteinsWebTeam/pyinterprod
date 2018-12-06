@@ -50,12 +50,23 @@ def track_changes(url: str, swissprot_path: str, trembl_path: str,
     db.drop()
 
 
-def delete(url: str):
+def delete(url: str, truncate_mv: bool=False):
     tables = interprodb.get_tables_with_proteins_to_delete(url)
 
     if tables:
+        to_truncate = []
+        to_delete = []
+        if truncate_mv:
+            for t in tables:
+                if t["name"].startswith("MV_"):
+                    to_truncate.append(t)
+                else:
+                    to_delete.append(t)
+        else:
+            to_delete = tables
+
         logging.info("disabling referential constraints")
-        for t in tables:
+        for t in to_delete:
             try:
                 contraint = t["constraint"]
             except KeyError:
@@ -74,14 +85,22 @@ def delete(url: str):
         all_done = True
         with futures.ThreadPoolExecutor(max_workers=n) as executor:
             future_to_idx = {}
-            for i, t in enumerate(tables):
+            for i, t in enumerate(to_truncate):
+                future = executor.submit(interprodb.truncate_table,
+                                         url, t["name"])
+                future_to_idx[future] = (True, i)
+
+            for i, t in enumerate(to_delete):
                 future = executor.submit(interprodb.delete_proteins,
                                          url, t["name"], t["column"], count)
-                future_to_idx[future] = i
+                future_to_idx[future] = (False, i)
 
             for future in futures.as_completed(future_to_idx):
-                i = future_to_idx[future]
-                name = tables[i]["name"]
+                b, i = future_to_idx[future]
+                if b:
+                    name = to_truncate[i]["name"]
+                else:
+                    name = to_delete[i]["name"]
 
                 if future.done():
                     logging.info("{} table done".format(name))
@@ -90,7 +109,7 @@ def delete(url: str):
                     all_done = False
 
         if all_done:
-            for t in tables:
+            for t in to_delete:
                 try:
                     contraint = t["constraint"]
                 except KeyError:

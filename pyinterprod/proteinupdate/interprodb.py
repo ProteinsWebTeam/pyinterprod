@@ -129,6 +129,14 @@ def insert_proteins(url: str, db: ProteinDatabase) -> int:
     return count
 
 
+def truncate_table(url: str, table: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute("TRUNCATE TABLE INTERPRO.{}".format(table))
+    cur.close()
+    con.close()
+
+
 def delete_proteins(url: str, table: str, column: str, stop: int,
                     step: int=1000):
     con = cx_Oracle.connect(url)
