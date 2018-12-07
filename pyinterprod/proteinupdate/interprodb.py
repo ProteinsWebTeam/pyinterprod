@@ -138,7 +138,7 @@ def truncate_table(url: str, table: str):
 
 
 def delete_proteins(url: str, table: str, column: str, stop: int,
-                    step: int=1000):
+                    step: int=_MAX_ITEMS):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     for i in range(0, stop, step):
