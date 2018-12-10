@@ -486,9 +486,9 @@ def _get_match_partitions(url: str) -> list:
     cur = con.cursor()
     cur.execute(
         """
-        SELECT HIGH_VALUE 
-        FROM ALL_TAB_PARTITIONS 
-        WHERE TABLE_OWNER = 'INTERPRO' 
+        SELECT HIGH_VALUE
+        FROM ALL_TAB_PARTITIONS
+        WHERE TABLE_OWNER = 'INTERPRO'
         AND TABLE_NAME = 'MATCH'
         """
     )
@@ -524,7 +524,7 @@ def _export_match_partition(url: str, dbcode: str):
     cur.execute(
         """
         CREATE TABLE INTERPRO.{} AS
-        SELECT * 
+        SELECT *
         FROM INTERPRO.MATCH PARTITION (MATCH_DBCODE_{})
         WHERE PROTEIN_AC NOT IN (
           SELECT ACCESSION
@@ -557,15 +557,12 @@ def track_changes(url: str, swissprot_path: str, trembl_path: str,
 
     logging.info("disk space used: {} bytes".format(db.size))
 
-    logging.info("update changes")
     count = _update_proteins(url, db)
     logging.info("{} proteins updated".format(count))
 
-    logging.info("add new proteins")
     count = _insert_proteins(url, db)
     logging.info("{} proteins added".format(count))
 
-    logging.info("add proteins to delete")
     count = _prepare_deletion(url, db)
     logging.info("{} proteins to delete".format(count))
 
