@@ -44,7 +44,10 @@ class ProteinDatabase(object):
         return os.path.getsize(self.path)
 
     def drop(self):
-        os.remove(self.path)
+        try:
+            os.remove(self.path)
+        except FileNotFoundError:
+            pass
 
     def _create_table(self, table_name: str):
         with sqlite3.connect(self.path) as con:
