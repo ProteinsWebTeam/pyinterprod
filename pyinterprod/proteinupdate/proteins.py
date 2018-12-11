@@ -623,7 +623,7 @@ def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
                     fs[f] = (-1, dbcode)
 
         count = _count_proteins_to_delete(cur)
-        for i, t in tables:
+        for i, t in enumerate(tables):
             f = executor.submit(_delete_proteins, url, t["name"],
                                 t["column"], count)
             fs[f] = (i, None)
