@@ -649,6 +649,10 @@ def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
                     all_done = False
 
         if all_done:
+            for dbcode in dbcodes:
+                logging.info("exchanging partition for '{}'".format(dbcode))
+                _exchange_match_partition(cur, dbcode)
+
             for t in table_constraints:
                 logging.info("enabling: {}.{}.{}".format(t["owner"],
                                                          t["name"],
@@ -658,10 +662,6 @@ def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
                                    table=t["name"],
                                    constraint=t["constraint"],
                                    enable=True)
-
-            for dbcode in dbcodes:
-                logging.info("exchanging partition for '{}'".format(dbcode))
-                _exchange_match_partition(cur, dbcode)
 
             cur.close()
             con.close()
