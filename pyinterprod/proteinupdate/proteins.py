@@ -496,7 +496,7 @@ def _get_match_partitions(url: str) -> list:
         """
     )
 
-    partitions = [row[0] for row in cur]
+    partitions = [row[0].strip('\'') for row in cur]
     cur.close()
     con.close()
     return partitions
