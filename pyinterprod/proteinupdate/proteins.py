@@ -530,7 +530,7 @@ def _export_match_partition(url: str, dbcode: str):
         SELECT *
         FROM INTERPRO.MATCH PARTITION (MATCH_DBCODE_{})
         WHERE PROTEIN_AC NOT IN (
-          SELECT ACCESSION
+          SELECT PROTEIN_AC
           FROM INTERPRO.PROTEIN_TO_DELETE
         )
         """.format(table, dbcode)
@@ -637,15 +637,16 @@ def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
             i, dbcode = fs[f]
 
             if i == -1:
-                if f.done():
+                if f.exception() is None:
                     logging.info("partition for '{}' done".format(dbcode))
                     dbcodes.append(dbcode)
                 else:
                     logging.info("partition for '{}' exited".format(dbcode))
                     all_done = False
+
             else:
                 t = tables[i]
-                if f.done():
+                if f.exception() is None:
                     logging.info("table '{}' done".format(t["name"]))
                 else:
                     logging.info("table '{}' exited".format(t["name"]))
