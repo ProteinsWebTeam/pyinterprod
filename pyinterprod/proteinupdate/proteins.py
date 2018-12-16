@@ -430,7 +430,8 @@ def _get_child_tables(url: str, owner: str, table: str) -> List[dict]:
 
 
 def _toggle_constraint(cur: cx_Oracle.Cursor, owner: str, table: str,
-                       constraint: str, enable: bool=True):
+                       constraint: str, enable: bool=True,
+                       raise_on_error: bool=True):
     try:
         cur.execute(
             """
@@ -442,12 +443,13 @@ def _toggle_constraint(cur: cx_Oracle.Cursor, owner: str, table: str,
             )
         )
     except cx_Oracle.DatabaseError as e:
-        logging.critical("failed: ALTER TABLE {}.{} {} CONSTRAINT {}".format(
-            owner, table,
-            "ENABLE" if enable else "DISABLE",
-            constraint
-        ))
-        raise e
+        if raise_on_error:
+            logging.critical("failed: ALTER TABLE {}.{} {} CONSTRAINT {}".format(
+                owner, table,
+                "ENABLE" if enable else "DISABLE",
+                constraint
+            ))
+            raise e
 
 
 def _get_tables_with_proteins_to_delete(url: str) -> List[dict]:
@@ -572,6 +574,24 @@ def track_changes(url: str, swissprot_path: str, trembl_path: str,
     db.drop()
 
 
+def _toggle_constraints(cur: cx_Oracle.Cursor, owner: str, table: str,
+                        enable: bool=True):
+    cur.execute(
+        """
+        SELECT CONSTRAINT_NAME, STATUS
+        FROM USER_CONSTRAINTS
+        WHERE OWNER = :1 AND TABLE_NAME = :2
+        """,
+        (owner, table)
+    )
+    constrains = dict(cur.fetchall())
+
+    for c, s in constraints.items():
+        is_enabled = s == "ENABLED"
+        if is_enabled != enable:
+            _toggle_constraint(cur, owner, table, c, enable)
+
+
 def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
     tables = _get_tables_with_proteins_to_delete(url)
 
@@ -605,7 +625,8 @@ def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
             table_constraints.append(t)
             _toggle_constraint(cur, owner=t["owner"],
                                table=t["name"],
-                               constraint=contraint, enable=False)
+                               constraint=contraint, enable=False,
+                               raise_on_error=False)
 
     with futures.ThreadPoolExecutor() as executor:
         fs = {}
@@ -618,6 +639,8 @@ def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
                     break
 
             if idx is not None:
+                # Disable all MATCH constraints
+                _toggle_constraints(cur, "INTERPRO", "MATCH", False)
                 tables.pop(idx)
                 dbcodes = _get_match_partitions(url)
                 for dbcode in dbcodes:
@@ -653,9 +676,12 @@ def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
                     all_done = False
 
         if all_done:
-            for dbcode in dbcodes:
-                logging.info("exchanging partition for '{}'".format(dbcode))
-                _exchange_match_partition(cur, dbcode)
+            if dbcodes:
+                for dbcode in dbcodes:
+                    logging.info("exchanging partition for '{}'".format(dbcode))
+                    _exchange_match_partition(cur, dbcode)
+
+                _toggle_constraints(cur, "INTERPRO", "MATCH", True)
 
             for t in table_constraints:
                 logging.info("enabling: {}.{}.{}".format(t["owner"],
@@ -665,7 +691,7 @@ def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
                                    owner=t["owner"],
                                    table=t["name"],
                                    constraint=t["constraint"],
-                                   enable=True)
+                                   enable=True, raise_on_error=False)
 
             cur.close()
             con.close()
