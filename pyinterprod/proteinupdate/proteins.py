@@ -584,7 +584,7 @@ def _toggle_constraints(cur: cx_Oracle.Cursor, owner: str, table: str,
         """,
         (owner, table)
     )
-    constrains = dict(cur.fetchall())
+    constraints = dict(cur.fetchall())
 
     for c, s in constraints.items():
         is_enabled = s == "ENABLED"
