@@ -11,6 +11,7 @@ from typing import Generator, List, Optional, Tuple
 import cx_Oracle
 
 from . import sprot
+from .. import orautils
 
 logging.basicConfig(
     level=logging.INFO,
@@ -397,63 +398,8 @@ def _count_proteins_to_delete(cur: cx_Oracle.Cursor) -> int:
     return cur.fetchone()[0]
 
 
-def _get_child_tables(url: str, owner: str, table: str) -> List[dict]:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT OWNER, TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME
-        FROM ALL_CONS_COLUMNS
-        WHERE OWNER = :owner
-          AND CONSTRAINT_NAME IN (
-              SELECT CONSTRAINT_NAME
-              FROM ALL_CONSTRAINTS
-              WHERE CONSTRAINT_TYPE = 'R'
-                AND R_CONSTRAINT_NAME IN (
-                  SELECT CONSTRAINT_NAME
-                  FROM ALL_CONSTRAINTS
-                  WHERE CONSTRAINT_TYPE IN ('P', 'U')
-                    AND OWNER = :owner
-                    AND TABLE_NAME = :tabname
-          )
-        )
-        """,
-        dict(owner=owner, tabname=table)
-    )
-
-    cols = ("owner", "name", "constraint", "column")
-    tables = [dict(zip(cols, row)) for row in cur]
-
-    cur.close()
-    con.close()
-    return tables
-
-
-def _toggle_constraint(cur: cx_Oracle.Cursor, owner: str, table: str,
-                       constraint: str, enable: bool=True,
-                       raise_on_error: bool=True):
-    try:
-        cur.execute(
-            """
-            ALTER TABLE {}.{} {} CONSTRAINT {}
-            """.format(
-                owner, table,
-                "ENABLE" if enable else "DISABLE",
-                constraint
-            )
-        )
-    except cx_Oracle.DatabaseError as e:
-        if raise_on_error:
-            logging.critical("failed: ALTER TABLE {}.{} {} CONSTRAINT {}".format(
-                owner, table,
-                "ENABLE" if enable else "DISABLE",
-                constraint
-            ))
-            raise e
-
-
 def _get_tables_with_proteins_to_delete(url: str) -> List[dict]:
-    tables = _get_child_tables(url, "INTERPRO", "PROTEIN")
+    tables = orautils.get_child_tables(url, "INTERPRO", "PROTEIN")
     tables.append({
         "owner": "INTERPRO",
         "name": "PROTEIN",
@@ -484,24 +430,6 @@ def _get_tables_with_proteins_to_delete(url: str) -> List[dict]:
                 tables_to_process.append(tables[i])
 
     return tables_to_process
-
-
-def _get_match_partitions(url: str) -> list:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT HIGH_VALUE
-        FROM ALL_TAB_PARTITIONS
-        WHERE TABLE_OWNER = 'INTERPRO'
-        AND TABLE_NAME = 'MATCH'
-        """
-    )
-
-    partitions = [row[0].strip('\'') for row in cur]
-    cur.close()
-    con.close()
-    return partitions
 
 
 def _exchange_match_partition(cur: cx_Oracle.Cursor, dbcode: str):
@@ -574,24 +502,6 @@ def track_changes(url: str, swissprot_path: str, trembl_path: str,
     db.drop()
 
 
-def _toggle_constraints(cur: cx_Oracle.Cursor, owner: str, table: str,
-                        enable: bool=True):
-    cur.execute(
-        """
-        SELECT CONSTRAINT_NAME, STATUS
-        FROM USER_CONSTRAINTS
-        WHERE OWNER = :1 AND TABLE_NAME = :2
-        """,
-        (owner, table)
-    )
-    constraints = dict(cur.fetchall())
-
-    for c, s in constraints.items():
-        is_enabled = s == "ENABLED"
-        if is_enabled != enable:
-            _toggle_constraint(cur, owner, table, c, enable)
-
-
 def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
     tables = _get_tables_with_proteins_to_delete(url)
 
@@ -615,6 +525,7 @@ def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
 
     logging.info("disabling referential constraints")
     table_constraints = []
+    success = True
     for t in tables:
         try:
             contraint = t["constraint"]
@@ -623,10 +534,14 @@ def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
             continue
         else:
             table_constraints.append(t)
-            _toggle_constraint(cur, owner=t["owner"],
-                               table=t["name"],
-                               constraint=contraint, enable=False,
-                               raise_on_error=False)
+            if not orautils.toggle_constraint(cur, t["owner"], t["name"],
+                                              contraint, False):
+                success = False
+
+    if not success:
+        cur.close()
+        con.close()
+        raise RuntimeError("one or more constraints could not be disabled")
 
     with futures.ThreadPoolExecutor() as executor:
         fs = {}
@@ -640,12 +555,18 @@ def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
 
             if idx is not None:
                 # Disable all MATCH constraints
-                _toggle_constraints(cur, "INTERPRO", "MATCH", False)
+                r = orautils.toggle_constraints(cur, "INTERPRO", "MATCH",
+                                                False)
+                if not all([s for c, s in r]):
+                    cur.close()
+                    con.close()
+                    raise RuntimeError("one or more constraints "
+                                       "could not be disabled")
+
                 tables.pop(idx)
-                dbcodes = _get_match_partitions(url)
+                dbcodes = orautils.get_partitions(cur, "INTERPRO", "MATCH")
                 for dbcode in dbcodes:
-                    f = executor.submit(_export_match_partition,
-                                        url, dbcode)
+                    f = executor.submit(_export_match_partition, url, dbcode)
                     fs[f] = (-1, dbcode)
 
         count = _count_proteins_to_delete(cur)
@@ -654,7 +575,7 @@ def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
                                 t["column"], count)
             fs[f] = (i, None)
 
-        all_done = True
+        success = True
         dbcodes = []
         for f in futures.as_completed(fs):
             i, dbcode = fs[f]
@@ -664,39 +585,40 @@ def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
                     logging.info("partition for '{}' done".format(dbcode))
                     dbcodes.append(dbcode)
                 else:
-                    logging.info("partition for '{}' exited".format(dbcode))
-                    all_done = False
-
+                    logging.error("partition for '{}' exited".format(dbcode))
+                    success = False
             else:
                 t = tables[i]
                 if f.exception() is None:
                     logging.info("table '{}' done".format(t["name"]))
                 else:
-                    logging.info("table '{}' exited".format(t["name"]))
-                    all_done = False
+                    logging.error("table '{}' exited".format(t["name"]))
+                    success = False
 
-        if all_done:
-            if dbcodes:
-                for dbcode in dbcodes:
-                    logging.info("exchanging partition for '{}'".format(dbcode))
-                    _exchange_match_partition(cur, dbcode)
-
-                _toggle_constraints(cur, "INTERPRO", "MATCH", True)
-
-            for t in table_constraints:
-                logging.info("enabling: {}.{}.{}".format(t["owner"],
-                                                         t["name"],
-                                                         t["constraint"]))
-                _toggle_constraint(cur,
-                                   owner=t["owner"],
-                                   table=t["name"],
-                                   constraint=t["constraint"],
-                                   enable=True, raise_on_error=False)
-
+        if not success:
             cur.close()
             con.close()
+            raise RuntimeError("one or more tasks were not completed")
+
+        if dbcodes:
+            for dbcode in dbcodes:
+                logging.info("exchanging partition for '{}'".format(dbcode))
+                _exchange_match_partition(cur, dbcode)
+
+            # TODO: uncomment, or rebuild indexes before enabling constraints
+            # r = orautils.toggle_constraints(cur, "INTERPRO", "MATCH",
+            #                                 True)
+
+        success = True
+        for t in table_constraints:
+            if not orautils.toggle_constraint(cur, t["owner"], t["name"],
+                                              t["constraint"], True):
+                success = False
+
+        cur.close()
+        con.close()
+
+        if success:
             logging.info("complete")
         else:
-            cur.close()
-            con.close()
-            raise RuntimeError("some tables were not processed")
+            raise RuntimeError("one or more constraints could not be enabled")
