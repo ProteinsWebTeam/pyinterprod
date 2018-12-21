@@ -502,7 +502,7 @@ def track_changes(url: str, swissprot_path: str, trembl_path: str,
     db.drop()
 
 
-def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
+def delete(url: str, truncate: bool=False, refresh_partitions: bool=False):
     tables = _get_tables_with_proteins_to_delete(url)
 
     if not tables:
@@ -511,12 +511,12 @@ def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
-    if truncate_mv:
-        logging.info("truncating MV tables")
+    if truncate:
+        logging.info("truncating MV/*NEW tables")
         _tables = []
 
         for t in tables:
-            if t["name"].startswith("MV_"):
+            if t["name"].startswith("MV_") or t["name"].endswith("_NEW"):
                 cur.execute("TRUNCATE TABLE INTERPRO.{}".format( t["name"]))
             else:
                 _tables.append(t)
