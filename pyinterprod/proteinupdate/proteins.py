@@ -1,7 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
-import logging
 import os
 import sqlite3
 from concurrent import futures
@@ -11,13 +7,7 @@ from typing import Generator, List, Optional, Tuple
 import cx_Oracle
 
 from . import sprot
-from .. import orautils
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s: %(levelname)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+from .. import logger, orautils
 
 _MAX_ITEMS = 100000
 
@@ -301,7 +291,7 @@ def _delete_proteins(url: str, table: str, column: str, stop: int,
             """.format(table, column),
             (i, i+step-1)
         )
-        logging.info("{}: {} / {}".format(table, min(i+step, stop), stop))
+        logger.info("{}: {} / {}".format(table, min(i+step, stop), stop))
     con.commit()
     cur.close()
     con.close()
@@ -322,7 +312,7 @@ def _prepare_deletion(url: str, db: ProteinDatabase) -> int:
             (
                 ID NUMBER NOT NULL,
                 PROTEIN_AC VARCHAR2(15) NOT NULL
-            ) NOLOGGING
+            ) NOlogger
             """
         )
 
@@ -476,28 +466,28 @@ def track_changes(url: str, swissprot_path: str, trembl_path: str,
     if dir:
         os.makedirs(dir, exist_ok=True)
 
-    logging.info("loading proteins")
+    logger.info("loading proteins")
 
     db = ProteinDatabase(dir=dir)
     count = db.insert_old(_get_proteins(url))
-    logging.info("InterPro: {} proteins".format(count))
+    logger.info("InterPro: {} proteins".format(count))
 
     count = sprot.load(swissprot_path, db.path, "protein_new")
-    logging.info("Swiss-Prot: {} proteins".format(count))
+    logger.info("Swiss-Prot: {} proteins".format(count))
 
     count = sprot.load(trembl_path, db.path, "protein_new")
-    logging.info("TrEMBL: {} proteins".format(count))
+    logger.info("TrEMBL: {} proteins".format(count))
 
-    logging.info("disk space used: {} bytes".format(db.size))
+    logger.info("disk space used: {} bytes".format(db.size))
 
     count = _update_proteins(url, db)
-    logging.info("{} proteins updated".format(count))
+    logger.info("{} proteins updated".format(count))
 
     count = _insert_proteins(url, db)
-    logging.info("{} proteins added".format(count))
+    logger.info("{} proteins added".format(count))
 
     count = _prepare_deletion(url, db)
-    logging.info("{} proteins to delete".format(count))
+    logger.info("{} proteins to delete".format(count))
 
     db.drop()
 
@@ -512,7 +502,7 @@ def delete(url: str, truncate: bool=False, refresh_partitions: bool=False):
     cur = con.cursor()
 
     if truncate:
-        logging.info("truncating MV/*NEW tables")
+        logger.info("truncating MV/*NEW tables")
         _tables = []
 
         for t in tables:
@@ -523,7 +513,7 @@ def delete(url: str, truncate: bool=False, refresh_partitions: bool=False):
 
         tables = _tables
 
-    logging.info("disabling referential constraints")
+    logger.info("disabling referential constraints")
     table_constraints = []
     success = True
     for t in tables:
@@ -582,17 +572,17 @@ def delete(url: str, truncate: bool=False, refresh_partitions: bool=False):
 
             if i == -1:
                 if f.exception() is None:
-                    logging.info("partition for '{}' done".format(dbcode))
+                    logger.info("partition for '{}' done".format(dbcode))
                     dbcodes.append(dbcode)
                 else:
-                    logging.error("partition for '{}' exited".format(dbcode))
+                    logger.error("partition for '{}' exited".format(dbcode))
                     success = False
             else:
                 t = tables[i]
                 if f.exception() is None:
-                    logging.info("table '{}' done".format(t["name"]))
+                    logger.info("table '{}' done".format(t["name"]))
                 else:
-                    logging.error("table '{}' exited".format(t["name"]))
+                    logger.error("table '{}' exited".format(t["name"]))
                     success = False
 
         if not success:
@@ -602,7 +592,7 @@ def delete(url: str, truncate: bool=False, refresh_partitions: bool=False):
 
         if dbcodes:
             for dbcode in dbcodes:
-                logging.info("exchanging partition for '{}'".format(dbcode))
+                logger.info("exchanging partition for '{}'".format(dbcode))
                 _exchange_match_partition(cur, dbcode)
 
             # TODO: uncomment, or rebuild indexes before enabling constraints
@@ -619,6 +609,6 @@ def delete(url: str, truncate: bool=False, refresh_partitions: bool=False):
         con.close()
 
         if success:
-            logging.info("complete")
+            logger.info("complete")
         else:
             raise RuntimeError("one or more constraints could not be enabled")
