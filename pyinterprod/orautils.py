@@ -74,7 +74,7 @@ def toggle_constraints(cur: cx_Oracle.Cursor, owner: str, table: str,
             # Already has the desired status (enabled/disabled)
             success = True
 
-        results.append(c, success)
+        results.append((c, success))
 
     return results
 
