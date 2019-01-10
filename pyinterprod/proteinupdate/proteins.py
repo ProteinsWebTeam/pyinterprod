@@ -282,22 +282,33 @@ def _insert_proteins(url: str, db: ProteinDatabase) -> int:
 
 
 def _delete_proteins(url: str, table: str, column: str, stop: int,
-                     step: int=_MAX_ITEMS):
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    for i in range(0, stop, step):
-        cur.execute(
-            """
+                     partition: Optional[str] = None, step: int=_MAX_ITEMS):
+    if partition:
+        query = """
+            DELETE FROM INTERPRO.{} PARTITION ({})
+            WHERE {} IN (
+              SELECT PROTEIN_AC
+              FROM INTERPRO.PROTEIN_TO_DELETE
+              WHERE ID BETWEEN :1 and :2
+            )
+        """.format(table, partition, column),
+        table += " ({})".format(partition)
+    else:
+        query = """
             DELETE FROM INTERPRO.{}
             WHERE {} IN (
               SELECT PROTEIN_AC
               FROM INTERPRO.PROTEIN_TO_DELETE
               WHERE ID BETWEEN :1 and :2
             )
-            """.format(table, column),
-            (i, i+step-1)
-        )
+        """.format(table, column),
+
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    for i in range(0, stop, step):
+        cur.execute(query, (i, i+step-1))
         logging.info("{}: {} / {}".format(table, min(i+step, stop), stop))
+
     con.commit()
     cur.close()
     con.close()
@@ -481,16 +492,17 @@ def _get_tables_with_proteins_to_delete(url: str) -> List[dict]:
     return tables_to_process
 
 
-def _get_match_partitions(url: str) -> list:
+def _get_partitions(url: str, owner: str, table: str) -> list:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
         """
         SELECT HIGH_VALUE 
         FROM ALL_TAB_PARTITIONS 
-        WHERE TABLE_OWNER = 'INTERPRO' 
-        AND TABLE_NAME = 'MATCH'
-        """
+        WHERE TABLE_OWNER = :1 
+        AND TABLE_NAME = :2
+        """,
+        (owner, table)
     )
 
     partitions = [row[0] for row in cur]
@@ -499,43 +511,43 @@ def _get_match_partitions(url: str) -> list:
     return partitions
 
 
-def _exchange_match_partition(cur: cx_Oracle.Cursor, dbcode: str):
-    cur.execute(
-        """
-        ALTER TABLE INTERPRO.MATCH
-        EXCHANGE PARTITION MATCH_DBCODE_{0}
-        WITH TABLE INTERPRO.MATCH_TMP_{0}
-        WITHOUT VALIDATION
-        UPDATE GLOBAL INDEXES
-        """.format(dbcode)
-    )
+# def _exchange_match_partition(cur: cx_Oracle.Cursor, dbcode: str):
+#     cur.execute(
+#         """
+#         ALTER TABLE INTERPRO.MATCH
+#         EXCHANGE PARTITION MATCH_DBCODE_{0}
+#         WITH TABLE INTERPRO.MATCH_TMP_{0}
+#         WITHOUT VALIDATION
+#         UPDATE GLOBAL INDEXES
+#         """.format(dbcode)
+#     )
 
 
-def _export_match_partition(url: str, dbcode: str):
-    table = "MATCH_TMP_" + dbcode
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-
-    try:
-        cur.execute("DROP TABLE INTERPRO." + table)
-    except cx_Oracle.DatabaseError:
-        pass
-
-    cur.execute(
-        """
-        CREATE TABLE INTERPRO.{} AS
-        SELECT * 
-        FROM INTERPRO.MATCH PARTITION (MATCH_DBCODE_{})
-        WHERE PROTEIN_AC NOT IN (
-          SELECT ACCESSION
-          FROM INTERPRO.PROTEIN_TO_DELETE
-        )
-        """.format(table, dbcode)
-    )
-
-    con.commit()
-    cur.close()
-    con.close()
+# def _export_match_partition(url: str, dbcode: str):
+#     table = "MATCH_TMP_" + dbcode
+#     con = cx_Oracle.connect(url)
+#     cur = con.cursor()
+#
+#     try:
+#         cur.execute("DROP TABLE INTERPRO." + table)
+#     except cx_Oracle.DatabaseError:
+#         pass
+#
+#     cur.execute(
+#         """
+#         CREATE TABLE INTERPRO.{} AS
+#         SELECT *
+#         FROM INTERPRO.MATCH PARTITION (MATCH_DBCODE_{})
+#         WHERE PROTEIN_AC NOT IN (
+#           SELECT ACCESSION
+#           FROM INTERPRO.PROTEIN_TO_DELETE
+#         )
+#         """.format(table, dbcode)
+#     )
+#
+#     con.commit()
+#     cur.close()
+#     con.close()
 
 
 def track_changes(url: str, swissprot_path: str, trembl_path: str,
@@ -572,7 +584,7 @@ def track_changes(url: str, swissprot_path: str, trembl_path: str,
     db.drop()
 
 
-def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
+def delete(url: str, truncate_mv: bool=False):
     tables = _get_tables_with_proteins_to_delete(url)
 
     if not tables:
@@ -587,7 +599,7 @@ def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
 
         for t in tables:
             if t["name"].startswith("MV_"):
-                cur.execute("TRUNCATE TABLE INTERPRO.{}".format( t["name"]))
+                cur.execute("TRUNCATE TABLE INTERPRO.{}".format(t["name"]))
             else:
                 _tables.append(t)
 
@@ -610,48 +622,42 @@ def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
     with futures.ThreadPoolExecutor() as executor:
         fs = {}
 
-        if refresh_partitions:
-            idx = None
-            for i, t in enumerate(tables):
-                if t["name"] == "MATCH":
-                    idx = i
-                    break
+        i = next((i for i, t in enumerate(tables) if t["name"] == "MATCH"),
+                 None)
 
-            if idx is not None:
-                tables.pop(idx)
-                dbcodes = _get_match_partitions(url)
-                for dbcode in dbcodes:
-                    f = executor.submit(_export_match_partition,
-                                        url, dbcode)
-                    fs[f] = (-1, dbcode)
+        if i is not None:
+            t = tables.pop(i)
+            for partition in _get_partitions(url, t["owner"], t["name"]):
+                p = dict(t)
+                p["partition"] = partition
+                tables.append(p)
 
         count = _count_proteins_to_delete(cur)
         for i, t in tables:
-            f = executor.submit(_delete_proteins, url, t["name"],
-                                t["column"], count)
-            fs[f] = (i, None)
+            f = executor.submit(_delete_proteins, url, t["name"], t["column"],
+                                count, t.get("partition"))
+            fs[f] = i
 
-        all_done = True
-        dbcodes = []
+        errors = 0
         for f in futures.as_completed(fs):
-            i, dbcode = fs[f]
-
-            if i == -1:
-                if f.done():
-                    logging.info("partition for '{}' done".format(dbcode))
-                    dbcodes.append(dbcode)
-                else:
-                    logging.info("partition for '{}' exited".format(dbcode))
-                    all_done = False
+            i = fs[f]
+            t = tables[i]
+            if t.get("partition"):
+                name = "{} ({})".format(t["name"], t["partition"])
             else:
-                t = tables[i]
-                if f.done():
-                    logging.info("table '{}' done".format(t["name"]))
-                else:
-                    logging.info("table '{}' exited".format(t["name"]))
-                    all_done = False
+                name = t["name"]
 
-        if all_done:
+            if f.exception() is None:
+                logging.info("table '{}' done".format(name))
+            else:
+                logging.info("table '{}' exited".format(name))
+                errors += 0
+
+        if errors:
+            cur.close()
+            con.close()
+            raise RuntimeError("some tables were not processed")
+        else:
             for t in table_constraints:
                 logging.info("enabling: {}.{}.{}".format(t["owner"],
                                                          t["name"],
@@ -662,14 +668,7 @@ def delete(url: str, truncate_mv: bool=False, refresh_partitions: bool=False):
                                    constraint=t["constraint"],
                                    enable=True)
 
-            for dbcode in dbcodes:
-                logging.info("exchanging partition for '{}'".format(dbcode))
-                _exchange_match_partition(cur, dbcode)
-
             cur.close()
             con.close()
             logging.info("complete")
-        else:
-            cur.close()
-            con.close()
-            raise RuntimeError("some tables were not processed")
+
