@@ -1,12 +1,13 @@
 import logging
-from typing import List, Tuple
+from typing import List, Optional
 
 import cx_Oracle
 
+from . import logger
 
-def get_child_tables(url: str, owner: str, table: str) -> List[dict]:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
+
+def get_child_tables(cur: cx_Oracle.Cursor, owner: str,
+                     table: str) -> List[dict]:
     cur.execute(
         """
         SELECT OWNER, TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME
@@ -29,15 +30,30 @@ def get_child_tables(url: str, owner: str, table: str) -> List[dict]:
     )
 
     cols = ("owner", "name", "constraint", "column")
-    tables = [dict(zip(cols, row)) for row in cur]
-
-    cur.close()
-    con.close()
-    return tables
+    return [dict(zip(cols, row)) for row in cur]
 
 
 def toggle_constraint(cur: cx_Oracle.Cursor, owner: str, table: str,
                       constraint: str, enable: bool=True) -> bool:
+    cur.execute(
+        """
+        SELECT STATUS
+        FROM USER_CONSTRAINTS
+        WHERE OWNER = :1 
+        AND TABLE_NAME = :2
+        AND CONSTRAINT_NAME = :3
+        AND CONSTRAINT_TYPE IN ('P', 'U')
+        """,
+        (owner, table, constraint)
+    )
+    row = cur.fetchone()
+    if not row:
+        return False  # constraint does not exist
+
+    is_enabled = row[0] == "ENABLE"
+    if is_enabled == enable:
+        return True  # Already with the desired status
+
     query = """
         ALTER TABLE {}.{}
         {} CONSTRAINT {}
@@ -53,32 +69,6 @@ def toggle_constraint(cur: cx_Oracle.Cursor, owner: str, table: str,
         return True
 
 
-def toggle_constraints(cur: cx_Oracle.Cursor, owner: str, table: str,
-                       enable: bool=True) -> List[Tuple[str, bool]]:
-    cur.execute(
-        """
-        SELECT CONSTRAINT_NAME, STATUS
-        FROM USER_CONSTRAINTS
-        WHERE OWNER = :1 AND TABLE_NAME = :2
-        """,
-        (owner, table)
-    )
-    constraints = dict(cur.fetchall())
-
-    results = []
-    for c, s in constraints.items():
-        is_enabled = s == "ENABLED"
-        if is_enabled != enable:
-            success = toggle_constraint(cur, owner, table, c, enable)
-        else:
-            # Already has the desired status (enabled/disabled)
-            success = True
-
-        results.append((c, success))
-
-    return results
-
-
 def get_partitions(cur: cx_Oracle.Cursor, owner: str, table: str) -> list:
     cur.execute(
         """
@@ -89,5 +79,37 @@ def get_partitions(cur: cx_Oracle.Cursor, owner: str, table: str) -> list:
         """,
         (owner, table)
     )
-    partitions = [row[0].strip('\'') for row in cur]
-    return partitions
+    return [row[0].strip('\'') for row in cur]
+
+
+def delete_iter(url: str, table: str, column: str, stop: int, step: int,
+                partition: Optional[str] = None):
+    if partition:
+        query = """
+            DELETE FROM INTERPRO.{} PARTITION ({})
+            WHERE {} IN (
+              SELECT PROTEIN_AC
+              FROM INTERPRO.PROTEIN_TO_DELETE
+              WHERE ID BETWEEN :1 and :2
+            )
+        """.format(table, partition, column),
+        table += " ({})".format(partition)
+    else:
+        query = """
+            DELETE FROM INTERPRO.{}
+            WHERE {} IN (
+              SELECT PROTEIN_AC
+              FROM INTERPRO.PROTEIN_TO_DELETE
+              WHERE ID BETWEEN :1 and :2
+            )
+        """.format(table, column),
+
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    for i in range(0, stop, step):
+        cur.execute(query, (i, i+step-1))
+        logger.info("{}: {} / {}".format(table, min(i + step, stop), stop))
+
+    con.commit()
+    cur.close()
+    con.close()

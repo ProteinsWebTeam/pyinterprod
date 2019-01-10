@@ -275,39 +275,6 @@ def _insert_proteins(url: str, db: ProteinDatabase) -> int:
     return count
 
 
-def _delete_proteins(url: str, table: str, column: str, stop: int,
-                     partition: Optional[str] = None, step: int=_MAX_ITEMS):
-    if partition:
-        query = """
-            DELETE FROM INTERPRO.{} PARTITION ({})
-            WHERE {} IN (
-              SELECT PROTEIN_AC
-              FROM INTERPRO.PROTEIN_TO_DELETE
-              WHERE ID BETWEEN :1 and :2
-            )
-        """.format(table, partition, column),
-        table += " ({})".format(partition)
-    else:
-        query = """
-            DELETE FROM INTERPRO.{}
-            WHERE {} IN (
-              SELECT PROTEIN_AC
-              FROM INTERPRO.PROTEIN_TO_DELETE
-              WHERE ID BETWEEN :1 and :2
-            )
-        """.format(table, column),
-
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    for i in range(0, stop, step):
-        cur.execute(query, (i, i+step-1))
-        logger.info("{}: {} / {}".format(table, min(i + step, stop), stop))
-
-    con.commit()
-    cur.close()
-    con.close()
-
-
 def _prepare_deletion(url: str, db: ProteinDatabase) -> int:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -399,151 +366,6 @@ def _count_proteins_to_delete(cur: cx_Oracle.Cursor) -> int:
     return cur.fetchone()[0]
 
 
-def _get_child_tables(url: str, owner: str, table: str) -> List[dict]:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT OWNER, TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME
-        FROM ALL_CONS_COLUMNS
-        WHERE OWNER = :owner
-          AND CONSTRAINT_NAME IN (
-              SELECT CONSTRAINT_NAME
-              FROM ALL_CONSTRAINTS
-              WHERE CONSTRAINT_TYPE = 'R'
-                AND R_CONSTRAINT_NAME IN (
-                  SELECT CONSTRAINT_NAME
-                  FROM ALL_CONSTRAINTS
-                  WHERE CONSTRAINT_TYPE IN ('P', 'U')
-                    AND OWNER = :owner
-                    AND TABLE_NAME = :tabname
-          )
-        )
-        """,
-        dict(owner=owner, tabname=table)
-    )
-
-    cols = ("owner", "name", "constraint", "column")
-    tables = [dict(zip(cols, row)) for row in cur]
-
-    cur.close()
-    con.close()
-    return tables
-
-
-def _toggle_constraint(cur: cx_Oracle.Cursor, owner: str, table: str,
-                       constraint: str, enable: bool=True):
-    try:
-        cur.execute(
-            """
-            ALTER TABLE {}.{} {} CONSTRAINT {}
-            """.format(
-                owner, table,
-                "ENABLE" if enable else "DISABLE",
-                constraint
-            )
-        )
-    except cx_Oracle.DatabaseError as e:
-        logger.critical("failed: ALTER TABLE {}.{} {} CONSTRAINT {}".format(
-            owner, table,
-            "ENABLE" if enable else "DISABLE",
-            constraint
-        ))
-        raise e
-
-
-def _get_tables_with_proteins_to_delete(url: str) -> List[dict]:
-    tables = _get_child_tables(url, "INTERPRO", "PROTEIN")
-    tables.append({
-        "owner": "INTERPRO",
-        "name": "PROTEIN",
-        "column": "PROTEIN_AC"
-    })
-
-    n = len(tables)
-    tables_to_process = []
-    with futures.ThreadPoolExecutor(max_workers=n) as executor:
-        future_to_idx = {}
-        for i, t in enumerate(tables):
-            future = executor.submit(_count_rows_to_delete, url,
-                                     t["name"], t["column"])
-            future_to_idx[future] = i
-
-        done, not_done = futures.wait(future_to_idx)
-        if not_done:
-            raise RuntimeError("error in table(s): ".format(
-                ", ".join([
-                    tables[future_to_idx[f]]["name"]
-                    for f in not_done]
-                )
-            ))
-
-        for future in done:
-            if future.result():
-                i = future_to_idx[future]
-                tables_to_process.append(tables[i])
-
-    return tables_to_process
-
-
-def _get_partitions(url: str, owner: str, table: str) -> list:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT HIGH_VALUE 
-        FROM ALL_TAB_PARTITIONS 
-        WHERE TABLE_OWNER = :1 
-        AND TABLE_NAME = :2
-        """,
-        (owner, table)
-    )
-
-    partitions = [row[0] for row in cur]
-    cur.close()
-    con.close()
-    return partitions
-
-
-# def _exchange_match_partition(cur: cx_Oracle.Cursor, dbcode: str):
-#     cur.execute(
-#         """
-#         ALTER TABLE INTERPRO.MATCH
-#         EXCHANGE PARTITION MATCH_DBCODE_{0}
-#         WITH TABLE INTERPRO.MATCH_TMP_{0}
-#         WITHOUT VALIDATION
-#         UPDATE GLOBAL INDEXES
-#         """.format(dbcode)
-#     )
-
-
-# def _export_match_partition(url: str, dbcode: str):
-#     table = "MATCH_TMP_" + dbcode
-#     con = cx_Oracle.connect(url)
-#     cur = con.cursor()
-#
-#     try:
-#         cur.execute("DROP TABLE INTERPRO." + table)
-#     except cx_Oracle.DatabaseError:
-#         pass
-#
-#     cur.execute(
-#         """
-#         CREATE TABLE INTERPRO.{} AS
-#         SELECT *
-#         FROM INTERPRO.MATCH PARTITION (MATCH_DBCODE_{})
-#         WHERE PROTEIN_AC NOT IN (
-#           SELECT ACCESSION
-#           FROM INTERPRO.PROTEIN_TO_DELETE
-#         )
-#         """.format(table, dbcode)
-#     )
-#
-#     con.commit()
-#     cur.close()
-#     con.close()
-
-
 def track_changes(url: str, swissprot_path: str, trembl_path: str,
                   dir: Optional[str]=None):
     if dir:
@@ -575,21 +397,22 @@ def track_changes(url: str, swissprot_path: str, trembl_path: str,
     db.drop()
 
 
-def delete(url: str, truncate_mv: bool=False):
-    tables = _get_tables_with_proteins_to_delete(url)
-
-    if not tables:
-        return
-
+def delete(url: str, truncate: bool=False):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
-    if truncate_mv:
+    tables = orautils.get_child_tables(cur, "INTERPRO", "PROTEIN")
+
+    if not tables:
+        cur.close()
+        con.close()
+
+    if truncate:
         logger.info("truncating MV/*NEW tables")
         _tables = []
 
         for t in tables:
-            if t["name"].startswith("MV_"):
+            if t["name"].startswith("MV_") or t["name"].endswith("_NEW"):
                 cur.execute("TRUNCATE TABLE INTERPRO.{}".format(t["name"]))
             else:
                 _tables.append(t)
@@ -597,36 +420,34 @@ def delete(url: str, truncate_mv: bool=False):
         tables = _tables
 
     logger.info("disabling referential constraints")
-    table_constraints = []
+    ok = True
     for t in tables:
-        try:
-            contraint = t["constraint"]
-        except KeyError:
-            # The table does not have a constraint to disable
-            continue
-        else:
-            table_constraints.append(t)
-            _toggle_constraint(cur, owner=t["owner"],
-                               table=t["name"],
-                               constraint=contraint, enable=False)
+        if not orautils.toggle_constraint(cur, t["owner"], t["name"],
+                                          t["constraint"], False):
+            ok = False
+
+    if not ok:
+        cur.close()
+        con.close()
+        raise RuntimeError("one or more constraints could not be disabled")
 
     with futures.ThreadPoolExecutor() as executor:
         fs = {}
 
-        i = next((i for i, t in enumerate(tables) if t["name"] == "MATCH"),
-                 None)
-
+        gen = (i for i, t in enumerate(tables) if t["name"] == "MATCH")
+        i = next(gen, None)
         if i is not None:
             t = tables.pop(i)
-            for partition in _get_partitions(url, t["owner"], t["name"]):
+            for dbcode in orautils.get_partitions(cur, t["owner"], t["name"]):
                 p = dict(t)
-                p["partition"] = partition
+                p["partition"] = dbcode
                 tables.append(p)
 
         count = _count_proteins_to_delete(cur)
         for i, t in tables:
-            f = executor.submit(_delete_proteins, url, t["name"], t["column"],
-                                count, t.get("partition"))
+            f = executor.submit(orautils.delete_iter, url, t["name"],
+                                t["column"], count, _MAX_ITEMS,
+                                t.get("partition"))
             fs[f] = i
 
         errors = 0
@@ -649,17 +470,20 @@ def delete(url: str, truncate_mv: bool=False):
             con.close()
             raise RuntimeError("some tables were not processed")
         else:
-            for t in table_constraints:
+            ok = True
+            for t in tables:
                 logger.info("enabling: {}.{}.{}".format(t["owner"],
-                                                         t["name"],
-                                                         t["constraint"]))
-                _toggle_constraint(cur,
-                                   owner=t["owner"],
-                                   table=t["name"],
-                                   constraint=t["constraint"],
-                                   enable=True)
+                                                        t["name"],
+                                                        t["constraint"]))
+
+                if not orautils.toggle_constraint(cur, t["owner"], t["name"],
+                                                  t["constraint"], True):
+                    ok = False
 
             cur.close()
             con.close()
-            logger.info("complete")
-
+            if ok:
+                logger.info("complete")
+            else:
+                raise RuntimeError("One or more constraints "
+                                   "could not be enabled")
