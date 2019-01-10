@@ -1,7 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
-import logging
 import os
 import sqlite3
 from concurrent import futures
@@ -11,12 +7,7 @@ from typing import Generator, List, Optional, Tuple
 import cx_Oracle
 
 from . import sprot
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s: %(levelname)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+from .. import logger, orautils
 
 _MAX_ITEMS = 100000
 
@@ -44,7 +35,10 @@ class ProteinDatabase(object):
         return os.path.getsize(self.path)
 
     def drop(self):
-        os.remove(self.path)
+        try:
+            os.remove(self.path)
+        except FileNotFoundError:
+            pass
 
     def _create_table(self, table_name: str):
         with sqlite3.connect(self.path) as con:
@@ -307,7 +301,7 @@ def _delete_proteins(url: str, table: str, column: str, stop: int,
     cur = con.cursor()
     for i in range(0, stop, step):
         cur.execute(query, (i, i+step-1))
-        logging.info("{}: {} / {}".format(table, min(i+step, stop), stop))
+        logger.info("{}: {} / {}".format(table, min(i + step, stop), stop))
 
     con.commit()
     cur.close()
@@ -450,7 +444,7 @@ def _toggle_constraint(cur: cx_Oracle.Cursor, owner: str, table: str,
             )
         )
     except cx_Oracle.DatabaseError as e:
-        logging.critical("failed: ALTER TABLE {}.{} {} CONSTRAINT {}".format(
+        logger.critical("failed: ALTER TABLE {}.{} {} CONSTRAINT {}".format(
             owner, table,
             "ENABLE" if enable else "DISABLE",
             constraint
@@ -555,31 +549,28 @@ def track_changes(url: str, swissprot_path: str, trembl_path: str,
     if dir:
         os.makedirs(dir, exist_ok=True)
 
-    logging.info("loading proteins")
+    logger.info("loading proteins")
 
     db = ProteinDatabase(dir=dir)
     count = db.insert_old(_get_proteins(url))
-    logging.info("InterPro: {} proteins".format(count))
+    logger.info("InterPro: {} proteins".format(count))
 
     count = sprot.load(swissprot_path, db.path, "protein_new")
-    logging.info("Swiss-Prot: {} proteins".format(count))
+    logger.info("Swiss-Prot: {} proteins".format(count))
 
     count = sprot.load(trembl_path, db.path, "protein_new")
-    logging.info("TrEMBL: {} proteins".format(count))
+    logger.info("TrEMBL: {} proteins".format(count))
 
-    logging.info("disk space used: {} bytes".format(db.size))
+    logger.info("disk space used: {} bytes".format(db.size))
 
-    logging.info("update changes")
     count = _update_proteins(url, db)
-    logging.info("{} proteins updated".format(count))
+    logger.info("{} proteins updated".format(count))
 
-    logging.info("add new proteins")
     count = _insert_proteins(url, db)
-    logging.info("{} proteins added".format(count))
+    logger.info("{} proteins added".format(count))
 
-    logging.info("add proteins to delete")
     count = _prepare_deletion(url, db)
-    logging.info("{} proteins to delete".format(count))
+    logger.info("{} proteins to delete".format(count))
 
     db.drop()
 
@@ -594,7 +585,7 @@ def delete(url: str, truncate_mv: bool=False):
     cur = con.cursor()
 
     if truncate_mv:
-        logging.info("truncating MV tables")
+        logger.info("truncating MV/*NEW tables")
         _tables = []
 
         for t in tables:
@@ -605,7 +596,7 @@ def delete(url: str, truncate_mv: bool=False):
 
         tables = _tables
 
-    logging.info("disabling referential constraints")
+    logger.info("disabling referential constraints")
     table_constraints = []
     for t in tables:
         try:
@@ -648,9 +639,9 @@ def delete(url: str, truncate_mv: bool=False):
                 name = t["name"]
 
             if f.exception() is None:
-                logging.info("table '{}' done".format(name))
+                logger.info("table '{}' done".format(name))
             else:
-                logging.info("table '{}' exited".format(name))
+                logger.info("table '{}' exited".format(name))
                 errors += 0
 
         if errors:
@@ -659,7 +650,7 @@ def delete(url: str, truncate_mv: bool=False):
             raise RuntimeError("some tables were not processed")
         else:
             for t in table_constraints:
-                logging.info("enabling: {}.{}.{}".format(t["owner"],
+                logger.info("enabling: {}.{}.{}".format(t["owner"],
                                                          t["name"],
                                                          t["constraint"]))
                 _toggle_constraint(cur,
@@ -670,5 +661,5 @@ def delete(url: str, truncate_mv: bool=False):
 
             cur.close()
             con.close()
-            logging.info("complete")
+            logger.info("complete")
 
