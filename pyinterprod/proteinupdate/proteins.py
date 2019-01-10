@@ -444,16 +444,15 @@ def delete(url: str, truncate: bool=False):
                 tables.append(p)
 
         count = _count_proteins_to_delete(cur)
-        for i, t in tables:
+        for t in tables:
             f = executor.submit(orautils.delete_iter, url, t["name"],
                                 t["column"], count, _MAX_ITEMS,
                                 t.get("partition"))
-            fs[f] = i
+            fs[f] = t
 
         errors = 0
         for f in futures.as_completed(fs):
-            i = fs[f]
-            t = tables[i]
+            t = fs[f]
             if t.get("partition"):
                 name = "{} ({})".format(t["name"], t["partition"])
             else:
