@@ -93,7 +93,7 @@ def delete_iter(url: str, table: str, column: str, stop: int, step: int,
               FROM INTERPRO.PROTEIN_TO_DELETE
               WHERE ID BETWEEN :1 and :2
             )
-        """.format(table, partition, column),
+        """.format(table, partition, column)
         table += " ({})".format(partition)
     else:
         query = """
@@ -103,7 +103,7 @@ def delete_iter(url: str, table: str, column: str, stop: int, step: int,
               FROM INTERPRO.PROTEIN_TO_DELETE
               WHERE ID BETWEEN :1 and :2
             )
-        """.format(table, column),
+        """.format(table, column)
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
