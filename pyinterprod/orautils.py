@@ -39,19 +39,20 @@ def toggle_constraint(cur: cx_Oracle.Cursor, owner: str, table: str,
         """
         SELECT STATUS
         FROM USER_CONSTRAINTS
-        WHERE OWNER = :1 
+        WHERE OWNER = :1
         AND TABLE_NAME = :2
         AND CONSTRAINT_NAME = :3
-        AND CONSTRAINT_TYPE IN ('P', 'U')
         """,
         (owner, table, constraint)
     )
     row = cur.fetchone()
     if not row:
-        return False  # constraint does not exist
+        logger.warning("{} unknown".format(constraint))
+        return False
 
     is_enabled = row[0] == "ENABLE"
     if is_enabled == enable:
+        logger.info("skipping {}".format(constraint))
         return True  # Already with the desired status
 
     query = """
