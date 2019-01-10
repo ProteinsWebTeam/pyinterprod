@@ -73,7 +73,7 @@ def toggle_constraint(cur: cx_Oracle.Cursor, owner: str, table: str,
 def get_partitions(cur: cx_Oracle.Cursor, owner: str, table: str) -> list:
     cur.execute(
         """
-        SELECT HIGH_VALUE
+        SELECT PARTITION_NAME
         FROM ALL_TAB_PARTITIONS
         WHERE TABLE_OWNER = :1
         AND TABLE_NAME = :2
