@@ -2,7 +2,7 @@ import os
 import sqlite3
 from concurrent import futures
 from tempfile import mkstemp
-from typing import Generator, List, Optional, Tuple
+from typing import Generator, Optional, Tuple
 
 import cx_Oracle
 
@@ -135,7 +135,7 @@ class ProteinDatabase(object):
             for row in cur:
                 yield row
 
-    def get_changes(self) -> Generator[Tuple, None, None]:
+    def get_annotation_changes(self) -> Generator[Tuple, None, None]:
         with sqlite3.connect(self.path) as con:
             cur = con.execute(
                 """
@@ -145,13 +145,33 @@ class ProteinDatabase(object):
                 FROM protein_new AS p1
                 INNER JOIN protein_old AS p2
                   USING (accession)
-                WHERE p1.identifier != p2.identifier
+                WHERE p1.crc64 = p2.crc64
+                AND (
+                     p1.identifier != p2.identifier
                   OR p1.is_reviewed != p2.is_reviewed
                   OR p1.crc64 != p2.crc64
                   OR p1.length != p2.length
                   OR p1.is_fragment != p2.is_fragment
                   OR p1.taxon_id != p2.taxon_id
+                )
 
+                """
+            )
+
+            for row in cur:
+                yield row
+
+    def get_sequence_changes(self) -> Generator[Tuple, None, None]:
+        with sqlite3.connect(self.path) as con:
+            cur = con.execute(
+                """
+                SELECT
+                  accession, p1.identifier, p1.is_reviewed, p1.crc64,
+                  p1.length, p1.is_fragment, p1.taxon_id
+                FROM protein_new AS p1
+                INNER JOIN protein_old AS p2
+                  USING (accession)
+                WHERE p1.crc64 != p2.crc64
                 """
             )
 
@@ -185,12 +205,11 @@ def _get_proteins(url: str) -> Generator:
     con.close()
 
 
-def _update_proteins(url: str, db: ProteinDatabase) -> int:
-    con = cx_Oracle.connect(url)
+def _update_proteins(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
     cur = con.cursor()
 
     count = 0
-    for row in db.get_changes():
+    for row in db.get_annotation_changes():
         cur.execute(
             """
             UPDATE INTERPRO.PROTEIN
@@ -217,17 +236,64 @@ def _update_proteins(url: str, db: ProteinDatabase) -> int:
         )
         count += 1
 
+    items = []
+    for row in db.get_sequence_changes():
+        cur.execute(
+            """
+            UPDATE INTERPRO.PROTEIN
+            SET
+              NAME = :1,
+              DBCODE = :2,
+              CRC64 = :3,
+              LEN = :4,
+              FRAGMENT = :5,
+              TAX_ID = :6,
+              TIMESTAMP = SYSDATE,
+              USERSTAMP = USER
+              WHERE PROTEIN_AC = :7
+            """,
+            (
+                row[1],
+                'S' if row[2] else 'T',
+                row[3],
+                row[4],
+                'Y' if row[5] else 'N',
+                row[6],
+                row[0]
+            )
+        )
+        count += 1
+
+        items.append((row[0],))
+        if len(items) == _MAX_ITEMS:
+            cur.executemany(
+                """
+                INSERT INTO INTERPRO.PROTEIN_CHANGES (NEW_PROTEIN_AC)
+                VALUES (:1)
+                """,
+                items
+            )
+            items = []
+
+    if items:
+        cur.executemany(
+            """
+            INSERT INTO INTERPRO.PROTEIN_CHANGES (NEW_PROTEIN_AC)
+            VALUES (:1)
+            """,
+            items
+        )
+
     con.commit()
     cur.close()
-    con.close()
     return count
 
 
-def _insert_proteins(url: str, db: ProteinDatabase) -> int:
-    con = cx_Oracle.connect(url)
+def _insert_proteins(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
     cur = con.cursor()
 
     items = []
+    items2 = []
     count = 0
     for row in db.get_new():
         items.append((
@@ -255,6 +321,17 @@ def _insert_proteins(url: str, db: ProteinDatabase) -> int:
             )
             items = []
 
+        items2.append((row[0],))
+        if len(items2) == _MAX_ITEMS:
+            cur.executemany(
+                """
+                INSERT INTO INTERPRO.PROTEIN_CHANGES (NEW_PROTEIN_AC)
+                VALUES (:1)
+                """,
+                items2
+            )
+            items2 = []
+
     if items:
         # TIMESTAMP and USERSTAMP will be set to their DEFAULT
         cur.executemany(
@@ -268,15 +345,22 @@ def _insert_proteins(url: str, db: ProteinDatabase) -> int:
             items
         )
 
+    if items2:
+        cur.executemany(
+            """
+            INSERT INTO INTERPRO.PROTEIN_CHANGES (NEW_PROTEIN_AC)
+            VALUES (:1)
+            """,
+            items2
+        )
+
     con.commit()
     cur.close()
-    con.close()
 
     return count
 
 
-def _prepare_deletion(url: str, db: ProteinDatabase) -> int:
-    con = cx_Oracle.connect(url)
+def _prepare_deletion(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
     cur = con.cursor()
 
     try:
@@ -333,7 +417,6 @@ def _prepare_deletion(url: str, db: ProteinDatabase) -> int:
                  ("INTERPRO", "PROTEIN_TO_DELETE"))
 
     cur.close()
-    con.close()
     return count
 
 
@@ -366,6 +449,12 @@ def _count_proteins_to_delete(cur: cx_Oracle.Cursor) -> int:
     return cur.fetchone()[0]
 
 
+def _init_protein_changes(con: cx_Oracle.Connection):
+    cur = con.cursor()
+    cur.execute("TRUNCATE INTERPRO.PROTEIN_CHANGES")
+    cur.close()
+
+
 def track_changes(url: str, swissprot_path: str, trembl_path: str,
                   dir: Optional[str]=None):
     if dir:
@@ -385,14 +474,19 @@ def track_changes(url: str, swissprot_path: str, trembl_path: str,
 
     logger.info("disk space used: {} bytes".format(db.size))
 
-    count = _update_proteins(url, db)
+    con = cx_Oracle.connect(url)
+    _init_protein_changes(con)
+
+    count = _update_proteins(con, db)
     logger.info("{} proteins updated".format(count))
 
-    count = _insert_proteins(url, db)
+    count = _insert_proteins(con, db)
     logger.info("{} proteins added".format(count))
 
-    count = _prepare_deletion(url, db)
+    count = _prepare_deletion(con, db)
     logger.info("{} proteins to delete".format(count))
+
+    con.close()
 
     db.drop()
 
