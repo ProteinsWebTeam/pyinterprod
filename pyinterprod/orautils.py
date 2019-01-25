@@ -114,3 +114,14 @@ def delete_iter(url: str, table: str, column: str, stop: int, step: int,
     con.commit()
     cur.close()
     con.close()
+
+
+def create_db_link(cur: cx_Oracle.Cursor, link: str, user: str, passwd: str,
+                   connect_string: str):
+    cur.execute(
+        """
+        CREATE PUBLIC DATABASE LINK {}
+        CONNECT TO {} IDENTIFIED BY {}
+        USING '{}'
+        """.format(link, user, passwd, connect_string)
+    )
