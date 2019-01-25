@@ -451,7 +451,7 @@ def _count_proteins_to_delete(cur: cx_Oracle.Cursor) -> int:
 
 def _init_protein_changes(con: cx_Oracle.Connection):
     cur = con.cursor()
-    cur.execute("TRUNCATE INTERPRO.PROTEIN_CHANGES")
+    cur.execute("TRUNCATE TABLE INTERPRO.PROTEIN_CHANGES")
     cur.close()
 
 
