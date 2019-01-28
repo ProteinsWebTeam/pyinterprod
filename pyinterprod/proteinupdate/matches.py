@@ -1,9 +1,11 @@
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional
 
 import cx_Oracle
 
 from .. import logger
+from ..orautils import refresh_mview
 
 
 def get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> str:
@@ -75,17 +77,29 @@ def get_analysis_max_upi(url: str, table: str) -> str:
     return row[0]
 
 
-def check_ispro(url: str, max_upi_read: str) -> list:
+def check_ispro(url: str, max_upi_read: str) -> Optional[dict]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
         """
-        SELECT 
-          ANALYSIS_ID, ANALYSIS_NAME, MATCH_TABLE
-        FROM IPM_ANALYSIS@ISPRO
-        INNER JOIN IPM_ANALYSIS_MATCH_TABLE@ISPRO
-          ON ANALYSIS_MATCH_TABLE_ID = ID
-        WHERE ACTIVE = 1
+        SELECT ANALYSIS_ID, ANALYSIS_NAME, MATCH_TABLE
+        FROM (
+          SELECT
+            ANALYSIS_ID, 
+            ANALYSIS_NAME, 
+            MATCH_TABLE, 
+            ROW_NUMBER() OVER (
+              PARTITION 
+              BY MATCH_TABLE 
+              ORDER BY ANALYSIS_ID DESC
+            ) CNT
+          FROM IPM_ANALYSIS@ISPRO
+            INNER JOIN IPM_ANALYSIS_MATCH_TABLE@ISPRO
+              ON ANALYSIS_MATCH_TABLE_ID = ID
+          WHERE ACTIVE = 1
+        )
+        WHERE CNT = 1
+
         """
     )
 
@@ -118,12 +132,14 @@ def check_ispro(url: str, max_upi_read: str) -> list:
             finally:
                 fs[f]["upi"] = upi
 
-    tables = []
+    tables = {}
     for e in analyses:
         if e["upi"] is None or e["upi"] < max_upi_read:
-            return []
-
-        tables.append(e["table"])
+            return None
+        elif e["table"] in tables:
+            tables[e["table"]].append(e["id"])
+        else:
+            tables[e["table"]] = [e["id"]]
 
     return tables
 
@@ -142,7 +158,40 @@ def import_ispro(url):
             break
         time.sleep(60 * 15)
 
-    print(tables)
+    with ThreadPoolExecutor() as executor:
+        fs = {}
+        for table in tables:
+            mview = "MV_" + table
+            f = executor.submit(refresh_mview, url, mview)
+            fs[f] = mview
 
+        success = True
+        for f in as_completed(fs):
+            mview = fs[f]
+            e = f.exception()
+            if e:
+                success = False
+                logger.error("{}: {}".format(mview, e))
+            else:
+                logger.info("{}: refreshed".format(mview))
 
+    if not success:
+        raise RuntimeError()
 
+    # con = cx_Oracle.connect(url)
+    # cur = con.cursor()
+    #
+    # for mview in fs.values():
+    #     cur.execute(
+    #         """
+    #         ALTER TABLE IPRSCAN.MV_IPRSCAN
+    #         EXCHANGE PARTITION {} WITH TABLE {}
+    #         INCLUDING INDEXES
+    #         WITHOUT VALIDATION
+    #         """.format()
+    #     )
+    #
+    # cur.close()
+    # con.close()
+    #
+    #
