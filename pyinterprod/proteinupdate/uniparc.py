@@ -90,7 +90,7 @@ def update(url: str):
     cur.execute(
         """
         SELECT COUNT(*)
-        FROM UNIPARC.XREF_OLD UX
+        FROM UNIPARC.XREF UX
         INNER JOIN INTERPRO.PROTEIN IP
           ON UX.AC = IP.PROTEIN_AC
         INNER JOIN UNIPARC.PROTEIN UP
@@ -108,7 +108,7 @@ def update(url: str):
             DELETE FROM INTERPRO.XREF_SUMMARY
             WHERE PROTEIN_AC IN (
                 SELECT UX.AC
-                FROM UNIPARC.XREF_OLD UX
+                FROM UNIPARC.XREF UX
                 INNER JOIN INTERPRO.PROTEIN IP
                   ON UX.AC = IP.PROTEIN_AC
                 INNER JOIN UNIPARC.PROTEIN UP
