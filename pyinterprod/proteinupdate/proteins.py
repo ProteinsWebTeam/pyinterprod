@@ -580,3 +580,37 @@ def delete(url: str, truncate: bool=False):
             else:
                 raise RuntimeError("One or more constraints "
                                    "could not be enabled")
+
+
+def refresh_sequences_to_scan(url: str):
+    logger.info("refreshing PROTEIN_TO_SCAN")
+
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute("TRUNCATE TABLE INTERPRO.PROTEIN_TO_SCAN")
+    cur.execute(
+        """
+        INSERT /*+ APPEND */ INTO INTERPRO.PROTEIN_TO_SCAN (
+            PROTEIN_AC, DBCODE, TIMESTAMP, UPI
+        )
+        SELECT
+            IP.PROTEIN_AC, IP.DBCODE, IP.TIMESTAMP, UPI
+        FROM INTERPRO.PROTEIN IP
+        LEFT OUTER JOIN (
+            SELECT DISTINCT
+                UPI, AC, CRC64
+            FROM UNIPARC.XREF
+            INNER JOIN UNIPARC.PROTEIN USING (UPI)
+            WHERE DBID IN (2, 3)
+        ) UP ON (IP.PROTEIN_AC = UP.AC AND IP.CRC64 = UP.CRC64)
+        WHERE P.PROTEIN_AC IN (
+            SELECT NEW_PROTEIN_AC
+            FROM INTERPRO.PROTEIN_CHANGES
+        )
+        """
+    )
+
+    logger.info("{} rows inserted".format(cur.rowcount))
+    con.commit()
+    cur.close()
+    con.close()
