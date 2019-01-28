@@ -1,10 +1,13 @@
 import cx_Oracle
 
+from .. import logger
+
 
 def update(url: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
+    logger.info("creating UNIPARC.XREF")
     # XREF_OLD: legacy table, just to be sure it does not exist any more
     try:
         cur.execute("DROP TABLE UNIPARC.XREF_OLD")
@@ -41,7 +44,9 @@ def update(url: str):
         TABLESPACE UNIPARC_IND
         """
     )
+    cur.execute("GRANT SELECT ON UNIPARC.XREF TO PUBLIC")
 
+    logger.info("creating UNIPARC.CV_DATABASE")
     try:
         cur.execute("DROP TABLE UNIPARC.CV_DATABASE")
     except cx_Oracle.DatabaseError as e:
@@ -80,9 +85,42 @@ def update(url: str):
         )
         """
     )
-
-    cur.execute("GRANT SELECT ON UNIPARC.XREF TO PUBLIC")
     cur.execute("GRANT SELECT ON UNIPARC.CV_DATABASE TO PUBLIC")
+
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM UNIPARC.XREF_OLD UX
+        INNER JOIN INTERPRO.PROTEIN IP
+          ON UX.AC = IP.PROTEIN_AC
+        INNER JOIN UNIPARC.PROTEIN UP
+          ON UX.UPI = UP.UPI
+        WHERE UX.DELETED = 'N' 
+        AND IP.CRC64 != UP.CRC64 
+        """
+    )
+    n_rows = cur.fetchone()[0]
+    logger.info("{} proteins with mismatched CRC64".format(n_rows))
+
+    if n_rows:
+        cur.execute(
+            """
+            DELETE FROM INTERPRO.XREF_SUMMARY
+            WHERE PROTEIN_AC IN (
+                SELECT UX.AC
+                FROM UNIPARC.XREF_OLD UX
+                INNER JOIN INTERPRO.PROTEIN IP
+                  ON UX.AC = IP.PROTEIN_AC
+                INNER JOIN UNIPARC.PROTEIN UP
+                  ON UX.UPI = UP.UPI
+                WHERE UX.DELETED = 'N' 
+                AND IP.CRC64 != UP.CRC64 
+            )
+            """
+        )
+
+        logger.info("{} rows deleted".format(cur.rowcount))
+        con.commit()
 
     cur.close()
     con.close()
