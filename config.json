@@ -1,0 +1,11 @@
+{
+  "databases": {
+    "interpro": "",
+    "iprscan": "",
+    "uniparc": ""
+  },
+  "flat_files": {
+    "swissprot": "",
+    "trembl": ""
+  }
+}
