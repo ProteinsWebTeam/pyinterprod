@@ -23,6 +23,8 @@ def main():
             config = json.load(fh)
     except FileNotFoundError:
         parser.error("{}: no such file or directory".format(args.config))
+    except json.JSONDecodeError:
+        parser.error("{}: not a valid JSON file".format(args.config))
 
     try:
         os.makedirs(args.tmp, exist_ok=True)
