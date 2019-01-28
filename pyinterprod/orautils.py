@@ -7,7 +7,7 @@ from . import logger
 
 
 def parse_url(url: str) -> dict:
-    m = re.match(r"(.+)/(.+)@(.+):(\d+)/[a-z]+", url, re.I)
+    m = re.match(r"(.+)/(.+)@(.+):(\d+)/([a-z]+)", url, re.I)
     return {
         "username": m.group(1),
         "password": m.group(2),
@@ -129,6 +129,18 @@ def delete_iter(url: str, table: str, column: str, stop: int, step: int,
 
 def create_db_link(cur: cx_Oracle.Cursor, link: str, user: str, passwd: str,
                    connect_string: str):
+    try:
+        cur.execute("DROP PUBLIC DATABASE LINK {}".format(link))
+    except cx_Oracle.DatabaseError as e:
+        if e.args[0].code == 2024:
+            """
+            ORA-02024: database link not found
+            that's fine, we're about to create the link
+            """
+            pass
+        else:
+            raise e
+
     cur.execute(
         """
         CREATE PUBLIC DATABASE LINK {}
@@ -136,3 +148,25 @@ def create_db_link(cur: cx_Oracle.Cursor, link: str, user: str, passwd: str,
         USING '{}'
         """.format(link, user, passwd, connect_string)
     )
+
+
+def create_db_links(url: str, urls: List[str]):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    for obj in map(parse_url, urls):
+        if obj["service"].startswith(('V', 'v')):
+            link = obj["service"][1:]
+        else:
+            link = obj["service"]
+
+        create_db_link(cur,
+                       link=link,
+                       user=obj["username"],
+                       passwd=obj["password"],
+                       connect_string="{}:{}/{}".format(obj["host"],
+                                                        obj["port"],
+                                                        obj["service"])
+                       )
+
+    cur.close()
+    con.close()
