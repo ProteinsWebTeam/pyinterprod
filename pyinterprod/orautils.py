@@ -170,3 +170,20 @@ def create_db_links(url: str, urls: List[str]):
 
     cur.close()
     con.close()
+
+
+def refresh_mview(url: str, name: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    try:
+        cur.execute(
+            """
+            BEGIN
+                DBMS_MVIEW.REFRESH(:1, method => '?');
+            END;
+            """, (name,)
+        )
+    finally:
+        cur.close()
+        con.close()
