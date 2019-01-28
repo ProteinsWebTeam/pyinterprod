@@ -33,14 +33,14 @@ def update(url: str):
     cur.execute(
         """
         CREATE INDEX I_XREF$AC
-        ON XREF(AC)
+        ON UNIPARC.XREF(AC)
         TABLESPACE UNIPARC_IND
         """
     )
     cur.execute(
         """
         CREATE INDEX I_XREF$UPI
-        ON XREF(UPI)
+        ON UNIPARC.XREF(UPI)
         TABLESPACE UNIPARC_IND
         """
     )
@@ -78,10 +78,10 @@ def update(url: str):
         """
         ALTER TABLE UNIPARC.CV_DATABASE
         ADD (
-            CONSTRAINT PK_CV_DATABASE PRIMARY KEY(ID)
-                USING INDEX PK_CV_DATABASE,
-            CONSTRAINT UQ_CV_DATABASE$DESCR UNIQUE (DESCR)
-                USING INDEX UQ_CV_DATABASE$DESCR
+          CONSTRAINT PK_CV_DATABASE PRIMARY KEY(ID)
+            USING INDEX PK_CV_DATABASE,
+          CONSTRAINT UQ_CV_DATABASE$DESCR UNIQUE (DESCR)
+            USING INDEX UQ_CV_DATABASE$DESCR
         )
         """
     )
