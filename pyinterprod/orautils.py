@@ -1,9 +1,20 @@
-import logging
+import re
 from typing import List, Optional
 
 import cx_Oracle
 
 from . import logger
+
+
+def parse_url(url: str) -> dict:
+    m = re.match(r"(.+)/(.+)@(.+):(\d+)/[a-z]+", url, re.I)
+    return {
+        "username": m.group(1),
+        "password": m.group(2),
+        "host": m.group(3),
+        "port": int(m.group(4)),
+        "service": m.group(5)
+    }
 
 
 def get_child_tables(cur: cx_Oracle.Cursor, owner: str,
@@ -63,8 +74,8 @@ def toggle_constraint(cur: cx_Oracle.Cursor, owner: str, table: str,
     try:
         cur.execute(query)
     except cx_Oracle.DatabaseError as e:
-        logging.error(e)
-        logging.error(query)
+        logger.error(e)
+        logger.error(query)
         return False
     else:
         return True
