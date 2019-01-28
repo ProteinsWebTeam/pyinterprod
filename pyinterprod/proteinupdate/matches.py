@@ -1,9 +1,9 @@
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import cx_Oracle
 
 from .. import logger
-from ..orautils import create_db_link
 
 
 def get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> str:
@@ -75,14 +75,9 @@ def get_analysis_max_upi(url: str, table: str) -> str:
     return row[0]
 
 
-def check_ispro(url: str, iprscan_user: str, ispro_url: str,
-                uniparc_user: str, uaread_url: str):
-
+def check_ispro(url: str, max_upi_read: str) -> list:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    create_db_link(cur, "ISPRO", *iprscan_user.split('/'), ispro_url)
-    create_db_link(cur, "UAREAD", *uniparc_user.split('/'), uaread_url)
-
     cur.execute(
         """
         SELECT 
@@ -101,9 +96,6 @@ def check_ispro(url: str, iprscan_user: str, ispro_url: str,
             "name": row[1],
             "table": row[2]
         })
-
-    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
-    max_upi_read = cur.fetchone()[0]
 
     cur.close()
     con.close()
@@ -126,10 +118,31 @@ def check_ispro(url: str, iprscan_user: str, ispro_url: str,
             finally:
                 fs[f]["upi"] = upi
 
-    print(max_upi_read)
-
+    tables = []
     for e in analyses:
-        if e["upi"] < max_upi_read:
-            print(e["name"], e["upi"])
+        if e["upi"] is None or e["upi"] < max_upi_read:
+            return []
 
-    return all([e["upi"] and e["upi"] >= max_upi_read for e in analyses])
+        tables.append(e["table"])
+
+    return tables
+
+
+def import_ispro(url):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
+    max_upi_read = cur.fetchone()[0]
+    cur.close()
+    con.close()
+
+    while True:
+        tables = check_ispro(url, max_upi_read)
+        if tables:
+            break
+        time.sleep(60 * 15)
+
+    print(tables)
+
+
+
