@@ -29,14 +29,16 @@ def main():
     except Exception as e:
         parser.error(e)
 
-    interpro_url = config["databases"]["interpro"]
-    iprscan_url = config["databases"]["iprscan"]
-    uniparc_url = config["databases"]["uniparc"]
+    interpro_url = config["databases"]["interpro"]["interpro"]
+    uniparc_url = config["databases"]["interpro"]["uniparc"]
     swissprot_ff = config["flat_files"]["swissprot"]
     trembl_ff = config["flat_files"]["trembl"]
 
-    create_db_links(interpro_url, [iprscan_url, uniparc_url])
-    uniparc.update(interpro_url)
+    create_db_links(interpro_url, [
+        config["databases"]["iprscan"],
+        config["databases"]["uniparc"]
+    ])
+    uniparc.update(uniparc_url, interpro_url)
     proteins.track_changes(interpro_url, swissprot_ff, trembl_ff, dir=args.tmp)
     proteins.delete(interpro_url, truncate=True)
     proteins.refresh_sequences_to_scan(interpro_url)

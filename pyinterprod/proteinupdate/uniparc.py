@@ -3,8 +3,8 @@ import cx_Oracle
 from .. import logger
 
 
-def update(url: str):
-    con = cx_Oracle.connect(url)
+def update(uniparc_url: str, interpro_url: str):
+    con = cx_Oracle.connect(uniparc_url)
     cur = con.cursor()
 
     logger.info("creating UNIPARC.XREF")
@@ -86,7 +86,11 @@ def update(url: str):
         """
     )
     cur.execute("GRANT SELECT ON UNIPARC.CV_DATABASE TO PUBLIC")
+    cur.close()
+    con.close()
 
+    con = cx_Oracle.connect(interpro_url)
+    cur = con.cursor()
     cur.execute(
         """
         SELECT COUNT(*)
