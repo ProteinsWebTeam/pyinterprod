@@ -5,7 +5,21 @@ def update(url: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
-    cur.execute("DROP TABLE UNIPARC.XREF")
+    # XREF_OLD: legacy table, just to be sure it does not exist any more
+    try:
+        cur.execute("DROP TABLE UNIPARC.XREF_OLD")
+    except cx_Oracle.DatabaseError as e:
+        if e.args[0].code != 942:
+            # ORA-00942: table or view does not exist
+            raise e
+
+    try:
+        cur.execute("DROP TABLE UNIPARC.XREF")
+    except cx_Oracle.DatabaseError as e:
+        if e.args[0].code != 942:
+            # ORA-00942: table or view does not exist
+            raise e
+
     cur.execute(
         """
         CREATE TABLE UNIPARC.XREF TABLESPACE UNIPARC_TAB AS
@@ -27,9 +41,13 @@ def update(url: str):
         TABLESPACE UNIPARC_IND
         """
     )
-    cur.execute("GRANT SELECT ON UNIPARC.XREF TO PUBLIC")
 
-    cur.execute("DROP TABLE UNIPARC.CV_DATABASE")
+    try:
+        cur.execute("DROP TABLE UNIPARC.CV_DATABASE")
+    except cx_Oracle.DatabaseError as e:
+        if e.args[0].code != 942:
+            # ORA-00942: table or view does not exist
+            raise e
     cur.execute(
         """
         CREATE TABLE UNIPARC.CV_DATABASE TABLESPACE UNIPARC_TAB AS
@@ -62,6 +80,8 @@ def update(url: str):
         )
         """
     )
+
+    cur.execute("GRANT SELECT ON UNIPARC.XREF TO PUBLIC")
     cur.execute("GRANT SELECT ON UNIPARC.CV_DATABASE TO PUBLIC")
 
     cur.close()
