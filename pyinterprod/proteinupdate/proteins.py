@@ -603,7 +603,7 @@ def refresh_sequences_to_scan(url: str):
             INNER JOIN UNIPARC.PROTEIN USING (UPI)
             WHERE DBID IN (2, 3)
         ) UP ON (IP.PROTEIN_AC = UP.AC AND IP.CRC64 = UP.CRC64)
-        WHERE P.PROTEIN_AC IN (
+        WHERE IP.PROTEIN_AC IN (
             SELECT NEW_PROTEIN_AC
             FROM INTERPRO.PROTEIN_CHANGES
         )
