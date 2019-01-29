@@ -5,7 +5,7 @@ from typing import Optional
 import cx_Oracle
 
 from .. import logger
-from ..orautils import refresh_mview
+from ..orautils import create_db_link, refresh_mview, parse_url
 
 
 def get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> str:
@@ -195,3 +195,26 @@ def import_ispro(url):
     # con.close()
     #
     #
+
+
+def import_mv_iprscan(url_src, url_dst):
+    obj = parse_url(url_src)
+
+    con = cx_Oracle.connect(url_dst)
+    cur = con.cursor()
+    cur.execute("TRUNCATE TABLE IPRSCAN.MV_IPRSCAN")
+
+    create_db_link(cur, "IPPRO", obj["username"], obj["password"],
+                   "{}:{}/{}".format(obj["host"], obj["port"], obj["service"])
+                   )
+
+    cur.execute(
+        """
+        INSERT /*+ APPEND NOLOGGING */ INTO IPRSCAN.MV_IPRSCAN
+        SELECT * FROM IPRSCAN.MV_IPRSCAN@IPPRO
+        """
+    )
+
+    con.commit()
+    cur.close()
+    con.close()
