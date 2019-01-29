@@ -496,13 +496,15 @@ def delete(url: str, truncate: bool=False):
     cur = con.cursor()
 
     tables = orautils.get_child_tables(cur, "INTERPRO", "PROTEIN")
-
-    if not tables:
-        cur.close()
-        con.close()
+    tables.append({
+        "owner": "INTERPRO",
+        "name": "PROTEIN",
+        "constraint": None,
+        "column": "PROTEIN_AC"
+    })
 
     if truncate:
-        logger.info("truncating MV/*NEW tables")
+        logger.info("truncating MV*/*NEW tables")
         _tables = []
 
         for t in tables:
@@ -516,8 +518,9 @@ def delete(url: str, truncate: bool=False):
     logger.info("disabling referential constraints")
     ok = True
     for t in tables:
-        if not orautils.toggle_constraint(cur, t["owner"], t["name"],
-                                          t["constraint"], False):
+        if t["constraint"] and not orautils.toggle_constraint(
+                cur, t["owner"], t["name"], t["constraint"], False
+        ):
             ok = False
 
     if not ok:
@@ -525,28 +528,32 @@ def delete(url: str, truncate: bool=False):
         con.close()
         raise RuntimeError("one or more constraints could not be disabled")
 
+    count = _count_proteins_to_delete(cur)
+
     with futures.ThreadPoolExecutor() as executor:
         fs = {}
 
-        gen = (i for i, t in enumerate(tables) if t["name"] == "MATCH")
-        i = next(gen, None)
-        if i is not None:
-            t = tables.pop(i)
-            for dbcode in orautils.get_partitions(cur, t["owner"], t["name"]):
-                p = dict(t)
-                p["partition"] = dbcode
-                tables.append(p)
-
-        count = _count_proteins_to_delete(cur)
         for t in tables:
-            f = executor.submit(orautils.delete_iter, url, t["name"],
-                                t["column"], count, _MAX_ITEMS,
-                                t.get("partition"))
-            fs[f] = t
+            if t["name"] == "MATCH":
+                # for MATCH table: delete by partition
+                dbcodes = orautils.get_partitions(cur, t["owner"], t["name"])
+                for dbcode in dbcodes:
+                    p = dict(t)  # shallow copy
+                    p["partition"] = dbcode
+                    f = executor.submit(orautils.delete_iter, url, t["name"],
+                                        t["column"], count, _MAX_ITEMS,
+                                        dbcode)
+                    fs[f] = p
+            else:
+                f = executor.submit(orautils.delete_iter, url, t["name"],
+                                    t["column"], count, _MAX_ITEMS)
+                fs[f] = t
 
+        tables = []
         errors = 0
         for f in futures.as_completed(fs):
             t = fs[f]
+
             if t.get("partition"):
                 name = "{} ({})".format(t["name"], t["partition"])
             else:
@@ -554,6 +561,7 @@ def delete(url: str, truncate: bool=False):
 
             if f.exception() is None:
                 logger.info("table '{}' done".format(name))
+                tables.append(t)
             else:
                 logger.info("table '{}' exited".format(name))
                 errors += 0
@@ -565,6 +573,9 @@ def delete(url: str, truncate: bool=False):
         else:
             ok = True
             for t in tables:
+                if not t["constraint"]:
+                    continue
+
                 logger.info("enabling: {}.{}.{}".format(t["owner"],
                                                         t["name"],
                                                         t["constraint"]))
