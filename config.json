@@ -10,5 +10,9 @@
   "flat_files": {
     "swissprot": "",
     "trembl": ""
+  },
+  "release": {
+    "version": "",
+    "date": ""
   }
 }

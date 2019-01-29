@@ -6,6 +6,7 @@ def main():
     import argparse
     import json
     import os
+    from datetime import datetime
     from tempfile import gettempdir
 
     from ..orautils import create_db_links
@@ -40,8 +41,12 @@ def main():
         config["databases"]["iprscan"],
         config["databases"]["uniparc"]
     ])
+    proteins.track_changes(interpro_url, swissprot_ff, trembl_ff,
+                           dir=args.tmp)
+    proteins.update(interpro_url,
+                    version=config["release"]["version"],
+                    date=datetime.strptime(config["release"]["date"],
+                                           "%d-%b-%Y"))
     uniparc.update(uniparc_url, interpro_url)
-    proteins.track_changes(interpro_url, swissprot_ff, trembl_ff, dir=args.tmp)
-    proteins.delete(interpro_url, truncate=True)
     proteins.refresh_sequences_to_scan(interpro_url)
     matches.import_ispro(interpro_url)

@@ -1,3 +1,4 @@
+import datetime
 import os
 import sqlite3
 from concurrent import futures
@@ -591,6 +592,58 @@ def delete(url: str, truncate: bool=False):
             else:
                 raise RuntimeError("One or more constraints "
                                    "could not be enabled")
+
+
+def update(url: str, version: str, date: datetime.datetime):
+    delete(url, truncate=True)
+
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute("SELECT COUNT(*) FROM INTERPRO.PROTEIN WHERE DBCODE = 'S'")
+    n_swissprot = cur.fetchone()[0]
+
+    cur.execute("SELECT COUNT(*) FROM INTERPRO.PROTEIN WHERE DBCODE = 'T'")
+    n_trembl = cur.fetchone()[0]
+
+    cur.execute(
+        """
+        UPDATE INTERPRO.DB_VERSION
+        SET
+          VERSION = :1,
+          ENTRY_COUNT = :2,
+          FILE_DATE = :3,
+          LOAD_DATE = SYSDATE
+          WHERE INTERPRO.DB_VERSION.DBCODE = 'S'
+        """, (version, n_swissprot, date)
+    )
+
+    cur.execute(
+        """
+        UPDATE INTERPRO.DB_VERSION
+        SET
+          VERSION = :1,
+          ENTRY_COUNT = :2,
+          FILE_DATE = :3,
+          LOAD_DATE = SYSDATE
+          WHERE INTERPRO.DB_VERSION.DBCODE = 'T'
+        """, (version, n_trembl, date)
+    )
+
+    cur.execute(
+        """
+        UPDATE INTERPRO.DB_VERSION
+        SET
+          VERSION = :1,
+          ENTRY_COUNT = :2,
+          FILE_DATE = :3,
+          LOAD_DATE = SYSDATE
+          WHERE INTERPRO.DB_VERSION.DBCODE = 'u'
+        """, (version, n_swissprot + n_trembl, date)
+    )
+
+    con.commit()
+    cur.close()
+    con.close()
 
 
 def refresh_sequences_to_scan(url: str):
