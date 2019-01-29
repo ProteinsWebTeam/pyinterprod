@@ -32,6 +32,13 @@ def update(uniparc_url: str, interpro_url: str):
     )
     cur.execute(
         """
+        CREATE INDEX I_XREF$UPI
+        ON UNIPARC.XREF(UPI)
+        TABLESPACE UNIPARC_IND
+        """
+    )
+    cur.execute(
+        """
         CREATE INDEX I_XREF$AC
         ON UNIPARC.XREF(AC)
         TABLESPACE UNIPARC_IND
@@ -39,8 +46,8 @@ def update(uniparc_url: str, interpro_url: str):
     )
     cur.execute(
         """
-        CREATE INDEX I_XREF$UPI
-        ON UNIPARC.XREF(UPI)
+        CREATE INDEX I_XREF$DBID
+        ON UNIPARC.XREF(DBID)
         TABLESPACE UNIPARC_IND
         """
     )
