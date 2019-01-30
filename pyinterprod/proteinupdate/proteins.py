@@ -572,24 +572,24 @@ def delete(url: str, truncate: bool=False):
             con.close()
             raise RuntimeError("some tables were not processed")
         else:
-            ok = True
+            error = False
+            constraints = set()
             for t in tables:
-                if not t["constraint"]:
+                if not t["constraint"] or t["constraint"] in constraints:
                     continue
 
+                constraints.add(t["constraint"])
                 logger.info("enabling: {}.{}.{}".format(t["owner"],
                                                         t["name"],
                                                         t["constraint"]))
 
                 if not orautils.toggle_constraint(cur, t["owner"], t["name"],
                                                   t["constraint"], True):
-                    ok = False
+                    error = True
 
             cur.close()
             con.close()
-            if ok:
-                logger.info("complete")
-            else:
+            if error:
                 raise RuntimeError("One or more constraints "
                                    "could not be enabled")
 
