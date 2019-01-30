@@ -96,6 +96,7 @@ def update(uniparc_url: str, interpro_url: str):
     cur.close()
     con.close()
 
+    logger.info("finding proteins with CRC64 mismatches")
     con = cx_Oracle.connect(interpro_url)
     cur = con.cursor()
     cur.execute(
@@ -111,7 +112,7 @@ def update(uniparc_url: str, interpro_url: str):
         """
     )
     n_rows = cur.fetchone()[0]
-    logger.info("{} proteins with mismatched CRC64".format(n_rows))
+    logger.info("{} proteins found".format(n_rows))
 
     if n_rows:
         cur.execute(
