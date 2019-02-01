@@ -202,19 +202,59 @@ def import_mv_iprscan(url_src, url_dst):
 
     con = cx_Oracle.connect(url_dst)
     cur = con.cursor()
-    cur.execute("TRUNCATE TABLE IPRSCAN.MV_IPRSCAN")
+    logger.info("DROP TABLE")
+    cur.execute("DROP TABLE IPRSCAN.MV_IPRSCAN")
 
     create_db_link(cur, "IPPRO", obj["username"], obj["password"],
                    "{}:{}/{}".format(obj["host"], obj["port"], obj["service"])
                    )
 
+    logger.info("CREATE TABLE")
     cur.execute(
         """
-        INSERT /*+ APPEND NOLOGGING */ INTO IPRSCAN.MV_IPRSCAN
-        SELECT * FROM IPRSCAN.MV_IPRSCAN@IPPRO
+        CREATE TABLE IPRSCAN.MV_IPRSCAN 
+        TABLESPACE IPRSCAN_TAB 
+        AS
+        SELECT * 
+        FROM IPRSCAN.MV_IPRSCAN@IPPRO
         """
     )
 
-    con.commit()
+    logger.info("MV_IPRSCAN_ANALYSIS_ID_MAJORX")
+    cur.execute(
+        """
+        CREATE INDEX IPRSCAN.MV_IPRSCAN_ANALYSIS_ID_MAJORX
+        ON IPRSCAN.MV_IPRSCAN (ANALYSIS_ID, RELNO_MAJOR)
+        TABLESPACE IPRSCAN_IND
+        """
+    )
+
+    logger.info("MV_IPRSCAN_ANALYSIS_ID_UPIX")
+    cur.execute(
+        """
+        CREATE INDEX IPRSCAN.MV_IPRSCAN_ANALYSIS_ID_UPIX
+        ON IPRSCAN.MV_IPRSCAN (ANALYSIS_ID, UPI)
+        TABLESPACE IPRSCAN_IND
+        """
+    )
+
+    logger.info("MV_IPRSCAN_UPI_METHOD_ACX")
+    cur.execute(
+        """
+        CREATE INDEX IPRSCAN.MV_IPRSCAN_UPI_METHOD_ACX
+        ON IPRSCAN.MV_IPRSCAN (UPI, METHOD_AC)
+        TABLESPACE IPRSCAN_IND
+        """
+    )
+
+    logger.info("MV_IPRSCAN_UPI_METHOD_AN_IDX")
+    cur.execute(
+        """
+        CREATE INDEX IPRSCAN.MV_IPRSCAN_UPI_METHOD_AN_IDX
+        ON IPRSCAN.MV_IPRSCAN (UPI, METHOD_AC, ANALYSIS_ID)
+        TABLESPACE IPRSCAN_IND
+        """
+    )
+
     cur.close()
     con.close()
