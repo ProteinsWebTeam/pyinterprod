@@ -270,7 +270,7 @@ def find_protein_to_refresh(url: str):
         INSERT /*+ APPEND */ INTO INTERPRO.PROTEIN_TO_SCAN 
           (PROTEIN_AC, DBCODE, TIMESTAMP, UPI)
         SELECT 
-          IP.PROTEIN_AC, IP.DBCODE, IP.TIMESTAMP
+          IP.PROTEIN_AC, IP.DBCODE, IP.TIMESTAMP, UP.UPI
         FROM INTERPRO.PROTEIN IP
         LEFT OUTER JOIN (
           SELECT DISTINCT 
