@@ -348,3 +348,55 @@ def prepare_matches(url: str):
 
     cur.close()
     con.close()
+
+
+def check_matches(url: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    # Match outside of the protein
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM INTERPRO.MATCH_NEW M
+        INNER JOIN INTERPRO.PROTEIN P
+          ON M.PROTEIN_AC = P.PROTEIN_AC
+        WHERE M.POS_TO > P.LEN
+        """
+    )
+    n = cur.fetchone()[0]
+    if n:
+        cur.close()
+        con.close()
+        raise RuntimeError("{} out-of-bound matches".format(n))
+
+    # Match with invalid start/end positions
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM INTERPRO.MATCH_NEW
+        WHERE POS_FROM < 1 OR POS_FROM > POS_TO
+        """
+    )
+    if n:
+        cur.close()
+        con.close()
+        raise RuntimeError("{} invalid matches".format(n))
+
+    # Signature matching proteins for the 1st time
+    cur.execute(
+        """
+        SELECT METHOD_AC, COUNT(DISTINCT PROTEIN_AC) CNT
+        FROM INTERPRO.MATCH_NEW
+        WHERE METHOD_AC IN (
+          SELECT METHOD_AC FROM INTERPRO.METHOD
+          MINUS 
+          SELECT DISTINCT METHOD_AC FROM INTERPRO.MATCH
+        )
+        GROUP BY METHOD_AC
+        """
+    )
+    signatures = cur.fetchall()
+
+    cur.close()
+    con.close()
