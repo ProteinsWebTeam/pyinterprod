@@ -4,8 +4,7 @@ from typing import Optional
 
 import cx_Oracle
 
-from .. import logger
-from ..orautils import create_db_link, refresh_mview, parse_url
+from .. import logger, orautils
 
 
 def get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> str:
@@ -162,7 +161,7 @@ def import_ispro(url):
         fs = {}
         for table in tables:
             mview = "MV_" + table
-            f = executor.submit(refresh_mview, url, mview)
+            f = executor.submit(orautils.refresh_mview, url, mview)
             fs[f] = mview
 
         success = True
@@ -198,16 +197,17 @@ def import_ispro(url):
 
 
 def import_mv_iprscan(url_src, url_dst):
-    obj = parse_url(url_src)
+    obj = orautils.parse_url(url_src)
 
     con = cx_Oracle.connect(url_dst)
     cur = con.cursor()
     logger.info("DROP TABLE")
     cur.execute("DROP TABLE IPRSCAN.MV_IPRSCAN")
 
-    create_db_link(cur, "IPPRO", obj["username"], obj["password"],
-                   "{}:{}/{}".format(obj["host"], obj["port"], obj["service"])
-                   )
+    orautils.create_db_link(cur, "IPPRO", obj["username"], obj["password"],
+                            "{}:{}/{}".format(obj["host"], obj["port"],
+                                              obj["service"])
+                            )
 
     logger.info("CREATE TABLE")
     cur.execute(
@@ -289,5 +289,62 @@ def find_protein_to_refresh(url: str):
     )
 
     con.commit()
+    cur.close()
+    con.close()
+
+
+def prepare_matches(url: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    logger.info("adding new matches")
+    cur.execute("TRUNCATE TABLE INTERPRO.MATCH_NEW")
+    cur.execute(
+        """
+        INSERT /*+ APPEND */ INTO INTERPRO.MATCH_NEW (
+          PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, STATUS, 
+          DBCODE, EVIDENCE,
+          SEQ_DATE, MATCH_DATE, TIMESTAMP, USERSTAMP, 
+          SCORE, MODEL_AC, FRAGMENTS
+        ) 
+        SELECT 
+          P.PROTEIN_AC, M.METHOD_AC, M.SEQ_START, M.SEQ_END, 'T', 
+          D.DBCODE, D.EVIDENCE,
+          SYSDATE, SYSDATE, SYSDATE, 'INTERPRO',
+          M.EVALUE, M.MODEL_AC, M.FRAGMENTS
+        FROM INTERPRO.PROTEIN_TO_SCAN P
+        INNER JOIN IPRSCAN.MV_IPRSCAN M 
+          ON P.UPI = M.UPI
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE D 
+          ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
+        WHERE D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
+        AND M.SEQ_START != M.SEQ_END
+        """
+    )
+    con.commit()
+
+    logger.info("deleting duplicated SUPERFAMILY matches")
+    cur.execute(
+        """
+        DELETE FROM INTERPRO.MATCH_NEW M1
+        WHERE EXISTS(
+          SELECT 1
+          FROM INTERPRO.MATCH_NEW M2
+          WHERE M2.DBCODE = 'Y'
+          AND M1.PROTEIN_AC = M2.PROTEIN_AC
+          AND M1.METHOD_AC = M2.METHOD_AC
+          AND M1.POS_FROM = M2.POS_FROM
+          AND M1.POS_TO = M2.POS_TO
+          AND M1.SCORE > M2.SCORE
+        )
+        """
+    )
+    con.commit()
+
+    for idx in orautils.get_indexes(cur, "INTERPRO", "MATCH_NEW"):
+        logger.debug("rebuilding {}".format(idx))
+        cur.execute("ALTER INDEX INTERPRO.{} REBUILD".format(idx))
+        cur.execute("ALTER INDEX INTERPRO.{} COMPUTE STATISTICS".format(idx))
+
     cur.close()
     con.close()
