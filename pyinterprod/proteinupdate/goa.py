@@ -43,6 +43,9 @@ def cross_pdb_uniprot_interpro(url: str, dst: str):
     )
 
     with open(dst, "wt") as fh:
+        fh.write("#PDBe ID\tPDBe accession\tPDBe chain\tTaxon ID\t"
+                 "InterPro accession\tGO ID\tUniProt accession\n")
+
         for row in cur:
             fh.write('\t'.join(map(str, row)) + '\n')
 
