@@ -260,39 +260,6 @@ def import_mv_iprscan(url_src, url_dst):
     con.close()
 
 
-def find_protein_to_refresh(url: str):
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute("TRUNCATE TABLE INTERPRO.PROTEIN_TO_SCAN")
-
-    cur.execute(
-        """
-        INSERT /*+ APPEND */ INTO INTERPRO.PROTEIN_TO_SCAN 
-          (PROTEIN_AC, DBCODE, TIMESTAMP, UPI)
-        SELECT 
-          IP.PROTEIN_AC, IP.DBCODE, IP.TIMESTAMP, UP.UPI
-        FROM INTERPRO.PROTEIN IP
-        LEFT OUTER JOIN (
-          SELECT DISTINCT 
-            X.UPI,
-            X.AC,
-            P.CRC64
-          FROM UNIPARC.XREF X
-          INNER JOIN UNIPARC.PROTEIN P ON X.UPI = P.UPI
-          WHERE X.DBID IN (2, 3)
-        ) UP ON (IP.PROTEIN_AC = UP.AC AND IP.CRC64 = UP.CRC64)
-        WHERE IP.PROTEIN_AC IN (
-          SELECT NEW_PROTEIN_AC
-          FROM INTERPRO.PROTEIN_CHANGES
-        )
-        """
-    )
-
-    con.commit()
-    cur.close()
-    con.close()
-
-
 def prepare_matches(url: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
