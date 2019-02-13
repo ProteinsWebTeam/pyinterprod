@@ -48,5 +48,6 @@ def main():
                     date=datetime.strptime(config["release"]["date"],
                                            "%d-%b-%Y"))
     uniparc.update(uniparc_url, interpro_url)
-    proteins.refresh_sequences_to_scan(interpro_url)
-    matches.import_ispro(interpro_url)
+    proteins.find_protein_to_refresh(interpro_url)
+
+    # matches.import_ispro(interpro_url)
