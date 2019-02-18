@@ -1,3 +1,5 @@
+import gzip
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
@@ -7,26 +9,14 @@ import cx_Oracle
 from .. import logger, orautils
 
 
-def get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> str:
+def get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> Optional[str]:
     upis = []
 
     cur.execute(
         """
-        SELECT MIN(JOB_START)
-        FROM RUNNING_JOBS@ISPRO
+        SELECT MAX(HWM_SUBMITTED)
+        FROM IPRSCAN.HWM@ISPRO
         WHERE ANALYSIS_ID = :1
-        """, (analysis_id,)
-    )
-    row = cur.fetchone()
-    if row:
-        upis.append(row[0])
-
-    cur.execute(
-        """
-        SELECT MIN(JOB_START)
-        FROM COMPLETED_JOBS@ISPRO
-        WHERE ANALYSIS_ID = :1
-        AND PERSISTED = 0
         """, (analysis_id,)
     )
     row = cur.fetchone()
@@ -36,9 +26,8 @@ def get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> str:
     cur.execute(
         """
         SELECT MAX(JOB_END)
-        FROM COMPLETED_JOBS@ISPRO
+        FROM IPRSCAN.IPM_RUNNING_JOBS
         WHERE ANALYSIS_ID = :1
-        AND PERSISTED = 1
         """, (analysis_id,)
     )
     row = cur.fetchone()
@@ -47,18 +36,48 @@ def get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> str:
 
     cur.execute(
         """
-        SELECT MAX(JOB_END)
-        FROM COMPLETED_PERSIST_JOBS@ISPRO
-        WHERE ANALYSIS_ID = :1
-        AND PERSISTED = 1
-        """, (analysis_id,)
+        SELECT MIN(JOB_END)
+        FROM (
+            SELECT MIN(JOB_END) JOB_END
+            FROM IPRSCAN.IPM_COMPLETED_JOBS
+            WHERE ANALYSIS_ID = :analysisid
+            AND PERSISTED = 0
+            UNION ALL
+            SELECT MAX(JOB_END) JOB_END
+            FROM IPRSCAN.IPM_COMPLETED_JOBS
+            WHERE ANALYSIS_ID = :analysisid
+            AND PERSISTED = 1        
+        )
+        """, dict(analysisid=analysis_id)
     )
     row = cur.fetchone()
     if row:
         upis.append(row[0])
 
-    upis = [v for v in upis if v is not None]
-    return max(upis) if upis else None
+    cur.execute(
+        """
+        SELECT MIN(JOB_END)
+        FROM (
+            SELECT MIN(JOB_END) JOB_END
+            FROM IPRSCAN.IPM_PERSISTED_JOBS
+            WHERE ANALYSIS_ID = :analysisid
+            AND PERSISTED = 0
+            UNION ALL
+            SELECT MAX(JOB_END) JOB_END
+            FROM IPRSCAN.IPM_PERSISTED_JOBS
+            WHERE ANALYSIS_ID = :analysisid
+            AND PERSISTED = 1        
+        )
+        """, dict(analysisid=analysis_id)
+    )
+    row = cur.fetchone()
+    if row:
+        upis.append(row[0])
+
+    try:
+        return max([upi for upi in upis if upi is not None])
+    except ValueError:
+        return None
 
 
 def get_analysis_max_upi(url: str, table: str) -> str:
@@ -290,7 +309,7 @@ def prepare_matches(url: str):
     )
     con.commit()
 
-    logger.info("deleting duplicated SUPERFAMILY matches")
+    logger.info("SUPERFAMILY: deleting duplicated matches")
     cur.execute(
         """
         DELETE FROM INTERPRO.MATCH_NEW M1
@@ -306,6 +325,7 @@ def prepare_matches(url: str):
         )
         """
     )
+    logger.info("SUPERFAMILY: {} matches deleted".format(cur.rowcount))
     con.commit()
 
     for idx in orautils.get_indexes(cur, "INTERPRO", "MATCH_NEW"):
@@ -317,11 +337,38 @@ def prepare_matches(url: str):
     con.close()
 
 
-def check_matches(url: str):
+def get_match_counts(cur: cx_Oracle.Cursor) -> tuple:
+    logger.info("counting entries protein counts")
+    cur.execute(
+        """
+        SELECT E.ENTRY_AC, COUNT(DISTINCT M.PROTEIN_AC)
+        FROM INTERPRO.ENTRY2METHOD E
+        INNER JOIN INTERPRO.MATCH M
+          ON E.METHOD_AC = M.METHOD_AC
+        GROUP BY E.ENTRY_AC
+        """
+    )
+    entries = dict(cur.fetchall())
+
+    logger.info("counting databases match counts")
+    cur.execute(
+        """
+        SELECT DBCODE, COUNT(*)
+        FROM INTERPRO.MATCH
+        GROUP BY DBCODE
+        """
+    )
+    databases = dict(cur.fetchall())
+
+    return entries, databases
+
+
+def check_matches(url: str, filepath: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
     # Match outside of the protein
+    logger.info("checking out-of-bound matches")
     cur.execute(
         """
         SELECT COUNT(*)
@@ -338,6 +385,7 @@ def check_matches(url: str):
         raise RuntimeError("{} out-of-bound matches".format(n))
 
     # Match with invalid start/end positions
+    logger.info("checking invalid matches")
     cur.execute(
         """
         SELECT COUNT(*)
@@ -350,20 +398,83 @@ def check_matches(url: str):
         con.close()
         raise RuntimeError("{} invalid matches".format(n))
 
-    # Signature matching proteins for the 1st time
+    entries, databases = get_match_counts(cur)
+    cur.close()
+    con.close()
+
+    if filepath.endswith(".gz"):
+        _open = gzip.open
+    else:
+        _open = open
+
+    with _open(filepath, "wt") as fh:
+        json.dump(dict(entries=entries, databases=databases), fh)
+
+
+def update_matches(url: str):
+    logger.info("updating matches")
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     cur.execute(
         """
-        SELECT METHOD_AC, COUNT(DISTINCT PROTEIN_AC) CNT
-        FROM INTERPRO.MATCH_NEW
-        WHERE METHOD_AC IN (
-          SELECT METHOD_AC FROM INTERPRO.METHOD
-          MINUS 
-          SELECT DISTINCT METHOD_AC FROM INTERPRO.MATCH
+        DELETE FROM INTERPRO.MATCH
+        WHERE PROTEIN_AC IN (
+          SELECT PROTEIN_AC
+          FROM INTERPRO.PROTEIN_TO_SCAN
         )
-        GROUP BY METHOD_AC
         """
     )
-    signatures = cur.fetchall()
+    con.commit()
+    logger.info("{} matches deleted".format(cur.rowcount))
+
+    cur.execute(
+        """
+        INSERT INTO INTERPRO.MATCH 
+        SELECT * FROM INTERPRO.MATCH_NEW
+        """
+    )
+    con.commit()
+    logger.info("{} matches inserted".format(cur.rowcount))
+
+    cur.close()
+    con.close()
+
+
+def update_feature_matches(url: str):
+    logger.info("updating feature matches")
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        DELETE FROM INTERPRO.FEATURE_MATCH
+        WHERE PROTEIN_AC IN (
+          SELECT PROTEIN_AC
+          FROM INTERPRO.PROTEIN_TO_SCAN
+        )
+        """
+    )
+    con.commit()
+    logger.info("{} feature matches deleted".format(cur.rowcount))
+
+    cur.execute(
+        """
+        INSERT INTO INTERPRO.FEATURE_MATCH (
+          PROTEIN_AC, METHOD_AC, SEQ_FEATURE, POS_FROM, POS_TO, 
+          DBCODE, SEQ_DATE, MATCH_DATE, TIMESTAMP, USERSTAMP
+        ) 
+        SELECT 
+          P.PROTEIN_AC, M.METHOD_AC, M.SEQ_FEATURE, M.SEQ_START, M.SEQ_END, 
+          D.DBCODE, SYSDATE, SYSDATE, SYSDATE, 'INTERPRO'
+        FROM INTERPRO.PROTEIN_TO_SCAN P
+        INNER JOIN IPRSCAN.MV_IPRSCAN M 
+          ON P.UPI = M.UPI
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE D 
+          ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
+        WHERE D.DBCODE IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
+        """
+    )
+    con.commit()
+    logger.info("{} feature matches inserted".format(cur.rowcount))
 
     cur.close()
     con.close()
