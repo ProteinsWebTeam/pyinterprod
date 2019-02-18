@@ -1,19 +1,19 @@
 import cx_Oracle
 
 
-def cross_pdb_uniprot_interpro(url: str, dst: str):
+def export_pdb2uniprot2interpro2go(url: str, dst: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
         """
         SELECT 
-          UPPER(UX_PDBE.AC),
-          UPPER(ASYM.ENTRY_ID),
-          UPPER(ASYM.AUTH_ASYM_ID),
+          UX_PDBE.AC,
+          ASYM.ENTRY_ID,
+          ASYM.AUTH_ASYM_ID,
           SRC.TAX_ID,
           IP.ENTRY_AC,
           IP.GO_ID,
-          UPPER(IP.AC)
+          IP.AC
         FROM (
           SELECT UPI, AC
           FROM UNIPARC.XREF
@@ -48,6 +48,33 @@ def cross_pdb_uniprot_interpro(url: str, dst: str):
 
         for row in cur:
             fh.write('\t'.join(map(str, row)) + '\n')
+
+    cur.close()
+    con.close()
+
+
+def export_uniprot2interpro2go(url: str, dst: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT DISTINCT IG.ENTRY_AC, IG.GO_ID, M.PROTEIN_AC 
+        FROM INTERPRO.INTERPRO2GO IG
+        INNER JOIN INTERPRO.ENTRY2METHOD EM 
+          ON IG.ENTRY_AC = EM.ENTRY_AC
+        INNER JOIN INTERPRO.MATCH M 
+          ON EM.METHOD_AC = M.METHOD_AC
+        WHERE IG.ENTRY_AC IN (
+          SELECT ENTRY_AC FROM INTERPRO.ENTRY WHERE CHECKED = 'Y'
+        )
+        """
+    )
+
+    with open(dst, "wt") as fh:
+        fh.write("#InterPro accession\tGO ID\tUniProt accession\n")
+
+        for row in cur:
+            fh.write('\t'.join(row) + '\n')
 
     cur.close()
     con.close()
