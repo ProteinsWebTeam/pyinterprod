@@ -483,25 +483,25 @@ def post_matches_update(url: str, outdir: str):
         prev_count = prev["entries"].pop(entry_acc, 0)
 
         try:
-            change = (new_count - prev_count) / prev_count
+            change = (new_count - prev_count) / prev_count * 100
         except ZeroDivisionError:
             changes.append((entry_acc, prev_count, new_count, "N/A"))
         else:
-            if abs(change) >= 0.5:
+            if abs(change) >= 50:
                 changes.append((entry_acc, prev_count, new_count, change))
 
     with open(os.path.join(outdir, "entries_changes.tsv"), "wt") as fh:
         def _sort_entries(e):
-            return 1 if e[3] == "N/A" else 0, e[3], e[0]
+            return 1 if isinstance(e[3], str) else 0, e[3], e[0]
 
         fh.write("# Accession\tPrevious protein count\t"
                  "New protein count\tChange (%)\n")
 
         for ac, pc, nc, c in sorted(changes, key=_sort_entries):
-            if c != "N/A":
-                c = round(c * 100, 2)
-
-            fh.write("{}\t{}\t{}\t{}\n".format(ac, pc, nc, c))
+            if isinstance(c, str):
+                fh.write("{}\t{}\t{}\t{}\n".format(ac, pc, nc, c))
+            else:
+                fh.write("{}\t{}\t{}\t{:.0f}\n".format(ac, pc, nc, c))
 
     changes = []
     for dbcode, new_count in databases.items():
