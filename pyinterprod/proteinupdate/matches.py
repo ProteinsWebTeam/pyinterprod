@@ -26,7 +26,7 @@ def get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> Optional[str]:
     cur.execute(
         """
         SELECT MAX(JOB_END)
-        FROM IPRSCAN.IPM_RUNNING_JOBS
+        FROM IPRSCAN.IPM_RUNNING_JOBS@ISPRO
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
@@ -39,12 +39,12 @@ def get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> Optional[str]:
         SELECT MIN(JOB_END)
         FROM (
             SELECT MIN(JOB_END) JOB_END
-            FROM IPRSCAN.IPM_COMPLETED_JOBS
+            FROM IPRSCAN.IPM_COMPLETED_JOBS@ISPRO
             WHERE ANALYSIS_ID = :analysisid
             AND PERSISTED = 0
             UNION ALL
             SELECT MAX(JOB_END) JOB_END
-            FROM IPRSCAN.IPM_COMPLETED_JOBS
+            FROM IPRSCAN.IPM_COMPLETED_JOBS@ISPRO
             WHERE ANALYSIS_ID = :analysisid
             AND PERSISTED = 1
         )
@@ -59,12 +59,12 @@ def get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> Optional[str]:
         SELECT MIN(JOB_END)
         FROM (
             SELECT MIN(JOB_END) JOB_END
-            FROM IPRSCAN.IPM_PERSISTED_JOBS
+            FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
             WHERE ANALYSIS_ID = :analysisid
             AND PERSISTED = 0
             UNION ALL
             SELECT MAX(JOB_END) JOB_END
-            FROM IPRSCAN.IPM_PERSISTED_JOBS
+            FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
             WHERE ANALYSIS_ID = :analysisid
             AND PERSISTED = 1
         )
