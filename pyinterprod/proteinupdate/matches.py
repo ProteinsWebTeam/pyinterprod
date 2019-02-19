@@ -9,9 +9,10 @@ import cx_Oracle
 from .. import logger, orautils
 
 
-def get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> Optional[str]:
+def get_max_upi(url: str, analysis_id: int) -> Optional[str]:    
     upis = []
-
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     cur.execute(
         """
         SELECT MAX(HWM_SUBMITTED)
