@@ -1,5 +1,5 @@
-import gzip
 import json
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
@@ -46,7 +46,7 @@ def get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> Optional[str]:
             SELECT MAX(JOB_END) JOB_END
             FROM IPRSCAN.IPM_COMPLETED_JOBS
             WHERE ANALYSIS_ID = :analysisid
-            AND PERSISTED = 1        
+            AND PERSISTED = 1
         )
         """, dict(analysisid=analysis_id)
     )
@@ -66,7 +66,7 @@ def get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> Optional[str]:
             SELECT MAX(JOB_END) JOB_END
             FROM IPRSCAN.IPM_PERSISTED_JOBS
             WHERE ANALYSIS_ID = :analysisid
-            AND PERSISTED = 1        
+            AND PERSISTED = 1
         )
         """, dict(analysisid=analysis_id)
     )
@@ -103,12 +103,12 @@ def check_ispro(url: str, max_upi_read: str) -> Optional[dict]:
         SELECT ANALYSIS_ID, ANALYSIS_NAME, MATCH_TABLE
         FROM (
           SELECT
-            ANALYSIS_ID, 
-            ANALYSIS_NAME, 
-            MATCH_TABLE, 
+            ANALYSIS_ID,
+            ANALYSIS_NAME,
+            MATCH_TABLE,
             ROW_NUMBER() OVER (
-              PARTITION 
-              BY MATCH_TABLE 
+              PARTITION
+              BY MATCH_TABLE
               ORDER BY ANALYSIS_ID DESC
             ) CNT
           FROM IPM_ANALYSIS@ISPRO
@@ -231,10 +231,10 @@ def import_mv_iprscan(url_src, url_dst):
     logger.info("CREATE TABLE")
     cur.execute(
         """
-        CREATE TABLE IPRSCAN.MV_IPRSCAN 
-        TABLESPACE IPRSCAN_TAB 
+        CREATE TABLE IPRSCAN.MV_IPRSCAN
+        TABLESPACE IPRSCAN_TAB
         AS
-        SELECT * 
+        SELECT *
         FROM IPRSCAN.MV_IPRSCAN@IPPRO
         """
     )
@@ -288,20 +288,20 @@ def prepare_matches(url: str):
     cur.execute(
         """
         INSERT /*+ APPEND */ INTO INTERPRO.MATCH_NEW (
-          PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, STATUS, 
+          PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, STATUS,
           DBCODE, EVIDENCE,
-          SEQ_DATE, MATCH_DATE, TIMESTAMP, USERSTAMP, 
+          SEQ_DATE, MATCH_DATE, TIMESTAMP, USERSTAMP,
           SCORE, MODEL_AC, FRAGMENTS
-        ) 
-        SELECT 
-          P.PROTEIN_AC, M.METHOD_AC, M.SEQ_START, M.SEQ_END, 'T', 
+        )
+        SELECT
+          P.PROTEIN_AC, M.METHOD_AC, M.SEQ_START, M.SEQ_END, 'T',
           D.DBCODE, D.EVIDENCE,
           SYSDATE, SYSDATE, SYSDATE, 'INTERPRO',
           M.EVALUE, M.MODEL_AC, M.FRAGMENTS
         FROM INTERPRO.PROTEIN_TO_SCAN P
-        INNER JOIN IPRSCAN.MV_IPRSCAN M 
+        INNER JOIN IPRSCAN.MV_IPRSCAN M
           ON P.UPI = M.UPI
-        INNER JOIN INTERPRO.IPRSCAN2DBCODE D 
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE D
           ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
         WHERE D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
         AND M.SEQ_START != M.SEQ_END
@@ -363,7 +363,9 @@ def get_match_counts(cur: cx_Oracle.Cursor) -> tuple:
     return entries, databases
 
 
-def check_matches(url: str, filepath: str):
+def check_matches(url: str, outdir: str):
+    os.makedirs(outdir, exist_ok=True)
+
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -402,12 +404,7 @@ def check_matches(url: str, filepath: str):
     cur.close()
     con.close()
 
-    if filepath.endswith(".gz"):
-        _open = gzip.open
-    else:
-        _open = open
-
-    with _open(filepath, "wt") as fh:
+    with open(os.path.join(outdir, "counts.json"), "wt") as fh:
         json.dump(dict(entries=entries, databases=databases), fh)
 
 
@@ -429,7 +426,7 @@ def update_matches(url: str):
 
     cur.execute(
         """
-        INSERT INTO INTERPRO.MATCH 
+        INSERT INTO INTERPRO.MATCH
         SELECT * FROM INTERPRO.MATCH_NEW
         """
     )
@@ -459,16 +456,16 @@ def update_feature_matches(url: str):
     cur.execute(
         """
         INSERT INTO INTERPRO.FEATURE_MATCH (
-          PROTEIN_AC, METHOD_AC, SEQ_FEATURE, POS_FROM, POS_TO, 
+          PROTEIN_AC, METHOD_AC, SEQ_FEATURE, POS_FROM, POS_TO,
           DBCODE, SEQ_DATE, MATCH_DATE, TIMESTAMP, USERSTAMP
-        ) 
-        SELECT 
-          P.PROTEIN_AC, M.METHOD_AC, M.SEQ_FEATURE, M.SEQ_START, M.SEQ_END, 
+        )
+        SELECT
+          P.PROTEIN_AC, M.METHOD_AC, M.SEQ_FEATURE, M.SEQ_START, M.SEQ_END,
           D.DBCODE, SYSDATE, SYSDATE, SYSDATE, 'INTERPRO'
         FROM INTERPRO.PROTEIN_TO_SCAN P
-        INNER JOIN IPRSCAN.MV_IPRSCAN M 
+        INNER JOIN IPRSCAN.MV_IPRSCAN M
           ON P.UPI = M.UPI
-        INNER JOIN INTERPRO.IPRSCAN2DBCODE D 
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE D
           ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
         WHERE D.DBCODE IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
         """
@@ -478,3 +475,53 @@ def update_feature_matches(url: str):
 
     cur.close()
     con.close()
+
+
+def post_matches_update(url: str, outdir: str):
+    with open(os.path.join(outdir, "counts.json"), "rt") as fh:
+        prev = json.load(fh)
+
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    entries, databases = get_match_counts(cur)
+    cur.close()
+    con.close()
+
+    changes = []
+    for entry_acc, new_count in entries.items():
+        prev_count = prev["entries"].pop(entry_acc, 0)
+
+        try:
+            change = (new_count - prev_count) / prev_count
+        except ZeroDivisionError:
+            changes.append((entry_acc, prev_count, new_count, "N/A"))
+        else:
+            if abs(change) >= 0.5:
+                changes.append((entry_acc, prev_count, new_count, change))
+
+    with open(os.path.join(outdir, "entries_changes.tsv"), "wt") as fh:
+        def _sort_entries(e):
+            return 1 if e[3] == "N/A" else 0, e[3], e[0]
+
+        fh.write("# Accession\tPrevious protein count\t"
+                 "New protein count\tChange (%)\n")
+
+        for ac, pc, nc, c in sorted(changes, key=_sort_entries):
+            if c != "N/A":
+                c = round(c * 100, 2)
+
+            fh.write("{}\t{}\t{}\t{}\n".format(ac, pc, nc, c))
+
+    changes = []
+    for dbcode, new_count in databases.items():
+        prev_count = prev["databases"].pop(dbcode, 0)
+        changes.append((dbcode, prev_count, new_count))
+
+    for dbcode, prev_count in prev["databases"].items():
+        changes.append((dbcode, prev_count, 0))
+
+    with open(os.path.join(outdir, "databases_changes.tsv"), "wt") as fh:
+        fh.write("# Code\tPrevious match count\tNew match count\n")
+
+        for dbcode, pc, nc in sorted(changes):
+            fh.write("{}\t{}\t{}\n".format(dbcode, pc, nc))
