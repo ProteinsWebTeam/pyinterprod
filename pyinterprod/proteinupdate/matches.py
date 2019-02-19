@@ -2,7 +2,7 @@ import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional
+from typing import List, Optional
 
 import cx_Oracle
 
@@ -96,7 +96,7 @@ def get_analysis_max_upi(url: str, table: str) -> str:
     return row[0]
 
 
-def check_ispro(url: str, max_upi_read: str) -> Optional[dict]:
+def get_ispro_upis(url: str) -> List[dict]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
@@ -118,7 +118,6 @@ def check_ispro(url: str, max_upi_read: str) -> Optional[dict]:
           WHERE ACTIVE = 1
         )
         WHERE CNT = 1
-
         """
     )
 
@@ -127,7 +126,8 @@ def check_ispro(url: str, max_upi_read: str) -> Optional[dict]:
         analyses.append({
             "id": row[0],
             "name": row[1],
-            "table": row[2]
+            "table": row[2],
+            "upi": None
         })
 
     cur.close()
@@ -141,26 +141,16 @@ def check_ispro(url: str, max_upi_read: str) -> Optional[dict]:
 
         for f in as_completed(fs):
             e = fs[f]
-            upi = None
 
             try:
                 upi = f.result()
             except Exception as exc:
                 logger.error("{} ({}) exited: "
                              "{}".format(e["name"], e["id"], exc))
-            finally:
-                fs[f]["upi"] = upi
+            else:
+                e["upi"] = upi
 
-    tables = {}
-    for e in analyses:
-        if e["upi"] is None or e["upi"] < max_upi_read:
-            return None
-        elif e["table"] in tables:
-            tables[e["table"]].append(e["id"])
-        else:
-            tables[e["table"]] = [e["id"]]
-
-    return tables
+    return analyses
 
 
 def import_ispro(url):
