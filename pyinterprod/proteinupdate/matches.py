@@ -9,7 +9,7 @@ import cx_Oracle
 from .. import logger, orautils
 
 
-def get_max_upi(url: str, analysis_id: int) -> Optional[str]:    
+def get_max_upi(url: str, analysis_id: int) -> Optional[str]:
     upis = []
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -136,7 +136,7 @@ def check_ispro(url: str, max_upi_read: str) -> Optional[dict]:
     with ThreadPoolExecutor() as executor:
         fs = {}
         for e in analyses:
-            f = executor.submit(get_analysis_max_upi, url, e["table"])
+            f = executor.submit(get_max_upi, url, e["id"])
             fs[f] = e
 
         for f in as_completed(fs):
@@ -147,7 +147,7 @@ def check_ispro(url: str, max_upi_read: str) -> Optional[dict]:
                 upi = f.result()
             except Exception as exc:
                 logger.error("{} ({}) exited: "
-                             "{}".format(e["name"], e["table"], exc))
+                             "{}".format(e["name"], e["id"], exc))
             finally:
                 fs[f]["upi"] = upi
 
