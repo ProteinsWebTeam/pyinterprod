@@ -153,6 +153,40 @@ def get_ispro_upis(url: str) -> List[dict]:
     return analyses
 
 
+def check_ispro(url: str, max_retries: int=0):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
+    max_upi_read = cur.fetchone()[0]
+    cur.close()
+    con.close()
+
+    n_attempts = 0
+    s = "{:<5}{:<15}{:<30}{:<15}{:>10}"
+    while n_attempts <= max_retries:
+        analyses = get_ispro_upis(url)
+
+        all_ready = True
+        for e in analyses:
+            if e["upi"] and e["upi"] >= max_upi_read:
+                status = "ready"
+            else:
+                status = "not ready"
+                all_ready = False
+
+            logger.debug(
+                s.format(e["id"], e["name"], e["table"], e["upi"], status)
+            )
+
+        if all_ready:
+            return
+        else:
+            n_attempts += 1
+
+    raise RuntimeError("ISPRO tables not ready "
+                       "after {} attempts".format(n_attempts))
+
+
 def import_ispro(url):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
