@@ -19,6 +19,12 @@ class ProteinDatabase(object):
             self.path = path
             self.temporary = False
         else:
+            try:
+                os.makedirs(dir, exist_ok=True)
+            except TypeError:
+                # dir is None
+                pass
+
             fd, self.path = mkstemp(dir=dir)
             os.close(fd)
             os.remove(self.path)
@@ -28,6 +34,13 @@ class ProteinDatabase(object):
         self._create_table("protein_new")
 
     def __del__(self):
+        if self.temporary:
+            self.drop()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
         if self.temporary:
             self.drop()
 
@@ -458,38 +471,32 @@ def _init_protein_changes(con: cx_Oracle.Connection):
 
 def track_changes(url: str, swissprot_path: str, trembl_path: str,
                   dir: Optional[str]=None):
-    if dir:
-        os.makedirs(dir, exist_ok=True)
-
     logger.info("loading proteins")
+    with ProteinDatabase(dir=dir) as db:
+        count = db.insert_old(_get_proteins(url))
+        logger.info("UniProt proteins in InterPro: {}".format(count))
 
-    db = ProteinDatabase(dir=dir)
-    count = db.insert_old(_get_proteins(url))
-    logger.info("InterPro: {} proteins".format(count))
+        count = sprot.load(swissprot_path, db.path, "protein_new")
+        logger.info("New Swiss-Prot: {} proteins".format(count))
 
-    count = sprot.load(swissprot_path, db.path, "protein_new")
-    logger.info("Swiss-Prot: {} proteins".format(count))
+        count = sprot.load(trembl_path, db.path, "protein_new")
+        logger.info("New TrEMBL: {} proteins".format(count))
 
-    count = sprot.load(trembl_path, db.path, "protein_new")
-    logger.info("TrEMBL: {} proteins".format(count))
+        logger.info("disk space used: {} bytes".format(db.size))
 
-    logger.info("disk space used: {} bytes".format(db.size))
+        con = cx_Oracle.connect(url)
+        _init_protein_changes(con)
 
-    con = cx_Oracle.connect(url)
-    _init_protein_changes(con)
+        count = _update_proteins(con, db)
+        logger.info("{} proteins updated".format(count))
 
-    count = _update_proteins(con, db)
-    logger.info("{} proteins updated".format(count))
+        count = _insert_proteins(con, db)
+        logger.info("{} proteins added".format(count))
 
-    count = _insert_proteins(con, db)
-    logger.info("{} proteins added".format(count))
+        count = _prepare_deletion(con, db)
+        logger.info("{} proteins to delete".format(count))
 
-    count = _prepare_deletion(con, db)
-    logger.info("{} proteins to delete".format(count))
-
-    con.close()
-
-    db.drop()
+        con.close()
 
 
 def delete(url: str, truncate: bool=False):
