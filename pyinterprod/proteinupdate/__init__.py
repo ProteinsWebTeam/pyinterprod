@@ -41,12 +41,10 @@ def main():
         config["databases"]["iprscan"],
         config["databases"]["uniparc"]
     ])
-    proteins.track_changes(interpro_url, swissprot_ff, trembl_ff,
-                           dir=args.tmp)
-    proteins.update(interpro_url,
-                    version=config["release"]["version"],
-                    date=datetime.strptime(config["release"]["date"],
-                                           "%d-%b-%Y"))
+
+    proteins.track_changes(interpro_url, swissprot_ff, trembl_ff, dir=args.tmp)
+    proteins.update(interpro_url, version=config["release"]["version"],
+                    date=datetime.strptime(config["release"]["date"], "%d-%b-%Y"))
     uniparc.update(uniparc_url, interpro_url)
     proteins.find_protein_to_refresh(interpro_url)
 
