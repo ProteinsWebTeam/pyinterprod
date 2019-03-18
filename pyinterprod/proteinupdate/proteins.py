@@ -524,41 +524,45 @@ def delete(url: str, truncate: bool=False):
         tables = _tables
 
     logger.info("disabling referential constraints")
-    ok = True
+    num_errors = 0
     for t in tables:
-        if t["constraint"] and not orautils.toggle_constraint(
-                cur, t["owner"], t["name"], t["constraint"], False
-        ):
-            ok = False
+        if t["constraint"]:
+            to, tn, tc = t["owner"], t["name"], t["constraint"]
+            if not orautils.toggle_constraint(cur, to, tn, tc, False):
+                logger.error("could not disable {}.{}".format(tn, tc))
+                num_errors += 1
 
-    if not ok:
+    if num_errors:
         cur.close()
         con.close()
-        raise RuntimeError("one or more constraints could not be disabled")
+        raise RuntimeError("{} constraints "
+                           "could not be disabled".format(num_errors))
 
     count = _count_proteins_to_delete(cur)
+    logger.info("{} proteins to delete".format(count))
 
     with futures.ThreadPoolExecutor() as executor:
         fs = {}
 
         for t in tables:
-            if t["name"] == "MATCH":
+            to, tn, tc = t["owner"], t["name"], t["column"]
+
+            if tn == "MATCH":
                 # for MATCH table: delete by partition
-                dbcodes = orautils.get_partitions(cur, t["owner"], t["name"])
+                dbcodes = orautils.get_partitions(cur, to, tn)
                 for dbcode in dbcodes:
+                    f = executor.submit(orautils.delete_iter, url, tn, tc,
+                                        count, _MAX_ITEMS, dbcode)
                     p = dict(t)  # shallow copy
                     p["partition"] = dbcode
-                    f = executor.submit(orautils.delete_iter, url, t["name"],
-                                        t["column"], count, _MAX_ITEMS,
-                                        dbcode)
                     fs[f] = p
             else:
-                f = executor.submit(orautils.delete_iter, url, t["name"],
-                                    t["column"], count, _MAX_ITEMS)
+                f = executor.submit(orautils.delete_iter, url, tn, tc, count,
+                                    _MAX_ITEMS)
                 fs[f] = t
 
         tables = []
-        errors = 0
+        num_errors = 0
         for f in futures.as_completed(fs):
             t = fs[f]
 
@@ -567,38 +571,43 @@ def delete(url: str, truncate: bool=False):
             else:
                 name = t["name"]
 
-            if f.exception() is None:
-                logger.info("table '{}' done".format(name))
-                tables.append(t)
+            try:
+                f.result()  # returns None
+            except Exception as exc:
+                logger.error("table '{}' exited ({})".format(name, exc))
+                num_errors += 1
             else:
-                logger.info("table '{}' exited".format(name))
-                errors += 0
+                logger.info("table '{}' done".format(name))
 
-        if errors:
+        if num_errors:
             cur.close()
             con.close()
-            raise RuntimeError("some tables were not processed")
-        else:
-            error = False
-            constraints = set()
-            for t in tables:
-                if not t["constraint"] or t["constraint"] in constraints:
-                    continue
+            raise RuntimeError("{} tables failed".format(num_errors))
 
-                constraints.add(t["constraint"])
-                logger.info("enabling: {}.{}.{}".format(t["owner"],
-                                                        t["name"],
-                                                        t["constraint"]))
+        num_errors = 0
+        constraints = set()
+        for t in tables:
+            to, tn, tc = t["owner"], t["name"], t["constraint"]
 
-                if not orautils.toggle_constraint(cur, t["owner"], t["name"],
-                                                  t["constraint"], True):
-                    error = True
+            if not tc or tc in constraints:
+                """
+                Either no constraint 
+                or prevent the same constrain to be enabled several times
+                """
+                continue
 
-            cur.close()
-            con.close()
-            if error:
-                raise RuntimeError("One or more constraints "
-                                   "could not be enabled")
+            constraints.add(tc)
+            logger.info("enabling: {}.{}.{}".format(to, tn, tc))
+
+            if not orautils.toggle_constraint(cur, to, tn, tc, True):
+                logger.error("could not enable {}.{}".format(tn, tc))
+                num_errors += 1
+
+        cur.close()
+        con.close()
+        if num_errors:
+            raise RuntimeError("{} constraints "
+                               "could not be disabled".format(num_errors))
 
 
 def update(url: str, version: str, date: datetime.datetime):
