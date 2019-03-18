@@ -95,34 +95,46 @@ def get_partitions(cur: cx_Oracle.Cursor, owner: str, table: str) -> list:
 
 
 def delete_iter(url: str, table: str, column: str, stop: int, step: int,
-                partition: Optional[str] = None):
-    if partition:
-        query = """
-            DELETE FROM INTERPRO.{} PARTITION ({})
-            WHERE {} IN (
-              SELECT PROTEIN_AC
-              FROM INTERPRO.PROTEIN_TO_DELETE
-              WHERE ID BETWEEN :1 and :2
-            )
-        """.format(table, partition, column)
-        table += " ({})".format(partition)
-    else:
-        query = """
-            DELETE FROM INTERPRO.{}
-            WHERE {} IN (
-              SELECT PROTEIN_AC
-              FROM INTERPRO.PROTEIN_TO_DELETE
-              WHERE ID BETWEEN :1 and :2
-            )
-        """.format(table, column)
-
+                partition: Optional[str]=None):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    for i in range(0, stop, step):
-        cur.execute(query, (i, i+step-1))
-        logger.info("{}: {} / {}".format(table, min(i + step, stop), stop))
 
-    con.commit()
+    if partition:
+        dst = "{} PARTITION ({})".format(table, partition)
+        name = "{} ({})".format(table, partition)
+    else:
+        dst = "{}".format(table)
+        name = table
+
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM INTERPRO.{}
+        WHERE {} IN (
+          SELECT PROTEIN_AC 
+          FROM INTERPRO.PROTEIN_TO_DELETE
+        )
+        """.format(dst, column)
+    )
+    num_rows = cur.fetchone()[0]
+
+    if num_rows:
+        for i in range(0, stop, step):
+            cur.execute(
+                """
+                DELETE FROM INTERPRO.{}
+                WHERE {} IN (
+                  SELECT PROTEIN_AC
+                  FROM INTERPRO.PROTEIN_TO_DELETE
+                  WHERE ID BETWEEN :1 and :2
+                )
+                """.format(dst, column),
+                (i, i + step - 1)
+            )
+            logger.info("{}: {} / {}".format(name, min(i + step, stop), stop))
+
+        con.commit()
+
     cur.close()
     con.close()
 
