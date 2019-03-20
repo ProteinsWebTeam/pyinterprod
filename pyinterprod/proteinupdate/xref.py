@@ -1,6 +1,9 @@
 import cx_Oracle
 
 
+from .. import logger
+
+
 def _condense(matches: dict):
     for entry_acc in matches:
         fragments = []
@@ -36,6 +39,7 @@ def _condense(matches: dict):
 
 
 def condense_matches(url: str):
+    logger.info("condensing matches")
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -110,6 +114,7 @@ def condense_matches(url: str):
     cur2 = con.cursor()
     matches = {}
     _protein_acc = None
+    num_proteins = 0
     for protein_acc, method_acc, pos_from, pos_to, fragments in cur:
         if protein_acc != _protein_acc:
             if _protein_acc:
@@ -128,6 +133,11 @@ def condense_matches(url: str):
                         for start, end in frags
                     )
                 )
+
+                num_proteins += 1
+                if not num_proteins % 10000000:
+                    logger.info("proteins processed: "
+                                "{:>15}".format(num_proteins))
 
             _protein_acc = protein_acc
             matches = {}
@@ -171,6 +181,9 @@ def condense_matches(url: str):
                 for start, end in frags
             )
         )
+
+        num_proteins += 1
+        logger.info("proteins processed: {:>15}".format(num_proteins))
 
     con.commit()
     cur.close()
