@@ -574,10 +574,10 @@ def delete(url: str, truncate: bool=False):
             try:
                 f.result()  # returns None
             except Exception as exc:
-                logger.error("table '{}' exited ({})".format(name, exc))
+                logger.error("{}: exited ({})".format(name, exc))
                 num_errors += 1
             else:
-                logger.info("table '{}' done".format(name))
+                logger.info("{}: done".format(name))
 
         if num_errors:
             cur.close()
