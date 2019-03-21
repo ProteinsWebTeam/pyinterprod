@@ -212,3 +212,48 @@ def refresh_mview(url: str, name: str):
     finally:
         cur.close()
         con.close()
+
+
+class TablePopulator(object):
+    def __init__(self, con: cx_Oracle.Connection, query: str,
+                 buffer_size: int=10000, autocommit: bool=False):
+        self.con = con
+        self.cur = con.cursor()
+        self.query = query
+        self.buffer_size = buffer_size
+        self.autocommit = autocommit
+        self.records = []
+
+    def __del__(self):
+        self.close()
+
+    def insert(self, record: tuple):
+        self.records.append(record)
+
+        if len(self.records) == self.buffer_size:
+            self.flush(commit=self.autocommit)
+
+    def flush(self, commit: bool=False):
+        if not self.records:
+            return
+
+        self.cur.execute(self.query, self.records)
+        self.records = []
+
+        if commit:
+            self.commit()
+
+    def commit(self):
+        self.con.commit()
+
+    def close(self):
+        if self.cur is not None:
+            self.flush(commit=True)
+            self.cur.close()
+            self.cur = None
+
+
+
+
+
+
