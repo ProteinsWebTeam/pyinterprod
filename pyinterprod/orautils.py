@@ -131,7 +131,7 @@ def delete_iter(url: str, table: str, column: str, stop: int, step: int,
                 """.format(dst, column),
                 (i, i + step - 1)
             )
-            logger.info("{}: {} / {}".format(name, min(i + step, stop), stop))
+            logger.debug("{}: {} / {}".format(name, min(i + step, stop), stop))
 
         con.commit()
 
@@ -237,7 +237,7 @@ class TablePopulator(object):
         if not self.records:
             return
 
-        self.cur.execute(self.query, self.records)
+        self.cur.executemany(self.query, self.records)
         self.records = []
 
         if commit:
