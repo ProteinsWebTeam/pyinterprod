@@ -46,47 +46,39 @@ def condense_matches(url: str):
 
     try:
         cur.execute("DROP TABLE INTERPRO.XREF_CONDENSED")
-    except cx_Oracle.DatabaseError:
-        pass
-    finally:
-        # cur.execute(
-        #     """
-        #     CREATE TABLE INTERPRO.XREF_CONDENSED
-        #     (
-        #         PROTEIN_AC VARCHAR2(15) NOT NULL,
-        #         ENTRY_AC VARCHAR2(9) NOT NULL,
-        #         ENTRY_TYPE CHAR(1) NOT NULL,
-        #         ENTRY_NAME VARCHAR2(100) NOT NULL,
-        #         POS_FROM NUMBER(5) NOT NULL,
-        #         POS_TO NUMBER(5) NOT NULL,
-        #         CONSTRAINT FK_XREF_CONDENSED$P
-        #           FOREIGN KEY (PROTEIN_AC)
-        #           REFERENCES PROTEIN (PROTEIN_AC)
-        #           ON DELETE CASCADE ,
-        #         CONSTRAINT FK_XREF_CONDENSED$E
-        #           FOREIGN KEY (ENTRY_AC)
-        #           REFERENCES ENTRY (ENTRY_AC)
-        #           ON DELETE CASCADE ,
-        #         CONSTRAINT FK_XREF_CONDENSED$T
-        #           FOREIGN KEY (ENTRY_TYPE)
-        #           REFERENCES CV_ENTRY_TYPE (CODE)
-        #           ON DELETE CASCADE
-        #     )
-        #     """
-        # )
-        cur.execute(
-            """
-            CREATE TABLE INTERPRO.XREF_CONDENSED
-            (
-                PROTEIN_AC VARCHAR2(15) NOT NULL,
-                ENTRY_AC VARCHAR2(9) NOT NULL,
-                ENTRY_TYPE CHAR(1) NOT NULL,
-                ENTRY_NAME VARCHAR2(100) NOT NULL,
-                POS_FROM NUMBER(5) NOT NULL,
-                POS_TO NUMBER(5) NOT NULL
-            )
-            """
+    except cx_Oracle.DatabaseError as e:
+        _error = e.args[0]
+        if _error.code != 942:
+            # ORA-00942 (table or view does not exist)
+            cur.close()
+            con.close()
+            raise e
+
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.XREF_CONDENSED
+        (
+            PROTEIN_AC VARCHAR2(15) NOT NULL,
+            ENTRY_AC VARCHAR2(9) NOT NULL,
+            ENTRY_TYPE CHAR(1) NOT NULL,
+            ENTRY_NAME VARCHAR2(100) NOT NULL,
+            POS_FROM NUMBER(5) NOT NULL,
+            POS_TO NUMBER(5) NOT NULL
         )
+        PARTITION BY LIST (ENTRY_TYPE) (
+          PARTITION XC_TYPE_A VALUES ('A'),
+          PARTITION XC_TYPE_B VALUES ('B'),
+          PARTITION XC_TYPE_C VALUES ('C'),
+          PARTITION XC_TYPE_D VALUES ('D'),
+          PARTITION XC_TYPE_F VALUES ('F'),
+          PARTITION XC_TYPE_H VALUES ('H'),
+          PARTITION XC_TYPE_P VALUES ('P'),
+          PARTITION XC_TYPE_R VALUES ('R'),
+          PARTITION XC_TYPE_U VALUES ('U')
+        )
+        NOLOGGING 
+        """
+    )
 
     cur.execute(
         """
@@ -116,10 +108,10 @@ def condense_matches(url: str):
     _protein_acc = None
     num_proteins = 0
     query = """
-      INSERT /*+ APPEND */ INTO INTERPRO.XREF_CONDENSED 
+      INSERT /*+ APPEND */ INTO INTERPRO.XREF_CONDENSED
       VALUES (:1, :2, :3, :4, :5, :6)
     """
-    populator = TablePopulator(con, query, autocommit=True)
+    table = TablePopulator(con, query, autocommit=True)
 
     for protein_acc, method_acc, pos_from, pos_to, fragments in cur:
         if protein_acc != _protein_acc:
@@ -128,8 +120,8 @@ def condense_matches(url: str):
                 for entry_acc, frags in matches.items():
                     entry_type, name = entries[entry_acc]
                     for start, end in frags:
-                        populator.insert((_protein_acc, entry_acc, entry_type,
-                                          name, start, end))
+                        table.insert((_protein_acc, entry_acc, entry_type,
+                                      name, start, end))
 
                 num_proteins += 1
                 if not num_proteins % 10000000:
@@ -167,12 +159,28 @@ def condense_matches(url: str):
         for entry_acc, frags in matches.items():
             entry_type, name = entries[entry_acc]
             for start, end in frags:
-                populator.insert((_protein_acc, entry_acc, entry_type,
-                                  name, start, end))
+                table.insert((_protein_acc, entry_acc, entry_type,
+                              name, start, end))
 
         num_proteins += 1
 
-    populator.close()
+    table.close()
+
+    logger.info("creating indexes")
+    cur.execute(
+        """
+        CREATE INDEX I_XREF_CONDENSED$P
+        ON INTERPRO.XREF_CONDENSED (PROTEIN_AC) NOLOGGING
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE INDEX I_XREF_CONDENSED$E
+        ON INTERPRO.XREF_CONDENSED (ENTRY_AC) NOLOGGING
+        """
+    )
+
     cur.close()
     con.close()
     logger.info("proteins processed: {:>15}".format(num_proteins))
