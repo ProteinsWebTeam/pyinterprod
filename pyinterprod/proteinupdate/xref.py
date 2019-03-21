@@ -2,6 +2,7 @@ import cx_Oracle
 
 
 from .. import logger
+from ..orautils import TablePopulator
 
 
 def _condense(matches: dict):
@@ -111,28 +112,24 @@ def condense_matches(url: str):
         """
     )
 
-    cur2 = con.cursor()
     matches = {}
     _protein_acc = None
     num_proteins = 0
+    query = """
+      INSERT /*+ APPEND */ INTO INTERPRO.XREF_CONDENSED 
+      VALUES (:1, :2, :3, :4, :5, :6)
+    """
+    populator = TablePopulator(con, query, autocommit=True)
+
     for protein_acc, method_acc, pos_from, pos_to, fragments in cur:
         if protein_acc != _protein_acc:
-            if _protein_acc:
+            if matches:
                 _condense(matches)
-                cur2.executemany(
-                    """
-                    INSERT INTO INTERPRO.XREF_CONDENSED
-                     VALUES (:1, :2, :3, :4, :5, :6)
-                    """,
-                    (
-                        (
-                            _protein_acc, entry_acc, *entries[entry_acc],
-                            start, end
-                        )
-                        for entry_acc, frags in matches.items()
-                        for start, end in frags
-                    )
-                )
+                for entry_acc, frags in matches.items():
+                    entry_type, name = entries[entry_acc]
+                    for start, end in frags:
+                        populator.insert((_protein_acc, entry_acc, entry_type,
+                                          name, start, end))
 
                 num_proteins += 1
                 if not num_proteins % 10000000:
@@ -167,24 +164,15 @@ def condense_matches(url: str):
 
     if matches:
         _condense(matches)
-        cur2.executemany(
-            """
-            INSERT INTO INTERPRO.XREF_CONDENSED
-             VALUES (:1, :2, :3, :4, :5, :6)
-            """,
-            (
-                (
-                    _protein_acc, entry_acc, *entries[entry_acc],
-                    start, end
-                )
-                for entry_acc, frags in matches.items()
-                for start, end in frags
-            )
-        )
+        for entry_acc, frags in matches.items():
+            entry_type, name = entries[entry_acc]
+            for start, end in frags:
+                populator.insert((_protein_acc, entry_acc, entry_type,
+                                  name, start, end))
 
         num_proteins += 1
         logger.info("proteins processed: {:>15}".format(num_proteins))
 
-    con.commit()
+    populator.close()
     cur.close()
     con.close()
