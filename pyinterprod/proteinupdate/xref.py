@@ -14,17 +14,20 @@ def _condense(matches: dict):
                 # Leftmost fragment
                 start = s
                 end = e
-            elif s > end:
+            elif s > (end + 1):
                 """
                         end
                     ----] 
                           [----
                           s
                 -> new fragment
+                
+                end + 1: the `end` residue is included
+                    so if end = 34 and start = 35, there is not gap
                 """
                 fragments.append((start, end))
                 start = s
-                end = s
+                end = e
             elif e > end:
                 """
                         end
