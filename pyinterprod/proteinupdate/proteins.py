@@ -1,7 +1,7 @@
-import datetime
 import os
 import sqlite3
 from concurrent import futures
+from datetime import datetime
 from tempfile import mkstemp
 from typing import Generator, Optional, Tuple
 
@@ -469,8 +469,8 @@ def _init_protein_changes(con: cx_Oracle.Connection):
     cur.close()
 
 
-def track_changes(url: str, swissprot_path: str, trembl_path: str,
-                  dir: Optional[str]=None):
+def insert_new(url: str, swissprot_path: str, trembl_path: str,
+                        dir: Optional[str]=None):
     logger.info("loading proteins")
     with ProteinDatabase(dir=dir) as db:
         count = db.insert_old(_get_proteins(url))
@@ -499,7 +499,7 @@ def track_changes(url: str, swissprot_path: str, trembl_path: str,
         con.close()
 
 
-def delete(url: str, truncate: bool=False):
+def delete_obsolete(url: str, truncate: bool=False):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -610,8 +610,8 @@ def delete(url: str, truncate: bool=False):
                                "could not be disabled".format(num_errors))
 
 
-def update(url: str, version: str, date: datetime.datetime):
-    delete(url, truncate=True)
+def update_database_info(url: str, version: str, date: str):
+    date = datetime.strptime(date, "%d-%b-%Y")
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
