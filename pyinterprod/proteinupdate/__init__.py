@@ -32,21 +32,28 @@ def main():
         parser.error(e)
 
     interpro_url = config["databases"]["interpro"]["interpro"]
-    uniparc_url = config["databases"]["interpro"]["uniparc"]
-    swissprot_ff = config["flat_files"]["swissprot"]
-    trembl_ff = config["flat_files"]["trembl"]
-
     create_db_links(interpro_url, [
         config["databases"]["iprscan"],
         config["databases"]["uniparc"]
     ])
 
+    swissprot_ff = config["flat_files"]["swissprot"]
+    trembl_ff = config["flat_files"]["trembl"]
     proteins.insert_new(interpro_url, swissprot_ff, trembl_ff, dir=args.tmp)
     proteins.delete_obsolete(interpro_url, truncate=True)
     proteins.update_database_info(interpro_url,
                                   version=config["release"]["version"],
                                   date=config["release"]["date"])
+
+    uniparc_url = config["databases"]["interpro"]["uniparc"]
     uniparc.update(uniparc_url, interpro_url)
     proteins.find_protein_to_refresh(interpro_url)
 
+    # doesnt work on IPTST: use import_mv_iprscan
     # matches.import_ispro(interpro_url)
+
+    matches_dir = config["export"]["matches"]
+    matches.prepare_matches(interpro_url)
+    matches.check_matches(interpro_url, matches_dir)
+    matches.update_matches(interpro_url)
+    matches.track_count_changes(interpro_url, matches_dir)
