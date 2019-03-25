@@ -184,6 +184,8 @@ def condense_matches(url: str):
         """
     )
 
+    cur.execute("GRANT SELECT ON INTERPRO.XREF_CONDENSED TO KRAKEN")
+
     cur.close()
     con.close()
     logger.info("proteins processed: {:>15}".format(num_proteins))
