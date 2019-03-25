@@ -14,5 +14,9 @@
   "release": {
     "version": "",
     "date": ""
+  },
+  "export": {
+    "matches": "",
+    "tab": ""
   }
 }
