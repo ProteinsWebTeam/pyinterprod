@@ -502,7 +502,7 @@ def update_feature_matches(url: str):
     con.close()
 
 
-def post_matches_update(url: str, outdir: str):
+def track_count_changes(url: str, outdir: str):
     with open(os.path.join(outdir, "counts.json"), "rt") as fh:
         prev = json.load(fh)
 
