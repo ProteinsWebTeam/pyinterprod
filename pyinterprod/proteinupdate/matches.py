@@ -253,7 +253,7 @@ def import_mv_iprscan(url_src, url_dst):
                                               obj["service"])
                             )
 
-    logger.info("CREATE TABLE")
+    logger.info("creating table")
     cur.execute(
         """
         CREATE TABLE IPRSCAN.MV_IPRSCAN
@@ -264,7 +264,8 @@ def import_mv_iprscan(url_src, url_dst):
         """
     )
 
-    logger.info("MV_IPRSCAN_ANALYSIS_ID_MAJORX")
+    logger.info("creating indexes")
+    logger.debug("\tMV_IPRSCAN_ANALYSIS_ID_MAJORX")
     cur.execute(
         """
         CREATE INDEX IPRSCAN.MV_IPRSCAN_ANALYSIS_ID_MAJORX
@@ -273,7 +274,7 @@ def import_mv_iprscan(url_src, url_dst):
         """
     )
 
-    logger.info("MV_IPRSCAN_ANALYSIS_ID_UPIX")
+    logger.debug("\tMV_IPRSCAN_ANALYSIS_ID_UPIX")
     cur.execute(
         """
         CREATE INDEX IPRSCAN.MV_IPRSCAN_ANALYSIS_ID_UPIX
@@ -282,7 +283,7 @@ def import_mv_iprscan(url_src, url_dst):
         """
     )
 
-    logger.info("MV_IPRSCAN_UPI_METHOD_ACX")
+    logger.debug("\tMV_IPRSCAN_UPI_METHOD_ACX")
     cur.execute(
         """
         CREATE INDEX IPRSCAN.MV_IPRSCAN_UPI_METHOD_ACX
@@ -291,7 +292,7 @@ def import_mv_iprscan(url_src, url_dst):
         """
     )
 
-    logger.info("MV_IPRSCAN_UPI_METHOD_AN_IDX")
+    logger.debug("\tMV_IPRSCAN_UPI_METHOD_AN_IDX")
     cur.execute(
         """
         CREATE INDEX IPRSCAN.MV_IPRSCAN_UPI_METHOD_AN_IDX
