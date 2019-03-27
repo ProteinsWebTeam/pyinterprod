@@ -94,6 +94,15 @@ def get_partitions(cur: cx_Oracle.Cursor, owner: str, table: str) -> list:
     return [row[0].strip('\'') for row in cur]
 
 
+def drop_table(cur: cx_Oracle.Cursor, owner: str, table: str):
+    try:
+        cur.execute("DROP TABLE {}.{}".format(owner, table))
+    except cx_Oracle.DatabaseError as exc:
+        error, = exc.args
+        if error.code != 942:
+            raise exc
+
+
 def delete_iter(url: str, table: str, column: str, stop: int, step: int,
                 partition: Optional[str]=None):
     con = cx_Oracle.connect(url)

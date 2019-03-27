@@ -245,8 +245,8 @@ def import_mv_iprscan(url_src, url_dst):
 
     con = cx_Oracle.connect(url_dst)
     cur = con.cursor()
-    logger.info("DROP TABLE")
-    cur.execute("DROP TABLE IPRSCAN.MV_IPRSCAN")
+    logger.info("dropping table")
+    orautils.drop_table(cur, "IPRSCAN", "MV_IPRSCAN")
 
     orautils.create_db_link(cur, "IPPRO", obj["username"], obj["password"],
                             "{}:{}/{}".format(obj["host"], obj["port"],
@@ -466,6 +466,11 @@ def update_feature_matches(url: str):
     logger.info("updating feature matches")
     con = cx_Oracle.connect(url)
     cur = con.cursor()
+
+    # Make sure legacy tables are dropped
+    for t in ("FEATURE_MATCH_NEW", "FEATURE_MATCH_NEW_STG"):
+        orautils.drop_table(cur, "INTERPRO", t)
+
     cur.execute(
         """
         DELETE FROM INTERPRO.FEATURE_MATCH
