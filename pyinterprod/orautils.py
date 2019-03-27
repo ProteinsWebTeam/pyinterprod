@@ -99,6 +99,8 @@ def drop_table(cur: cx_Oracle.Cursor, owner: str, table: str):
         cur.execute("DROP TABLE {}.{}".format(owner, table))
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
+
+        # ORA-00942 (table or view does not exist)
         if error.code != 942:
             raise exc
 

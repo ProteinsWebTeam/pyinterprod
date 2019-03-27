@@ -1,8 +1,7 @@
 import cx_Oracle
 
 
-from .. import logger
-from ..orautils import TablePopulator
+from .. import logger, orautils
 
 
 def _condense(matches: dict):
@@ -47,16 +46,7 @@ def condense_matches(url: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
-    try:
-        cur.execute("DROP TABLE INTERPRO.XREF_CONDENSED")
-    except cx_Oracle.DatabaseError as e:
-        _error = e.args[0]
-        if _error.code != 942:
-            # ORA-00942 (table or view does not exist)
-            cur.close()
-            con.close()
-            raise e
-
+    orautils.drop_table(cur, "INTERPRO", "XREF_CONDENSED")
     cur.execute(
         """
         CREATE TABLE INTERPRO.XREF_CONDENSED
@@ -114,7 +104,7 @@ def condense_matches(url: str):
       INSERT /*+ APPEND */ INTO INTERPRO.XREF_CONDENSED
       VALUES (:1, :2, :3, :4, :5, :6)
     """
-    table = TablePopulator(con, query, autocommit=True)
+    table = orautils.TablePopulator(con, query, autocommit=True)
 
     for protein_acc, method_acc, pos_from, pos_to, fragments in cur:
         if protein_acc != _protein_acc:
