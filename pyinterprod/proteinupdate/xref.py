@@ -20,10 +20,11 @@ def _condense(matches: dict):
                           [----
                           s
                 -> new fragment
-                   even if end=34 and start=35: we do not want to merge:
-                       end  start
-                      ----][----
+                
+                   but if end=34 and s=35, we do not want to merge:
 
+                       end s
+                      ----][----
                 """
                 fragments.append((start, end))
                 start = s
