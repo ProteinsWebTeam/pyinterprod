@@ -13,16 +13,17 @@ def _condense(matches: dict):
                 # Leftmost fragment
                 start = s
                 end = e
-            elif s > (end + 1):
+            elif s > end:
                 """
                         end
                     ----] 
                           [----
                           s
                 -> new fragment
-                
-                end + 1: the `end` residue is included
-                    so if end = 34 and start = 35, there is not gap
+                   even if end=34 and start=35: we do not want to merge:
+                       end  start
+                      ----][----
+
                 """
                 fragments.append((start, end))
                 start = s
@@ -41,8 +42,8 @@ def _condense(matches: dict):
         matches[entry_acc] = fragments
 
 
-def condense_matches(url: str):
-    logger.info("condensing matches")
+def build_condensed_matches(url: str):
+    logger.info("building XREF_CONDENSED")
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -69,7 +70,6 @@ def condense_matches(url: str):
           PARTITION XC_TYPE_R VALUES ('R'),
           PARTITION XC_TYPE_U VALUES ('U')
         )
-        NOLOGGING 
         """
     )
 
@@ -101,7 +101,7 @@ def condense_matches(url: str):
     _protein_acc = None
     num_proteins = 0
     query = """
-      INSERT /*+ APPEND */ INTO INTERPRO.XREF_CONDENSED
+      INSERT INTO INTERPRO.XREF_CONDENSED
       VALUES (:1, :2, :3, :4, :5, :6)
     """
     table = orautils.TablePopulator(con, query, autocommit=True)
@@ -179,3 +179,13 @@ def condense_matches(url: str):
     cur.close()
     con.close()
     logger.info("proteins processed: {:>15}".format(num_proteins))
+
+
+def build_summary(url: str):
+    logger.info("building XREF_SUMMARY")
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    orautils.drop_table(cur, "INTERPRO", "XREF_SUMMARY")
+
+    cur.close()
+    con.close()
