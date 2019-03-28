@@ -12,9 +12,9 @@ def refresh(url: str):
     cur.execute(
         """
         CREATE TABLE INTERPRO.MV_METHOD2PROTEIN (
-            METHOD_AC NOT NULL VARCHAR2(25),
-            PROTEIN_AC NOT NULL VARCHAR2(15),
-            MATCH_COUNT NOT NULL NUMBER(7)
+            METHOD_AC VARCHAR2(25) NOT NULL ,
+            PROTEIN_AC VARCHAR2(15) NOT NULL,
+            MATCH_COUNT NUMBER(7) NOT NULL
         ) NOLOGGING
         """
     )
@@ -41,9 +41,9 @@ def refresh(url: str):
     cur.execute(
         """
         CREATE TABLE INTERPRO.MV_METHOD_MATCH (
-            METHOD_AC NOT NULL VARCHAR2(25),
-            PROTEIN_COUNT NOT NULL NUMBER(8),
-            MATCH_COUNT NOT NULL NUMBER(8)
+            METHOD_AC VARCHAR2(25) NOT NULL,
+            PROTEIN_COUNT NUMBER(8) NOT NULL,
+            MATCH_COUNT NUMBER(8) NOT NULL
         ) NOLOGGING
         """
     )
@@ -70,9 +70,9 @@ def refresh(url: str):
     cur.execute(
         """
         CREATE TABLE INTERPRO.MV_ENTRY2PROTEIN (
-            ENTRY_AC NOT NULL VARCHAR2(9),
-            PROTEIN_AC NOT NULL VARCHAR2(15),
-            MATCH_COUNT NOT NULL NUMBER(7)
+            ENTRY_AC VARCHAR2(9) NOT NULL,
+            PROTEIN_AC VARCHAR2(15) NOT NULL,
+            MATCH_COUNT NUMBER(7) NOT NULL
         ) NOLOGGING
         """
     )
