@@ -401,7 +401,7 @@ def _prepare_deletion(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
         if len(items) == _MAX_ITEMS:
             cur.executemany(
                 """
-                INSERT /*+APPEND*/ INTO INTERPRO.PROTEIN_TO_DELETE
+                INSERT INTO INTERPRO.PROTEIN_TO_DELETE
                 VALUES (:1, :2)
                 """,
                 items
@@ -412,7 +412,7 @@ def _prepare_deletion(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
     if items:
         cur.executemany(
             """
-            INSERT /*+APPEND*/ INTO INTERPRO.PROTEIN_TO_DELETE
+            INSERT INTO INTERPRO.PROTEIN_TO_DELETE
             VALUES (:1, :2)
             """,
             items
