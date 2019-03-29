@@ -556,3 +556,74 @@ def track_count_changes(url: str, outdir: str):
 
         for dbcode, pc, nc in sorted(changes):
             fh.write("{}\t{}\t{}\n".format(dbcode, pc, nc))
+
+
+def update_alt_splicing_matches(url: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    logger.info("dropping table")
+    for t in ("VARSPLIC_MASTER", "VARSPLIC_MATCH", "VARSPLIC_NEW"):
+        orautils.drop_table(cur, "INTERPRO", t)
+
+    logger.info("building talbe")
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.VARSPLIC (
+            PROTEIN_AC VARCHAR2(15) NOT NULL,
+            VARIANT NUMBER(3) NOT NULL,
+            LEN NUMBER(5) NOT NULL,
+            METHOD_AC VARCHAR2(25) NOT NULL,
+            DBCODE CHAR(1),
+            POS_FROM NUMBER NOT NULL,
+            POS_TO NUMBER NOT NULL,
+            FRAGMENTS VARCHAR2(400),
+            MODEL_AC VARCHAR2(255)
+        ) NOLOGGING 
+        """
+    )
+
+    cur.execute(
+        """
+        INSERT /*+ APPEND */ INTO INTERPRO.VARSPLIC
+        SELECT 
+            SUBSTR(X.AC, 1, INSTR(X.AC, '-') - 1),
+            SUBSTR(X.AC, INSTR(X.AC, '-') + 1),
+            P.LEN,
+            M.METHOD_AC,
+            I2D.DBCODE,
+            M.SEQ_START,
+            M.SEQ_END,
+            M.FRAGMENTS,
+            M.MODEL_AC
+        FROM UNIPARC.XREF X
+        INNER JOIN UNIPARC.PROTEIN P
+          ON X.UPI = P.UPI
+        INNER JOIN IPRSCAN.MV_IPRSCAN M
+          ON X.UPI = M.UPI
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
+          ON M.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
+        WHERE X.DBID IN (24, 25)
+        AND X.DELETED = 'N'
+        AND I2D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
+        """
+    )
+    con.commit()
+
+    logger.info("indexing table")
+    cur.execute(
+        """
+        CREATE INDEX I_VARSPLIC$P
+        ON INTERPRO.VARSPLIC (PROTEIN_AC) NOLOGGING
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE INDEX I_VARSPLIC$M
+        ON INTERPRO.VARSPLIC (METHOD_AC) NOLOGGING
+        """
+    )
+
+
+    cur.close()
+    con.close()
