@@ -16,11 +16,11 @@ def _condense(matches: dict):
             elif s > end:
                 """
                         end
-                    ----] 
+                    ----]
                           [----
                           s
                 -> new fragment
-                
+
                    but if end=34 and s=35, we do not want to merge:
 
                        end s
@@ -32,7 +32,7 @@ def _condense(matches: dict):
             elif e > end:
                 """
                         end
-                    ----] 
+                    ----]
                       ------]
                             e
                 -> extend
@@ -94,7 +94,7 @@ def build_condensed_matches(url: str):
         """
         SELECT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, FRAGMENTS
         FROM INTERPRO.MATCH
-        ORDER BY PROTEIN_AC        
+        ORDER BY PROTEIN_AC
         """
     )
 
@@ -142,7 +142,7 @@ def build_condensed_matches(url: str):
                 start = int(start)
                 end = int(end)
 
-                if start < end:
+                if start <= end:
                     entry.append((start, end))
 
         if not entry:
