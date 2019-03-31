@@ -78,9 +78,9 @@ def refresh(url: str):
     )
     cur.execute(
         """
-        INSERT /*+ APPEND */ INTO INTERPRO.MV_ENTRY2PROTEIN
+        INSERT /*+ APPEND */ INTO INTERPRO.MV_ENTRY2PROTEIN_TRUE
         SELECT E.ENTRY_AC, M.PROTEIN_AC, COUNT(*)
-        FROM INTERPRO.ENTRY2MATCH E
+        FROM INTERPRO.ENTRY2METHOD E
         INNER JOIN INTERPRO.MV_METHOD2PROTEIN M
             ON E.METHOD_AC = M.METHOD_AC
         GROUP BY E.ENTRY_AC, M.PROTEIN_AC
@@ -91,7 +91,7 @@ def refresh(url: str):
     logger.info("indexing MV_ENTRY2PROTEIN")
     cur.execute(
         """
-        CREATE INDEX I_MV_ENTRY2PROTEIN
+        CREATE INDEX I_MV_ENTRY2PROTEIN_TRUE
         ON INTERPRO.MV_ENTRY2PROTEIN (ENTRY_AC)
         """
     )
