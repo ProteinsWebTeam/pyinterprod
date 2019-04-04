@@ -66,7 +66,7 @@ def build_condensed_matches(url: str):
           PARTITION PART_P VALUES ('P'),
           PARTITION PART_R VALUES ('R'),
           PARTITION PART_U VALUES ('U')
-        ) NOLOGGING 
+        ) COMPRESS NOLOGGING 
         """
     )
 
