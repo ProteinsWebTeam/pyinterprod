@@ -105,6 +105,25 @@ def drop_table(cur: cx_Oracle.Cursor, owner: str, table: str):
             raise exc
 
 
+def grant(cur: cx_Oracle.Cursor, owner: str, table: str, privilege: str,
+          grantee: str):
+    cur.execute("GRANT {} ON {}.{} TO {}".format(privilege, owner, table,
+                                                 grantee))
+
+
+def gather_stats(cur: cx_Oracle.Cursor, owner: str, table: str):
+    cur.callproc("DBMS_STATS.GATHER_TABLE_STATS", (owner, table))
+
+
+def truncate_table(cur: cx_Oracle.Cursor, owner: str, table: str,
+                   reuse: bool=False):
+    query = "TRUNCATE TABLE {}.{}".format(owner, table)
+    if reuse:
+        query += " REUSE STORAGE"
+
+    cur.execute(query)
+
+
 def delete_iter(url: str, table: str, column: str, stop: int, step: int,
                 partition: Optional[str]=None):
     con = cx_Oracle.connect(url)
