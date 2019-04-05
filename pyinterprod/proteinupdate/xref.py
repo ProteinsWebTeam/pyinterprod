@@ -66,7 +66,7 @@ def build_condensed_matches(url: str):
           PARTITION PART_P VALUES ('P'),
           PARTITION PART_R VALUES ('R'),
           PARTITION PART_U VALUES ('U')
-        ) COMPRESS NOLOGGING 
+        ) COMPRESS NOLOGGING
         """
     )
 
@@ -214,14 +214,14 @@ def build_summary(url: str):
           PARTITION PART_V VALUES ('V'),
           PARTITION PART_X VALUES ('X'),
           PARTITION PART_Y VALUES ('Y')
-        ) COMPRESS NOLOGGING 
+        ) COMPRESS NOLOGGING
         """
     )
 
     cur.execute(
         """
         INSERT /*+ APPEND */ INTO INTERPRO.XREF_SUMMARY
-        SELECT 
+        SELECT
           MA.DBCODE,
           MA.PROTEIN_AC,
           E.ENTRY_AC,
@@ -268,9 +268,9 @@ def check_summary(url: str):
         """
         SELECT COUNT(*)
         FROM INTERPRO.XREF_SUMMARY XS
-        INNER JOIN INTERPRO.PROTEIN IP 
+        INNER JOIN INTERPRO.PROTEIN IP
           ON XS.PROTEIN_AC = IP.PROTEIN_AC
-        INNER JOIN UNIPARC.XREF UX 
+        INNER JOIN UNIPARC.XREF UX
           ON XS.PROTEIN_AC = UX.AC
         INNER JOIN UNIPARC.PROTEIN UP
           ON UX.UPI = UP.UPI
@@ -294,13 +294,13 @@ def export_databases(url: str, dst: str):
     cur = con.cursor()
     cur.execute(
         """
-        SELECT 
-          PROTEIN_AC, 
-          METHOD_AC, 
+        SELECT
+          PROTEIN_AC,
+          METHOD_AC,
           MIN(METHOD_NAME),
           MIN(DBCODE),
-          MIN(ENTRY_AC), 
-          MIN(SHORT_NAME), 
+          MIN(ENTRY_AC),
+          MIN(SHORT_NAME),
           COUNT(*)
         FROM INTERPRO.XREF_SUMMARY
         GROUP BY PROTEIN_AC, METHOD_AC
@@ -363,7 +363,7 @@ def export_databases(url: str, dst: str):
             # PRINTS: do not print match count
             fh2.write("{}   DR   {}; {}; {}.\n".format(*row))
         else:
-            fh2.write("{}   DR   {}; {}; {}; {}\n.".format(*row))
+            fh2.write("{}   DR   {}; {}; {}; {}.\n".format(*row))
 
         if protein_acc != _protein:
             for _entry in sorted(entries):
