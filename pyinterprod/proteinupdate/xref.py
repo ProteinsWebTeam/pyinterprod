@@ -271,11 +271,11 @@ def check_summary(url: str):
         INNER JOIN INTERPRO.PROTEIN IP 
           ON XS.PROTEIN_AC = IP.PROTEIN_AC
         INNER JOIN UNIPARC.XREF UX 
-          ON XS.PROTEIN_AC = UX.AC AND UX.DELETED = 'N'
+          ON XS.PROTEIN_AC = UX.AC
         INNER JOIN UNIPARC.PROTEIN UP
           ON UX.UPI = UP.UPI
         INNER JOIN INTERPRO.PROTEIN IP ON UX.AC = IP.PROTEIN_AC
-        WHERE IP.CRC64 != UP.CRC64
+        WHERE UX.DELETED = 'N' AND IP.CRC64 != UP.CRC64
         """
     )
     num_miscmatches = cur.fetchone()[0]
