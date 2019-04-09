@@ -695,3 +695,32 @@ def find_protein_to_refresh(url: str):
     con.commit()
     cur.close()
     con.close()
+
+
+def check_crc64(url: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT IP.PROTEIN_AC, IP.CRC64, UP.CRC64
+        FROM INTERPRO.PROTEIN IP
+        INNER JOIN UNIPARC.XREF UX 
+          ON IP.PROTEIN_AC = UX.AC
+        INNER JOIN UNIPARC.PROTEIN UP
+          ON UX.UPI = UP.UPI
+        WHERE UX.DBID IN (2, 3)
+        AND UX.DELETED = 'N'
+        AND IP.CRC64 != UP.CRC64
+        """
+    )
+
+    num_errors = 0
+    for row in cur:
+        logger.debug("{}: {} / {}".format(*row))
+        num_errors += 1
+
+    cur.close()
+    con.close()
+
+    if num_errors:
+        raise RuntimeError("{} CRC64 mismatches".format(num_errors))
