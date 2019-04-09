@@ -39,7 +39,7 @@ def _condense(matches: dict):
         matches[entry_acc] = fragments
 
 
-def build_condensed_matches(url: str):
+def build_xref_condensed(url: str):
     logger.info("building XREF_CONDENSED")
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -180,7 +180,7 @@ def build_condensed_matches(url: str):
     logger.info("proteins processed: {:>15}".format(num_proteins))
 
 
-def build_summary(url: str):
+def build_xref_summary(url: str):
     logger.info("building XREF_SUMMARY")
     con = cx_Oracle.connect(url)
     cur = con.cursor()
