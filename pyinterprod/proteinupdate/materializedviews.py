@@ -65,11 +65,11 @@ def refresh(url: str):
         """
     )
 
-    logger.info("creating MV_ENTRY2PROTEIN")
-    orautils.drop_table(cur, "INTERPRO", "MV_ENTRY2PROTEIN")
+    logger.info("creating MV_ENTRY2PROTEIN_TRUE")
+    orautils.drop_table(cur, "INTERPRO", "MV_ENTRY2PROTEIN_TRUE")
     cur.execute(
         """
-        CREATE TABLE INTERPRO.MV_ENTRY2PROTEIN (
+        CREATE TABLE INTERPRO.MV_ENTRY2PROTEIN_TRUE (
             ENTRY_AC VARCHAR2(9) NOT NULL,
             PROTEIN_AC VARCHAR2(15) NOT NULL,
             MATCH_COUNT NUMBER(7) NOT NULL
@@ -88,7 +88,7 @@ def refresh(url: str):
     )
     con.commit()
 
-    logger.info("indexing MV_ENTRY2PROTEIN")
+    logger.info("indexing MV_ENTRY2PROTEIN_TRUE")
     cur.execute(
         """
         CREATE INDEX I_MV_ENTRY2PROTEIN_TRUE
