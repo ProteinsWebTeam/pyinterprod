@@ -156,6 +156,9 @@ def build_condensed_matches(url: str):
 
     table.close()
 
+    logger.info("gathering statistics")
+    orautils.gather_stats(cur, "INTERPRO", "XREF_CONDENSED")
+
     logger.info("creating indexes")
     cur.execute(
         """
