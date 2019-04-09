@@ -1,5 +1,5 @@
 import re
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import cx_Oracle
 
@@ -205,22 +205,16 @@ def get_indexes(cur: cx_Oracle.Cursor, owner: str, table: str):
     return [row[0] for row in cur]
 
 
-def create_db_links(url: str, urls: List[str]):
+def create_db_links(url: str, urls: Dict[str: str]):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    for obj in map(parse_url, urls):
-        if obj["service"].startswith(('V', 'v')):
-            link = obj["service"][1:]
-        else:
-            link = obj["service"]
-
+    for link_name, link_url in urls.items():
+        link = parse_url(link_url)
         create_db_link(cur,
-                       link=link,
-                       user=obj["username"],
-                       passwd=obj["password"],
-                       connect_string="{}:{}/{}".format(obj["host"],
-                                                        obj["port"],
-                                                        obj["service"])
+                       link=link_name,
+                       user=link["username"],
+                       passwd=link["password"],
+                       connect_string="{host}:{port}/:{service}".format(**link)
                        )
 
     cur.close()

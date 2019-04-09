@@ -32,10 +32,7 @@ def main():
         parser.error(e)
 
     interpro_url = config["databases"]["interpro"]["interpro"]
-    create_db_links(interpro_url, [
-        config["databases"]["iprscan"],
-        config["databases"]["uniparc"]
-    ])
+    create_db_links(interpro_url, config["databases"]["others"])
 
     swissprot_ff = config["flat_files"]["swissprot"]
     trembl_ff = config["flat_files"]["trembl"]
