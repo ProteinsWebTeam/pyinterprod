@@ -552,13 +552,14 @@ def delete_obsolete(user: str, dsn: str, truncate: bool=False):
 
             if tn == "MATCH":
                 # for MATCH table: delete by partition
-                dbcodes = orautils.get_partitions(cur, to, tn)
-                for dbcode in dbcodes:
+                partitions = orautils.get_partitions(cur, to, tn)
+                for p in partitions:
                     f = executor.submit(orautils.delete_iter, url, tn, tc,
-                                        count, _MAX_ITEMS, dbcode)
-                    p = dict(t)  # shallow copy
-                    p["partition"] = dbcode
-                    fs[f] = p
+                                        count, _MAX_ITEMS, p["name"])
+
+                    t2 = dict(t)  # shallow copy
+                    t2["partition"] = p["name"]
+                    fs[f] = t2
             else:
                 f = executor.submit(orautils.delete_iter, url, tn, tc, count,
                                     _MAX_ITEMS)
@@ -570,7 +571,7 @@ def delete_obsolete(user: str, dsn: str, truncate: bool=False):
             t = fs[f]
 
             if t.get("partition"):
-                name = "{} ({})".format(t["name"], t["partition"])
+                name = "{name} ({partition})".format(**t)
             else:
                 name = t["name"]
 

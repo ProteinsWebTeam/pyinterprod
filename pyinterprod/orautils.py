@@ -81,17 +81,20 @@ def toggle_constraint(cur: cx_Oracle.Cursor, owner: str, table: str,
         return True
 
 
-def get_partitions(cur: cx_Oracle.Cursor, owner: str, table: str) -> list:
+def get_partitions(cur: cx_Oracle.Cursor, owner: str,
+                   table: str) -> List[dict]:
     cur.execute(
         """
-        SELECT PARTITION_NAME
+        SELECT PARTITION_NAME, HIGH_VALUE
         FROM ALL_TAB_PARTITIONS
         WHERE TABLE_OWNER = :1
         AND TABLE_NAME = :2
+        ORDER BY PARTITION_POSITION
         """,
         (owner, table)
     )
-    return [row[0].strip('\'') for row in cur]
+    cols = ("name", "value")
+    return [dict(zip(cols, row)) for row in cur]
 
 
 def drop_table(cur: cx_Oracle.Cursor, owner: str, table: str):
