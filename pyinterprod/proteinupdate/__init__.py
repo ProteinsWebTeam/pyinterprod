@@ -42,8 +42,7 @@ def main():
                                   version=config["release"]["version"],
                                   date=config["release"]["date"])
 
-    uniparc_url = config["databases"]["interpro"]["uniparc"]
-    uniparc.update(uniparc_url, interpro_url)
+    uniparc.update(config["databases"]["interpro"]["uniparc"])
     proteins.find_protein_to_refresh(interpro_url)
 
     # doesnt work on IPTST: use import_mv_iprscan

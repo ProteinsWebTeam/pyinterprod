@@ -3,7 +3,7 @@ import cx_Oracle
 from .. import logger
 
 
-def update(uniparc_url: str, interpro_url: str):
+def update(uniparc_url: str):
     con = cx_Oracle.connect(uniparc_url)
     cur = con.cursor()
 
