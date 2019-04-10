@@ -209,10 +209,10 @@ def make_connect_string(user: str, dsn: str) -> str:
     return user + '@' + dsn
 
 
-def create_db_links(user: str, dsn: str, urls: Dict[str, str]):
+def create_db_links(user: str, dsn: str, links: Dict[str, str]):
     con = cx_Oracle.connect(make_connect_string(user, dsn))
     cur = con.cursor()
-    for link_name, link_url in urls.items():
+    for link_name, link_url in links.items():
         link = parse_url(link_url)
         create_db_link(cur,
                        link=link_name,
