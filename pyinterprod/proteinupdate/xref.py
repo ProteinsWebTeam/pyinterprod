@@ -263,34 +263,6 @@ def build_xref_summary(url: str):
     con.close()
 
 
-def check_summary(url: str):
-    logger.info("checking CRC64 mismatches")
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT COUNT(*)
-        FROM INTERPRO.XREF_SUMMARY XS
-        INNER JOIN INTERPRO.PROTEIN IP
-          ON XS.PROTEIN_AC = IP.PROTEIN_AC
-        INNER JOIN UNIPARC.XREF UX
-          ON XS.PROTEIN_AC = UX.AC
-        INNER JOIN UNIPARC.PROTEIN UP
-          ON UX.UPI = UP.UPI
-        INNER JOIN INTERPRO.PROTEIN IP ON UX.AC = IP.PROTEIN_AC
-        WHERE UX.DELETED = 'N' AND IP.CRC64 != UP.CRC64
-        """
-    )
-    num_miscmatches = cur.fetchone()[0]
-    cur.close()
-    con.close()
-
-    if num_miscmatches:
-        raise RuntimeError("{} CRC64 mismatches".format(num_miscmatches))
-    else:
-        logger.info("no CRC64 mismatches")
-
-
 def export_databases(url: str, dst: str):
     logger.info("exporting dat/tab files")
     con = cx_Oracle.connect(url)
