@@ -81,6 +81,24 @@ def toggle_constraint(cur: cx_Oracle.Cursor, owner: str, table: str,
         return True
 
 
+def get_partitioning_key(cur: cx_Oracle.Cursor, owner: str, table: str) -> str:
+    cur.execute(
+        """
+        SELECT COLUMN_NAME
+        FROM ALL_PART_KEY_COLUMNS
+        WHERE OWNER = :1
+        AND NAME = :2
+        """,
+        (owner, table)
+    )
+    columns = [row[0] for row in cur]
+
+    if len(columns) > 1:
+        raise ValueError("Multi-columns partitioning keys are not supported")
+
+    return columns[0]
+
+
 def get_partitions(cur: cx_Oracle.Cursor, owner: str,
                    table: str) -> List[dict]:
     cur.execute(
@@ -173,7 +191,7 @@ def delete_iter(url: str, table: str, column: str, stop: int, step: int,
 
 
 def create_db_link(cur: cx_Oracle.Cursor, link: str, user: str, passwd: str,
-                   connect_string: str):
+                   dsn: str):
     try:
         cur.execute("DROP PUBLIC DATABASE LINK {}".format(link))
     except cx_Oracle.DatabaseError as e:
@@ -191,7 +209,7 @@ def create_db_link(cur: cx_Oracle.Cursor, link: str, user: str, passwd: str,
         CREATE PUBLIC DATABASE LINK {}
         CONNECT TO {} IDENTIFIED BY {}
         USING '{}'
-        """.format(link, user, passwd, connect_string)
+        """.format(link, user, passwd, dsn)
     )
 
 
@@ -221,7 +239,7 @@ def create_db_links(user: str, dsn: str, links: Dict[str, str]):
                        link=link_name,
                        user=link["username"],
                        passwd=link["password"],
-                       connect_string="{host}:{port}/{service}".format(**link)
+                       dsn="{host}:{port}/{service}".format(**link)
                        )
 
     cur.close()

@@ -223,31 +223,47 @@ def import_ispro(user: str, dsn: str, **kwargs):
     #
 
 
-def _import_mv_iprscan(url_src, url_dst):
-    obj = orautils.parse_url(url_src)
-
-    con = cx_Oracle.connect(url_dst)
+def _import_mv_iprscan(url: str, url_src: str):
+    # Get table partitions (source database)
+    con = cx_Oracle.connect(url_src)
     cur = con.cursor()
-    logger.info("dropping table")
-    orautils.drop_table(cur, "IPRSCAN", "MV_IPRSCAN")
+    partitions = orautils.get_partitions(cur, "IPRSCAN", "MV_IPRSCAN")
+    column = orautils.get_partitioning_key(cur, "IPRSCAN", "MV_IPRSCAN")
+    cur.close()
+    con.close()
 
-    orautils.create_db_link(cur, "IPPRO", obj["username"], obj["password"],
-                            "{}:{}/{}".format(obj["host"], obj["port"],
-                                              obj["service"])
+    # Open connection (target database)
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    # Create link to source database
+    link = orautils.parse_url(url_src)
+    orautils.create_db_link(cur,
+                            link="IPPRO",
+                            user=link["username"],
+                            passwd=link["password"],
+                            dsn="{host}:{port}/{service}".format(**link)
                             )
 
+    # Building TABLE
     logger.info("creating table")
-    cur.execute(
-        """
-        CREATE TABLE IPRSCAN.MV_IPRSCAN
-        TABLESPACE IPRSCAN_TAB
-        AS
-        SELECT *
-        FROM IPRSCAN.MV_IPRSCAN@IPPRO
-        """
-    )
+    query = "CREATE TABLE IPRSCAN.MV_IPRSCAN"
+    if partitions:
+        query += " PARTITION BY LIST ({}) ({})".format(
+            column,
+            ','.join([
+                "PARTITION {name} VALUES ({value})".format(**p)
+                for p in partitions
+            ])
+        )
 
-    logger.info("creating indexes")
+    query += " AS SELECT * FROM IPRSCAN.MV_IPRSCAN@IPPRO"
+
+    orautils.drop_table(cur, "IPRSCAN", "MV_IPRSCAN")
+    cur.execute(query)
+
+    # Building indices
+    logger.info("creating indices")
     logger.debug("\tMV_IPRSCAN_ANALYSIS_ID_MAJORX")
     cur.execute(
         """
