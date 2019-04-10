@@ -94,7 +94,7 @@ def get_partitioning_key(cur: cx_Oracle.Cursor, owner: str, table: str) -> str:
     columns = [row[0] for row in cur]
 
     if len(columns) > 1:
-        raise ValueError("Multi-columns partitioning keys are not supported")
+        raise ValueError("Multi-column partitioning keys are not supported")
 
     return columns[0]
 
