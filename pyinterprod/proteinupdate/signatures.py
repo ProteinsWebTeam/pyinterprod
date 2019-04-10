@@ -1,8 +1,10 @@
 import cx_Oracle
 
+from ..orautils import make_connect_string
 
-def update_method2descriptions(url: str):
-    con = cx_Oracle.connect(url)
+
+def update_method2descriptions(user: str, dsn: str):
+    con = cx_Oracle.connect(make_connect_string(user, dsn))
     cur = con.cursor()
     cur.execute("TRUNCATE TABLE INTERPRO.METHOD2SWISS_DE")
     cur.execute(

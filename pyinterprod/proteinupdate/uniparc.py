@@ -1,10 +1,10 @@
 import cx_Oracle
 
-from .. import logger
+from .. import logger, orautils
 
 
-def update(uniparc_url: str):
-    con = cx_Oracle.connect(uniparc_url)
+def update(user: str, dsn: str):
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
     logger.info("creating UNIPARC.XREF")

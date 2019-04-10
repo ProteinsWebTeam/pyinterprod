@@ -9,7 +9,7 @@ import cx_Oracle
 from .. import logger, orautils
 
 
-def get_max_upi(url: str, analysis_id: int) -> Optional[str]:
+def _get_max_upi(url: str, analysis_id: int) -> Optional[str]:
     upis = []
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -81,22 +81,7 @@ def get_max_upi(url: str, analysis_id: int) -> Optional[str]:
         return None
 
 
-def get_analysis_max_upi(url: str, table: str) -> str:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT MAX(UPI)
-        FROM IPRSCAN.{}@ISPRO
-        """.format(table)
-    )
-    row = cur.fetchone()
-    cur.close()
-    con.close()
-    return row[0]
-
-
-def get_ispro_upis(url: str) -> List[dict]:
+def _get_ispro_upis(url: str) -> List[dict]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
@@ -138,7 +123,7 @@ def get_ispro_upis(url: str) -> List[dict]:
     with ThreadPoolExecutor() as executor:
         fs = {}
         for e in analyses:
-            f = executor.submit(get_max_upi, url, e["id"])
+            f = executor.submit(_get_max_upi, url, e["id"])
             fs[f] = e
 
         for f in as_completed(fs):
@@ -155,8 +140,8 @@ def get_ispro_upis(url: str) -> List[dict]:
     return analyses
 
 
-def check_ispro(url: str, max_attempts: int=0, secs: int=600,
-                exclude: Optional[Collection[str]]=None) -> List[dict]:
+def _check_ispro(url: str, max_attempts: int=1, secs: int=600,
+                 exclude: Optional[Collection[str]]=None) -> List[dict]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
@@ -166,7 +151,7 @@ def check_ispro(url: str, max_attempts: int=0, secs: int=600,
 
     num_attempts = 0
     while True:
-        analyses = get_ispro_upis(url)
+        analyses = _get_ispro_upis(url)
         all_ready = True
         for e in analyses:
             if exclude and e["name"] in exclude:
@@ -177,7 +162,7 @@ def check_ispro(url: str, max_attempts: int=0, secs: int=600,
                 status = "not ready"
                 all_ready = False
 
-            logger.debug("{id:<5}{full_name:<15}{table:<30}{upi:<20}"
+            logger.debug("{id:<5}{full_name:<30}{table:<30}{upi:<20}"
                          "{status}".format(**e, status=status))
 
         num_attempts += 1
@@ -192,28 +177,31 @@ def check_ispro(url: str, max_attempts: int=0, secs: int=600,
     return analyses
 
 
-def import_ispro(url: str, **kwargs):
-    tables = check_ispro(url, **kwargs)
+def import_ispro(user: str, dsn: str, **kwargs):
+    url = orautils.make_connect_string(user, dsn)
+    analyses = _check_ispro(url, **kwargs)
 
+    logger.info("refreshing materialized views")
     with ThreadPoolExecutor() as executor:
         fs = {}
-        for table in tables:
-            mview = "MV_" + table
+        for analysis in analyses:
+            mview = "MV_" + analysis["table"].upper()
             f = executor.submit(orautils.refresh_mview, url, mview)
             fs[f] = mview
 
-        success = True
+        num_errors = 0
         for f in as_completed(fs):
             mview = fs[f]
-            e = f.exception()
-            if e:
-                success = False
-                logger.error("{}: {}".format(mview, e))
-            else:
+            exc = f.exception()
+            if exc is None:
                 logger.info("{}: refreshed".format(mview))
+            else:
+                logger.error("{}: {}".format(mview, exc))
+                num_errors += 1
 
-    if not success:
-        raise RuntimeError()
+    if num_errors:
+        raise RuntimeError("{} materialized views "
+                           "were not refreshed".format(num_errors))
 
     # con = cx_Oracle.connect(url)
     # cur = con.cursor()
@@ -234,7 +222,7 @@ def import_ispro(url: str, **kwargs):
     #
 
 
-def import_mv_iprscan(url_src, url_dst):
+def _import_mv_iprscan(url_src, url_dst):
     obj = orautils.parse_url(url_src)
 
     con = cx_Oracle.connect(url_dst)
@@ -299,8 +287,8 @@ def import_mv_iprscan(url_src, url_dst):
     con.close()
 
 
-def prepare_matches(url: str):
-    con = cx_Oracle.connect(url)
+def prepare_matches(user: str, dsn: str):
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
     logger.info("adding new matches")
@@ -357,7 +345,7 @@ def prepare_matches(url: str):
     con.close()
 
 
-def get_match_counts(cur: cx_Oracle.Cursor) -> tuple:
+def _get_match_counts(cur: cx_Oracle.Cursor) -> tuple:
     logger.info("counting entries protein counts")
     cur.execute(
         """
@@ -383,10 +371,10 @@ def get_match_counts(cur: cx_Oracle.Cursor) -> tuple:
     return entries, databases
 
 
-def check_matches(url: str, outdir: str):
+def check_matches(user: str, dsn: str, outdir: str):
     os.makedirs(outdir, exist_ok=True)
 
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
     # Match outside of the protein
@@ -420,7 +408,7 @@ def check_matches(url: str, outdir: str):
         con.close()
         raise RuntimeError("{} invalid matches".format(n))
 
-    entries, databases = get_match_counts(cur)
+    entries, databases = _get_match_counts(cur)
     cur.close()
     con.close()
 
@@ -428,9 +416,9 @@ def check_matches(url: str, outdir: str):
         json.dump(dict(entries=entries, databases=databases), fh)
 
 
-def update_matches(url: str):
+def update_matches(user: str, dsn: str):
     logger.info("updating matches")
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     cur.execute(
         """
@@ -457,9 +445,9 @@ def update_matches(url: str):
     con.close()
 
 
-def update_feature_matches(url: str):
+def update_feature_matches(user: str, dsn: str):
     logger.info("updating feature matches")
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
     # Make sure legacy tables are dropped
@@ -502,13 +490,13 @@ def update_feature_matches(url: str):
     con.close()
 
 
-def track_count_changes(url: str, outdir: str):
+def track_count_changes(user: str, dsn: str, outdir: str):
     with open(os.path.join(outdir, "counts.json"), "rt") as fh:
         prev = json.load(fh)
 
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    entries, databases = get_match_counts(cur)
+    entries, databases = _get_match_counts(cur)
     cur.close()
     con.close()
 
@@ -552,8 +540,8 @@ def track_count_changes(url: str, outdir: str):
             fh.write("{}\t{}\t{}\n".format(dbcode, pc, nc))
 
 
-def update_alt_splicing_matches(url: str):
-    con = cx_Oracle.connect(url)
+def update_alt_splicing_matches(user: str, dsn: str):
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     logger.info("dropping table")
     for t in ("VARSPLIC_MASTER", "VARSPLIC_MATCH", "VARSPLIC_NEW"):

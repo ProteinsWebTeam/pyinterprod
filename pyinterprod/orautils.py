@@ -205,8 +205,12 @@ def get_indexes(cur: cx_Oracle.Cursor, owner: str, table: str):
     return [row[0] for row in cur]
 
 
-def create_db_links(url: str, urls: Dict[str, str]):
-    con = cx_Oracle.connect(url)
+def make_connect_string(user: str, dsn: str) -> str:
+    return user + '@' + dsn
+
+
+def create_db_links(user: str, dsn: str, urls: Dict[str, str]):
+    con = cx_Oracle.connect(make_connect_string(user, dsn))
     cur = con.cursor()
     for link_name, link_url in urls.items():
         link = parse_url(link_url)

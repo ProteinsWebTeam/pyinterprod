@@ -39,9 +39,9 @@ def _condense(matches: dict):
         matches[entry_acc] = fragments
 
 
-def build_xref_condensed(url: str):
+def build_xref_condensed(user: str, dsn: str):
     logger.info("building XREF_CONDENSED")
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
     orautils.drop_table(cur, "INTERPRO", "XREF_CONDENSED")
@@ -180,9 +180,9 @@ def build_xref_condensed(url: str):
     logger.info("proteins processed: {:>15}".format(num_proteins))
 
 
-def build_xref_summary(url: str):
+def build_xref_summary(user: str, dsn: str):
     logger.info("building XREF_SUMMARY")
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     # orautils.truncate_table(cur, "INTERPRO", "XREF_SUMMARY")
     orautils.drop_table(cur, "INTERPRO", "XREF_SUMMARY")
@@ -263,10 +263,10 @@ def build_xref_summary(url: str):
     con.close()
 
 
-def export_databases(url: str, dst: str):
+def export_databases(user: str, dsn: str, dst: str):
     logger.info("exporting dat/tab files")
     os.makedirs(dst, exist_ok=True)
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     cur.execute(
         """
@@ -342,7 +342,7 @@ def export_databases(url: str, dst: str):
 
         if dbcode == 'X':
             # Gene3D: transform accession and do not print signature name
-            fh2.write("{}   DR   {}; {}; -; {}.\n".format(*convert_gene3d(row)))
+            fh2.write("{}   DR   {}; {}; -; {}.\n".format(*_convert_gene3d(row)))
         elif dbcode == 'F':
             # PRINTS: do not print match count
             fh2.write("{}   DR   {}; {}; {}.\n".format(*row))
@@ -379,7 +379,7 @@ def export_databases(url: str, dst: str):
     logger.info("complete")
 
 
-def convert_gene3d(row: Tuple[str, str, str, str, int]) -> Tuple[str, str,
-                                                                 str, int]:
+def _convert_gene3d(row: Tuple[str, str, str, str, int]) -> Tuple[str, str,
+                                                                  str, int]:
     # G3DSA:3.90.1580.10 -> 3.90.1580.10
     return row[0], row[1], row[2][6:], row[4]

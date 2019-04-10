@@ -469,10 +469,12 @@ def _init_protein_changes(con: cx_Oracle.Connection):
     cur.close()
 
 
-def insert_new(url: str, swissprot_path: str, trembl_path: str,
-                        dir: Optional[str]=None):
+def insert_new(user: str, dsn: str, swissprot_path: str, trembl_path: str,
+               dir: Optional[str]=None):
     logger.info("loading proteins")
     with ProteinDatabase(dir=dir) as db:
+        url = orautils.make_connect_string(user, dsn)
+
         count = db.insert_old(_get_proteins(url))
         logger.info("UniProt proteins in InterPro: {}".format(count))
 
@@ -499,7 +501,8 @@ def insert_new(url: str, swissprot_path: str, trembl_path: str,
         con.close()
 
 
-def delete_obsolete(url: str, truncate: bool=False):
+def delete_obsolete(user: str, dsn: str, truncate: bool=False):
+    url = orautils.make_connect_string(user, dsn)
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -610,8 +613,9 @@ def delete_obsolete(url: str, truncate: bool=False):
                                "could not be disabled".format(num_errors))
 
 
-def update_database_info(url: str, version: str, date: str):
+def update_database_info(user: str, dsn: str, version: str, date: str):
     date = datetime.strptime(date, "%d-%b-%Y")
+    url = orautils.make_connect_string(user, dsn)
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -662,9 +666,9 @@ def update_database_info(url: str, version: str, date: str):
     con.close()
 
 
-def find_protein_to_refresh(url: str):
+def find_protein_to_refresh(user: str, dsn: str):
     logger.info("PROTEIN_TO_SCAN: refreshing")
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     cur.execute("TRUNCATE TABLE INTERPRO.PROTEIN_TO_SCAN")
 
@@ -697,8 +701,8 @@ def find_protein_to_refresh(url: str):
     con.close()
 
 
-def check_crc64(url: str):
-    con = cx_Oracle.connect(url)
+def check_crc64(user: str, dsn: str):
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     cur.execute(
         """

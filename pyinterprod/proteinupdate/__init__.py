@@ -31,14 +31,16 @@ def main():
     except Exception as e:
         parser.error(e)
 
-    interpro_url = config["databases"]["interpro"]["interpro"]
-    create_db_links(interpro_url, config["databases"]["others"])
+    interpro_db = config["databases"]["interpro"]
+    dsn = interpro_db["dsn"]
+    users = interpro_db["users"]
+    create_db_links(users["interpro"], dsn, config["databases"]["others"])
 
     swissprot_ff = config["flat_files"]["swissprot"]
     trembl_ff = config["flat_files"]["trembl"]
-    proteins.insert_new(interpro_url, swissprot_ff, trembl_ff, dir=args.tmp)
-    proteins.delete_obsolete(interpro_url, truncate=True)
-    proteins.update_database_info(interpro_url,
+    proteins.insert_new(users["interpro"], dsn, swissprot_ff, trembl_ff, dir=args.tmp)
+    proteins.delete_obsolete(users["interpro"], dsn, truncate=True)
+    proteins.update_database_info(users["interpro"], dsn,
                                   version=config["release"]["version"],
                                   date=config["release"]["date"])
 

@@ -3,8 +3,8 @@ import cx_Oracle
 from .. import logger, orautils
 
 
-def refresh(url: str):
-    con = cx_Oracle.connect(url)
+def refresh(user: str, dsn: str):
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
     logger.info("creating MV_METHOD2PROTEIN")

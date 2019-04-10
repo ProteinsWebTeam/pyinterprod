@@ -1,8 +1,12 @@
 {
   "databases": {
     "interpro": {
-      "interpro": "",
-      "uniparc": ""
+      "dsn": "",
+      "users": {
+        "interpro": "",
+        "iprscan": "",
+        "uniparc": ""
+      }
     },
     "others": {
 
