@@ -101,21 +101,22 @@ def get_ispro_upis(url: str) -> List[dict]:
     cur = con.cursor()
     cur.execute(
         """
-        SELECT ANALYSIS_ID, ANALYSIS_NAME, MATCH_TABLE
+        SELECT ANALYSIS_ID, ANALYSIS_NAME, ANALYSIS_TYPE, MATCH_TABLE
         FROM (
           SELECT
-            ANALYSIS_ID,
-            ANALYSIS_NAME,
-            MATCH_TABLE,
+            A.ANALYSIS_ID,
+            A.ANALYSIS_NAME,
+            A.ANALYSIS_TYPE,
+            B.MATCH_TABLE,
             ROW_NUMBER() OVER (
               PARTITION
-              BY MATCH_TABLE
-              ORDER BY ANALYSIS_ID DESC
+              BY B.MATCH_TABLE
+              ORDER BY A.ANALYSIS_ID DESC
             ) CNT
-          FROM IPM_ANALYSIS@ISPRO
-            INNER JOIN IPM_ANALYSIS_MATCH_TABLE@ISPRO
-              ON ANALYSIS_MATCH_TABLE_ID = ID
-          WHERE ACTIVE = 1
+          FROM IPM_ANALYSIS@ISPRO A
+            INNER JOIN IPM_ANALYSIS_MATCH_TABLE@ISPRO B
+              ON A.ANALYSIS_MATCH_TABLE_ID = B.ID
+          WHERE A.ACTIVE = 1
         )
         WHERE CNT = 1
         """
@@ -125,8 +126,9 @@ def get_ispro_upis(url: str) -> List[dict]:
     for row in cur:
         analyses.append({
             "id": row[0],
-            "name": row[1],
-            "table": row[2],
+            "full_name": row[1],
+            "name": row[2],
+            "table": row[3],
             "upi": None
         })
 
@@ -153,7 +155,8 @@ def get_ispro_upis(url: str) -> List[dict]:
     return analyses
 
 
-def check_ispro(url: str, max_retries: int=0):
+def check_ispro(url: str, max_attempts: int=0, secs: int=600,
+                exclude: Optional[List[str]]=None) -> List[dict]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
@@ -161,45 +164,36 @@ def check_ispro(url: str, max_retries: int=0):
     cur.close()
     con.close()
 
-    n_attempts = 0
-    s = "{:<5}{:<15}{:<30}{:<15}{:>10}"
-    while n_attempts <= max_retries:
+    num_attempts = 0
+    while True:
         analyses = get_ispro_upis(url)
-
         all_ready = True
         for e in analyses:
-            if e["upi"] and e["upi"] >= max_upi_read:
+            if exclude and e["name"] in exclude:
+                status = "ready (excluded)"
+            elif e["upi"] and e["upi"] >= max_upi_read:
                 status = "ready"
             else:
                 status = "not ready"
                 all_ready = False
 
-            logger.debug(
-                s.format(e["id"], e["name"], e["table"], e["upi"], status)
-            )
+            logger.debug("{id:<5}{full_name:<15}{table:<30}{upi:<20}"
+                         "{status}".format(**e, status=status))
 
+        num_attempts += 1
         if all_ready:
-            return
-        else:
-            n_attempts += 1
-
-    raise RuntimeError("ISPRO tables not ready "
-                       "after {} attempts".format(n_attempts))
-
-
-def import_ispro(url):
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
-    max_upi_read = cur.fetchone()[0]
-    cur.close()
-    con.close()
-
-    while True:
-        tables = check_ispro(url, max_upi_read)
-        if tables:
             break
-        time.sleep(60 * 15)
+        elif num_attempts == max_attempts:
+            raise RuntimeError("ISPRO tables not ready "
+                               "after {} attempts".format(num_attempts))
+        else:
+            time.sleep(secs)
+
+    return analyses
+
+
+def import_ispro(url: str, **kwargs):
+    tables = check_ispro(url, **kwargs)
 
     with ThreadPoolExecutor() as executor:
         fs = {}
