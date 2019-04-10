@@ -140,7 +140,7 @@ def _get_ispro_upis(url: str) -> List[dict]:
     return analyses
 
 
-def _check_ispro(url: str, max_attempts: int=1, secs: int=600,
+def _check_ispro(url: str, max_attempts: int=1, secs: int=3600,
                  exclude: Optional[Collection[str]]=None) -> List[dict]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -152,7 +152,7 @@ def _check_ispro(url: str, max_attempts: int=1, secs: int=600,
     num_attempts = 0
     while True:
         analyses = _get_ispro_upis(url)
-        all_ready = True
+        not_ready = 0
         for e in analyses:
             if exclude and e["name"] in exclude:
                 status = "ready (excluded)"
@@ -160,18 +160,19 @@ def _check_ispro(url: str, max_attempts: int=1, secs: int=600,
                 status = "ready"
             else:
                 status = "not ready"
-                all_ready = False
+                not_ready += 1
 
             logger.debug("{id:<5}{full_name:<30}{table:<30}{upi:<20}"
                          "{status}".format(**e, status=status))
 
         num_attempts += 1
-        if all_ready:
+        if not_ready == 0:
             break
         elif num_attempts == max_attempts:
             raise RuntimeError("ISPRO tables not ready "
                                "after {} attempts".format(num_attempts))
         else:
+            logger.info("{} analyses not ready".format(not_ready))
             time.sleep(secs)
 
     return analyses
