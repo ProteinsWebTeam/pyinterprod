@@ -2,7 +2,7 @@ import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Optional
+from typing import Collection, List, Optional
 
 import cx_Oracle
 
@@ -156,7 +156,7 @@ def get_ispro_upis(url: str) -> List[dict]:
 
 
 def check_ispro(url: str, max_attempts: int=0, secs: int=600,
-                exclude: Optional[List[str]]=None) -> List[dict]:
+                exclude: Optional[Collection[str]]=None) -> List[dict]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
