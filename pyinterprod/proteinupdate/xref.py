@@ -265,6 +265,7 @@ def build_xref_summary(url: str):
 
 def export_databases(url: str, dst: str):
     logger.info("exporting dat/tab files")
+    os.makedirs(dst, exist_ok=True)
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
@@ -300,19 +301,27 @@ def export_databases(url: str, dst: str):
         'Y': ("SUPFAM", "SF"),
     }
 
-    files = {}
+    files = []
+    handlers = {}
     for dbcode in dbcodes:
         if dbcode != 'P':
             # P (PROSITE patterns) -> same file than M (PROSITE profiles)
             dbname, dbkey = dbcodes[dbcode]
-            fh1 = open(os.path.join(dst, dbname.lower() + ".tab"), "wt")
-            fh2 = open(os.path.join(dst, dbname + ".dat"), "wt")
-            files[dbcode] = (fh1, fh2)
 
-    files['P'] = files['M']
+            files.append(os.path.join(dst, dbname.lower() + ".tab"))
+            fh1 = open(files[-1], "wt")
 
-    ifh1 = open(os.path.join(dst, "interpro.tab"), "wt")
-    ifh2 = open(os.path.join(dst, "InterPro.dat"), "wt")
+            files.append(os.path.join(dst, dbname + ".dat"))
+            fh2 = open(files[-1], "wt")
+
+            handlers[dbcode] = (fh1, fh2)
+
+    handlers['P'] = handlers['M']
+
+    files.append(os.path.join(dst, "interpro.tab"))
+    ifh1 = open(files[-1], "wt")
+    files.append(os.path.join(dst, "InterPro.dat"))
+    ifh2 = open(files[-1], "wt")
 
     entries = {}
     _protein = None
@@ -326,7 +335,7 @@ def export_databases(url: str, dst: str):
         num_matches = int(row[6])
 
         dbname, dbkey = dbcodes[dbcode]
-        fh1, fh2 = files[dbcode]
+        fh1, fh2 = handlers[dbcode]
 
         row = (protein_acc, dbkey, signature_acc, signature_name, num_matches)
         fh1.write("{}\t{}\t{}\t{}\t{}\n".format(*row))
@@ -360,9 +369,12 @@ def export_databases(url: str, dst: str):
     ifh1.close()
     ifh2.close()
 
-    for fh1, fh2 in files.values():
+    for fh1, fh2 in handlers.values():
         fh1.close()
         fh2.close()
+
+    for path in files:
+        os.chmod(path, 0o644)
 
     logger.info("complete")
 
