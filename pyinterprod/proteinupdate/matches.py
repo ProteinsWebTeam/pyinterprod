@@ -624,6 +624,5 @@ def update_alt_splicing_matches(url: str):
         """
     )
 
-
     cur.close()
     con.close()
