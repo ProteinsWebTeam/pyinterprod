@@ -214,7 +214,7 @@ def create_db_links(url: str, urls: Dict[str, str]):
                        link=link_name,
                        user=link["username"],
                        passwd=link["password"],
-                       connect_string="{host}:{port}/:{service}".format(**link)
+                       connect_string="{host}:{port}/{service}".format(**link)
                        )
 
     cur.close()
