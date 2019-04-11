@@ -6,6 +6,7 @@ from typing import Collection, List, Optional
 
 import cx_Oracle
 
+from . import materializedviews as mviews
 from .. import logger, orautils
 
 
@@ -84,9 +85,10 @@ def _get_max_upi(url: str, analysis_id: int) -> Optional[str]:
 def _get_ispro_upis(url: str) -> List[dict]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
+    # TODO: select the SITE_TABLE as well
     cur.execute(
         """
-        SELECT ANALYSIS_ID, ANALYSIS_NAME, ANALYSIS_TYPE, MATCH_TABLE
+        SELECT *
         FROM (
           SELECT
             A.ANALYSIS_ID,
@@ -95,7 +97,7 @@ def _get_ispro_upis(url: str) -> List[dict]:
             B.MATCH_TABLE,
             ROW_NUMBER() OVER (
               PARTITION
-              BY B.MATCH_TABLE
+              BY A.ANALYSIS_MATCH_TABLE_ID
               ORDER BY A.ANALYSIS_ID DESC
             ) CNT
           FROM IPM_ANALYSIS@ISPRO A
@@ -103,17 +105,30 @@ def _get_ispro_upis(url: str) -> List[dict]:
               ON A.ANALYSIS_MATCH_TABLE_ID = B.ID
           WHERE A.ACTIVE = 1
         )
-        WHERE CNT = 1
+        ORDER BY CNT
         """
     )
 
+    tables = set()
     analyses = []
     for row in cur:
+        """
+        SignalP has EUK/Gram+/Gram- matches in the same tables so we need
+        several times the same time for different analyses.
+        
+        But we should accept any other duplicates 
+        (ACTIVE might not always be up-to-date)
+        """
+        table = row[3]
+        if table in tables and table != "ipm_signalp_match":
+            continue
+
+        tables.add(table)
         analyses.append({
             "id": row[0],
             "full_name": row[1],
             "name": row[2],
-            "table": row[3],
+            "table": table,
             "upi": None
         })
 
@@ -178,49 +193,110 @@ def _check_ispro(url: str, max_attempts: int=1, secs: int=3600,
     return analyses
 
 
+def _import_table(url: str, owner: str, name: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    orautils.drop_mview(cur, owner, name)
+    orautils.drop_table(cur, owner, name)
+    cur.execute(
+        """
+        CREATE TABLE {0}.{1} NOLOGGING
+        AS
+        SELECT *
+        FROM {0}.{1}@ISPRO
+        """.format(owner, name)
+    )
+    orautils.gather_stats(cur, owner, name)
+    cur.execute(
+        """
+        CREATE INDEX {0}.I_{1} 
+        ON {0}.{1}(ANALYSIS_ID) 
+        NOLOGGING
+        """.format(owner, name)
+    )
+    cur.close()
+    con.close()
+
+
 def import_ispro(user: str, dsn: str, **kwargs):
     url = orautils.make_connect_string(user, dsn)
     analyses = _check_ispro(url, **kwargs)
 
-    logger.info("refreshing materialized views")
+    logger.info("building tables with data from ISPRO")
     with ThreadPoolExecutor() as executor:
         fs = {}
         for analysis in analyses:
-            mview = "MV_" + analysis["table"].upper()
-            f = executor.submit(orautils.refresh_mview, url, mview)
-            fs[f] = mview
+            table_name = analysis["table"].upper()
+            f = executor.submit(_import_table, url, "IPRSCAN", table_name)
+            fs[f] = table_name
 
         num_errors = 0
         for f in as_completed(fs):
-            mview = fs[f]
+            table_name = fs[f]
             exc = f.exception()
             if exc is None:
-                logger.info("{}: refreshed".format(mview))
+                logger.info("{:<30}: refreshed".format(table_name))
             else:
-                logger.error("{}: {}".format(mview, exc))
+                logger.error("{:<30}: {}".format(table_name, exc))
                 num_errors += 1
 
-    if num_errors:
-        raise RuntimeError("{} materialized views "
-                           "were not refreshed".format(num_errors))
+        if num_errors:
+            raise RuntimeError("{} tables "
+                               "were not imported".format(num_errors))
 
-    # con = cx_Oracle.connect(url)
-    # cur = con.cursor()
-    #
-    # for mview in fs.values():
-    #     cur.execute(
-    #         """
-    #         ALTER TABLE IPRSCAN.MV_IPRSCAN
-    #         EXCHANGE PARTITION {} WITH TABLE {}
-    #         INCLUDING INDEXES
-    #         WITHOUT VALIDATION
-    #         """.format()
-    #     )
-    #
-    # cur.close()
-    # con.close()
-    #
-    #
+        functions = {
+            "ipm_cdd_match": mviews.update_cdd,
+            "ipm_coils_match": mviews.update_coils,
+            "ipm_gene3d_match": mviews.update_gene3d,
+            "ipm_hamap_match": mviews.update_hamap,
+            "ipm_mobidblite_match": mviews.update_mobidblite,
+            "ipm_panther_match": mviews.update_panther,
+            "ipm_pfam_match": mviews.update_pfam,
+            "ipm_phobius_match": mviews.update_phobius,
+            "ipm_pirsf_match": mviews.update_pirsf,
+            "ipm_prints_match": mviews.update_prints,
+            "ipm_prodom_match": mviews.update_prodom,
+            "ipm_prosite_patterns_match": mviews.update_prosite_patterns,
+            "ipm_prosite_profiles_match": mviews.update_prosite_profiles,
+            "ipm_smart_match": mviews.update_smart,
+            "ipm_superfamily_match": mviews.update_superfamily,
+            "ipm_tigrfam_match": mviews.update_tigrfam,
+            "ipm_tmhmm_match": mviews.update_tmhmm
+        }
+
+        signalp = {
+            "signalp_euk": mviews.update_signalp_euk,
+            "signalp_gram_negative": mviews.update_signalp_gram_neg,
+            "signalp_gram_positive": mviews.update_signalp_gram_pos
+        }
+
+        fs = {}
+        for analysis in analyses:
+            _id = analysis["id"]
+            name = analysis["name"]
+            table_name = analysis["table"]
+
+            if table_name == "ipm_signalp_match":
+                fn = signalp[name]
+            else:
+                fn = functions[table_name]
+
+            f = executor.submit(fn, url, _id)
+            fs[f] = analysis["full_name"]
+
+        num_errors = 0
+        for f in as_completed(fs):
+            full_name = fs[f]
+            exc = f.exception()
+            if exc is None:
+                logger.info("{:<30}: refreshed".format(full_name))
+            else:
+                logger.error("{:<30}: {}".format(full_name, exc))
+                num_errors += 1
+
+        if num_errors:
+            raise RuntimeError("{} partitions "
+                               "were not exchanged".format(num_errors))
 
 
 def _import_mv_iprscan(url: str, url_src: str):
