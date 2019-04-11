@@ -115,14 +115,25 @@ def get_partitions(cur: cx_Oracle.Cursor, owner: str,
     return [dict(zip(cols, row)) for row in cur]
 
 
-def drop_table(cur: cx_Oracle.Cursor, owner: str, table: str):
+def drop_table(cur: cx_Oracle.Cursor, owner: str, name: str):
     try:
-        cur.execute("DROP TABLE {}.{}".format(owner, table))
+        cur.execute("DROP TABLE {}.{}".format(owner, name))
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
 
         # ORA-00942 (table or view does not exist)
         if error.code != 942:
+            raise exc
+
+
+def drop_mview(cur: cx_Oracle.Cursor, owner: str, name: str):
+    try:
+        cur.execute("DROP MATERIALIZED VIEW {}.{}".format(owner, name))
+    except cx_Oracle.DatabaseError as exc:
+        error, = exc.args
+
+        # ORA-12003: materialized view does not exist
+        if error.code != 12003:
             raise exc
 
 
