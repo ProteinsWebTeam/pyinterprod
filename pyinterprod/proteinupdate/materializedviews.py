@@ -117,7 +117,7 @@ def _init_ipm_table(cur: cx_Oracle.Cursor, name: str):
     )
 
 
-def _update_cdd(url: str, analysis_id: int):
+def update_cdd(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_CDD_MATCH_TMP")
@@ -139,7 +139,7 @@ def _update_cdd(url: str, analysis_id: int):
     con.close()
 
 
-def _update_coils(url: str, analysis_id: int):
+def update_coils(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_COILS_MATCH_TMP")
@@ -160,7 +160,7 @@ def _update_coils(url: str, analysis_id: int):
     con.close()
 
 
-def _update_gene3d(url: str, analysis_id: int):
+def update_gene3d(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_GENE3D_MATCH_TMP")
@@ -183,7 +183,7 @@ def _update_gene3d(url: str, analysis_id: int):
     con.close()
 
 
-def _update_hamap(url: str, analysis_id: int):
+def update_hamap(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_HAMAP_MATCH_TMP")
@@ -205,7 +205,7 @@ def _update_hamap(url: str, analysis_id: int):
     con.close()
 
 
-def _update_mobidblite(url: str, analysis_id: int):
+def update_mobidblite(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_MOBIDBLITE_MATCH_TMP")
@@ -227,7 +227,7 @@ def _update_mobidblite(url: str, analysis_id: int):
     con.close()
 
 
-def _update_panther(url: str, analysis_id: int):
+def update_panther(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_PANTHER_MATCH_TMP")
@@ -250,7 +250,7 @@ def _update_panther(url: str, analysis_id: int):
     con.close()
 
 
-def _update_pfam(url: str, analysis_id: int):
+def update_pfam(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_PFAM_MATCH_TMP")
@@ -273,7 +273,7 @@ def _update_pfam(url: str, analysis_id: int):
     con.close()
 
 
-def _update_phobius(url: str, analysis_id: int):
+def update_phobius(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_PHOBIUS_MATCH_TMP")
@@ -294,7 +294,7 @@ def _update_phobius(url: str, analysis_id: int):
     con.close()
 
 
-def _update_pirsf(url: str, analysis_id: int):
+def update_pirsf(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_PIRSF_MATCH_TMP")
@@ -317,7 +317,7 @@ def _update_pirsf(url: str, analysis_id: int):
     con.close()
 
 
-def _update_prints(url: str, analysis_id: int):
+def update_prints(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_PRINTS_MATCH_TMP")
@@ -339,7 +339,7 @@ def _update_prints(url: str, analysis_id: int):
     con.close()
 
 
-def _update_prodom(url: str, analysis_id: int):
+def update_prodom(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_PRODOM_MATCH_TMP")
@@ -361,7 +361,7 @@ def _update_prodom(url: str, analysis_id: int):
     con.close()
 
 
-def _update_prosite_patterns(url: str, analysis_id: int):
+def update_prosite_patterns(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_PROSITE_PATTERNS_MATCH_TMP")
@@ -384,7 +384,7 @@ def _update_prosite_patterns(url: str, analysis_id: int):
     con.close()
 
 
-def _update_prosite_profiles(url: str, analysis_id: int):
+def update_prosite_profiles(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_PROSITE_PROFILES_MATCH_TMP")
@@ -407,7 +407,7 @@ def _update_prosite_profiles(url: str, analysis_id: int):
     con.close()
 
 
-def _update_sfld(url: str, analysis_id: int):
+def update_sfld(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_SFLD_MATCH_TMP")
@@ -430,7 +430,7 @@ def _update_sfld(url: str, analysis_id: int):
     con.close()
 
 
-def _update_signalp_euk(url: str, analysis_id: int):
+def update_signalp_euk(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_SIGNALP_EUK_MATCH_TMP")
@@ -452,7 +452,7 @@ def _update_signalp_euk(url: str, analysis_id: int):
     con.close()
 
 
-def _update_signalp_gram_neg(url: str, analysis_id: int):
+def update_signalp_gram_neg(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_SIGNALP_GRAM_NEG_MATCH_TMP")
@@ -474,7 +474,7 @@ def _update_signalp_gram_neg(url: str, analysis_id: int):
     con.close()
 
 
-def _update_signalp_gram_pos(url: str, analysis_id: int):
+def update_signalp_gram_pos(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_SIGNALP_GRAM_POS_MATCH_TMP")
@@ -496,7 +496,7 @@ def _update_signalp_gram_pos(url: str, analysis_id: int):
     con.close()
 
 
-def _update_smart(url: str, analysis_id: int):
+def update_smart(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_SMART_MATCH_TMP")
@@ -518,7 +518,7 @@ def _update_smart(url: str, analysis_id: int):
     con.close()
 
 
-def _update_superfamily(url: str, analysis_id: int):
+def update_superfamily(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_SUPERFAMILY_MATCH_TMP")
@@ -540,7 +540,7 @@ def _update_superfamily(url: str, analysis_id: int):
     con.close()
 
 
-def _update_tigrfam(url: str, analysis_id: int):
+def update_tigrfam(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_TIGRFAM_MATCH_TMP")
@@ -563,7 +563,7 @@ def _update_tigrfam(url: str, analysis_id: int):
     con.close()
 
 
-def _update_tmhmm(url: str, analysis_id: int):
+def update_tmhmm(url: str, analysis_id: int):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     _init_ipm_table(cur, "IPM_TMHMM_MATCH_TMP")
