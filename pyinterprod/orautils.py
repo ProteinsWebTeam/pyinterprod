@@ -201,6 +201,19 @@ def delete_iter(url: str, table: str, column: str, stop: int, step: int,
     con.close()
 
 
+def exchange_partition(cur: cx_Oracle.Cursor, owner: str, src: str, dst: str,
+                       partition: str):
+    cur.execute(
+        """
+        ALTER TABLE {0}.{2} 
+        EXCHANGE PARTITION {3} 
+        WITH TABLE {0}.{1} 
+        INCLUDING INDEXES
+        WITHOUT VALIDATION
+        """.format(owner, src, dst, partition)
+    )
+
+
 def create_db_link(cur: cx_Oracle.Cursor, link: str, user: str, passwd: str,
                    dsn: str):
     try:
