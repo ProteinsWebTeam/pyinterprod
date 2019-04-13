@@ -4,37 +4,33 @@ from .. import logger, orautils
 
 
 def update(user: str, dsn: str):
+    logger.info("creating UNIPARC.XREF")
+    
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-
-    logger.info("creating UNIPARC.XREF")
+    
     # XREF_OLD: legacy table, just to be sure it does not exist any more
-    try:
-        cur.execute("DROP TABLE UNIPARC.XREF_OLD")
-    except cx_Oracle.DatabaseError as e:
-        if e.args[0].code != 942:
-            # ORA-00942: table or view does not exist
-            raise e
-
-    try:
-        cur.execute("DROP TABLE UNIPARC.XREF")
-    except cx_Oracle.DatabaseError as e:
-        if e.args[0].code != 942:
-            # ORA-00942: table or view does not exist
-            raise e
+    orautils.drop_table(cur, "UNIPARC", "XREF_OLD"
+    orautils.drop_table(cur, "UNIPARC", "XREF_OLD")
 
     cur.execute(
         """
-        CREATE TABLE UNIPARC.XREF TABLESPACE UNIPARC_TAB AS
+        CREATE TABLE UNIPARC.XREF 
+        TABLESPACE UNIPARC_TAB 
+        NOLOGGING
+        AS
         SELECT UPI, AC, DBID, DELETED, VERSION
         FROM UNIPARC.XREF@UAREAD
         """
     )
+    orautils.grant(cur, "UNIPARC", "XREF", "SELECT", "PUBLIC")
+                        
     cur.execute(
         """
         CREATE INDEX I_XREF$UPI
         ON UNIPARC.XREF(UPI)
         TABLESPACE UNIPARC_IND
+        NOLOGGING
         """
     )
     cur.execute(
@@ -42,6 +38,7 @@ def update(user: str, dsn: str):
         CREATE INDEX I_XREF$AC
         ON UNIPARC.XREF(AC)
         TABLESPACE UNIPARC_IND
+        NOLOGGING
         """
     )
     cur.execute(
@@ -49,9 +46,9 @@ def update(user: str, dsn: str):
         CREATE INDEX I_XREF$DBID
         ON UNIPARC.XREF(DBID)
         TABLESPACE UNIPARC_IND
+        NOLOGGING
         """
     )
-    cur.execute("GRANT SELECT ON UNIPARC.XREF TO PUBLIC")
 
     logger.info("creating UNIPARC.CV_DATABASE")
     try:
@@ -67,6 +64,7 @@ def update(user: str, dsn: str):
         FROM UNIPARC.CV_DATABASE@UAREAD
         """
     )
+    orautils.grant(cur, "UNIPARC", "CV_DATABASE", "SELECT", "PUBLIC")
     cur.execute(
         """
         CREATE UNIQUE INDEX PK_CV_DATABASE
@@ -92,6 +90,5 @@ def update(user: str, dsn: str):
         )
         """
     )
-    cur.execute("GRANT SELECT ON UNIPARC.CV_DATABASE TO PUBLIC")
     cur.close()
     con.close()
