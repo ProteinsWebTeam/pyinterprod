@@ -11,6 +11,19 @@ from .. import logger, orautils
 
 
 def _get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> Optional[str]:
+    # TODO: decide *which* method is the most accurate
+    cur.execute(
+        """
+        SELECT MAX(JOB_END)
+        FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
+        WHERE ANALYSIS_ID = :1
+        AND PERSISTED > 0
+        )
+        """, (analysis_id, )
+    )
+    row = cur.fetchone()
+    return row[0] if row else None
+
     upis = []
     cur.execute(
         """
