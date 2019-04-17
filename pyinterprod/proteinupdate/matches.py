@@ -18,7 +18,6 @@ def _get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> Optional[str]:
         FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
         WHERE ANALYSIS_ID = :1
         AND PERSISTED > 0
-        )
         """, (analysis_id, )
     )
     row = cur.fetchone()
