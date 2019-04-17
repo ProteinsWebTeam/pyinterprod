@@ -755,3 +755,5 @@ def check_crc64(user: str, dsn: str):
 
     if num_errors:
         raise RuntimeError("{} CRC64 mismatches".format(num_errors))
+    else:
+        logger.info("no CRC64 mismatches")
