@@ -10,7 +10,7 @@ def update(user: str, dsn: str):
     cur = con.cursor()
     
     # XREF_OLD: legacy table, just to be sure it does not exist any more
-    orautils.drop_table(cur, "UNIPARC", "XREF_OLD"
+    orautils.drop_table(cur, "UNIPARC", "XREF")
     orautils.drop_table(cur, "UNIPARC", "XREF_OLD")
 
     cur.execute(
