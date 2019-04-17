@@ -96,7 +96,6 @@ def build_xref_condensed(user: str, dsn: str):
 
     matches = {}
     _protein_acc = None
-    num_proteins = 0
     query = """
       INSERT /*+ APPEND */ INTO INTERPRO.XREF_CONDENSED
       VALUES (:1, :2, :3, :4, :5, :6)
@@ -112,11 +111,6 @@ def build_xref_condensed(user: str, dsn: str):
                     for start, end in frags:
                         table.insert((_protein_acc, entry_acc, entry_type,
                                       name, start, end))
-
-                num_proteins += 1
-                if not num_proteins % 10000000:
-                    logger.info("proteins processed: "
-                                "{:>15}".format(num_proteins))
 
             _protein_acc = protein_acc
             matches = {}
@@ -152,39 +146,29 @@ def build_xref_condensed(user: str, dsn: str):
                 table.insert((_protein_acc, entry_acc, entry_type,
                               name, start, end))
 
-        num_proteins += 1
-
     table.close()
 
     logger.info("gathering statistics")
     orautils.gather_stats(cur, "INTERPRO", "XREF_CONDENSED")
 
     logger.info("creating indexes")
-    cur.execute(
-        """
-        CREATE INDEX I_XREF_CONDENSED$P
-        ON INTERPRO.XREF_CONDENSED (PROTEIN_AC) NOLOGGING
-        """
-    )
-
-    cur.execute(
-        """
-        CREATE INDEX I_XREF_CONDENSED$E
-        ON INTERPRO.XREF_CONDENSED (ENTRY_AC) NOLOGGING
-        """
-    )
+    for col in ("PROTEIN_AC", "ENTRY_AC"):
+        cur.execute(
+            """
+            CREATE INDEX I_XREF_CONDENSED${0}
+            ON INTERPRO.XREF_CONDENSED ({0}) NOLOGGING
+            """.format(col)
+        )
 
     orautils.grant(cur, "INTERPRO", "XREF_CONDENSED", "SELECT", "KRAKEN")
     cur.close()
     con.close()
-    logger.info("proteins processed: {:>15}".format(num_proteins))
 
 
 def build_xref_summary(user: str, dsn: str):
     logger.info("building XREF_SUMMARY")
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    # orautils.truncate_table(cur, "INTERPRO", "XREF_SUMMARY")
     orautils.drop_table(cur, "INTERPRO", "XREF_SUMMARY")
     cur.execute(
         """
@@ -374,7 +358,7 @@ def export_databases(user: str, dsn: str, dst: str):
         fh2.close()
 
     for path in files:
-        os.chmod(path, 0o644)
+        os.chmod(path, 0o775)
 
     logger.info("complete")
 
