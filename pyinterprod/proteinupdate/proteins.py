@@ -434,25 +434,6 @@ def _prepare_deletion(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
     return count
 
 
-def _count_rows_to_delete(url: str, table: str, column: str) -> int:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT COUNT(*)
-        FROM INTERPRO.{}
-        WHERE {} IN (
-            SELECT PROTEIN_AC
-            FROM INTERPRO.PROTEIN_TO_DELETE
-        )
-        """.format(table, column)
-    )
-    cnt = cur.fetchone()[0]
-    cur.close()
-    con.close()
-    return cnt
-
-
 def _count_proteins_to_delete(cur: cx_Oracle.Cursor) -> int:
     cur.execute(
         """
@@ -499,6 +480,51 @@ def insert_new(user: str, dsn: str, swissprot_path: str, trembl_path: str,
         logger.info("{} proteins to delete".format(count))
 
         con.close()
+
+
+def _delete_iter(url: str, table: str, column: str, stop: int, step: int,
+                 partition: Optional[str]=None):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    if partition:
+        dst = "{} PARTITION ({})".format(table, partition)
+        name = "{} ({})".format(table, partition)
+    else:
+        dst = "{}".format(table)
+        name = table
+
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM INTERPRO.{}
+        WHERE {} IN (
+          SELECT PROTEIN_AC 
+          FROM INTERPRO.PROTEIN_TO_DELETE
+        )
+        """.format(dst, column)
+    )
+    num_rows = cur.fetchone()[0]
+
+    if num_rows:
+        for i in range(0, stop, step):
+            cur.execute(
+                """
+                DELETE FROM INTERPRO.{}
+                WHERE {} IN (
+                  SELECT PROTEIN_AC
+                  FROM INTERPRO.PROTEIN_TO_DELETE
+                  WHERE ID BETWEEN :1 and :2
+                )
+                """.format(dst, column),
+                (i, i + step - 1)
+            )
+            logger.debug("{}: {} / {}".format(name, min(i + step, stop), stop))
+
+        con.commit()
+
+    cur.close()
+    con.close()
 
 
 def delete_obsolete(user: str, dsn: str, truncate: bool=False):
@@ -554,14 +580,14 @@ def delete_obsolete(user: str, dsn: str, truncate: bool=False):
                 # for MATCH table: delete by partition
                 partitions = orautils.get_partitions(cur, to, tn)
                 for p in partitions:
-                    f = executor.submit(orautils.delete_iter, url, tn, tc,
+                    f = executor.submit(_delete_iter, url, tn, tc,
                                         count, _MAX_ITEMS, p["name"])
 
                     t2 = dict(t)  # shallow copy
                     t2["partition"] = p["name"]
                     fs[f] = t2
             else:
-                f = executor.submit(orautils.delete_iter, url, tn, tc, count,
+                f = executor.submit(_delete_iter, url, tn, tc, count,
                                     _MAX_ITEMS)
                 fs[f] = t
 
