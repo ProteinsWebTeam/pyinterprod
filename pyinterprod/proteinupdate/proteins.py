@@ -250,7 +250,11 @@ def _update_proteins(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
         )
         count += 1
 
-    items = []
+    query = """
+      INSERT INTO INTERPRO.PROTEIN_CHANGES (NEW_PROTEIN_AC)
+      VALUES (:1)
+    """
+    table = orautils.TablePopulator(con, query, buffer_size=_MAX_ITEMS)
     for row in db.get_sequence_changes():
         cur.execute(
             """
@@ -277,40 +281,34 @@ def _update_proteins(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
             )
         )
         count += 1
+        table.insert((row[0],))
 
-        items.append((row[0],))
-        if len(items) == _MAX_ITEMS:
-            cur.executemany(
-                """
-                INSERT INTO INTERPRO.PROTEIN_CHANGES (NEW_PROTEIN_AC)
-                VALUES (:1)
-                """,
-                items
-            )
-            items = []
-
-    if items:
-        cur.executemany(
-            """
-            INSERT INTO INTERPRO.PROTEIN_CHANGES (NEW_PROTEIN_AC)
-            VALUES (:1)
-            """,
-            items
-        )
-
+    table.close()
     con.commit()
     cur.close()
     return count
 
 
 def _insert_proteins(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
-    cur = con.cursor()
+    # TIMESTAMP and USERSTAMP will be set to their DEFAULT
+    query1 = """
+        INSERT INTO INTERPRO.PROTEIN (
+          PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT,
+          STRUCT_FLAG, TAX_ID
+        )
+        VALUES (:1, :2, :3, :4, :5, :6, 'N', :7)
+    """
+    table1 = orautils.TablePopulator(con, query1, buffer_size=_MAX_ITEMS)
 
-    items = []
-    items2 = []
+    query2 = """
+        INSERT INTO INTERPRO.PROTEIN_CHANGES (NEW_PROTEIN_AC)
+        VALUES (:1)
+    """
+    table2 = orautils.TablePopulator(con, query2, buffer_size=_MAX_ITEMS)
+
     count = 0
     for row in db.get_new():
-        items.append((
+        table1.insert((
             row[0],                     # accession
             row[1],                     # identifier
             'S' if row[2] else 'T',     # dbcode
@@ -319,106 +317,41 @@ def _insert_proteins(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
             'Y' if row[5] else 'N',     # sequence status (fragment)
             row[6]                      # taxon ID
         ))
+        table2.insert((row[0],))
         count += 1
 
-        if len(items) == _MAX_ITEMS:
-            # TIMESTAMP and USERSTAMP will be set to their DEFAULT
-            cur.executemany(
-                """
-                INSERT INTO INTERPRO.PROTEIN (
-                  PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT,
-                  STRUCT_FLAG, TAX_ID
-                )
-                VALUES (:1, :2, :3, :4, :5, :6, 'N', :7)
-                """,
-                items
-            )
-            items = []
-
-        items2.append((row[0],))
-        if len(items2) == _MAX_ITEMS:
-            cur.executemany(
-                """
-                INSERT INTO INTERPRO.PROTEIN_CHANGES (NEW_PROTEIN_AC)
-                VALUES (:1)
-                """,
-                items2
-            )
-            items2 = []
-
-    if items:
-        # TIMESTAMP and USERSTAMP will be set to their DEFAULT
-        cur.executemany(
-            """
-            INSERT INTO INTERPRO.PROTEIN (
-              PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT,
-              STRUCT_FLAG, TAX_ID
-            )
-            VALUES (:1, :2, :3, :4, :5, :6, 'N', :7)
-            """,
-            items
-        )
-
-    if items2:
-        cur.executemany(
-            """
-            INSERT INTO INTERPRO.PROTEIN_CHANGES (NEW_PROTEIN_AC)
-            VALUES (:1)
-            """,
-            items2
-        )
-
-    con.commit()
-    cur.close()
-
+    table1.close()
+    table2.close()
     return count
 
 
 def _prepare_deletion(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
     cur = con.cursor()
+    orautils.drop_table(cur, "INTERPRO", "PROTEIN_TO_DELETE")
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.PROTEIN_TO_DELETE
+        (
+            ID NUMBER NOT NULL,
+            PROTEIN_AC VARCHAR2(15) NOT NULL
+        ) NOLOGGING
+        """
+    )
+    cur.close()
 
-    try:
-        cur.execute("DROP TABLE INTERPRO.PROTEIN_TO_DELETE")
-    except cx_Oracle.DatabaseError:
-        pass
-    finally:
-        cur.execute(
-            """
-            CREATE TABLE INTERPRO.PROTEIN_TO_DELETE
-            (
-                ID NUMBER NOT NULL,
-                PROTEIN_AC VARCHAR2(15) NOT NULL
-            ) NOLOGGING
-            """
-        )
+    query = """
+        INSERT INTO INTERPRO.PROTEIN_TO_DELETE
+        VALUES (:1, :2)
+    """
+    table = orautils.TablePopulator(con, query, buffer_size=_MAX_ITEMS)
 
     count = 0
-    items = []
     for accession in db.get_deleted():
-        items.append((count, accession))
+        table.insert((count, accession))
         count += 1
 
-        if len(items) == _MAX_ITEMS:
-            cur.executemany(
-                """
-                INSERT INTO INTERPRO.PROTEIN_TO_DELETE
-                VALUES (:1, :2)
-                """,
-                items
-            )
-            con.commit()
-            items = []
-
-    if items:
-        cur.executemany(
-            """
-            INSERT INTO INTERPRO.PROTEIN_TO_DELETE
-            VALUES (:1, :2)
-            """,
-            items
-        )
-        con.commit()
-
+    cur = con.cursor()
+    orautils.gather_stats(cur, "INTERPRO", "PROTEIN_TO_DELETE")
     cur.execute(
         """
         ALTER TABLE INTERPRO.PROTEIN_TO_DELETE
@@ -426,9 +359,6 @@ def _prepare_deletion(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
         PRIMARY KEY (ID)
         """
     )
-
-    cur.callproc("DBMS_STATS.GATHER_TABLE_STATS",
-                 ("INTERPRO", "PROTEIN_TO_DELETE"))
 
     cur.close()
     return count
@@ -699,10 +629,10 @@ def find_protein_to_refresh(user: str, dsn: str):
     cur = con.cursor()
     cur.execute("TRUNCATE TABLE INTERPRO.PROTEIN_TO_SCAN")
 
+    # Consider CRC64 have been checked and that no mismatches were found
     cur.execute(
         """
-        INSERT INTO INTERPRO.PROTEIN_TO_SCAN 
-          (PROTEIN_AC, DBCODE, TIMESTAMP, UPI)
+        INSERT INTO INTERPRO.PROTEIN_TO_SCAN
         SELECT 
           IP.PROTEIN_AC, IP.DBCODE, IP.TIMESTAMP, UP.UPI
         FROM INTERPRO.PROTEIN IP
