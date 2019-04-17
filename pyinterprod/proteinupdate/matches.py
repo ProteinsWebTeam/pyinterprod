@@ -10,10 +10,8 @@ from . import materializedviews as mviews
 from .. import logger, orautils
 
 
-def _get_max_upi(url: str, analysis_id: int) -> Optional[str]:
+def _get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> Optional[str]:
     upis = []
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
     cur.execute(
         """
         SELECT MAX(HWM_SUBMITTED)
@@ -116,7 +114,7 @@ def _get_ispro_upis(url: str) -> List[dict]:
         SignalP has EUK/Gram+/Gram- matches in the same tables so we need
         several times the same time for different analyses.
         
-        But we should accept any other duplicates 
+        But we shouldn't accept any other duplicates 
         (ACTIVE might not always be up-to-date)
         """
         table = row[3]
@@ -132,25 +130,11 @@ def _get_ispro_upis(url: str) -> List[dict]:
             "upi": None
         })
 
+    for e in analyses:
+        e["upi"] = _get_max_upi(cur, e["id"])
+
     cur.close()
     con.close()
-
-    with ThreadPoolExecutor() as executor:
-        fs = {}
-        for e in analyses:
-            f = executor.submit(_get_max_upi, url, e["id"])
-            fs[f] = e
-
-        for f in as_completed(fs):
-            e = fs[f]
-
-            try:
-                upi = f.result()
-            except Exception as exc:
-                logger.error("{} ({}) exited: "
-                             "{}".format(e["name"], e["id"], exc))
-            else:
-                e["upi"] = upi
 
     return analyses
 
