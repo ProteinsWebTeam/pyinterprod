@@ -633,27 +633,21 @@ def find_protein_to_refresh(user: str, dsn: str):
     cur.execute(
         """
         INSERT INTO INTERPRO.PROTEIN_TO_SCAN
-        SELECT 
-          IP.PROTEIN_AC, IP.DBCODE, IP.TIMESTAMP, UP.UPI
-        FROM INTERPRO.PROTEIN IP
-        LEFT OUTER JOIN (
-          SELECT DISTINCT 
-            X.UPI,
-            X.AC,
-            P.CRC64
-          FROM UNIPARC.XREF X
-          INNER JOIN UNIPARC.PROTEIN P ON X.UPI = P.UPI
-          WHERE X.DBID IN (2, 3)
-        ) UP ON (IP.PROTEIN_AC = UP.AC AND IP.CRC64 = UP.CRC64)
-        WHERE IP.PROTEIN_AC IN (
-          SELECT NEW_PROTEIN_AC
-          FROM INTERPRO.PROTEIN_CHANGES
-        )
+        SELECT PC.NEW_PROTEIN_AC, IP.DBCODE, IP.TIMESTAMP, UX.UPI 
+        FROM INTERPRO.PROTEIN_CHANGES PC
+        INNER JOIN INTERPRO.PROTEIN IP
+          ON PC.NEW_PROTEIN_AC = IP.PROTEIN_AC
+        INNER JOIN UNIPARC.XREF UX
+          ON PC.NEW_PROTEIN_AC = UX.AC
+        WHERE UX.DBID IN (2, 3)
+        AND UX.DELETED = 'N'
         """
     )
-
     logger.info("PROTEIN_TO_SCAN: {} rows inserted".format(cur.rowcount))
     con.commit()
+
+    orautils.gather_stats(cur, "INTERPRO", "PROTEIN_TO_SCAN")
+
     cur.close()
     con.close()
 
