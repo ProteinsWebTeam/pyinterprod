@@ -624,15 +624,16 @@ def update_alt_splicing_matches(user: str, dsn: str):
     for t in ("VARSPLIC_MASTER", "VARSPLIC_MATCH", "VARSPLIC_NEW"):
         orautils.drop_table(cur, "INTERPRO", t)
 
-    logger.info("building talbe")
+    logger.info("building table")
     cur.execute(
         """
         CREATE TABLE INTERPRO.VARSPLIC (
             PROTEIN_AC VARCHAR2(15) NOT NULL,
             VARIANT NUMBER(3) NOT NULL,
             LEN NUMBER(5) NOT NULL,
+            CANONICAL CHAR(1) NOT NULL,
             METHOD_AC VARCHAR2(25) NOT NULL,
-            DBCODE CHAR(1),
+            DBCODE CHAR(1) NOT NULL,
             POS_FROM NUMBER NOT NULL,
             POS_TO NUMBER NOT NULL,
             FRAGMENTS VARCHAR2(400),
@@ -644,26 +645,35 @@ def update_alt_splicing_matches(user: str, dsn: str):
     cur.execute(
         """
         INSERT /*+ APPEND */ INTO INTERPRO.VARSPLIC
-        SELECT 
-            SUBSTR(X.AC, 1, INSTR(X.AC, '-') - 1),
-            SUBSTR(X.AC, INSTR(X.AC, '-') + 1),
-            P.LEN,
-            M.METHOD_AC,
-            I2D.DBCODE,
-            M.SEQ_START,
-            M.SEQ_END,
-            M.FRAGMENTS,
-            M.MODEL_AC
-        FROM UNIPARC.XREF X
-        INNER JOIN UNIPARC.PROTEIN P
-          ON X.UPI = P.UPI
+        SELECT
+          SUBSTR(XV.AC, 1, INSTR(XV.AC, '-') - 1),
+          SUBSTR(XV.AC, INSTR(XV.AC, '-') + 1),
+          UP.LEN,
+          CASE WHEN XV.UPI = XP.UPI THEN 'Y' ELSE 'N' END,
+          M.METHOD_AC,
+          I2D.DBCODE,
+          M.SEQ_START,
+          M.SEQ_END,
+          M.FRAGMENTS,
+          M.MODEL_AC
+        FROM (
+            SELECT AC, UPI
+            FROM UNIPARC.XREF
+            WHERE DBID IN (24, 25)
+            AND DELETED = 'N'
+        ) XV
+        INNER JOIN UNIPARC.PROTEIN UP ON XV.UPI = UP.UPI
+        INNER JOIN (
+            SELECT AC, UPI
+            FROM UNIPARC.XREF
+            WHERE DBID IN (2, 3)
+            AND DELETED = 'N'
+        ) XP ON UP.UPI = XP.UPI
         INNER JOIN IPRSCAN.MV_IPRSCAN M
-          ON X.UPI = M.UPI
+            ON XV.UPI = M.UPI
         INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
-          ON M.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
-        WHERE X.DBID IN (24, 25)
-        AND X.DELETED = 'N'
-        AND I2D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
+            ON M.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
+        WHERE I2D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
         """
     )
     con.commit()
