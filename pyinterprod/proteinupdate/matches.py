@@ -414,6 +414,7 @@ def prepare_matches(user: str, dsn: str):
         """
     )
     con.commit()
+    orautils.gather_stats(cur, "INTERPRO", "MATCH_NEW")
 
     logger.info("SUPERFAMILY: deleting duplicated matches")
     cur.execute(
@@ -702,6 +703,7 @@ def update_alt_splicing_matches(user: str, dsn: str):
     con.commit()
 
     orautils.grant(cur, "INTERPRO", "VARSPLIC", "SELECT", "INTERPRO_SELECT")
+    orautils.gather_stats(cur, "INTERPRO", "VARSPLIC")
 
     logger.info("indexing table")
     cur.execute(
