@@ -701,6 +701,8 @@ def update_alt_splicing_matches(user: str, dsn: str):
     )
     con.commit()
 
+    orautils.grant(cur, "INTERPRO", "VARSPLIC", "SELECT", "INTERPRO_SELECT")
+
     logger.info("indexing table")
     cur.execute(
         """
