@@ -381,7 +381,16 @@ def prepare_matches(user: str, dsn: str):
     cur = con.cursor()
 
     logger.info("adding new matches")
-    cur.execute("TRUNCATE TABLE INTERPRO.MATCH_NEW")
+    # cur.execute("TRUNCATE TABLE INTERPRO.MATCH_NEW")
+    orautils.drop_table(cur, "INTERPRO", "MATCH_NEW")
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.MATCH_NEW NOLOGGING
+        AS
+        SELECT * FROM INTERPRO.MATCH WHERE 1 = 0
+        """
+    )
+
     cur.execute(
         """
         INSERT /*+ APPEND */ INTO INTERPRO.MATCH_NEW (
