@@ -28,6 +28,9 @@ def _update_database(cur: cx_Oracle.Cursor):
     )
     orautils.grant(cur, "UNIPARC", "CV_DATABASE", "SELECT", "PUBLIC")
 
+    logger.info("analyzing UNIPARC.CV_DATABASE")
+    orautils.gather_stats(cur, "UNIPARC", "CV_DATABASE")
+
     logger.info("indexing UNIPARC.CV_DATABASE")
     cur.execute(
         """
@@ -80,6 +83,9 @@ def _update_protein(user: str, dsn: str):
     )
     orautils.grant(cur, "UNIPARC", "PROTEIN", "SELECT", "PUBLIC")
 
+    logger.info("analyzing UNIPARC.PROTEIN")
+    orautils.gather_stats(cur, "UNIPARC", "PROTEIN")
+
     logger.info("indexing UNIPARC.PROTEIN")
     cur.execute(
         """
@@ -112,6 +118,9 @@ def _update_xref(cur: cx_Oracle.Cursor):
         """
     )
     orautils.grant(cur, "UNIPARC", "XREF", "SELECT", "PUBLIC")
+
+    logger.info("analyzing UNIPARC.XREF")
+    orautils.gather_stats(cur, "UNIPARC", "XREF")
 
     logger.info("indexing UNIPARC.XREF")
     cur.execute(
