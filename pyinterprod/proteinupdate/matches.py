@@ -643,7 +643,7 @@ def update_alt_splicing_matches(user: str, dsn: str):
             PROTEIN_AC VARCHAR2(15) NOT NULL,
             VARIANT NUMBER(3) NOT NULL,
             LEN NUMBER(5) NOT NULL,
-            CANONICAL CHAR(1) NOT NULL,
+            IS_CANONICAL CHAR(1) NOT NULL,
             METHOD_AC VARCHAR2(25) NOT NULL,
             DBCODE CHAR(1) NOT NULL,
             POS_FROM NUMBER NOT NULL,
@@ -658,9 +658,9 @@ def update_alt_splicing_matches(user: str, dsn: str):
         """
         INSERT /*+ APPEND */ INTO INTERPRO.VARSPLIC
         SELECT
-          SUBSTR(XV.AC, 1, INSTR(XV.AC, '-') - 1),
-          SUBSTR(XV.AC, INSTR(XV.AC, '-') + 1),
-          UP.LEN,
+          XV.PROTEIN_AC,
+          XV.VARIANT,
+          P.LEN,
           CASE WHEN XV.UPI = XP.UPI THEN 'Y' ELSE 'N' END,
           M.METHOD_AC,
           I2D.DBCODE,
@@ -669,18 +669,20 @@ def update_alt_splicing_matches(user: str, dsn: str):
           M.FRAGMENTS,
           M.MODEL_AC
         FROM (
-            SELECT AC, UPI
+            SELECT
+                SUBSTR(AC, 1, INSTR(AC, '-') - 1) AS PROTEIN_AC,
+                SUBSTR(AC, INSTR(AC, '-') + 1) AS VARIANT,
+                UPI
             FROM UNIPARC.XREF
             WHERE DBID IN (24, 25)
             AND DELETED = 'N'
         ) XV
-        INNER JOIN UNIPARC.PROTEIN UP ON XV.UPI = UP.UPI
-        INNER JOIN (
-            SELECT AC, UPI
-            FROM UNIPARC.XREF
-            WHERE DBID IN (2, 3)
-            AND DELETED = 'N'
-        ) XP ON UP.UPI = XP.UPI
+        INNER JOIN UNIPARC.PROTEIN P
+            ON XV.UPI = P.UPI
+        INNER JOIN UNIPARC.XREF XP 
+            ON XV.PROTEIN_AC = XP.AC 
+            AND XP.DBID IN (2, 3) 
+            AND XP.DELETED = 'N'
         INNER JOIN IPRSCAN.MV_IPRSCAN M
             ON XV.UPI = M.UPI
         INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
@@ -693,15 +695,8 @@ def update_alt_splicing_matches(user: str, dsn: str):
     logger.info("indexing table")
     cur.execute(
         """
-        CREATE INDEX I_VARSPLIC$P
-        ON INTERPRO.VARSPLIC (PROTEIN_AC) NOLOGGING
-        """
-    )
-
-    cur.execute(
-        """
-        CREATE INDEX I_VARSPLIC$M
-        ON INTERPRO.VARSPLIC (METHOD_AC) NOLOGGING
+        CREATE INDEX I_VARSPLIC 
+        ON INTERPRO.VARSPLIC (PROTEIN_AC, VARIANT) NOLOGGING;
         """
     )
 
