@@ -301,6 +301,20 @@ def import_ispro(user: str, dsn: str, **kwargs):
                                "were not exchanged".format(num_errors))
 
 
+def _complete_mv_iprscan(user: str, dsn: str):
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+
+    for idx in orautils.get_indexes(cur, "IPRSCAN", "MV_IPRSCAN"):
+        logger.info("rebuilding {}".format(idx))
+        cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
+
+    cur.close()
+    con.close()
+
+    logger.info("all indices rebuilt")
+
+
 def _import_mv_iprscan(url: str, url_src: str):
     # Get table partitions (source database)
     con = cx_Oracle.connect(url_src)
