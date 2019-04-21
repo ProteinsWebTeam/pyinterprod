@@ -719,7 +719,7 @@ def update_alt_splicing_matches(user: str, dsn: str):
     cur.execute(
         """
         CREATE INDEX I_VARSPLIC
-        ON INTERPRO.VARSPLIC (PROTEIN_AC, VARIANT) NOLOGGING;
+        ON INTERPRO.VARSPLIC (PROTEIN_AC, VARIANT) NOLOGGING
         """
     )
 
