@@ -225,8 +225,12 @@ def import_ispro(user: str, dsn: str, **kwargs):
         fs = {}
         for analysis in analyses:
             table_name = analysis["table"].upper()
-            f = executor.submit(_import_table, url, "IPRSCAN", table_name)
-            fs[f] = table_name
+
+            if table_name not in fs.values():
+                # Some analyses are in the same table!
+                f = executor.submit(_import_table, url, "IPRSCAN", table_name)
+                fs[f] = table_name
+
 
         num_errors = 0
         for f in as_completed(fs):
