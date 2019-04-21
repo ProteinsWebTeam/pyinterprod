@@ -422,6 +422,15 @@ def prepare_matches(user: str, dsn: str):
     con.commit()
     orautils.gather_stats(cur, "INTERPRO", "MATCH_NEW")
 
+    logger.info("building indices")
+    for col in ("DBCODE", "PROTEIN_AC"):
+        cur.execute(
+            """
+            CREATE INDEX I_MATCH_NEW${0}
+            ON INTERPRO.MATCH_NEW ({0}) NOLOGGING
+            """.format(col)
+        )
+
     logger.info("SUPERFAMILY: deleting duplicated matches")
     cur.execute(
         """
@@ -440,11 +449,6 @@ def prepare_matches(user: str, dsn: str):
     )
     logger.info("SUPERFAMILY: {} matches deleted".format(cur.rowcount))
     con.commit()
-
-    for idx in orautils.get_indexes(cur, "INTERPRO", "MATCH_NEW"):
-        logger.debug("rebuilding {}".format(idx))
-        cur.execute("ALTER INDEX INTERPRO.{} REBUILD".format(idx))
-        cur.execute("ALTER INDEX INTERPRO.{} COMPUTE STATISTICS".format(idx))
 
     cur.close()
     con.close()
