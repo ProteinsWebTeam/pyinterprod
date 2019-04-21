@@ -233,9 +233,9 @@ def import_ispro(user: str, dsn: str, **kwargs):
             table_name = fs[f]
             exc = f.exception()
             if exc is None:
-                logger.info("{:<30}: refreshed".format(table_name))
+                logger.info("{}: refreshed".format(table_name))
             else:
-                logger.error("{:<30}: {}".format(table_name, exc))
+                logger.error("{}: {}".format(table_name, exc))
                 num_errors += 1
 
         if num_errors:
@@ -287,9 +287,9 @@ def import_ispro(user: str, dsn: str, **kwargs):
             full_name = fs[f]
             exc = f.exception()
             if exc is None:
-                logger.info("{:<30}: refreshed".format(full_name))
+                logger.info("{}: refreshed".format(full_name))
             else:
-                logger.error("{:<30}: {}".format(full_name, exc))
+                logger.error("{}: {}".format(full_name, exc))
                 num_errors += 1
 
         if num_errors:
