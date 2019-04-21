@@ -115,6 +115,17 @@ def get_partitions(cur: cx_Oracle.Cursor, owner: str,
     return [dict(zip(cols, row)) for row in cur]
 
 
+def drop_index(cur: cx_Oracle.Cursor, owner: str, name: str):
+    try:
+        cur.execute("DROP INDEX {}.{}".format(owner, name))
+    except cx_Oracle.DatabaseError as exc:
+        error, = exc.args
+
+        # ORA-01418: specified index does not exist
+        if error.code != 1418:
+            raise exc
+
+
 def drop_table(cur: cx_Oracle.Cursor, owner: str, name: str):
     try:
         cur.execute("DROP TABLE {}.{}".format(owner, name))
@@ -160,9 +171,9 @@ def exchange_partition(cur: cx_Oracle.Cursor, owner: str, src: str, dst: str,
                        partition: str):
     cur.execute(
         """
-        ALTER TABLE {0}.{2} 
-        EXCHANGE PARTITION {3} 
-        WITH TABLE {0}.{1} 
+        ALTER TABLE {0}.{2}
+        EXCHANGE PARTITION {3}
+        WITH TABLE {0}.{1}
         INCLUDING INDEXES
         WITHOUT VALIDATION
         """.format(owner, src, dst, partition)
@@ -279,9 +290,3 @@ class TablePopulator(object):
             self.flush(commit=True)
             self.cur.close()
             self.cur = None
-
-
-
-
-
-

@@ -125,8 +125,8 @@ def _get_ispro_upis(url: str) -> List[dict]:
         """
         SignalP has EUK/Gram+/Gram- matches in the same tables so we need
         several times the same time for different analyses.
-        
-        But we shouldn't accept any other duplicates 
+
+        But we shouldn't accept any other duplicates
         (ACTIVE might not always be up-to-date)
         """
         table = row[3]
@@ -190,10 +190,12 @@ def _check_ispro(url: str, max_attempts: int=1, secs: int=3600,
 
 
 def _import_table(url: str, owner: str, name: str):
+    index = "I_" + name
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     orautils.drop_mview(cur, owner, name)
     orautils.drop_table(cur, owner, name)
+    orautils.drop_index(cur, owner, index)
     cur.execute(
         """
         CREATE TABLE {0}.{1} NOLOGGING
@@ -205,10 +207,10 @@ def _import_table(url: str, owner: str, name: str):
     orautils.gather_stats(cur, owner, name)
     cur.execute(
         """
-        CREATE INDEX {0}.I_{1} 
-        ON {0}.{1}(ANALYSIS_ID) 
+        CREATE INDEX {0}.{1}
+        ON {0}.{2}(ANALYSIS_ID)
         NOLOGGING
-        """.format(owner, name)
+        """.format(owner, index, name)
     )
     cur.close()
     con.close()
@@ -660,7 +662,7 @@ def update_alt_splicing_matches(user: str, dsn: str):
             POS_TO NUMBER NOT NULL,
             FRAGMENTS VARCHAR2(400),
             MODEL_AC VARCHAR2(255)
-        ) NOLOGGING 
+        ) NOLOGGING
         """
     )
 
@@ -689,9 +691,9 @@ def update_alt_splicing_matches(user: str, dsn: str):
         ) XV
         INNER JOIN UNIPARC.PROTEIN P
             ON XV.UPI = P.UPI
-        INNER JOIN UNIPARC.XREF XP 
-            ON XV.PROTEIN_AC = XP.AC 
-            AND XP.DBID IN (2, 3) 
+        INNER JOIN UNIPARC.XREF XP
+            ON XV.PROTEIN_AC = XP.AC
+            AND XP.DBID IN (2, 3)
             AND XP.DELETED = 'N'
         INNER JOIN IPRSCAN.MV_IPRSCAN M
             ON XV.UPI = M.UPI
@@ -708,7 +710,7 @@ def update_alt_splicing_matches(user: str, dsn: str):
     logger.info("indexing table")
     cur.execute(
         """
-        CREATE INDEX I_VARSPLIC 
+        CREATE INDEX I_VARSPLIC
         ON INTERPRO.VARSPLIC (PROTEIN_AC, VARIANT) NOLOGGING;
         """
     )
