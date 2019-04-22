@@ -1,6 +1,6 @@
 import os
 import sqlite3
-from concurrent import futures
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from tempfile import mkstemp
 from typing import Generator, Optional, Tuple
@@ -429,7 +429,7 @@ def _delete_iter(url: str, table: str, column: str, stop: int, step: int,
         SELECT COUNT(*)
         FROM INTERPRO.{}
         WHERE {} IN (
-          SELECT PROTEIN_AC 
+          SELECT PROTEIN_AC
           FROM INTERPRO.PROTEIN_TO_DELETE
         )
         """.format(dst, column)
@@ -500,7 +500,7 @@ def delete_obsolete(user: str, dsn: str, truncate: bool=False):
     count = _count_proteins_to_delete(cur)
     logger.info("{} proteins to delete".format(count))
 
-    with futures.ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor() as executor:
         fs = {}
 
         for t in tables:
@@ -523,7 +523,7 @@ def delete_obsolete(user: str, dsn: str, truncate: bool=False):
 
         tables = []
         num_errors = 0
-        for f in futures.as_completed(fs):
+        for f in as_completed(fs):
             t = fs[f]
 
             if t.get("partition"):
@@ -551,7 +551,7 @@ def delete_obsolete(user: str, dsn: str, truncate: bool=False):
 
             if not tc or tc in constraints:
                 """
-                Either no constraint 
+                Either no constraint
                 or prevent the same constrain to be enabled several times
                 """
                 continue
@@ -633,7 +633,7 @@ def find_protein_to_refresh(user: str, dsn: str):
     cur.execute(
         """
         INSERT INTO INTERPRO.PROTEIN_TO_SCAN
-        SELECT PC.NEW_PROTEIN_AC, IP.DBCODE, IP.TIMESTAMP, UX.UPI 
+        SELECT PC.NEW_PROTEIN_AC, IP.DBCODE, IP.TIMESTAMP, UX.UPI
         FROM INTERPRO.PROTEIN_CHANGES PC
         INNER JOIN INTERPRO.PROTEIN IP
           ON PC.NEW_PROTEIN_AC = IP.PROTEIN_AC
@@ -659,7 +659,7 @@ def check_crc64(user: str, dsn: str):
         """
         SELECT IP.PROTEIN_AC, IP.CRC64, UP.CRC64
         FROM INTERPRO.PROTEIN IP
-        INNER JOIN UNIPARC.XREF UX 
+        INNER JOIN UNIPARC.XREF UX
           ON IP.PROTEIN_AC = UX.AC
         INNER JOIN UNIPARC.PROTEIN UP
           ON UX.UPI = UP.UPI
