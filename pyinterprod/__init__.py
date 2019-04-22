@@ -1,5 +1,9 @@
 import logging
 
+
+__version__ = "1.0.0alpha"
+
+
 logger = logging.getLogger(__name__)
 
 if not logger.hasHandlers():

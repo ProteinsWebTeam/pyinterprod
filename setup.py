@@ -3,9 +3,12 @@
 
 from setuptools import Extension, find_packages, setup
 
+from pyinterprod import __version__
+
+
 setup(
     name="pyinterprod",
-    version="1.0",
+    version=__version__,
     description="",
     long_description="",
     packages=find_packages(),
