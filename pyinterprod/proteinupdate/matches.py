@@ -217,15 +217,15 @@ def _import_table(url: str, owner: str, name: str):
 
 
 def update_mv_iprscan(user: str, dsn: str, **kwargs):
-    import_ispro = kwargs.pop("copy", True)
-    exchange_partitions = kwargs.pop("update", True)
-    rebuild_indices = kwargs.pop("finalize", True)
+    ispro_tables = kwargs.pop("tables", True)
+    exchange_partitions = kwargs.pop("partitions", True)
+    rebuild_indices = kwargs.pop("indices", True)
 
     url = orautils.make_connect_string(user, dsn)
     analyses = _check_ispro(url, **kwargs)
 
     with ThreadPoolExecutor(max_workers=len(analyses)) as executor:
-        if import_ispro:
+        if ispro_tables:
             logger.info("copying tables from ISPRO")
             fs = {}
             for analysis in analyses:
