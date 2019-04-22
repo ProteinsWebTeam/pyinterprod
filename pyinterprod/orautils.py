@@ -63,7 +63,7 @@ def toggle_constraint(cur: cx_Oracle.Cursor, owner: str, table: str,
 
     is_enabled = row[0] == "ENABLE"
     if is_enabled == enable:
-        logger.info("skipping {}".format(constraint))
+        logger.debug("{} skipped".format(constraint))
         return True  # Already with the desired status
 
     query = """
