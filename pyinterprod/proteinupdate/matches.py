@@ -217,9 +217,9 @@ def _import_table(url: str, owner: str, name: str):
 
 
 def update_mv_iprscan(user: str, dsn: str, **kwargs):
-    import_ispro = kwargs.get("copy", True)
-    exchange_partitions = kwargs.get("update", True)
-    rebuild_indices = kwargs.get("finalize", True)
+    import_ispro = kwargs.pop("copy", True)
+    exchange_partitions = kwargs.pop("update", True)
+    rebuild_indices = kwargs.pop("finalize", True)
 
     url = orautils.make_connect_string(user, dsn)
     analyses = _check_ispro(url, **kwargs)
