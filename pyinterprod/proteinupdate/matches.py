@@ -308,13 +308,22 @@ def update_mv_iprscan(user: str, dsn: str, **kwargs):
                                    "were not exchanged".format(num_errors))
 
     if rebuild_indices:
-        logger.info("rebuilding indices")
+        # logger.info("rebuilding indices")
+        logger.info("indexing table")
         con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
         cur = con.cursor()
 
         for idx in orautils.get_indices(cur, "IPRSCAN", "MV_IPRSCAN"):
-            logger.debug("rebuilding {}".format(idx))
-            cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
+            # logger.debug("rebuilding {}".format(idx))
+            # cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
+            orautils.drop_index(cur, "IPRSCAN", idx)
+
+        cur.execute(
+            """
+            CREATE INDEX I_MV_IPRSCAN$UPI
+            ON IPRSCAN.MV_IPRSCAN (UPI)
+            """
+        )
 
         cur.close()
         con.close()
