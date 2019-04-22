@@ -321,7 +321,7 @@ def update_mv_iprscan(user: str, dsn: str, **kwargs):
         cur.execute(
             """
             CREATE INDEX I_MV_IPRSCAN$UPI
-            ON IPRSCAN.MV_IPRSCAN (UPI)
+            ON IPRSCAN.MV_IPRSCAN (UPI) NOLOGGING
             """
         )
 
