@@ -216,104 +216,110 @@ def _import_table(url: str, owner: str, name: str):
     con.close()
 
 
-def import_ispro(user: str, dsn: str, **kwargs):
+def update_mv_iprscan(user: str, dsn: str, **kwargs):
+    import_ispro = kwargs.get("import", True)
+    exchange_partitions = kwargs.get("update", True)
+    rebuild_indices = kwargs.get("finalize", True)
+
     url = orautils.make_connect_string(user, dsn)
     analyses = _check_ispro(url, **kwargs)
 
-    logger.info("building tables with data from ISPRO")
-    with ThreadPoolExecutor() as executor:
-        fs = {}
-        for analysis in analyses:
-            table_name = analysis["table"].upper()
+    with ThreadPoolExecutor(max_workers=len(analyses)) as executor:
+        if import_ispro:
+            logger.info("copying tables from ISPRO")
+            fs = {}
+            for analysis in analyses:
+                table_name = analysis["table"].upper()
 
-            if table_name not in fs.values():
-                # Some analyses are in the same table!
-                f = executor.submit(_import_table, url, "IPRSCAN", table_name)
-                fs[f] = table_name
+                if table_name not in fs.values():
+                    # Some analyses are in the same table!
+                    f = executor.submit(_import_table, url, "IPRSCAN", table_name)
+                    fs[f] = table_name
 
+            num_errors = 0
+            for f in as_completed(fs):
+                table_name = fs[f]
+                exc = f.exception()
+                if exc is None:
+                    logger.debug("{}: imported".format(table_name))
+                else:
+                    logger.error("{}: {}".format(table_name, exc))
+                    num_errors += 1
 
-        num_errors = 0
-        for f in as_completed(fs):
-            table_name = fs[f]
-            exc = f.exception()
-            if exc is None:
-                logger.info("{}: refreshed".format(table_name))
-            else:
-                logger.error("{}: {}".format(table_name, exc))
-                num_errors += 1
+            if num_errors:
+                raise RuntimeError("{} tables "
+                                   "were not imported".format(num_errors))
 
-        if num_errors:
-            raise RuntimeError("{} tables "
-                               "were not imported".format(num_errors))
+       if exchange_partitions:
+           logger.info("updating MV_IPRSCAN")
+            functions = {
+                "ipm_cdd_match": mviews.update_cdd,
+                "ipm_coils_match": mviews.update_coils,
+                "ipm_gene3d_match": mviews.update_gene3d,
+                "ipm_hamap_match": mviews.update_hamap,
+                "ipm_mobidblite_match": mviews.update_mobidblite,
+                "ipm_panther_match": mviews.update_panther,
+                "ipm_pfam_match": mviews.update_pfam,
+                "ipm_phobius_match": mviews.update_phobius,
+                "ipm_pirsf_match": mviews.update_pirsf,
+                "ipm_prints_match": mviews.update_prints,
+                "ipm_prodom_match": mviews.update_prodom,
+                "ipm_prosite_patterns_match": mviews.update_prosite_patterns,
+                "ipm_prosite_profiles_match": mviews.update_prosite_profiles,
+                "ipm_sfld_match": mviews.update_sfld,
+                "ipm_smart_match": mviews.update_smart,
+                "ipm_superfamily_match": mviews.update_superfamily,
+                "ipm_tigrfam_match": mviews.update_tigrfam,
+                "ipm_tmhmm_match": mviews.update_tmhmm
+            }
 
-        functions = {
-            "ipm_cdd_match": mviews.update_cdd,
-            "ipm_coils_match": mviews.update_coils,
-            "ipm_gene3d_match": mviews.update_gene3d,
-            "ipm_hamap_match": mviews.update_hamap,
-            "ipm_mobidblite_match": mviews.update_mobidblite,
-            "ipm_panther_match": mviews.update_panther,
-            "ipm_pfam_match": mviews.update_pfam,
-            "ipm_phobius_match": mviews.update_phobius,
-            "ipm_pirsf_match": mviews.update_pirsf,
-            "ipm_prints_match": mviews.update_prints,
-            "ipm_prodom_match": mviews.update_prodom,
-            "ipm_prosite_patterns_match": mviews.update_prosite_patterns,
-            "ipm_prosite_profiles_match": mviews.update_prosite_profiles,
-            "ipm_sfld_match": mviews.update_sfld,
-            "ipm_smart_match": mviews.update_smart,
-            "ipm_superfamily_match": mviews.update_superfamily,
-            "ipm_tigrfam_match": mviews.update_tigrfam,
-            "ipm_tmhmm_match": mviews.update_tmhmm
-        }
+            signalp = {
+                "signalp_euk": mviews.update_signalp_euk,
+                "signalp_gram_negative": mviews.update_signalp_gram_neg,
+                "signalp_gram_positive": mviews.update_signalp_gram_pos
+            }
 
-        signalp = {
-            "signalp_euk": mviews.update_signalp_euk,
-            "signalp_gram_negative": mviews.update_signalp_gram_neg,
-            "signalp_gram_positive": mviews.update_signalp_gram_pos
-        }
+            fs = {}
+            for analysis in analyses:
+                _id = analysis["id"]
+                name = analysis["name"]
+                table_name = analysis["table"]
 
-        fs = {}
-        for analysis in analyses:
-            _id = analysis["id"]
-            name = analysis["name"]
-            table_name = analysis["table"]
+                if table_name == "ipm_signalp_match":
+                    fn = signalp[name]
+                else:
+                    fn = functions[table_name]
 
-            if table_name == "ipm_signalp_match":
-                fn = signalp[name]
-            else:
-                fn = functions[table_name]
+                f = executor.submit(fn, url, _id)
+                fs[f] = analysis["full_name"]
 
-            f = executor.submit(fn, url, _id)
-            fs[f] = analysis["full_name"]
+            num_errors = 0
+            for f in as_completed(fs):
+                full_name = fs[f]
+                exc = f.exception()
+                if exc is None:
+                    logger.debug("{}: exchanged".format(full_name))
+                else:
+                    logger.error("{}: {}".format(full_name, exc))
+                    num_errors += 1
 
-        num_errors = 0
-        for f in as_completed(fs):
-            full_name = fs[f]
-            exc = f.exception()
-            if exc is None:
-                logger.info("{}: refreshed".format(full_name))
-            else:
-                logger.error("{}: {}".format(full_name, exc))
-                num_errors += 1
+            if num_errors:
+                raise RuntimeError("{} partitions "
+                                   "were not exchanged".format(num_errors))
 
-        if num_errors:
-            raise RuntimeError("{} partitions "
-                               "were not exchanged".format(num_errors))
+   if rebuild_indices:
+       logger.info("rebuilding indices")
+       con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+       cur = con.cursor()
 
+       for idx in orautils.get_indexes(cur, "IPRSCAN", "MV_IPRSCAN"):
+           logger.debug("rebuilding {}".format(idx))
+           cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
 
-def _complete_mv_iprscan(user: str, dsn: str):
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
+       cur.close()
+       con.close()
 
-    for idx in orautils.get_indexes(cur, "IPRSCAN", "MV_IPRSCAN"):
-        logger.info("rebuilding {}".format(idx))
-        cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
-
-    cur.close()
-    con.close()
-
-    logger.info("all indices rebuilt")
+   logger.info("MV_IPRSCAN is ready")
 
 
 def _import_mv_iprscan(url: str, url_src: str):
