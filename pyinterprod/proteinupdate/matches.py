@@ -217,7 +217,7 @@ def _import_table(url: str, owner: str, name: str):
 
 
 def update_mv_iprscan(user: str, dsn: str, **kwargs):
-    import_ispro = kwargs.get("import", True)
+    import_ispro = kwargs.get("copy", True)
     exchange_partitions = kwargs.get("update", True)
     rebuild_indices = kwargs.get("finalize", True)
 
