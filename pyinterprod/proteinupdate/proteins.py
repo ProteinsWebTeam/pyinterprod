@@ -500,36 +500,27 @@ def delete_obsolete(user: str, dsn: str, truncate: bool=False):
     count = _count_proteins_to_delete(cur)
     logger.info("{} proteins to delete".format(count))
 
-    with ThreadPoolExecutor() as executor:
+    jobs = []
+    for t in tables:
+        to, tn, tc = t["owner"], t["name"], t["column"]
+        partitions = orautils.get_partitions(cur, to, tn)
+        if partitions:
+            for p in partitions:
+                jobs.append((tn, tc, p["name"]))
+        else:
+            jobs.append((tn, tc, None))
+
+    with ThreadPoolExecutor(max_workers=len(jobs)) as executor:
         fs = {}
 
-        for t in tables:
-            to, tn, tc = t["owner"], t["name"], t["column"]
+        for tn, tc, pn in jobs:
+            f = executor.submit(_delete_iter, url, tn, tc, count, _MAX_ITEMS, pn)
+            fs[f] = (tn, tc, pn)
 
-            if tn == "MATCH":
-                # for MATCH table: delete by partition
-                partitions = orautils.get_partitions(cur, to, tn)
-                for p in partitions:
-                    f = executor.submit(_delete_iter, url, tn, tc,
-                                        count, _MAX_ITEMS, p["name"])
-
-                    t2 = dict(t)  # shallow copy
-                    t2["partition"] = p["name"]
-                    fs[f] = t2
-            else:
-                f = executor.submit(_delete_iter, url, tn, tc, count,
-                                    _MAX_ITEMS)
-                fs[f] = t
-
-        tables = []
         num_errors = 0
         for f in as_completed(fs):
-            t = fs[f]
-
-            if t.get("partition"):
-                name = "{name} ({partition})".format(**t)
-            else:
-                name = t["name"]
+            tn, tc, pn = fs[f]
+            name = tn if pn is None else "{} ({})".format(tn, pn)
 
             try:
                 f.result()  # returns None
@@ -537,37 +528,40 @@ def delete_obsolete(user: str, dsn: str, truncate: bool=False):
                 logger.error("{}: exited ({})".format(name, exc))
                 num_errors += 1
             else:
-                logger.info("{}: done".format(name))
+                logger.debug("{}: done".format(name))
 
         if num_errors:
             cur.close()
             con.close()
             raise RuntimeError("{} tables failed".format(num_errors))
 
-        num_errors = 0
-        constraints = set()
-        for t in tables:
-            to, tn, tc = t["owner"], t["name"], t["constraint"]
+    logger.info("enabling referential constraints")
+    num_errors = 0
+    constraints = set()
+    for t in tables:
+        to, tn, tc = t["owner"], t["name"], t["constraint"]
 
-            if not tc or tc in constraints:
-                """
-                Either no constraint
-                or prevent the same constrain to be enabled several times
-                """
-                continue
+        if not tc or tc in constraints:
+            """
+            Either no constraint
+            or prevent the same constrain to be enabled several times
+            """
+            continue
 
-            constraints.add(tc)
-            logger.info("enabling: {}.{}.{}".format(to, tn, tc))
+        constraints.add(tc)
+        logger.debug("enabling: {}.{}.{}".format(to, tn, tc))
 
-            if not orautils.toggle_constraint(cur, to, tn, tc, True):
-                logger.error("could not enable {}.{}".format(tn, tc))
-                num_errors += 1
+        if not orautils.toggle_constraint(cur, to, tn, tc, True):
+            logger.error("could not enable {}.{}".format(tn, tc))
+            num_errors += 1
 
-        cur.close()
-        con.close()
-        if num_errors:
-            raise RuntimeError("{} constraints "
-                               "could not be disabled".format(num_errors))
+    cur.close()
+    con.close()
+    if num_errors:
+        raise RuntimeError("{} constraints "
+                           "could not be disabled".format(num_errors))
+
+    logger.info("complete")
 
 
 def update_database_info(user: str, dsn: str, version: str, date: str):
