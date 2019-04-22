@@ -389,7 +389,7 @@ def build_aa_iprscan(user: str, dsn: str):
     cur.execute(
         """
         CREATE TABLE IPRSCAN.AA_IPRSCAN COMPRESS NOLOGGING
-        AS {} FROM IPRSCAN.MV_IPRSCAN  WHERE 1 = 0
+        AS {} FROM IPRSCAN.MV_IPRSCAN WHERE 1 = 0
         """.format(select_stmt)
     )
 
