@@ -641,6 +641,7 @@ def find_protein_to_refresh(user: str, dsn: str):
     con.commit()
 
     orautils.gather_stats(cur, "INTERPRO", "PROTEIN_TO_SCAN")
+    orautils.rebuild_indices(cur, "INTERPRO", "PROTEIN_TO_SCAN")
 
     cur.close()
     con.close()

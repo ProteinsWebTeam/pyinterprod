@@ -216,6 +216,12 @@ def get_indices(cur: cx_Oracle.Cursor, owner: str, table: str):
     return [row[0] for row in cur]
 
 
+def rebuild_indices(cur: cx_Oracle.Cursor, owner: str, table: str):
+    for idx in get_indices(cur, owner, table):
+        logger.info("rebuilding {}".format(idx))
+        cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
+
+
 def make_connect_string(user: str, dsn: str) -> str:
     return user + '@' + dsn
 
