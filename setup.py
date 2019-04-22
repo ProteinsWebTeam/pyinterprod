@@ -17,7 +17,7 @@ setup(
                   ["pyinterprod/proteinupdate/sprotmodule.c"],
                   extra_link_args=["-lsqlite3"])
     ],
-    install_requires=["cx-Oracle>=6.0"],
+    install_requires=["cx-Oracle>=7.0"],
     zip_safe=False,
     entry_points={
         'console_scripts': [
