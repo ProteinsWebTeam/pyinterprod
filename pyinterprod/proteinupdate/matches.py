@@ -260,6 +260,7 @@ def import_ispro(user: str, dsn: str, **kwargs):
             "ipm_prodom_match": mviews.update_prodom,
             "ipm_prosite_patterns_match": mviews.update_prosite_patterns,
             "ipm_prosite_profiles_match": mviews.update_prosite_profiles,
+            "ipm_sfld_match": mviews.update_sfld,
             "ipm_smart_match": mviews.update_smart,
             "ipm_superfamily_match": mviews.update_superfamily,
             "ipm_tigrfam_match": mviews.update_tigrfam,
