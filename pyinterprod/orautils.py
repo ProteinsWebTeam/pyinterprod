@@ -203,7 +203,7 @@ def create_db_link(cur: cx_Oracle.Cursor, link: str, user: str, passwd: str,
     )
 
 
-def get_indexes(cur: cx_Oracle.Cursor, owner: str, table: str):
+def get_indices(cur: cx_Oracle.Cursor, owner: str, table: str):
     cur.execute(
         """
         SELECT INDEX_NAME

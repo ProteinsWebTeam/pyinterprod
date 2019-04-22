@@ -312,7 +312,7 @@ def update_mv_iprscan(user: str, dsn: str, **kwargs):
         con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
         cur = con.cursor()
 
-        for idx in orautils.get_indexes(cur, "IPRSCAN", "MV_IPRSCAN"):
+        for idx in orautils.get_indices(cur, "IPRSCAN", "MV_IPRSCAN"):
             logger.debug("rebuilding {}".format(idx))
             cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
 
