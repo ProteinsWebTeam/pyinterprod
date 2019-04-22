@@ -250,8 +250,8 @@ def update_mv_iprscan(user: str, dsn: str, **kwargs):
                 raise RuntimeError("{} tables "
                                    "were not imported".format(num_errors))
 
-       if exchange_partitions:
-           logger.info("updating MV_IPRSCAN")
+        if exchange_partitions:
+            logger.info("updating MV_IPRSCAN")
             functions = {
                 "ipm_cdd_match": mviews.update_cdd,
                 "ipm_coils_match": mviews.update_coils,
@@ -307,19 +307,19 @@ def update_mv_iprscan(user: str, dsn: str, **kwargs):
                 raise RuntimeError("{} partitions "
                                    "were not exchanged".format(num_errors))
 
-   if rebuild_indices:
-       logger.info("rebuilding indices")
-       con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-       cur = con.cursor()
+    if rebuild_indices:
+        logger.info("rebuilding indices")
+        con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+        cur = con.cursor()
 
-       for idx in orautils.get_indexes(cur, "IPRSCAN", "MV_IPRSCAN"):
-           logger.debug("rebuilding {}".format(idx))
-           cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
+        for idx in orautils.get_indexes(cur, "IPRSCAN", "MV_IPRSCAN"):
+            logger.debug("rebuilding {}".format(idx))
+            cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
 
-       cur.close()
-       con.close()
+        cur.close()
+        con.close()
 
-   logger.info("MV_IPRSCAN is ready")
+    logger.info("MV_IPRSCAN is ready")
 
 
 def _import_mv_iprscan(url: str, url_src: str):
