@@ -413,7 +413,7 @@ def build_aa_iprscan(user: str, dsn: str):
         INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
         {}
         FROM IPRSCAN.MV_IPRSCAN PARTITION(PHOBIUS)
-        WHERE METHOD_AC in ('SIGNAL_PEPTIDE','TRANSMEMBRANE')
+        WHERE METHOD_AC IN ('SIGNAL_PEPTIDE','TRANSMEMBRANE')
         """.format(select_stmt)
     )
     con.commit()
