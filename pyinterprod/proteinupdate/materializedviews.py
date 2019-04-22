@@ -468,7 +468,7 @@ def update_signalp_gram_neg(url: str, analysis_id: int):
         """, (analysis_id,)
     )
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_SIGNALP_GRAM_NEG_MATCH_TMP",
-                                "MV_IPRSCAN", "SIGNAL_GRAM_NEGATIVE")
+                                "MV_IPRSCAN", "SIGNALP_GRAM_NEGATIVE")
     orautils.drop_table(cur, "IPRSCAN", "IPM_SIGNALP_GRAM_NEG_MATCH_TMP")
     cur.close()
     con.close()
