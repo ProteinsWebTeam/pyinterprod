@@ -132,6 +132,7 @@ def update_cdd(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_CDD_MATCH_TMP",
                                 "MV_IPRSCAN", "CDD")
     orautils.drop_table(cur, "IPRSCAN", "IPM_CDD_MATCH_TMP")
@@ -153,6 +154,7 @@ def update_coils(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_COILS_MATCH_TMP",
                                 "MV_IPRSCAN", "COILS")
     orautils.drop_table(cur, "IPRSCAN", "IPM_COILS_MATCH_TMP")
@@ -176,6 +178,7 @@ def update_gene3d(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_GENE3D_MATCH_TMP",
                                 "MV_IPRSCAN", "GENE3D")
     orautils.drop_table(cur, "IPRSCAN", "IPM_GENE3D_MATCH_TMP")
@@ -198,6 +201,7 @@ def update_hamap(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_HAMAP_MATCH_TMP",
                                 "MV_IPRSCAN", "HAMAP")
     orautils.drop_table(cur, "IPRSCAN", "IPM_HAMAP_MATCH_TMP")
@@ -220,6 +224,7 @@ def update_mobidblite(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_MOBIDBLITE_MATCH_TMP",
                                 "MV_IPRSCAN", "MOBIDBLITE")
     orautils.drop_table(cur, "IPRSCAN", "IPM_MOBIDBLITE_MATCH_TMP")
@@ -243,6 +248,7 @@ def update_panther(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_PANTHER_MATCH_TMP",
                                 "MV_IPRSCAN", "PANTHER")
     orautils.drop_table(cur, "IPRSCAN", "IPM_PANTHER_MATCH_TMP")
@@ -266,6 +272,7 @@ def update_pfam(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_PFAM_MATCH_TMP",
                                 "MV_IPRSCAN", "PFAM")
     orautils.drop_table(cur, "IPRSCAN", "IPM_PFAM_MATCH_TMP")
@@ -287,6 +294,7 @@ def update_phobius(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_PHOBIUS_MATCH_TMP",
                                 "MV_IPRSCAN", "PHOBIUS")
     orautils.drop_table(cur, "IPRSCAN", "IPM_PHOBIUS_MATCH_TMP")
@@ -310,6 +318,7 @@ def update_pirsf(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_PIRSF_MATCH_TMP",
                                 "MV_IPRSCAN", "PIRSF")
     orautils.drop_table(cur, "IPRSCAN", "IPM_PIRSF_MATCH_TMP")
@@ -332,6 +341,7 @@ def update_prints(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_PRINTS_MATCH_TMP",
                                 "MV_IPRSCAN", "PRINTS")
     orautils.drop_table(cur, "IPRSCAN", "IPM_PRINTS_MATCH_TMP")
@@ -354,6 +364,7 @@ def update_prodom(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_PRODOM_MATCH_TMP",
                                 "MV_IPRSCAN", "PRODOM")
     orautils.drop_table(cur, "IPRSCAN", "IPM_PRODOM_MATCH_TMP")
@@ -377,6 +388,7 @@ def update_prosite_patterns(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_PROSITE_PATTERNS_MATCH_TMP",
                                 "MV_IPRSCAN", "PROSITE_PATTERNS")
     orautils.drop_table(cur, "IPRSCAN", "IPM_PROSITE_PATTERNS_MATCH_TMP")
@@ -400,6 +412,7 @@ def update_prosite_profiles(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_PROSITE_PROFILES_MATCH_TMP",
                                 "MV_IPRSCAN", "PROSITE_PROFILES")
     orautils.drop_table(cur, "IPRSCAN", "IPM_PROSITE_PROFILES_MATCH_TMP")
@@ -423,6 +436,7 @@ def update_sfld(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_SFLD_MATCH_TMP",
                                 "MV_IPRSCAN", "SFLD")
     orautils.drop_table(cur, "IPRSCAN", "IPM_SFLD_MATCH_TMP")
@@ -445,6 +459,7 @@ def update_signalp_euk(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_SIGNALP_EUK_MATCH_TMP",
                                 "MV_IPRSCAN", "SIGNALP_EUK")
     orautils.drop_table(cur, "IPRSCAN", "IPM_SIGNALP_EUK_MATCH_TMP")
@@ -467,6 +482,7 @@ def update_signalp_gram_neg(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_SIGNALP_GRAM_NEG_MATCH_TMP",
                                 "MV_IPRSCAN", "SIGNALP_GRAM_NEGATIVE")
     orautils.drop_table(cur, "IPRSCAN", "IPM_SIGNALP_GRAM_NEG_MATCH_TMP")
@@ -489,6 +505,7 @@ def update_signalp_gram_pos(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_SIGNALP_GRAM_POS_MATCH_TMP",
                                 "MV_IPRSCAN", "SIGNALP_GRAM_POSITIVE")
     orautils.drop_table(cur, "IPRSCAN", "IPM_SIGNALP_GRAM_POS_MATCH_TMP")
@@ -511,6 +528,7 @@ def update_smart(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_SMART_MATCH_TMP",
                                 "MV_IPRSCAN", "SMART")
     orautils.drop_table(cur, "IPRSCAN", "IPM_SMART_MATCH_TMP")
@@ -533,6 +551,7 @@ def update_superfamily(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_SUPERFAMILY_MATCH_TMP",
                                 "MV_IPRSCAN", "SUPERFAMILY")
     orautils.drop_table(cur, "IPRSCAN", "IPM_SUPERFAMILY_MATCH_TMP")
@@ -556,6 +575,7 @@ def update_tigrfam(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_TIGRFAM_MATCH_TMP",
                                 "MV_IPRSCAN", "TIGRFAM")
     orautils.drop_table(cur, "IPRSCAN", "IPM_TIGRFAM_MATCH_TMP")
@@ -578,6 +598,7 @@ def update_tmhmm(url: str, analysis_id: int):
         WHERE ANALYSIS_ID = :1
         """, (analysis_id,)
     )
+    con.commit()
     orautils.exchange_partition(cur, "IPRSCAN", "IPM_TMHMM_MATCH_TMP",
                                 "MV_IPRSCAN", "TMHMM")
     orautils.drop_table(cur, "IPRSCAN", "IPM_TMHMM_MATCH_TMP")
