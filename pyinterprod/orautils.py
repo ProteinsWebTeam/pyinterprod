@@ -1,5 +1,5 @@
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import cx_Oracle
 
@@ -154,8 +154,10 @@ def grant(cur: cx_Oracle.Cursor, owner: str, table: str, privilege: str,
                                                  grantee))
 
 
-def gather_stats(cur: cx_Oracle.Cursor, owner: str, table: str):
-    cur.callproc("DBMS_STATS.GATHER_TABLE_STATS", (owner, table))
+def gather_stats(cur: cx_Oracle.Cursor, owner: str, table: str,
+                 partition: Optional[str]=None):
+    args = (owner, table, partition) if partition else (owner, table)
+    cur.callproc("DBMS_STATS.GATHER_TABLE_STATS", args)
 
 
 def truncate_table(cur: cx_Oracle.Cursor, owner: str, table: str,

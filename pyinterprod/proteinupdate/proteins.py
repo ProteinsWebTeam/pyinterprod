@@ -453,6 +453,8 @@ def _delete_iter(url: str, table: str, column: str, stop: int, step: int,
 
         con.commit()
 
+    orautils.gather_stats(cur, "INTERPRO", table, partition)
+
     cur.close()
     con.close()
 
