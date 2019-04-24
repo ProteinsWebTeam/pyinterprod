@@ -155,9 +155,20 @@ def grant(cur: cx_Oracle.Cursor, owner: str, table: str, privilege: str,
 
 
 def gather_stats(cur: cx_Oracle.Cursor, owner: str, table: str,
-                 partition: Optional[str]=None):
-    args = (owner, table, partition) if partition else (owner, table)
-    cur.callproc("DBMS_STATS.GATHER_TABLE_STATS", args)
+                 partition: Optional[str]=None, cascade: bool=False):
+    if cascade:
+        cur.execute(
+            """
+            BEGIN
+                DBMS_STATS.GATHER_TABLE_STATS(:1, :2 :3, cascade=>TRUE);
+            END;
+            """, (owner, table, partition)
+        )
+    elif partition:
+        cur.callproc("DBMS_STATS.GATHER_TABLE_STATS",
+                     (owner, table, partition))
+    else:
+        cur.callproc("DBMS_STATS.GATHER_TABLE_STATS", (owner, table))
 
 
 def truncate_table(cur: cx_Oracle.Cursor, owner: str, table: str,
