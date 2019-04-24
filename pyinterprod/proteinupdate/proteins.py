@@ -537,7 +537,7 @@ def delete_obsolete(user: str, dsn: str, truncate: bool=False):
             try:
                 f.result()  # returns None
             except Exception as exc:
-                logger.error("{}: exited ({})".format(name, exc))
+                logger.error("{}: exited ({}: {})".format(name, exc.__class__.__name__, exc))
                 num_errors += 1
             else:
                 logger.debug("{}: done".format(name))
