@@ -417,11 +417,6 @@ def _delete_iter(url: str, table: str, column: str, stop: int, step: int,
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
-    # Drop indices
-    indices = orautils.get_indices(cur, "INTERPRO", table)
-    for idx in indices:
-        orautils.drop_index(cur, idx["owner"], idx["name"])
-
     if partition:
         dst = "{} PARTITION ({})".format(table, partition)
         name = "{} ({})".format(table, partition)
@@ -458,11 +453,8 @@ def _delete_iter(url: str, table: str, column: str, stop: int, step: int,
 
         con.commit()
 
-    orautils.gather_stats(cur, "INTERPRO", table, partition)
-
-    # Recreate indices
-    for idx in indices:
-        orautils.recreate_index(cur, idx)
+        logger.debug("{}: gathering statistics".format(name))
+        orautils.gather_stats(cur, "INTERPRO", table, partition)
 
     cur.close()
     con.close()
