@@ -216,23 +216,75 @@ def create_db_link(cur: cx_Oracle.Cursor, link: str, user: str, passwd: str,
     )
 
 
-def get_indices(cur: cx_Oracle.Cursor, owner: str, table: str):
+def get_indices(cur: cx_Oracle.Cursor, owner: str, table: str) -> List[dict]:
     cur.execute(
         """
-        SELECT INDEX_NAME
-        FROM ALL_INDEXES
-        WHERE TABLE_OWNER = :1
-        AND TABLE_NAME = :2
-        """,
-        (owner, table)
+        SELECT
+          I.OWNER, I.INDEX_NAME, I.TABLE_OWNER, I.TABLE_NAME,
+          I.TABLESPACE_NAME, I.UNIQUENESS, 
+          I.LOGGING, IC.COLUMN_NAME, IC.DESCEND
+        FROM ALL_INDEXES I
+        INNER JOIN ALL_IND_COLUMNS IC
+          ON I.OWNER = IC.INDEX_OWNER
+          AND I.INDEX_NAME = IC.INDEX_NAME
+          AND I.TABLE_NAME = IC.TABLE_NAME
+        WHERE I.TABLE_OWNER = :1
+        AND I.TABLE_NAME = :2
+        ORDER BY I.INDEX_NAME, IC.COLUMN_POSITION
+        """, (owner, table)
     )
-    return [row[0] for row in cur]
+
+    indices = {}
+    for row in cur:
+        name = row[1]
+        if name in indices:
+            idx = indices[name]
+        else:
+            idx = indices[name] = {
+                "owner": row[0],
+                "name": name,
+                "table_owner": row[2],
+                "table_name": row[3],
+                "tablespace": row[4],
+                "is_unique": row[5] == "UNIQUE",
+                "logging": row[6] == "YES",
+                "columns": []
+            }
+
+        idx["columns"].append({
+            "name": row[7],
+            "order": row[8]
+        })
+
+    return list(indices.values())
+
+
+def recreate_index(cur: cx_Oracle.Cursor, index: dict):
+    cur.execute(
+        """
+        CREATE {} INDEX {}.{}
+        ON {}.{}({}) {}
+        """.format(
+            "UNIQUE" if index["unique"] else "",
+            index["owner"],
+            index["name"],
+            index["table_owner"],
+            index["table_name"],
+            ','.join(["{name} {order}".format(**col)
+                      for col in index["columns"]]),
+            "LOGGING" if index["logging"] else "NOLOGGING"
+        )
+    )
 
 
 def rebuild_indices(cur: cx_Oracle.Cursor, owner: str, table: str):
     for idx in get_indices(cur, owner, table):
-        logger.info("rebuilding {}".format(idx))
-        cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
+        logger.info("rebuilding {name}".format(**idx))
+
+        if idx["logging"]:
+            cur.execute("ALTER INDEX {name} REBUILD".format(**idx))
+        else:
+            cur.execute("ALTER INDEX {name} REBUILD NOLOGGING".format(**idx))
 
 
 def make_connect_string(user: str, dsn: str) -> str:
