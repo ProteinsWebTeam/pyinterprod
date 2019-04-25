@@ -633,27 +633,30 @@ def find_protein_to_refresh(user: str, dsn: str):
     logger.info("PROTEIN_TO_SCAN: refreshing")
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    cur.execute("TRUNCATE TABLE INTERPRO.PROTEIN_TO_SCAN")
+    orautils.drop_table(cur, "INTERPRO", "PROTEIN_TO_SCAN")
 
-    # Consider CRC64 have been checked and that no mismatches were found
+    # Assume CRC64 have been checked and that no mismatches were found
     cur.execute(
         """
-        INSERT INTO INTERPRO.PROTEIN_TO_SCAN
-        SELECT PC.NEW_PROTEIN_AC, IP.DBCODE, IP.TIMESTAMP, UX.UPI
-        FROM INTERPRO.PROTEIN_CHANGES PC
-        INNER JOIN INTERPRO.PROTEIN IP
-          ON PC.NEW_PROTEIN_AC = IP.PROTEIN_AC
-        INNER JOIN UNIPARC.XREF UX
-          ON PC.NEW_PROTEIN_AC = UX.AC
-        WHERE UX.DBID IN (2, 3)
-        AND UX.DELETED = 'N'
+        CREATE INTO INTERPRO.PROTEIN_TO_SCAN NOLOGGING
+        AS
+        SELECT P.NEW_PROTEIN_AC AS PROTEIN_AC, X.UPI
+        FROM INTERPRO.PROTEIN_CHANGES P
+        INNER JOIN UNIPARC.XREF X
+          ON P.NEW_PROTEIN_AC = X.AC
+        WHERE X.DBID IN (2, 3)
+        AND X.DELETED = 'N'
         """
     )
-    logger.info("PROTEIN_TO_SCAN: {} rows inserted".format(cur.rowcount))
-    con.commit()
 
     orautils.gather_stats(cur, "INTERPRO", "PROTEIN_TO_SCAN")
-    orautils.rebuild_indices(cur, "INTERPRO", "PROTEIN_TO_SCAN")
+
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX PK_PROTEIN_TO_SCAN
+        ON INTERPRO.PROTEIN_TO_SCAN (PROTEIN_AC) NOLOGGING
+        """
+    )
 
     cur.close()
     con.close()
