@@ -39,7 +39,7 @@ def _condense(matches: dict):
         matches[entry_acc] = fragments
 
 
-def build_xref_condensed(user: str, dsn: str):
+def build_xref_condensed(user: str, dsn: str, disc_domains: bool=False):
     logger.info("building XREF_CONDENSED")
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -126,16 +126,19 @@ def build_xref_condensed(user: str, dsn: str):
         else:
             entry = matches[entry_acc] = []
 
-        if fragments is not None:
+        _fragments = []
+        if disc_domains and fragments is not None:
             for frag in fragments.split(','):
                 start, end, _ = frag.split('-')
                 start = int(start)
                 end = int(end)
 
                 if start <= end:
-                    entry.append((start, end))
+                    _fragments.append((start, end))
 
-        if not entry:
+        if _fragments:
+            entry += _fragments
+        else:
             entry.append((pos_from, pos_to))
 
     if matches:
