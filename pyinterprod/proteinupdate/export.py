@@ -421,7 +421,7 @@ def build_aa_iprscan(user: str, dsn: str):
     orautils.gather_stats(cur, "IPRSCAN", "AA_IPRSCAN")
     orautils.grant(cur, "IPRSCAN", "AA_IPRSCAN", "SELECT", "KRAKEN")
 
-    logge.info("creating indices")
+    logger.info("creating indices")
     for col in ("UPI", "SIGNATURE"):
         logger.debug("index on {}".format(col))
         cur.execute(
