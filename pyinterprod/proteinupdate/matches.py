@@ -316,7 +316,7 @@ def update_mv_iprscan(user: str, dsn: str, **kwargs):
         for idx in orautils.get_indices(cur, "IPRSCAN", "MV_IPRSCAN"):
             # logger.debug("rebuilding {}".format(idx))
             # cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
-            orautils.drop_index(cur, "IPRSCAN", idx)
+            orautils.drop_index(cur, "IPRSCAN", idx["name"])
 
         cur.execute(
             """
