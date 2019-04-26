@@ -191,6 +191,7 @@ def exchange_partition(cur: cx_Oracle.Cursor, owner: str, src: str, dst: str,
         WITHOUT VALIDATION
         """.format(owner, src, dst, partition)
     )
+    gather_stats(cur, owner, dst, partition)
 
 
 def create_db_link(cur: cx_Oracle.Cursor, link: str, user: str, passwd: str,
