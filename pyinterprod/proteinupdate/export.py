@@ -147,7 +147,7 @@ def build_xref_condensed(user: str, dsn: str, dir: Optional[str]=None,
 
     cur.execute(
         """
-        SELECT ENTRY_AC, NAME, ENTRY_TYPE
+        SELECT ENTRY_AC, ENTRY_TYPE, NAME
         FROM INTERPRO.ENTRY
         WHERE CHECKED = 'Y'
         """
