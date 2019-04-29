@@ -364,7 +364,7 @@ def prepare_matches(user: str, dsn: str):
           ON P.UPI = M.UPI
         INNER JOIN INTERPRO.IPRSCAN2DBCODE D
           ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
-        WHERE D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x', 'D')
+        WHERE D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
         AND M.SEQ_START != M.SEQ_END
         """
     )
