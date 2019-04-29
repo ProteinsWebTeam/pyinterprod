@@ -230,7 +230,6 @@ def build_xref_summary(user: str, dsn: str):
         )
         PARTITION BY LIST (DBCODE) (
           PARTITION PART_B VALUES ('B'),
-          PARTITION PART_D VALUES ('D'),
           PARTITION PART_F VALUES ('F'),
           PARTITION PART_H VALUES ('H'),
           PARTITION PART_J VALUES ('J'),
