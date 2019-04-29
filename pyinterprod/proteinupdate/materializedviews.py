@@ -100,10 +100,6 @@ def refresh_interpro_views(user: str, dsn: str):
     con.close()
 
 
-def refresh_iprscan_views():
-    pass
-
-
 def _init_ipm_table(cur: cx_Oracle.Cursor, name: str):
     orautils.drop_table(cur, "IPRSCAN", name)
     cur.execute(
