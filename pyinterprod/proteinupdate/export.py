@@ -1,5 +1,8 @@
+import heapq
+import pickle
 import os
-from typing import Tuple
+from tempfile import mkdtemp
+from typing import Generator, Optional, Tuple
 
 import cx_Oracle
 
@@ -8,11 +11,11 @@ from .. import logger, orautils
 
 def _condense(matches: dict):
     for entry_acc in matches:
-        fragments = []
+        entry_matches = []
         start = end = None
         for s, e in sorted(matches[entry_acc]):
             if start is None:
-                # Leftmost fragment
+                # Leftmost match
                 start = s
                 end = e
             elif s > end:
@@ -20,9 +23,9 @@ def _condense(matches: dict):
                       end
                     ----] [----
                           s
-                -> new fragment
+                -> new match
                 """
-                fragments.append((start, end))
+                entry_matches.append((start, end))
                 start = s
                 end = e
             elif e > end:
@@ -35,11 +38,77 @@ def _condense(matches: dict):
                 """
                 end = e
 
-        fragments.append((start, end))
-        matches[entry_acc] = fragments
+        entry_matches.append((start, end))
+        matches[entry_acc] = entry_matches
 
 
-def build_xref_condensed(user: str, dsn: str, disc_domains: bool=False):
+def _iter_file(filepath: str) -> Generator[tuple, None, None]:
+    with open(filepath, "rb") as fh:
+        while True:
+            try:
+                item = pickle.load(fh)
+            except EOFError:
+                break
+            else:
+                yield item
+
+
+def _iter_matches(cur: cx_Oracle.Cursor, tmpdir: str, chunk_size: int) -> Generator[tuple, None, None]:
+    # Export matches to files
+    cur.execute(
+        """
+        SELECT M.PROTEIN_AC, EM.ENTRY_AC, M.POS_FROM, M.POS_TO
+        FROM INTERPRO.MATCH M
+        INNER JOIN INTERPRO.ENTRY2METHOD EM
+          ON M.METHOD_AC = EM.METHOD_AC
+         WHERE EM.ENTRY_AC IN (
+           SELECT ENTRY_AC 
+           FROM INTERPRO.ENTRY 
+           WHERE CHECKED = 'Y'
+        )
+        """
+    )
+
+    chunk = []
+    files = []
+    for row in cur:
+        chunk.append(row)
+
+        if len(chunk) == chunk_size:
+            chunk.sort()
+            filepath = os.path.join(tmpdir, str(len(files)))
+            files.append(filepath)
+            with open(filepath, "wb") as fh:
+                for item in chunk:
+                    pickle.dump(item, fh)
+
+            chunk = []
+
+    if chunk:
+        chunk.sort()
+        filepath = os.path.join(tmpdir, str(len(files)))
+        files.append(filepath)
+        with open(filepath, "wb") as fh:
+            for item in chunk:
+                pickle.dump(item, fh)
+
+    # Merge/sort
+    for row in heapq.merge(*[_iter_file(filepath) for filepath in files]):
+        yield row
+
+    # Clean temporary files
+    total_size = 0
+    for filepath in files:
+        total_size += os.path.getsize(filepath)
+        os.remove(filepath)
+
+    logger.info("temporary files: {:.0f} MB".format(total_size/1024/1024))
+
+
+def build_xref_condensed(user: str, dsn: str, dir: Optional[str]=None,
+                         chunk_size: int=1000000):
+    tmpdir = mkdtemp(dir=dir)
+
     logger.info("building XREF_CONDENSED")
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -70,86 +139,56 @@ def build_xref_condensed(user: str, dsn: str, disc_domains: bool=False):
         """
     )
 
-    cur.execute(
-        """
-        SELECT E.ENTRY_AC, E.NAME, E.ENTRY_TYPE, EM.METHOD_AC
-        FROM INTERPRO.ENTRY E
-        INNER JOIN INTERPRO.ENTRY2METHOD EM
-          ON E.ENTRY_AC = EM.ENTRY_AC
-        WHERE E.CHECKED = 'Y'
-        """
-    )
-
-    entries = {}
-    signatures = {}
-    for entry_acc, name, entry_type, method_acc in cur:
-        signatures[method_acc] = entry_acc
-        entries[entry_acc] = (entry_type, name)
-
-    cur.execute(
-        """
-        SELECT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, FRAGMENTS
-        FROM INTERPRO.MATCH
-        ORDER BY PROTEIN_AC
-        """
-    )
-
-    matches = {}
-    _protein_acc = None
     query = """
       INSERT /*+ APPEND */ INTO INTERPRO.XREF_CONDENSED
       VALUES (:1, :2, :3, :4, :5, :6)
     """
     table = orautils.TablePopulator(con, query, autocommit=True)
 
-    for protein_acc, method_acc, pos_from, pos_to, fragments in cur:
+    cur.execute(
+        """
+        SELECT ENTRY_AC, NAME, ENTRY_TYPE
+        FROM INTERPRO.ENTRY
+        WHERE CHECKED = 'Y'
+        """
+    )
+    entries = {row[0]: (row[1], row[2]) for row in cur}
+
+    _protein_acc = None
+    protein_matches = []
+    for protein_acc, entry_acc, pos_from, pos_to in _iter_matches(cur, tmpdir, chunk_size):
         if protein_acc != _protein_acc:
-            if matches:
-                _condense(matches)
-                for entry_acc, frags in matches.items():
-                    entry_type, name = entries[entry_acc]
-                    for start, end in frags:
-                        table.insert((_protein_acc, entry_acc, entry_type,
-                                      name, start, end))
+            if protein_matches:
+                # Condense in-place
+                _condense(protein_matches)
+                for _entry_acc, entry_matches in protein_matches.items():
+                    entry_type, entry_name = entries[_entry_acc]
 
+                    for _pos_from, _pos_end in entry_matches:
+                        table.insert((_protein_acc, _entry_acc, entry_type,
+                                      entry_name, _pos_from, _pos_end))
+
+            protein_matches = {}
             _protein_acc = protein_acc
-            matches = {}
 
-        try:
-            entry_acc = signatures[method_acc]
-        except KeyError:
-            # Not integrated or integrated in an unchecked entry
-            continue
-
-        if entry_acc in matches:
-            entry = matches[entry_acc]
+        if entry_acc in protein_matches:
+            protein_matches[entry_acc].append((pos_from, pos_to))
         else:
-            entry = matches[entry_acc] = []
+            protein_matches[entry_acc] = [(pos_from, pos_to)]
 
-        _fragments = []
-        if disc_domains and fragments is not None:
-            for frag in fragments.split(','):
-                start, end, _ = frag.split('-')
-                start = int(start)
-                end = int(end)
+    # Last protein
+    _condense(protein_matches)
+    for _entry_acc, entry_matches in protein_matches.items():
+        entry_type, entry_name = entries[_entry_acc]
 
-                if start <= end:
-                    _fragments.append((start, end))
-
-        if _fragments:
-            entry += _fragments
-        else:
-            entry.append((pos_from, pos_to))
-
-    if matches:
-        _condense(matches)
-        for entry_acc, frags in matches.items():
-            entry_type, name = entries[entry_acc]
-            for start, end in frags:
-                table.insert((_protein_acc, entry_acc, entry_type,
-                              name, start, end))
+        for _pos_from, _pos_end in entry_matches:
+            table.insert((_protein_acc, _entry_acc, entry_type,
+                          entry_name, _pos_from, _pos_end))
 
     table.close()
+
+    # Removing temporary directory (now empty)
+    os.rmdir(tmpdir)
 
     logger.info("gathering statistics")
     orautils.gather_stats(cur, "INTERPRO", "XREF_CONDENSED")
