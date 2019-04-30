@@ -474,18 +474,42 @@ def check_matches(user: str, dsn: str, outdir: str):
         json.dump(dict(entries=entries, databases=databases), fh)
 
 
-def update_matches(user: str, dsn: str, recreate_indices: bool=False):
+def update_matches(user: str, dsn: str, unsafe: bool=False):
     logger.info("updating matches")
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
-    if recreate_indices:
-        indices = orautils.get_indices(cur, "INTERPRO", "MATCH")
-    else:
-        indices = []
+    if unsafe:
+        # Get constraints
+        constraints = orautils.get_constraints(cur, "INTERPRO", "MATCH")
 
-    for index in indices:
-        orautils.drop_index(cur, index["owner"], index["name"])
+        # Disable all constraints
+        enforced = []
+        num_errors = 0
+        for c in constraints:
+            if not orautils.toggle_constraint(cur, "INTERPRO", "MATCH", c["name"], False):
+                logger.error("could not disable {name}".format(**c))
+                num_errors += 1
+
+            if c["index_name"]:
+                # This constraint enforces an index, so it cannot be dropped
+                enforced.append(c["index_name"])
+
+        if num_errors:
+            cur.close()
+            con.close()
+            raise RuntimeError("{} constraints "
+                               "could not be disabled".format(num_errors))
+
+        indices = orautils.get_indices(cur, "INTERPRO", "MATCH")
+        to_recreate = []
+        for index in indices:
+            if index["name"] not in enforced:
+                orautils.drop_index(cur, index["owner"], index["name"])
+                to_recreate.append(index)
+    else:
+        constraints = []
+        to_recreate = []
 
     cur.execute(
         """
@@ -508,14 +532,26 @@ def update_matches(user: str, dsn: str, recreate_indices: bool=False):
     con.commit()
     logger.info("{} matches inserted".format(cur.rowcount))
 
-    for index in indices:
+    num_errors = 0
+    for c in constraints:
+        if not orautils.toggle_constraint(cur, "INTERPRO", "MATCH", c["name"], True):
+            logger.error("could not enable {name}".format(**c))
+            num_errors += 1
+
+    if num_errors:
+        cur.close()
+        con.close()
+        raise RuntimeError("{} constraints "
+                           "could not be enabled".format(num_errors))
+
+    for index in to_recreate:
         orautils.recreate_index(cur, index)
 
     cur.close()
     con.close()
 
 
-def update_feature_matches(user: str, dsn: str, recreate_indices: bool=False):
+def update_feature_matches(user: str, dsn: str, unsafe: bool=False):
     logger.info("updating feature matches")
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -524,13 +560,37 @@ def update_feature_matches(user: str, dsn: str, recreate_indices: bool=False):
     for t in ("FEATURE_MATCH_NEW", "FEATURE_MATCH_NEW_STG"):
         orautils.drop_table(cur, "INTERPRO", t)
 
-    if recreate_indices:
-        indices = orautils.get_indices(cur, "INTERPRO", "FEATURE_MATCH")
-    else:
-        indices = []
+    if unsafe:
+        # Get constraints
+        constraints = orautils.get_constraints(cur, "INTERPRO", "FEATURE_MATCH")
 
-    for index in indices:
-        orautils.drop_index(cur, index["owner"], index["name"])
+        # Disable all constraints
+        enforced = []
+        num_errors = 0
+        for c in constraints:
+            if not orautils.toggle_constraint(cur, "INTERPRO", "FEATURE_MATCH", c["name"], False):
+                logger.error("could not disable {name}".format(**c))
+                num_errors += 1
+
+            if c["index_name"]:
+                # This constraint enforces an index, so it cannot be dropped
+                enforced.append(c["index_name"])
+
+        if num_errors:
+            cur.close()
+            con.close()
+            raise RuntimeError("{} constraints "
+                               "could not be disabled".format(num_errors))
+
+        indices = orautils.get_indices(cur, "INTERPRO", "FEATURE_MATCH")
+        to_recreate = []
+        for index in indices:
+            if index["name"] not in enforced:
+                orautils.drop_index(cur, index["owner"], index["name"])
+                to_recreate.append(index)
+    else:
+        constraints = []
+        to_recreate = []
 
     cur.execute(
         """
@@ -564,7 +624,19 @@ def update_feature_matches(user: str, dsn: str, recreate_indices: bool=False):
     con.commit()
     logger.info("{} feature matches inserted".format(cur.rowcount))
 
-    for index in indices:
+    num_errors = 0
+    for c in constraints:
+        if not orautils.toggle_constraint(cur, "INTERPRO", "FEATURE_MATCH", c["name"], True):
+            logger.error("could not enable {name}".format(**c))
+            num_errors += 1
+
+    if num_errors:
+        cur.close()
+        con.close()
+        raise RuntimeError("{} constraints "
+                           "could not be enabled".format(num_errors))
+
+    for index in to_recreate:
         orautils.recreate_index(cur, index)
 
     cur.close()

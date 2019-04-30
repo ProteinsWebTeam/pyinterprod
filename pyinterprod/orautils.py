@@ -45,27 +45,7 @@ def get_child_tables(cur: cx_Oracle.Cursor, owner: str,
 
 
 def toggle_constraint(cur: cx_Oracle.Cursor, owner: str, table: str,
-                      constraint: str, enable: bool=True) -> bool:
-    cur.execute(
-        """
-        SELECT STATUS
-        FROM USER_CONSTRAINTS
-        WHERE OWNER = :1
-        AND TABLE_NAME = :2
-        AND CONSTRAINT_NAME = :3
-        """,
-        (owner, table, constraint)
-    )
-    row = cur.fetchone()
-    if not row:
-        logger.warning("{} unknown".format(constraint))
-        return False
-
-    is_enabled = row[0] == "ENABLE"
-    if is_enabled == enable:
-        logger.debug("{} skipped".format(constraint))
-        return True  # Already with the desired status
-
+                      constraint: str, enable: bool) -> bool:
     query = """
         ALTER TABLE {}.{}
         {} CONSTRAINT {}
@@ -217,6 +197,50 @@ def create_db_link(cur: cx_Oracle.Cursor, link: str, user: str, passwd: str,
     )
 
 
+def get_constraints(cur: cx_Oracle.Cursor, owner: str, table: str) -> List[dict]:
+    cur.execute(
+        """
+        SELECT
+          C.CONSTRAINT_NAME, C.CONSTRAINT_TYPE, C.TABLE_NAME, 
+          C.SEARCH_CONDITION, C.DELETE_RULE, C.STATUS, 
+          C.R_CONSTRAINT_NAME, C.INDEX_NAME, CC.COLUMN_NAME, CC.POSITION
+        FROM ALL_CONSTRAINTS C
+          INNER JOIN ALL_CONS_COLUMNS CC
+            ON C.OWNER = CC.OWNER
+            AND C.CONSTRAINT_NAME = CC.CONSTRAINT_NAME
+            AND C.TABLE_NAME = CC.TABLE_NAME
+        WHERE C.OWNER = :1 
+        AND C.TABLE_NAME = :2
+        ORDER BY C.CONSTRAINT_NAME, CC.POSITION        
+        """, (owner, table)
+    )
+
+    constraints = {}
+    for row in cur:
+        name = row[0]
+        if name in constraints:
+            c = constraints[name]
+        else:
+            c = constraints[name] = {
+                "name": name,
+                "type": row[1],
+                "table_name": row[2],
+                "condition": row[3],
+                "cascade": row[4] == "CASCADE",
+                "is_enabled": row[4] == "ENABLED",
+                "reference": row[5],
+                "index_name": row[6],
+                "columns": []
+            }
+
+        c["columns"].append({
+            "name": row[7],
+            "order": row[8]
+        })
+
+    return list(constraints.values())
+
+
 def get_indices(cur: cx_Oracle.Cursor, owner: str, table: str) -> List[dict]:
     cur.execute(
         """
@@ -261,19 +285,35 @@ def get_indices(cur: cx_Oracle.Cursor, owner: str, table: str) -> List[dict]:
 
 
 def recreate_index(cur: cx_Oracle.Cursor, index: dict):
+    columns = ','.join(["{name} {order}".format(**col)
+                        for col in index["columns"]])
+
+    if index["unique"]:
+        uniqueness = "UNIQUE"
+    else:
+        uniqueness = ""
+
+    if index["tablespace"]:
+        tablespace = "TABLESPACE " + index["tablespace"]
+    else:
+        tablespace = ""
+
+    if index["logging"]:
+        loginfo = "LOGGING"
+    else:
+        loginfo = "NOLOGGING"
+
     cur.execute(
         """
         CREATE {} INDEX {}.{}
-        ON {}.{}({}) {}
+        ON {}.{}({}) 
+        {}
+        {}
         """.format(
-            "UNIQUE" if index["unique"] else "",
-            index["owner"],
-            index["name"],
-            index["table_owner"],
-            index["table_name"],
-            ','.join(["{name} {order}".format(**col)
-                      for col in index["columns"]]),
-            "LOGGING" if index["logging"] else "NOLOGGING"
+            uniqueness, index["owner"], index["name"],
+            index["table_owner"], index["table_name"], columns,
+            tablespace,
+            loginfo
         )
     )
 
