@@ -474,10 +474,19 @@ def check_matches(user: str, dsn: str, outdir: str):
         json.dump(dict(entries=entries, databases=databases), fh)
 
 
-def update_matches(user: str, dsn: str):
+def update_matches(user: str, dsn: str, recreate_indices: bool=False):
     logger.info("updating matches")
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
+
+    if recreate_indices:
+        indices = orautils.get_indices(cur, "INTERPRO", "MATCH")
+    else:
+        indices = []
+
+    for index in indices:
+        orautils.drop_index(cur, index["owner"], index["name"])
+
     cur.execute(
         """
         DELETE FROM INTERPRO.MATCH
@@ -499,11 +508,14 @@ def update_matches(user: str, dsn: str):
     con.commit()
     logger.info("{} matches inserted".format(cur.rowcount))
 
+    for index in indices:
+        orautils.recreate_index(cur, index)
+
     cur.close()
     con.close()
 
 
-def update_feature_matches(user: str, dsn: str):
+def update_feature_matches(user: str, dsn: str, recreate_indices: bool=False):
     logger.info("updating feature matches")
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -511,6 +523,14 @@ def update_feature_matches(user: str, dsn: str):
     # Make sure legacy tables are dropped
     for t in ("FEATURE_MATCH_NEW", "FEATURE_MATCH_NEW_STG"):
         orautils.drop_table(cur, "INTERPRO", t)
+
+    if recreate_indices:
+        indices = orautils.get_indices(cur, "INTERPRO", "FEATURE_MATCH")
+    else:
+        indices = []
+
+    for index in indices:
+        orautils.drop_index(cur, index["owner"], index["name"])
 
     cur.execute(
         """
@@ -543,6 +563,9 @@ def update_feature_matches(user: str, dsn: str):
     )
     con.commit()
     logger.info("{} feature matches inserted".format(cur.rowcount))
+
+    for index in indices:
+        orautils.recreate_index(cur, index)
 
     cur.close()
     con.close()
