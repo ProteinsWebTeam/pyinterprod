@@ -1,22 +1,31 @@
 import cx_Oracle
 
-from ..orautils import make_connect_string
+from ..orautils import drop_table, make_connect_string
 
 
 def update_method2descriptions(user: str, dsn: str):
     con = cx_Oracle.connect(make_connect_string(user, dsn))
     cur = con.cursor()
-    cur.execute("TRUNCATE TABLE INTERPRO.METHOD2SWISS_DE")
+    drop_table(cur, "INTERPRO", "METHOD2SWISS_DE")
     cur.execute(
         """
-        INSERT /*+APPEND*/ INTO INTERPRO.METHOD2SWISS_DE
-          SELECT M.PROTEIN_AC, M.METHOD_AC, D.TEXT
-          FROM INTERPRO_ANALYSIS_LOAD.METHOD2PROTEIN M
-          INNER JOIN INTERPRO_ANALYSIS_LOAD.DESC_VALUE D
-            ON M.DESC_ID = D.DESC_ID
-          WHERE M.DBCODE = 'S'
+        CREATE TABLE INTERPRO.METHOD2SWISS_DE
+        NOLOGGING
+        AS
+        SELECT M.PROTEIN_AC, M.METHOD_AC, D.TEXT
+        FROM INTERPRO_ANALYSIS_LOAD.METHOD2PROTEIN PARTITION(M2P_SWISSP) M
+        INNER JOIN INTERPRO_ANALYSIS_LOAD.DESC_VALUE D
+          ON M.DESC_ID = D.DESC_ID
         """
     )
-    con.commit()
+
+    cur.execute(
+        """
+        ALTER TABLE INTERPRO.METHOD2SWISS_DE 
+        ADD CONSTRAINT PK_METHOD2SWISS 
+        PRIMARY KEY (PROTEIN_AC, METHOD_AC);
+        """
+    )
+
     cur.close()
     con.close()
