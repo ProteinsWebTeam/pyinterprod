@@ -396,7 +396,7 @@ def prepare_matches(user: str, dsn: str):
         )
         """
     )
-    logger.info("SUPERFAMILY: {} matches deleted".format(cur.rowcount))
+    logger.info("SUPERFAMILY: {} rows deleted".format(cur.rowcount))
     con.commit()
 
     cur.close()
@@ -474,41 +474,24 @@ def check_matches(user: str, dsn: str, outdir: str):
         json.dump(dict(entries=entries, databases=databases), fh)
 
 
-def update_matches(user: str, dsn: str, unsafe: bool=False):
-    logger.info("updating matches")
+def update_matches(user: str, dsn: str, drop_indices: bool=False):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
-    if unsafe:
-        # Get constraints
-        constraints = orautils.get_constraints(cur, "INTERPRO", "MATCH")
-
-        # Disable all constraints
+    logger.info("updating MATCH")
+    if drop_indices:
         enforced = []
-        num_errors = 0
-        for c in constraints:
-            if not orautils.toggle_constraint(cur, "INTERPRO", "MATCH", c["name"], False):
-                logger.error("could not disable {name}".format(**c))
-                num_errors += 1
-
+        for c in orautils.get_constraints(cur, "INTERPRO", "MATCH"):
             if c["index_name"]:
                 # This constraint enforces an index, so it cannot be dropped
                 enforced.append(c["index_name"])
 
-        if num_errors:
-            cur.close()
-            con.close()
-            raise RuntimeError("{} constraints "
-                               "could not be disabled".format(num_errors))
-
-        indices = orautils.get_indices(cur, "INTERPRO", "MATCH")
         to_recreate = []
-        for index in indices:
+        for index in orautils.get_indices(cur, "INTERPRO", "MATCH"):
             if index["name"] not in enforced:
                 orautils.drop_index(cur, index["owner"], index["name"])
                 to_recreate.append(index)
     else:
-        constraints = []
         to_recreate = []
 
     cur.execute(
@@ -520,8 +503,8 @@ def update_matches(user: str, dsn: str, unsafe: bool=False):
         )
         """
     )
+    logger.info("{} rows deleted".format(cur.rowcount))
     con.commit()
-    logger.info("{} matches deleted".format(cur.rowcount))
 
     cur.execute(
         """
@@ -529,20 +512,8 @@ def update_matches(user: str, dsn: str, unsafe: bool=False):
         SELECT * FROM INTERPRO.MATCH_NEW
         """
     )
+    logger.info("{} rows inserted".format(cur.rowcount))
     con.commit()
-    logger.info("{} matches inserted".format(cur.rowcount))
-
-    num_errors = 0
-    for c in constraints:
-        if not orautils.toggle_constraint(cur, "INTERPRO", "MATCH", c["name"], True):
-            logger.error("could not enable {name}".format(**c))
-            num_errors += 1
-
-    if num_errors:
-        cur.close()
-        con.close()
-        raise RuntimeError("{} constraints "
-                           "could not be enabled".format(num_errors))
 
     for index in to_recreate:
         orautils.recreate_index(cur, index)
@@ -551,45 +522,24 @@ def update_matches(user: str, dsn: str, unsafe: bool=False):
     con.close()
 
 
-def update_feature_matches(user: str, dsn: str, unsafe: bool=False):
-    logger.info("updating feature matches")
+def update_feature_matches(user: str, dsn: str, drop_indices: bool=False):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
-    # Make sure legacy tables are dropped
-    for t in ("FEATURE_MATCH_NEW", "FEATURE_MATCH_NEW_STG"):
-        orautils.drop_table(cur, "INTERPRO", t)
-
-    if unsafe:
-        # Get constraints
-        constraints = orautils.get_constraints(cur, "INTERPRO", "FEATURE_MATCH")
-
-        # Disable all constraints
+    logger.info("updating FEATURE_MATCH")
+    if drop_indices:
         enforced = []
-        num_errors = 0
-        for c in constraints:
-            if not orautils.toggle_constraint(cur, "INTERPRO", "FEATURE_MATCH", c["name"], False):
-                logger.error("could not disable {name}".format(**c))
-                num_errors += 1
-
+        for c in orautils.get_constraints(cur, "INTERPRO", "FEATURE_MATCH"):
             if c["index_name"]:
                 # This constraint enforces an index, so it cannot be dropped
                 enforced.append(c["index_name"])
 
-        if num_errors:
-            cur.close()
-            con.close()
-            raise RuntimeError("{} constraints "
-                               "could not be disabled".format(num_errors))
-
-        indices = orautils.get_indices(cur, "INTERPRO", "FEATURE_MATCH")
         to_recreate = []
-        for index in indices:
+        for index in orautils.get_indices(cur, "INTERPRO", "FEATURE_MATCH"):
             if index["name"] not in enforced:
                 orautils.drop_index(cur, index["owner"], index["name"])
                 to_recreate.append(index)
     else:
-        constraints = []
         to_recreate = []
 
     cur.execute(
@@ -601,8 +551,8 @@ def update_feature_matches(user: str, dsn: str, unsafe: bool=False):
         )
         """
     )
+    logger.info("{} rows deleted".format(cur.rowcount))
     con.commit()
-    logger.info("{} feature matches deleted".format(cur.rowcount))
 
     cur.execute(
         """
@@ -621,20 +571,8 @@ def update_feature_matches(user: str, dsn: str, unsafe: bool=False):
         WHERE D.DBCODE IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
         """
     )
+    logger.info("{} rows inserted".format(cur.rowcount))
     con.commit()
-    logger.info("{} feature matches inserted".format(cur.rowcount))
-
-    num_errors = 0
-    for c in constraints:
-        if not orautils.toggle_constraint(cur, "INTERPRO", "FEATURE_MATCH", c["name"], True):
-            logger.error("could not enable {name}".format(**c))
-            num_errors += 1
-
-    if num_errors:
-        cur.close()
-        con.close()
-        raise RuntimeError("{} constraints "
-                           "could not be enabled".format(num_errors))
 
     for index in to_recreate:
         orautils.recreate_index(cur, index)
@@ -766,6 +704,106 @@ def update_alt_splicing_matches(user: str, dsn: str):
         ON INTERPRO.VARSPLIC (PROTEIN_AC, VARIANT) NOLOGGING
         """
     )
+
+    cur.close()
+    con.close()
+
+
+def update_site_matches(user: str, dsn: str, drop_indices: bool=False):
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+
+    logger.info("creating SITE_MATCH_NEW")
+    orautils.drop_table(cur, "INTERPRO", "SITE_MATCH_NEW")
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.SITE_MATCH_NEW
+        AS
+        SELECT
+            P.PROTEIN_AC, S.METHOD_AC, S.LOC_START, S.LOC_END, S.DESCRIPTION,
+            S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END, S.NUM_SITES, D.DBCODE
+        FROM INTERPRO.PROTEIN_TO_SCAN P
+        INNER JOIN IPRSCAN.SITE S
+          ON P.UPI = S.UPI
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE D
+          ON S.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
+        """
+    )
+
+    logger.info("indexing SITE_MATCH_NEW")
+    cur.execute(
+        """
+        CREATE INDEX I_SITE_NEW 
+        ON INTERPRO.SITE_MATCH_NEW 
+        (PROTEIN_AC, METHOD_AC, LOC_START, LOC_END) 
+        NOLOGGING 
+        """
+    )
+
+    logger.info("checking SITE_MATCH_NEW")
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM (
+            SELECT DISTINCT PROTEIN_AC, METHOD_AC, LOC_START, LOC_END
+            FROM INTERPRO.SITE_MATCH_NEW 
+            MINUS (
+              SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO 
+              FROM INTERPRO.MATCH PARTITION (MATCH_DBCODE_J)
+              UNION ALL
+              SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
+              FROM INTERPRO.MATCH PARTITION (MATCH_DBCODE_B)
+            )        
+        )
+        """
+    )
+    num_rows = cur.fetchone()[0]
+
+    if num_rows:
+        cur.close()
+        con.close()
+        raise RuntimeError("{} matches in SITE_MATCH_NEW "
+                           "that are not in MATCH".format(num_rows))
+
+    if drop_indices:
+        enforced = []
+        for c in orautils.get_constraints(cur, "INTERPRO", "SITE_MATCH"):
+            if c["index_name"]:
+                # This constraint enforces an index, so it cannot be dropped
+                enforced.append(c["index_name"])
+
+        to_recreate = []
+        for index in orautils.get_indices(cur, "INTERPRO", "SITE_MATCH"):
+            if index["name"] not in enforced:
+                orautils.drop_index(cur, index["owner"], index["name"])
+                to_recreate.append(index)
+    else:
+        to_recreate = []
+
+    logger.info("updating SITE_MATCH")
+    cur.execute(
+        """
+        DELETE FROM INTERPRO.SITE_MATCH
+        WHERE PROTEIN_AC IN (
+          SELECT PROTEIN_AC
+          FROM INTERPRO.PROTEIN_TO_SCAN
+        )
+        """
+    )
+    logger.info("{} rows deleted".format(cur.rowcount))
+    con.commit()
+
+    cur.execute(
+        """
+        INSERT INTO INTERPRO.SITE_MATCH
+        SELECT * FROM INTERPRO.SITE_MATCH_NEW
+        """
+    )
+    logger.info("{} rows inserted".format(cur.rowcount))
+    con.commit()
+
+    for index in to_recreate:
+        orautils.recreate_index(cur, index)
 
     cur.close()
     con.close()
