@@ -21,7 +21,7 @@ def update_taxonomy(user: str, dsn: str):
           PARENT_ID, 
           SPTR_SCIENTIFIC AS SCIENTIFIC_NAME,
           RANK,
-          NVL(N.SPTR_COMMON, N.NCBI_COMMON) AS COMMON_NAME
+          NVL(SPTR_COMMON, NCBI_COMMON) AS COMMON_NAME
         FROM TAXONOMY.V_PUBLIC_NODE@SWPREAD 
         """
     )
