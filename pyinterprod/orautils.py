@@ -201,17 +201,17 @@ def get_constraints(cur: cx_Oracle.Cursor, owner: str, table: str) -> List[dict]
     cur.execute(
         """
         SELECT
-          C.CONSTRAINT_NAME, C.CONSTRAINT_TYPE, C.TABLE_NAME, 
-          C.SEARCH_CONDITION, C.DELETE_RULE, C.STATUS, 
+          C.CONSTRAINT_NAME, C.CONSTRAINT_TYPE, C.TABLE_NAME,
+          C.SEARCH_CONDITION, C.DELETE_RULE, C.STATUS,
           C.R_CONSTRAINT_NAME, C.INDEX_NAME, CC.COLUMN_NAME, CC.POSITION
         FROM ALL_CONSTRAINTS C
           INNER JOIN ALL_CONS_COLUMNS CC
             ON C.OWNER = CC.OWNER
             AND C.CONSTRAINT_NAME = CC.CONSTRAINT_NAME
             AND C.TABLE_NAME = CC.TABLE_NAME
-        WHERE C.OWNER = :1 
+        WHERE C.OWNER = :1
         AND C.TABLE_NAME = :2
-        ORDER BY C.CONSTRAINT_NAME, CC.POSITION        
+        ORDER BY C.CONSTRAINT_NAME, CC.POSITION
         """, (owner, table)
     )
 
@@ -246,7 +246,7 @@ def get_indices(cur: cx_Oracle.Cursor, owner: str, table: str) -> List[dict]:
         """
         SELECT
           I.OWNER, I.INDEX_NAME, I.TABLE_OWNER, I.TABLE_NAME,
-          I.TABLESPACE_NAME, I.UNIQUENESS, 
+          I.TABLESPACE_NAME, I.UNIQUENESS,
           I.LOGGING, IC.COLUMN_NAME, IC.DESCEND
         FROM ALL_INDEXES I
         INNER JOIN ALL_IND_COLUMNS IC
@@ -288,7 +288,7 @@ def recreate_index(cur: cx_Oracle.Cursor, index: dict):
     columns = ','.join(["{name} {order}".format(**col)
                         for col in index["columns"]])
 
-    if index["unique"]:
+    if index["is_unique"]:
         uniqueness = "UNIQUE"
     else:
         uniqueness = ""
@@ -306,7 +306,7 @@ def recreate_index(cur: cx_Oracle.Cursor, index: dict):
     cur.execute(
         """
         CREATE {} INDEX {}.{}
-        ON {}.{}({}) 
+        ON {}.{}({})
         {}
         {}
         """.format(
