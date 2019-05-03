@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 
+import os
+from multiprocessing import Process, Queue
 from typing import Optional
 
 import cx_Oracle
 
 from ... import orautils
+from . import proteins
 
 
 def load_databases(user: str, dsn: str):
@@ -337,8 +340,113 @@ def load_proteins(user: str, dsn: str):
 
 
 def load_signature2protein(user: str, dsn: str, processes: int=1,
-                           tmpdir: Optional[str]=None):
-    pass
+                           tmpdir: Optional[str]=None, chunk_size: int=1000):
+    if tmpdir is not None:
+        os.makedirs(tmpdir, exist_ok=True)
+
+    task_queue = Queue(maxsize=processes)
+    done_queue = Queue()
+    consumers = []
+    for _ in range(min(processes-1, 1)):
+        p = Process(target=proteins.consume_proteins,
+                    args=(user, dsn, task_queue, done_queue, tmpdir))
+        consumers.append(p)
+        p.start()
+
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    orautils.drop_table(cur, owner, "METHOD2PROTEIN")
+    con.execute(
+        """
+        CREATE TABLE {}.METHOD2PROTEIN
+        (
+            METHOD_AC VARCHAR2(25) NOT NULL,
+            PROTEIN_AC VARCHAR2(15) NOT NULL,
+            DBCODE CHAR(1) NOT NULL,
+            MD5 VARCHAR(32) NOT NULL,
+            LEN NUMBER(5) NOT NULL,
+            LEFT_NUMBER NUMBER NOT NULL,
+            DESC_ID NUMBER(10) NOT NULL
+        )
+        PARTITION BY LIST (DBCODE) (
+          PARTITION M2P_SWISSP VALUES ('S'),
+          PARTITION M2P_TREMBL VALUES ('T')
+        ) NOLOGGING
+        """.format(owner)
+    )
+
+    cur.execute(
+        """
+        SELECT
+            P.PROTEIN_AC, P.LEN, P.DBCODE, D.DESC_ID,
+            NVL(E.LEFT_NUMBER, 0),
+            MA.METHOD_AC, MA.POS_FROM, MA.POS_TO, MA.FRAGMENTS
+        FROM INTERPRO.PROTEIN P
+        INNER JOIN INTERPRO.ETAXI E
+          ON P.TAX_ID = E.TAX_ID
+        INNER JOIN {0}.PROTEIN_DESC D
+          ON P.PROTEIN_AC = D.PROTEIN_AC
+        INNER JOIN INTERPRO.MATCH MA
+          ON P.PROTEIN_AC = MA.PROTEIN_AC
+        WHERE P.FRAGMENT = 'N'
+        ORDER BY P.PROTEIN_AC        
+        """
+    )
+    chunk = []
+    matches = []
+    _protein_acc = dbcode= length = descid = left_num = None
+    for row in cur:
+        protein_acc = row[0]
+
+        if protein_acc != _protein_acc:
+            if _protein_acc:
+                # acc, dbcode, length, descid, leftnum, matches
+                chunk.append((_protein_acc, dbcode, length, descid, left_num,
+                              matches))
+
+                if len(chunk) == chunk_size:
+                    task_queue.put(chunk)
+                    chunk = []
+
+            length = row[1]
+            dbcode = row[2]
+            descid = row[3]
+            left_num = row[4]
+
+        signature_acc = row[5]
+        pos_start = row[6]
+        pos_end = row[7]
+        fragments = row[8]
+        if fragments is not None:
+            for frag in fragments.split(','):
+                """
+                Format: START-END-STATUS
+                Types:
+                    * S: Continuous single chain domain
+                    * N: N terminus discontinuous
+                    * C: C terminus discontinuous
+                    * NC: N and C terminus discontinuous
+                """
+                pos_start, pos_end, _ = frag.split('-')
+                matches.append((signature_acc, int(pos_start), int(pos_end)))
+        else:
+            matches.append((signature_acc, pos_start, pos_end))
+
+    if _protein_acc:
+        # Last protein
+        chunk.append((_protein_acc, dbcode, length, descid, left_num,
+                      matches))
+        task_queue.put(chunk)
+        chunk = []
+        matches = []
+
+    for _ in consumers:
+        task_queue.put(None)
+
+
+    cur.close()
+    con.close()
 
 
 def copy_schema(user_src: str, user_dst: str, dsn: str):
