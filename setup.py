@@ -20,8 +20,9 @@ setup(
     install_requires=["cx-Oracle>=7.0"],
     zip_safe=False,
     entry_points={
-        'console_scripts': [
-            'ipr-update-proteins = pyinterprod.proteinupdate:main',
+        "console_scripts": [
+            "ipr-update-proteins = pyinterprod.proteinupdate:main",
+            "ipr-update-pronto = pyinterprod.pronto:main"
         ]
     }
 )

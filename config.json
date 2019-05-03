@@ -5,7 +5,9 @@
       "users": {
         "interpro": "",
         "iprscan": "",
-        "uniparc": ""
+        "uniparc": "",
+        "pronto_main": "",
+        "pronto_alt": ""
       }
     },
     "others": {

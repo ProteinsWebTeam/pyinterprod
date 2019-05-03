@@ -1,9 +1,36 @@
+# -*- coding: utf-8 -*-
+
 import re
 from typing import Dict, List, Optional
 
 import cx_Oracle
 
 from . import logger
+
+
+INSERT_SIZE = 100000
+
+
+def clear_schema(user: str, dsn: str):
+    con = cx_Oracle.connect(make_connect_string(user, dsn))
+    cur = con.cursor()
+    owner = user.split('/')[0]
+    for table in get_tables(cur, owner):
+        drop_table(cur, owner, table)
+    cur.close()
+    con.close()
+
+
+def get_tables(cur: cx_Oracle.Cursor, owner: str) -> List[str]:
+    cur.execute(
+        """
+        SELECT TABLE_NAME
+        FROM ALL_TABLES
+        WHERE UPPER(OWNER) = UPPER(:1)
+        ORDER BY TABLE_NAME
+        """, (owner,)
+    )
+    return [row[0] for row in cur]
 
 
 def parse_url(url: str) -> dict:
@@ -399,6 +426,6 @@ class TablePopulator(object):
 
     def close(self):
         if self.cur is not None:
-            self.flush(commit=True)
+            self.flush()
             self.cur.close()
             self.cur = None
