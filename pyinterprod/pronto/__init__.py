@@ -94,7 +94,7 @@ def run(dsn: str, main_user: str, alt_user: str=None,
                 try:
                     f.result()
                 except Exception as exc:
-                    logger.error("{:<20}failed ({})".format(name, exc))
+                    logger.error("{:<19}failed ({})".format(name, exc))
                     num_errors += 1
                 else:
                     logger.info("{:<20}done".format(name))
