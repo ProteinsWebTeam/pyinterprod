@@ -107,13 +107,13 @@ def load_matches(user: str, dsn: str):
         ON {}.MATCH (PROTEIN_AC) NOLOGGING
         """.format(owner)
     )
-    con.execute(
+    cur.execute(
         """
         CREATE INDEX I_MATCH$METHOD
         ON {}.MATCH (METHOD_AC) NOLOGGING
         """.format(owner)
     )
-    con.execute(
+    cur.execute(
         """
         CREATE INDEX I_MATCH$DBCODE
         ON {}.MATCH (DBCODE) NOLOGGING
@@ -358,7 +358,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     orautils.drop_table(cur, owner, "METHOD2PROTEIN")
-    con.execute(
+    cur.execute(
         """
         CREATE TABLE {}.METHOD2PROTEIN
         (
