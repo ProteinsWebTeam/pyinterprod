@@ -199,7 +199,7 @@ def load_terms(user: str, dsn: str):
     query = """
         INSERT /*+ APPEND */ INTO {}.TERM
         VALUES (:1, :2, :3, :4, :5, :6, :7)
-    """
+    """.format(owner)
     table = orautils.TablePopulator(con, query, autocommit=True)
     for row in cur:
         term_constraints = set()
