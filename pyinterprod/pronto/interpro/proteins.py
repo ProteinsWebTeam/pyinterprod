@@ -6,13 +6,14 @@ import os
 import pickle
 from multiprocessing import Queue
 from tempfile import mkdtemp
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import cx_Oracle
 
 from ... import orautils
 
-MAX_GAP = 20
+MAX_GAP = 20        # at least 20 residues between positions
+MIN_OVERLAP = 0.5   # at least 50% of overlap
 
 
 class Organizer(object):
@@ -134,12 +135,27 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
               "VALUES (:1, :2, :3, :4, :5, :6, :7)".format(owner),
         autocommit=True
     )
-    residues = {}
-    overlaps = {}
+    comparator = SignatureComparator()
     for chunk in iter(task_queue, None):
         for acc, dbcode, length, descid, leftnum, matches in chunk:
             md5 = hash_protein(matches)
-            compare_matches(matches, residues, overlaps)
+            signatures = comparator.update(matches)
+
+            for signature_acc in signatures:
+                # UniProt descriptions
+                names.add(signature_acc, (descid, dbcode))
+                # Taxonomic origins
+                taxa.add(signature_acc, leftnum)
+
+                table.insert((signature_acc, acc, dbcode, md5, length,
+                              leftnum, descid))
+
+        names.flush()
+        taxa.flush()
+
+    table.close()
+    size = names.merge() + taxa.merge()
+    done_queue.put((names, taxa, comparator, size))
 
 
 def hash_protein(matches: List[tuple]) -> str:
@@ -205,46 +221,110 @@ def hash_protein(matches: List[tuple]) -> str:
     ).hexdigest()
 
 
-def compare_matches(matches: List[tuple], residues: dict, overlaps: dict):
-    # Group signatures
-    signatures = {}
-    for acc, pos_start, pos_end in matches:
-        if acc in signatures:
-            signatures[acc].append((pos_start, pos_end))
-        else:
-            signatures[acc] = [(pos_start, pos_end)]
+class SignatureComparator(object):
+    def __init__(self):
+        self.signatures = {}
+        self.collocations = {}
+        self.match_overlaps = {}
+        self.residue_overlaps = {}
 
-    # Sort matches by position
-    for matches in signatures.values():
-        matches.sort()
+    def update(self, matches: List[tuple]) -> List[str]:
+        signatures = self.prepare(matches)
 
-    # Evaluate overlap between all signatures
-    for acc_1 in signatures:
-        # number of residues covered by the signature matches
-        _residues = sum([e - s + 1 for s, e in signatures[acc_1]])
+        # Evaluate overlap between all signatures
+        for acc_1 in signatures:
+            # number of residues covered by the signature matches
+            residues = sum([e - s + 1 for s, e in signatures[acc_1]])
 
-        if acc_1 in residues:
-            residues[acc_1] += _residues
-        else:
-            residues[acc_1] = _residues
-            overlaps[acc_1] = {}
+            if acc_1 in self.signatures:
+                self.signatures[acc_1]["proteins"] += 1
+                self.signatures[acc_1]["residues"] += residues
+            else:
+                self.signatures[acc_1] = {
+                    "proteins": 1,
+                    "residues": residues
+                }
+                self.collocations[acc_1] = {}
+                self.match_overlaps[acc_1] = {}
+                self.residue_overlaps[acc_1] = {}
 
-        for acc_2 in signatures:
-            if acc_1 >= acc_2:
-                continue
-            elif acc_2 not in overlaps[acc_1]:
-                overlaps[acc_1][acc_2] = 0
+            for acc_2 in signatures:
+                if acc_1 >= acc_2:
+                    continue
+                elif acc_2 not in self.collocations[acc_1]:
+                    self.collocations[acc_1][acc_2] = 1
+                    self.match_overlaps[acc_1][acc_2] = 0
+                    self.residue_overlaps[acc_1][acc_2] = 0
 
-            i = 0
-            start_2, end_2 = signatures[acc_2][i]
-            for start_1, end_1 in signatures[acc_1]:
-                while end_2 < start_1:
-                    i += 1
-                    try:
-                        start_2, end_2 = signatures[acc_2][i]
-                    except IndexError:
-                        break
+                num_match_overlaps = 0
+                i = 0
+                start_2, end_2 = signatures[acc_2][i]
+                for start_1, end_1 in signatures[acc_1]:
+                    while end_2 < start_1:
+                        i += 1
+                        try:
+                            start_2, end_2 = signatures[acc_2][i]
+                        except IndexError:
+                            break
 
-                o = min(end_1, end_2) - max(start_1, start_2) + 1
-                if o > 0:
-                    overlaps[acc_1][acc_2] += o
+                    o = min(end_1, end_2) - max(start_1, start_2) + 1
+                    if o > 0:
+                        # o is the number of overlapping residues
+                        self.residue_overlaps[acc_1][acc_2] += o
+
+                        # Shorted match
+                        shortest = min(end_1 - start_1, end_2 - start_2) + 1
+                        if o >= shortest * MIN_OVERLAP:
+                            num_match_overlaps += 1
+
+                if num_match_overlaps:
+                    """
+                    acc_1 and acc_2 overlaps
+                    (by at least 50% of the shortest match)
+                    at least once in this protein
+                    """
+                    self.match_overlaps[acc_1][acc_2] += 1
+
+        return list(signatures.keys())
+
+    @staticmethod
+    def prepare(self, matches: List[tuple]) -> Dict[str, list]:
+        # Group signatures
+        signatures = {}
+        for acc, pos_start, pos_end in matches:
+            if acc in signatures:
+                signatures[acc].append((pos_start, pos_end))
+            else:
+                signatures[acc] = [(pos_start, pos_end)]
+
+        # Sort/merge matches
+        for acc in signatures:
+            matches = []
+            pos_start = pos_end = None
+            for start, end in sorted(signatures[acc]):
+                if pos_start is None:
+                    # Left most match
+                    pos_start = start
+                    pos_end = end
+                elif start > pos_end:
+                    """
+                      pos_end
+                        ----] [----
+                              start
+                    """
+                    matches.append((pos_start, pos_end))
+                    pos_start = start
+                    pos_end = end
+                elif end > pos_end:
+                    """
+                            pos_end
+                        ----]
+                          ------]
+                                end
+                    """
+                    pos_end = end
+
+            matches.append((pos_start, pos_end))
+            signatures[acc] = matches
+
+        return signatures

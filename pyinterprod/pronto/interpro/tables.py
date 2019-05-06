@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import heapq
 import os
 from multiprocessing import Process, Queue
 from typing import Optional
@@ -206,8 +207,8 @@ def load_taxa(user: str, dsn: str):
         CREATE TABLE {}.ETAXI
         NOLOGGING
         AS
-        SELECT 
-          TAX_ID, PARENT_ID, SCIENTIFIC_NAME, RANK, 
+        SELECT
+          TAX_ID, PARENT_ID, SCIENTIFIC_NAME, RANK,
           LEFT_NUMBER, RIGHT_NUMBER, FULL_NAME
         FROM INTERPRO.ETAXI
         """.format(owner)
@@ -278,7 +279,7 @@ def load_taxa(user: str, dsn: str):
             parent_id = t["parent"]
 
     table = orautils.TablePopulator(con,
-                                    query=" INSERT /*+ APPEND */ "
+                                    query="INSERT /*+ APPEND */ "
                                           "INTO {}.LINEAGE "
                                           "VALUES (:1, :2, :3)".format(owner),
                                     autocommit=True)
@@ -390,7 +391,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         INNER JOIN INTERPRO.MATCH MA
           ON P.PROTEIN_AC = MA.PROTEIN_AC
         WHERE P.FRAGMENT = 'N'
-        ORDER BY P.PROTEIN_AC        
+        ORDER BY P.PROTEIN_AC
         """
     )
     chunk = []
@@ -444,7 +445,167 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     for _ in consumers:
         task_queue.put(None)
 
+    names = []
+    taxa = []
+    size = 0
+    signatures = {}
+    collocations = {}
+    match_overlaps = {}
+    residue_overlaps = {}
+    for _ in consumers:
+        _names, _taxa, comparator, _size = done_queue.get()
+        names.append(_names)
+        taxa.append(_taxa)
+        size += _size
 
+        for acc, s in comparator.signatures.items():
+            if acc in signatures:
+                for k, v in s.items():
+                    signatures[acc][k] += v
+            else:
+                signatures[acc] = s
+
+        for acc_1, s in comparator.collocations.items():
+            if acc_1 in collocations:
+                for acc_2, v in s.items():
+                    if acc_2 in collocations[acc_1]:
+                        collocations[acc_1][acc_2] += v
+                    else:
+                        collocations[acc_1][acc_2] = v
+            else:
+                collocations[acc1] = s
+
+        for acc_1, s in comparator.match_overlaps.items():
+            if acc_1 in match_overlaps:
+                for acc_2, v in s.items():
+                    if acc_2 in match_overlaps[acc_1]:
+                        match_overlaps[acc_1][acc_2] += v
+                    else:
+                        match_overlaps[acc_1][acc_2] = v
+            else:
+                match_overlaps[acc1] = s
+
+        for acc_1, s in comparator.residue_overlaps.items():
+            if acc_1 in residue_overlaps:
+                for acc_2, v in s.items():
+                    if acc_2 in residue_overlaps[acc_1]:
+                        residue_overlaps[acc_1][acc_2] += v
+                    else:
+                        residue_overlaps[acc_1][acc_2] = v
+            else:
+                residue_overlaps[acc1] = s
+
+    for p in consumers:
+        p.join()
+
+    consumers = [
+        Process(target=_load_description_counts, args=(user, dsn, names)),
+        Process(target=_load_taxonomy_counts, args=(user, dsn, taxa)),
+        # TODO: insert signatures, collocations, etc.
+    ]
+
+    for p in consumers:
+        p.start()
+
+    orautils.gather_stats(cur, owner, "METHOD2PROTEIN")
+    cur.close()
+    con.close()
+
+    for p in consumers:
+        p.join()
+
+
+def _load_description_counts(user: str, dsn: str, organisers: list):
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    orautils.drop_table(cur, owner, "METHOD_DESC")
+    cur.execute(
+        """
+        CREATE TABLE {}.METHOD_DESC
+        (
+            METHOD_AC VARCHAR2(25) NOT NULL,
+            DESC_ID NUMBER(10) NOT NULL,
+            REVIEWED_COUNT NUMBER(10) NOT NULL,
+            UNREVIEWED_COUNT NUMBER(10) NOT NULL
+        ) NOLOGGING
+        """.format(owner)
+    )
+    cur.close()
+
+    table = orautils.TablePopulator(con,
+                                    query="INSERT /*+ APPEND */ "
+                                          "INTO {}.METHOD_DESC "
+                                          "VALUES (:1, :2, :3, :4)".format(owner),
+                                    autocommit=True)
+
+    _acc = None
+    _descriptions = {}
+    for acc, descriptions in heapq.merge(*organisers):
+        if acc != _acc:
+            for descid, counts in _descriptions.items():
+                table.insert((_acc, descid, counts['S'], counts['T']))
+
+            _acc = acc
+            _descriptions = {}
+
+        for descid, dbcode in descriptions:
+            if descid in _descriptions:
+                d = _descriptions[descid]
+            else:
+                d = _descriptions[descid] = {'S': 0, 'T': 0}
+
+            d[dbcode] += 1
+
+    for descid, counts in _descriptions.items():
+        table.insert((_acc, descid, counts['S'], counts['T']))
+
+    table.close()
+
+    for o in organisers:
+        o.remove()
+
+    cur = con.cursor()
+    orautils.gather_stats(cur, owner, "METHOD_DESC")
+    cur.close()
+    con.close()
+
+
+def _load_taxonomy_counts(user: str, dsn: str, organisers: list):
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    orautils.drop_table(cur, owner, "METHOD_TAXA")
+    cur.execute(
+        """
+        CREATE TABLE {}.METHOD_TAXA
+        (
+            METHOD_AC VARCHAR2(25) NOT NULL,
+            RANK VARCHAR2(50) NOT NULL,
+            TAX_ID NUMBER(10) NOT NULL,
+            PROTEIN_COUNT NUMBER(10) NOT NULL
+        ) NOLOGGING
+        """.format(owner)
+    )
+    cur.close()
+
+    # table = orautils.TablePopulator(con,
+    #                                 query="INSERT /*+ APPEND */ "
+    #                                       "INTO {}.METHOD_TAXA "
+    #                                       "VALUES (:1, :2, :3, :4)".format(owner),
+    #                                 autocommit=True)
+    #
+    # _acc = None
+    # for acc, left_numbers in heapq.merge(*organisers):
+    #     pass
+    #
+    # table.close()
+
+    for o in organisers:
+        o.remove()
+
+    cur = con.cursor()
+    orautils.gather_stats(cur, owner, "METHOD_TAXA")
     cur.close()
     con.close()
 
