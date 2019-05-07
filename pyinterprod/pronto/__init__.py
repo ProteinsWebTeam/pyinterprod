@@ -83,11 +83,32 @@ def run(dsn: str, main_user: str, alt_user: str=None,
         num_errors = 0
         with ThreadPoolExecutor(max_workers=len(steps)) as executor:
             fs = {}
+            running = set()
             for name, step in steps.items():
                 step = steps[name]
                 f = executor.submit(step["func"], main_user, dsn)
                 fs[f] = name
                 logger.info("{:<20}running".format(name))
+                running.add(name)
+
+            for f in as_completed(fs):
+                name = fs[f]
+                running.remove(name)
+                try:
+                    f.result()
+                except Exception as exc:
+                    logger.error("{:<19}failed ({})".format(name, exc))
+                    num_errors += 1
+                else:
+                    logger.info("{:<20}done".format(name))
+
+                    if name == "descriptions" and step_s2p:
+                        # signature2protein can now run
+                        fs = {f: name for f, name in fs.items() if name in running}
+                        f = executor.submit(step_s2p["func"], main_user, dsn,
+                                            processes, tmpdir)
+                        fs[f] = "signature2protein"
+                        break
 
             for f in as_completed(fs):
                 name = fs[f]
@@ -101,8 +122,7 @@ def run(dsn: str, main_user: str, alt_user: str=None,
 
         if num_errors:
             raise RuntimeError("one or more step failed")
-
-    if step_s2p:
+    elif step_s2p:
         logger.info("{:<20}running".format("signature2protein"))
         step["func"](main_user, dsn, processes=processes, tmpdir=tmpdir)
         logger.info("{:<20}done".format("signature2protein"))
