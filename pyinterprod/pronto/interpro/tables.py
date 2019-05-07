@@ -587,19 +587,56 @@ def _load_taxonomy_counts(user: str, dsn: str, organisers: list):
         ) NOLOGGING
         """.format(owner)
     )
-    cur.close()
 
-    # table = orautils.TablePopulator(con,
-    #                                 query="INSERT /*+ APPEND */ "
-    #                                       "INTO {}.METHOD_TAXA "
-    #                                       "VALUES (:1, :2, :3, :4)".format(owner),
-    #                                 autocommit=True)
-    #
-    # _acc = None
-    # for acc, left_numbers in heapq.merge(*organisers):
-    #     pass
-    #
-    # table.close()
+    ranks = ["superkingdom", "kingdom", "phylum", "class", "order",
+             "family", "genus", "species"]
+
+    # Get lineages for the METHOD_TAXA table
+    cur.execute(
+        """
+        SELECT LEFT_NUMBER, TAX_ID, RANK
+        FROM {}.LINEAGE
+        WHERE RANK IN ({})
+        """.format(owner, ','.join(':'+str(i+1) for i in range(len(ranks)))),
+        ranks
+    )
+    lineages = {}
+    for left_num, tax_id, rank in cur:
+        if left_num in lineages:
+            lineages[left_num][rank] = tax_id
+        else:
+            lineages[left_num] = {rank: tax_id}
+
+    table = orautils.TablePopulator(con,
+                                    query="INSERT /*+ APPEND */ "
+                                          "INTO {}.METHOD_TAXA "
+                                          "VALUES (:1, :2, :3, :4)".format(owner),
+                                    autocommit=True)
+
+    _acc = None
+    _ranks = {}
+    for acc, left_numbers in heapq.merge(*organisers):
+        if acc != _acc:
+            for rank in ranks:
+                for tax_id in _ranks.get(rank, {}):
+                    table.insert((_acc, rank, tax_id, _ranks[tax_id]))
+
+            _acc = acc
+            _ranks = {}
+
+        for left_num in left_numbers:
+            for rank, tax_id in lineages.get(left_num, {}).items():
+                if rank in _ranks:
+                    r = _ranks[rank]
+                else:
+                    r = _ranks[rank] = {}
+
+                if tax_id in r:
+                    r[tax_id] += 1
+                else:
+                    r[tax_id] = 1
+
+    table.close()
 
     for o in organisers:
         o.remove()
