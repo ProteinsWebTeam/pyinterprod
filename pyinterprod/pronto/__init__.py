@@ -127,12 +127,12 @@ def run(dsn: str, main_user: str, alt_user: str=None,
             raise RuntimeError("one or more step failed")
     elif step_s2p:
         logger.info("{:<20}running".format("signature2protein"))
-        step["func"](main_user, dsn, processes=processes, tmpdir=tmpdir)
+        step_s2p["func"](main_user, dsn, processes=processes, tmpdir=tmpdir)
         logger.info("{:<20}done".format("signature2protein"))
 
     if step_copy and alt_user:
         logger.info("{:<20}running".format("copy"))
-        step["func"](main_user, alt_user, dsn)
+        step_copy["func"](main_user, alt_user, dsn)
         logger.info("{:<20}done".format("copy"))
 
 
