@@ -397,6 +397,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     chunk = []
     matches = []
     _protein_acc = dbcode= length = descid = left_num = None
+    num_proteins = 0
     for row in cur:
         protein_acc = row[0]
 
@@ -409,6 +410,13 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
                 if len(chunk) == chunk_size:
                     task_queue.put(chunk)
                     chunk = []
+
+                num_proteins += 1
+                if not num_proteins % 1e7:
+                    logger.debug("proteins: {:,}".format(num_proteins))
+
+            else:
+                logger.debug("processing proteins")
 
             length = row[1]
             dbcode = row[2]
@@ -441,6 +449,8 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         task_queue.put(chunk)
         chunk = []
         matches = []
+        num_proteins += 1
+        logger.debug("proteins: {:,}".format(num_proteins))
 
     for _ in consumers:
         task_queue.put(None)
@@ -510,6 +520,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     orautils.gather_stats(cur, owner, "METHOD2PROTEIN")
     cur.close()
     con.close()
+    logger.debug("METHOD2PROTEIN ready")
 
     for p in consumers:
         p.join()
@@ -569,6 +580,7 @@ def _load_description_counts(user: str, dsn: str, organisers: list):
     orautils.gather_stats(cur, owner, "METHOD_DESC")
     cur.close()
     con.close()
+    logger.debug("METHOD_DESC ready")
 
 
 def _load_taxonomy_counts(user: str, dsn: str, organisers: list):
@@ -645,6 +657,7 @@ def _load_taxonomy_counts(user: str, dsn: str, organisers: list):
     orautils.gather_stats(cur, owner, "METHOD_TAXA")
     cur.close()
     con.close()
+    logger.debug("METHOD_TAXA ready")
 
 
 def copy_schema(user_src: str, user_dst: str, dsn: str):

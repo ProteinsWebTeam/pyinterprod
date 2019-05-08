@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tempfile import gettempdir
@@ -67,8 +68,10 @@ def run(dsn: str, main_user: str, alt_user: str=None,
         steps: dict=_get_steps(), **kwargs):
     tmpdir = kwargs.get("tmpdir", gettempdir())
     processes = kwargs.get("processes", 1)
+    level = kwargs.get("level", logging.INFO)
 
     from .. import logger
+    logger.setLevel(level)
 
     step = steps.pop("clear", None)
     if step is not None:
@@ -144,6 +147,9 @@ def main():
                         help="temporary directory", default=gettempdir())
     parser.add_argument("-p", "--processes", type=int, default=1,
                         help="number of processes (default: 1)")
+    parser.add_argument("--verbose", action="store_const",
+                        const=logging.DEBUG, default=logging.INFO,
+                        help="display additional logging messages")
     args = parser.parse_args()
 
     try:
@@ -164,4 +170,5 @@ def main():
         alt_user=config["databases"]["interpro"]["users"]["pronto_alt"],
         steps={k: v for k, v in _get_steps().items() if k in args.steps},
         tmpdir=args.tmp,
-        processes=args.processes)
+        processes=args.processes,
+        level=args.verbose)
