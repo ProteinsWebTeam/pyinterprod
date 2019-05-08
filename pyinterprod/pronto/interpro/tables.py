@@ -520,9 +520,10 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         p.start()
 
     orautils.gather_stats(cur, owner, "METHOD2PROTEIN")
+    orautils.grant(cur, owner, "METHOD2PROTEIN", "SELECT", "INTERPRO_SELECT")
+    logger.debug("METHOD2PROTEIN ready")
     cur.close()
     con.close()
-    logger.debug("METHOD2PROTEIN ready")
 
     for p in consumers:
         p.join()
@@ -555,13 +556,14 @@ def _load_comparisons(user: str, dsn: str, signatures: dict, collocs: dict,
         table.insert((acc, s["proteins"], s["matches"], s["residues"]))
 
     table.close()
-    orautils.gather_stats(cur, owner, "METHOD_COUNT")
     cur.execute(
         """
         CREATE UNIQUE INDEX UI_METHOD_COUNT
         ON {}.METHOD_COUNT (METHOD_AC) NOLOGGING
         """.format(owner)
     )
+    orautils.gather_stats(cur, owner, "METHOD_COUNT")
+    orautils.grant(cur, owner, "METHOD_COUNT", "SELECT", "INTERPRO_SELECT")
     logger.debug("METHOD_COUNT ready")
 
     orautils.drop_table(cur, owner, "METHOD_COMPARISON")
@@ -590,7 +592,6 @@ def _load_comparisons(user: str, dsn: str, signatures: dict, collocs: dict,
             table.insert((acc_1, acc_2, num_collocs, num_matches, num_residues))
 
     table.close()
-    orautils.gather_stats(cur, owner, "METHOD_COMPARISON")
     cur.execute(
         """
         CREATE INDEX I_METHOD_COMPARISON$AC1
@@ -603,6 +604,8 @@ def _load_comparisons(user: str, dsn: str, signatures: dict, collocs: dict,
         ON {}.METHOD_COMPARISON (METHOD_AC2) NOLOGGING
         """.format(owner)
     )
+    orautils.gather_stats(cur, owner, "METHOD_COMPARISON")
+    orautils.grant(cur, owner, "METHOD_COMPARISON", "SELECT", "INTERPRO_SELECT")
     logger.debug("METHOD_COMPARISON ready")
     cur.close()
     con.close()
@@ -660,9 +663,10 @@ def _load_description_counts(user: str, dsn: str, organisers: list):
 
     cur = con.cursor()
     orautils.gather_stats(cur, owner, "METHOD_DESC")
+    orautils.grant(cur, owner, "METHOD_DESC", "SELECT", "INTERPRO_SELECT")
+    logger.debug("METHOD_DESC ready")
     cur.close()
     con.close()
-    logger.debug("METHOD_DESC ready")
 
 
 def _load_taxonomy_counts(user: str, dsn: str, organisers: list):
@@ -737,9 +741,10 @@ def _load_taxonomy_counts(user: str, dsn: str, organisers: list):
 
     cur = con.cursor()
     orautils.gather_stats(cur, owner, "METHOD_TAXA")
+    orautils.grant(cur, owner, "METHOD_TAXA", "SELECT", "INTERPRO_SELECT")
+    logger.debug("METHOD_TAXA ready")
     cur.close()
     con.close()
-    logger.debug("METHOD_TAXA ready")
 
 
 def copy_schema(user_src: str, user_dst: str, dsn: str):

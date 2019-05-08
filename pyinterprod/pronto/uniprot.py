@@ -211,15 +211,21 @@ def load_descriptions(user: str, dsn: str):
 
     cur.execute(
         """
-        ALTER TABLE {}.DESC_VALUE
-        ADD CONSTRAINT PK_DESC_VALUE PRIMARY KEY (DESC_ID)
+        CREATE UNIQUE INDEX UI_DESC_VALUE
+        ON {}.DESC_VALUE (DESC_ID) NOLOGGING
         """.format(owner)
     )
 
     cur.execute(
         """
-        ALTER TABLE {}.PROTEIN_DESC
-        ADD CONSTRAINT PK_PROTEIN_DESC PRIMARY KEY (PROTEIN_AC, DESC_ID)
+        CREATE UNIQUE INDEX UI_PROTEIN_DESC
+        ON {}.PROTEIN_DESC (PROTEIN_AC) NOLOGGING
+        """.format(owner)
+    )
+    cur.execute(
+        """
+        CREATE INDEX I_PROTEIN_DESC
+        ON {}.PROTEIN_DESC (DESC_ID) NOLOGGING
         """.format(owner)
     )
 
