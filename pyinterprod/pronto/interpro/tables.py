@@ -415,9 +415,10 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
                 if not num_proteins % 1e7:
                     logger.debug("proteins: {:,}".format(num_proteins))
 
-            else:
+            elif _protein_acc is None:
                 logger.debug("processing proteins")
 
+            _protein_acc = protein_acc
             length = row[1]
             dbcode = row[2]
             descid = row[3]
