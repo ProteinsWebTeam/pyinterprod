@@ -7,7 +7,7 @@ from typing import Optional
 
 import cx_Oracle
 
-from ... import orautils
+from ... import logger, orautils
 from . import proteins
 
 
