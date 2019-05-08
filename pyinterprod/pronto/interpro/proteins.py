@@ -292,7 +292,7 @@ class SignatureComparator(object):
         return list(signatures.keys())
 
     @staticmethod
-    def prepare matches: List[tuple]) -> Dict[str, list]:
+    def prepare(matches: List[tuple]) -> Dict[str, list]:
         # Group signatures
         signatures = {}
         for acc, pos_start, pos_end in matches:
