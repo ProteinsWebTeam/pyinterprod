@@ -530,11 +530,11 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
 def _load_comparisons(user: str, dsn: str, signatures: dict, collocs: dict,
                       match_ovrlps: dict, residue_ovrlps: dict):
-     owner = user.split('/')[0]
-     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-     cur = con.cursor()
-     orautils.drop_table(cur, owner, "METHOD_COUNT")
-     cur.execute(
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    orautils.drop_table(cur, owner, "METHOD_COUNT")
+    cur.execute(
         """
         CREATE TABLE {}.METHOD_COUNT
         (
