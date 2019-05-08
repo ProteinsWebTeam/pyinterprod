@@ -136,7 +136,7 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
         autocommit=True
     )
     comparator = SignatureComparator()
-    for chunk in iter(task_queue, None):
+    for chunk in iter(task_queue.get, None):
         for acc, dbcode, length, descid, leftnum, matches in chunk:
             md5 = hash_protein(matches)
             signatures = comparator.update(matches)
