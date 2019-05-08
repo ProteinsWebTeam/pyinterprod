@@ -511,7 +511,9 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     consumers = [
         Process(target=_load_description_counts, args=(user, dsn, names)),
         Process(target=_load_taxonomy_counts, args=(user, dsn, taxa)),
-        # TODO: insert signatures, collocations, etc.
+        Process(target=_load_comparisons, args=(user, dsn, signatures,
+                                                collocations, match_overlaps,
+                                                residue_overlaps))
     ]
 
     for p in consumers:
@@ -524,6 +526,86 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     for p in consumers:
         p.join()
+
+
+def _load_comparisons(user: str, dsn: str, signatures: dict, collocs: dict,
+                      match_ovrlps: dict, residue_ovrlps: dict):
+     owner = user.split('/')[0]
+     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+     cur = con.cursor()
+     orautils.drop_table(cur, owner, "METHOD_COUNT")
+     cur.execute(
+        """
+        CREATE TABLE {}.METHOD_COUNT
+        (
+            METHOD_AC VARCHAR2(25) NOT NULL,
+            PROTEIN_COUNT NUMBER NOT NULL,
+            MATCH_COUNT NUMBER NOT NULL,
+            RESIDUE_COUNT NUMBER NOT NULL
+        ) NOLOGGING
+        """.format(owner)
+    )
+    table = orautils.TablePopulator(con,
+                                    query="INSERT /*+ APPEND */ "
+                                          "INTO {}.METHOD_COUNT "
+                                          "VALUES (:1, :2, :3, :4)".format(owner),
+                                    autocommit=True)
+
+    for acc, s in signatures.items():
+        table.insert((acc, s["proteins"], s["matches"], s["residues"]))
+
+    table.close()
+    orautils.gather_stats(cur, owner, "METHOD_COUNT")
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX UI_METHOD_COUNT
+        ON {}.METHOD_COUNT (METHOD_AC) NOLOGGING
+        """.format(owner)
+    )
+    logger.debug("METHOD_COUNT ready")
+
+    orautils.drop_table(cur, owner, "METHOD_COMPARISON")
+    cur.execute(
+        """
+        CREATE TABLE {}.METHOD_COMPARISON
+        (
+            METHOD_AC1 VARCHAR2(25) NOT NULL,
+            METHOD_AC2 VARCHAR2(25) NOT NULL,
+            PROTEIN_COUNT NUMBER NOT NULL,
+            MATCH_COUNT NUMBER NOT NULL,
+            RESIDUE_COUNT NUMBER NOT NULL
+        ) NOLOGGING
+        """.format(owner)
+    )
+    table = orautils.TablePopulator(con,
+                                    query="INSERT /*+ APPEND */ "
+                                          "INTO {}.METHOD_COMPARISON "
+                                          "VALUES (:1, :2, :3, :4, :5)".format(owner),
+                                    autocommit=True)
+
+    for acc_1 in collocs:
+        for acc_2, num_collocs in collocs[acc_1].items():
+            num_matches = match_ovrlps[acc_1][acc_2]
+            num_residues = residue_ovrlps[acc_1][acc_2]
+            table.insert((acc_1, acc_2, num_collocs, num_matches, num_residues))
+
+    table.close()
+    orautils.gather_stats(cur, owner, "METHOD_COMPARISON")
+    cur.execute(
+        """
+        CREATE INDEX I_METHOD_COMPARISON$AC1
+        ON {}.METHOD_COMPARISON (METHOD_AC1) NOLOGGING
+        """.format(owner)
+    )
+    cur.execute(
+        """
+        CREATE INDEX I_METHOD_COMPARISON$AC2
+        ON {}.METHOD_COMPARISON (METHOD_AC2) NOLOGGING
+        """.format(owner)
+    )
+    logger.debug("METHOD_COMPARISON ready")
+    cur.close()
+    con.close()
 
 
 def _load_description_counts(user: str, dsn: str, organisers: list):
