@@ -181,13 +181,15 @@ def load_descriptions(user: str, dsn: str):
                 AND E.DELETED = 'N'
                 AND E.FIRST_PUBLIC IS NOT NULL
         )
-        WHERE R = 1        
+        WHERE R = 1
         """
     )
 
     table1 = orautils.TablePopulator(con,
-                                     query="INSERT INTO {}.DESC_VALUE "
-                                           "VALUES (:1, :2)".format(owner))
+                                     query="INSERT /*+ APPEND */ "
+                                           "INTO {}.DESC_VALUE "
+                                           "VALUES (:1, :2)".format(owner),
+                                     autocommit=True)
 
     table2 = orautils.TablePopulator(con,
                                      query="INSERT /*+ APPEND */ "
@@ -201,7 +203,6 @@ def load_descriptions(user: str, dsn: str):
         else:
             desc_id = descriptions[text] = len(descriptions) + 1
             table1.insert((desc_id, text))
-            table1.flush(commit=True)
 
         table2.insert((accession, desc_id))
 
