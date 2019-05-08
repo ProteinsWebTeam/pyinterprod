@@ -509,6 +509,8 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     for p in consumers:
         p.join()
 
+    logger.debug("temporary size: {:.0f} MB".format(size/1024/1024))
+
     consumers = [
         Process(target=_load_description_counts, args=(user, dsn, names)),
         Process(target=_load_taxonomy_counts, args=(user, dsn, taxa)),
