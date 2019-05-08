@@ -386,13 +386,13 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         FROM INTERPRO.PROTEIN P
         INNER JOIN INTERPRO.ETAXI E
           ON P.TAX_ID = E.TAX_ID
-        INNER JOIN {0}.PROTEIN_DESC D
+        INNER JOIN {}.PROTEIN_DESC D
           ON P.PROTEIN_AC = D.PROTEIN_AC
         INNER JOIN INTERPRO.MATCH MA
           ON P.PROTEIN_AC = MA.PROTEIN_AC
         WHERE P.FRAGMENT = 'N'
         ORDER BY P.PROTEIN_AC
-        """
+        """.format(owner)
     )
     chunk = []
     matches = []
