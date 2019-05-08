@@ -111,6 +111,7 @@ def run(dsn: str, main_user: str, alt_user: str=None,
                         f = executor.submit(step_s2p["func"], main_user, dsn,
                                             processes, tmpdir)
                         fs[f] = "signature2protein"
+                        logger.info("{:<20}running".format(fs[f]))
                         break
 
             for f in as_completed(fs):
