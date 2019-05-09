@@ -195,25 +195,41 @@ def _import_table(url: str, owner: str, name: str):
     index = "I_" + name
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    orautils.drop_mview(cur, owner, name)
-    orautils.drop_table(cur, owner, name)
-    orautils.drop_index(cur, owner, index)
     cur.execute(
         """
-        CREATE TABLE {0}.{1} NOLOGGING
-        AS
-        SELECT *
-        FROM {0}.{1}@ISPRO
+        SELECT MAX(UPI)
+        FROM {}.{}@ISPRO
         """.format(owner, name)
     )
-    orautils.gather_stats(cur, owner, name)
+    src_upi = cur.fetchone()[0]
     cur.execute(
         """
-        CREATE INDEX {0}.{1}
-        ON {0}.{2}(ANALYSIS_ID)
-        NOLOGGING
-        """.format(owner, index, name)
+        SELECT MAX(UPI)
+        FROM {}.{}
+        """.format(owner, name)
     )
+    dst_upi = cur.fetchone()[0]
+
+    if src_upi != dst_upi:
+        orautils.drop_mview(cur, owner, name)
+        orautils.drop_table(cur, owner, name)
+        orautils.drop_index(cur, owner, index)
+        cur.execute(
+            """
+            CREATE TABLE {0}.{1} NOLOGGING
+            AS
+            SELECT *
+            FROM {0}.{1}@ISPRO
+            """.format(owner, name)
+        )
+        orautils.gather_stats(cur, owner, name)
+        cur.execute(
+            """
+            CREATE INDEX {0}.{1}
+            ON {0}.{2}(ANALYSIS_ID)
+            NOLOGGING
+            """.format(owner, index, name)
+        )
     cur.close()
     con.close()
 
