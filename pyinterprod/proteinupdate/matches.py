@@ -95,7 +95,6 @@ def _get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> Optional[str]:
 def _get_ispro_upis(url: str) -> List[dict]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    # TODO: select the SITE_TABLE as well
     cur.execute(
         """
         SELECT *
@@ -105,6 +104,7 @@ def _get_ispro_upis(url: str) -> List[dict]:
             A.ANALYSIS_NAME,
             A.ANALYSIS_TYPE,
             B.MATCH_TABLE,
+            B.SITE_TABLE,
             ROW_NUMBER() OVER (
               PARTITION
               BY A.ANALYSIS_MATCH_TABLE_ID
@@ -119,7 +119,7 @@ def _get_ispro_upis(url: str) -> List[dict]:
         """
     )
 
-    tables = set()
+    match_tables = set()
     analyses = []
     for row in cur:
         """
@@ -129,16 +129,17 @@ def _get_ispro_upis(url: str) -> List[dict]:
         But we shouldn't accept any other duplicates
         (ACTIVE might not always be up-to-date)
         """
-        table = row[3]
-        if table in tables and table != "ipm_signalp_match":
+        match_table = row[3]
+        if match_table in match_tables and match_table != "ipm_signalp_match":
             continue
 
-        tables.add(table)
+        match_tables.add(match_table)
         analyses.append({
             "id": row[0],
             "full_name": row[1],
             "name": row[2],
-            "table": table,
+            "match_table": match_table,
+            "site_table": row[4] if row[4] else "",
             "upi": None
         })
 
@@ -173,7 +174,8 @@ def _check_ispro(url: str, max_attempts: int=1, secs: int=3600,
                 status = "not ready"
                 not_ready += 1
 
-            logger.debug("{id:<5}{full_name:<30}{table:<30}{upi:<20}"
+            logger.debug("{id:<5}{full_name:<30}{match_table:<30}"
+                         "{site_table:<30}{upi:<20}"
                          "{status}".format(**e, status=status))
 
         num_attempts += 1
@@ -229,21 +231,21 @@ def update_mv_iprscan(user: str, dsn: str, **kwargs):
             logger.info("copying tables from ISPRO")
             fs = {}
             for analysis in analyses:
-                table_name = analysis["table"].upper()
+                table = analysis["match_table"].upper()
 
-                if table_name not in fs.values():
+                if table not in fs.values():
                     # Some analyses are in the same table!
-                    f = executor.submit(_import_table, url, "IPRSCAN", table_name)
-                    fs[f] = table_name
+                    f = executor.submit(_import_table, url, "IPRSCAN", table)
+                    fs[f] = table
 
             num_errors = 0
             for f in as_completed(fs):
-                table_name = fs[f]
+                table = fs[f]
                 exc = f.exception()
                 if exc is None:
-                    logger.debug("{}: imported".format(table_name))
+                    logger.debug("{}: imported".format(table))
                 else:
-                    logger.error("{}: {}".format(table_name, exc))
+                    logger.error("{}: {}".format(table, exc))
                     num_errors += 1
 
             if num_errors:
@@ -283,12 +285,12 @@ def update_mv_iprscan(user: str, dsn: str, **kwargs):
             for analysis in analyses:
                 _id = analysis["id"]
                 name = analysis["name"]
-                table_name = analysis["table"]
+                table = analysis["match_table"].lower()
 
-                if table_name == "ipm_signalp_match":
+                if table == "ipm_signalp_match":
                     fn = signalp[name]
                 else:
-                    fn = functions[table_name]
+                    fn = functions[table]
 
                 f = executor.submit(fn, url, _id)
                 fs[f] = analysis["full_name"]
@@ -308,7 +310,6 @@ def update_mv_iprscan(user: str, dsn: str, **kwargs):
                                    "were not exchanged".format(num_errors))
 
     if rebuild_indices:
-        # logger.info("rebuilding indices")
         logger.info("indexing table")
         con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
         cur = con.cursor()
