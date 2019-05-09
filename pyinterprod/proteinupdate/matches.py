@@ -1,351 +1,35 @@
 import json
 import os
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Collection, List, Optional
 
 import cx_Oracle
 
-from . import materializedviews as mviews
 from .. import logger, orautils
 
 
-def _get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> Optional[str]:
-    # TODO: decide *which* method is the most accurate
+def _get_match_counts(cur: cx_Oracle.Cursor) -> (str, int):
+    logger.info("counting entries protein counts")
     cur.execute(
         """
-        SELECT MAX(JOB_END)
-        FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
-        WHERE ANALYSIS_ID = :1
-        AND PERSISTED > 0
-        """, (analysis_id, )
+        SELECT E.ENTRY_AC, COUNT(DISTINCT M.PROTEIN_AC)
+        FROM INTERPRO.ENTRY2METHOD E
+        INNER JOIN INTERPRO.MATCH M
+          ON E.METHOD_AC = M.METHOD_AC
+        GROUP BY E.ENTRY_AC
+        """
     )
-    row = cur.fetchone()
-    return row[0] if row else None
+    entries = dict(cur.fetchall())
 
-    upis = []
+    logger.info("counting databases match counts")
     cur.execute(
         """
-        SELECT MAX(HWM_SUBMITTED)
-        FROM IPRSCAN.HWM@ISPRO
-        WHERE ANALYSIS_ID = :1
-        """, (analysis_id,)
-    )
-    row = cur.fetchone()
-    if row:
-        upis.append(row[0])
-
-    cur.execute(
-        """
-        SELECT MAX(JOB_END)
-        FROM IPRSCAN.IPM_RUNNING_JOBS@ISPRO
-        WHERE ANALYSIS_ID = :1
-        """, (analysis_id,)
-    )
-    row = cur.fetchone()
-    if row:
-        upis.append(row[0])
-
-    cur.execute(
-        """
-        SELECT MIN(JOB_END)
-        FROM (
-            SELECT MIN(JOB_END) JOB_END
-            FROM IPRSCAN.IPM_COMPLETED_JOBS@ISPRO
-            WHERE ANALYSIS_ID = :analysisid
-            AND PERSISTED = 0
-            UNION ALL
-            SELECT MAX(JOB_END) JOB_END
-            FROM IPRSCAN.IPM_COMPLETED_JOBS@ISPRO
-            WHERE ANALYSIS_ID = :analysisid
-            AND PERSISTED = 1
-        )
-        """, dict(analysisid=analysis_id)
-    )
-    row = cur.fetchone()
-    if row:
-        upis.append(row[0])
-
-    cur.execute(
-        """
-        SELECT MIN(JOB_END)
-        FROM (
-            SELECT MIN(JOB_END) JOB_END
-            FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
-            WHERE ANALYSIS_ID = :analysisid
-            AND PERSISTED = 0
-            UNION ALL
-            SELECT MAX(JOB_END) JOB_END
-            FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
-            WHERE ANALYSIS_ID = :analysisid
-            AND PERSISTED = 1
-        )
-        """, dict(analysisid=analysis_id)
-    )
-    row = cur.fetchone()
-    if row:
-        upis.append(row[0])
-
-    try:
-        return max([upi for upi in upis if upi is not None])
-    except ValueError:
-        return None
-
-
-def _get_ispro_upis(url: str) -> List[dict]:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT *
-        FROM (
-          SELECT
-            A.ANALYSIS_ID,
-            A.ANALYSIS_NAME,
-            A.ANALYSIS_TYPE,
-            B.MATCH_TABLE,
-            B.SITE_TABLE,
-            ROW_NUMBER() OVER (
-              PARTITION
-              BY A.ANALYSIS_MATCH_TABLE_ID
-              ORDER BY A.ANALYSIS_ID DESC
-            ) CNT
-          FROM IPM_ANALYSIS@ISPRO A
-            INNER JOIN IPM_ANALYSIS_MATCH_TABLE@ISPRO B
-              ON A.ANALYSIS_MATCH_TABLE_ID = B.ID
-          WHERE A.ACTIVE = 1
-        )
-        ORDER BY CNT
+        SELECT DBCODE, COUNT(*)
+        FROM INTERPRO.MATCH
+        GROUP BY DBCODE
         """
     )
+    databases = dict(cur.fetchall())
 
-    match_tables = set()
-    analyses = []
-    for row in cur:
-        """
-        SignalP has EUK/Gram+/Gram- matches in the same tables so we need
-        several times the same time for different analyses.
-
-        But we shouldn't accept any other duplicates
-        (ACTIVE might not always be up-to-date)
-        """
-        match_table = row[3]
-        if match_table in match_tables and match_table != "ipm_signalp_match":
-            continue
-
-        match_tables.add(match_table)
-        analyses.append({
-            "id": row[0],
-            "full_name": row[1],
-            "name": row[2],
-            "match_table": match_table,
-            "site_table": row[4] if row[4] else "",
-            "upi": None
-        })
-
-    for e in analyses:
-        e["upi"] = _get_max_upi(cur, e["id"])
-
-    cur.close()
-    con.close()
-
-    return analyses
-
-
-def _check_ispro(url: str, max_attempts: int=1, secs: int=3600,
-                 exclude: Optional[Collection[str]]=None) -> List[dict]:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
-    max_upi_read = cur.fetchone()[0]
-    cur.close()
-    con.close()
-
-    num_attempts = 0
-    while True:
-        analyses = _get_ispro_upis(url)
-        not_ready = 0
-        for e in analyses:
-            if exclude and e["name"] in exclude:
-                status = "ready (excluded)"
-            elif e["upi"] and e["upi"] >= max_upi_read:
-                status = "ready"
-            else:
-                status = "not ready"
-                not_ready += 1
-
-            logger.debug("{id:<5}{full_name:<30}{match_table:<30}"
-                         "{site_table:<30}{upi:<20}"
-                         "{status}".format(**e, status=status))
-
-        num_attempts += 1
-        if not_ready == 0:
-            break
-        elif num_attempts == max_attempts:
-            raise RuntimeError("ISPRO tables not ready "
-                               "after {} attempts".format(num_attempts))
-        else:
-            logger.info("{} analyses not ready".format(not_ready))
-            time.sleep(secs)
-
-    return analyses
-
-
-def _import_table(url: str, owner: str, name: str):
-    index = "I_" + name
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT MAX(UPI)
-        FROM {}.{}@ISPRO
-        """.format(owner, name)
-    )
-    src_upi = cur.fetchone()[0]
-    cur.execute(
-        """
-        SELECT MAX(UPI)
-        FROM {}.{}
-        """.format(owner, name)
-    )
-    dst_upi = cur.fetchone()[0]
-
-    if src_upi != dst_upi:
-        orautils.drop_mview(cur, owner, name)
-        orautils.drop_table(cur, owner, name)
-        orautils.drop_index(cur, owner, index)
-        cur.execute(
-            """
-            CREATE TABLE {0}.{1} NOLOGGING
-            AS
-            SELECT *
-            FROM {0}.{1}@ISPRO
-            """.format(owner, name)
-        )
-        orautils.gather_stats(cur, owner, name)
-        cur.execute(
-            """
-            CREATE INDEX {0}.{1}
-            ON {0}.{2}(ANALYSIS_ID)
-            NOLOGGING
-            """.format(owner, index, name)
-        )
-    cur.close()
-    con.close()
-
-
-def update_mv_iprscan(user: str, dsn: str, **kwargs):
-    ispro_tables = kwargs.pop("tables", True)
-    exchange_partitions = kwargs.pop("partitions", True)
-    rebuild_indices = kwargs.pop("indices", True)
-
-    url = orautils.make_connect_string(user, dsn)
-    analyses = _check_ispro(url, **kwargs)
-
-    with ThreadPoolExecutor(max_workers=len(analyses)) as executor:
-        if ispro_tables:
-            logger.info("copying tables from ISPRO")
-            fs = {}
-            for analysis in analyses:
-                table = analysis["match_table"].upper()
-
-                if table not in fs.values():
-                    # Some analyses are in the same table!
-                    f = executor.submit(_import_table, url, "IPRSCAN", table)
-                    fs[f] = table
-
-            num_errors = 0
-            for f in as_completed(fs):
-                table = fs[f]
-                exc = f.exception()
-                if exc is None:
-                    logger.debug("{}: imported".format(table))
-                else:
-                    logger.error("{}: {}".format(table, exc))
-                    num_errors += 1
-
-            if num_errors:
-                raise RuntimeError("{} tables "
-                                   "were not imported".format(num_errors))
-
-        if exchange_partitions:
-            logger.info("updating MV_IPRSCAN")
-            functions = {
-                "ipm_cdd_match": mviews.update_cdd,
-                "ipm_coils_match": mviews.update_coils,
-                "ipm_gene3d_match": mviews.update_gene3d,
-                "ipm_hamap_match": mviews.update_hamap,
-                "ipm_mobidblite_match": mviews.update_mobidblite,
-                "ipm_panther_match": mviews.update_panther,
-                "ipm_pfam_match": mviews.update_pfam,
-                "ipm_phobius_match": mviews.update_phobius,
-                "ipm_pirsf_match": mviews.update_pirsf,
-                "ipm_prints_match": mviews.update_prints,
-                "ipm_prodom_match": mviews.update_prodom,
-                "ipm_prosite_patterns_match": mviews.update_prosite_patterns,
-                "ipm_prosite_profiles_match": mviews.update_prosite_profiles,
-                "ipm_sfld_match": mviews.update_sfld,
-                "ipm_smart_match": mviews.update_smart,
-                "ipm_superfamily_match": mviews.update_superfamily,
-                "ipm_tigrfam_match": mviews.update_tigrfam,
-                "ipm_tmhmm_match": mviews.update_tmhmm
-            }
-
-            signalp = {
-                "signalp_euk": mviews.update_signalp_euk,
-                "signalp_gram_negative": mviews.update_signalp_gram_neg,
-                "signalp_gram_positive": mviews.update_signalp_gram_pos
-            }
-
-            fs = {}
-            for analysis in analyses:
-                _id = analysis["id"]
-                name = analysis["name"]
-                table = analysis["match_table"].lower()
-
-                if table == "ipm_signalp_match":
-                    fn = signalp[name]
-                else:
-                    fn = functions[table]
-
-                f = executor.submit(fn, url, _id)
-                fs[f] = analysis["full_name"]
-
-            num_errors = 0
-            for f in as_completed(fs):
-                full_name = fs[f]
-                exc = f.exception()
-                if exc is None:
-                    logger.debug("{}: exchanged".format(full_name))
-                else:
-                    logger.error("{}: {}".format(full_name, exc))
-                    num_errors += 1
-
-            if num_errors:
-                raise RuntimeError("{} partitions "
-                                   "were not exchanged".format(num_errors))
-
-    if rebuild_indices:
-        logger.info("indexing table")
-        con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-        cur = con.cursor()
-
-        for idx in orautils.get_indices(cur, "IPRSCAN", "MV_IPRSCAN"):
-            # logger.debug("rebuilding {}".format(idx))
-            # cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
-            orautils.drop_index(cur, "IPRSCAN", idx["name"])
-
-        cur.execute(
-            """
-            CREATE INDEX I_MV_IPRSCAN$UPI
-            ON IPRSCAN.MV_IPRSCAN (UPI) NOLOGGING
-            """
-        )
-
-        cur.close()
-        con.close()
-
-    logger.info("MV_IPRSCAN is ready")
+    return entries, databases
 
 
 def prepare_matches(user: str, dsn: str):
@@ -418,32 +102,6 @@ def prepare_matches(user: str, dsn: str):
 
     cur.close()
     con.close()
-
-
-def _get_match_counts(cur: cx_Oracle.Cursor) -> tuple:
-    logger.info("counting entries protein counts")
-    cur.execute(
-        """
-        SELECT E.ENTRY_AC, COUNT(DISTINCT M.PROTEIN_AC)
-        FROM INTERPRO.ENTRY2METHOD E
-        INNER JOIN INTERPRO.MATCH M
-          ON E.METHOD_AC = M.METHOD_AC
-        GROUP BY E.ENTRY_AC
-        """
-    )
-    entries = dict(cur.fetchall())
-
-    logger.info("counting databases match counts")
-    cur.execute(
-        """
-        SELECT DBCODE, COUNT(*)
-        FROM INTERPRO.MATCH
-        GROUP BY DBCODE
-        """
-    )
-    databases = dict(cur.fetchall())
-
-    return entries, databases
 
 
 def check_matches(user: str, dsn: str, outdir: str):
@@ -539,6 +197,56 @@ def update_matches(user: str, dsn: str, drop_indices: bool=False):
     con.close()
 
 
+def track_count_changes(user: str, dsn: str, outdir: str):
+    with open(os.path.join(outdir, "counts.json"), "rt") as fh:
+        prev = json.load(fh)
+
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    entries, databases = _get_match_counts(cur)
+    cur.close()
+    con.close()
+
+    changes = []
+    for entry_acc, new_count in entries.items():
+        prev_count = prev["entries"].pop(entry_acc, 0)
+
+        try:
+            change = (new_count - prev_count) / prev_count * 100
+        except ZeroDivisionError:
+            changes.append((entry_acc, prev_count, new_count, "N/A"))
+        else:
+            if abs(change) >= 50:
+                changes.append((entry_acc, prev_count, new_count, change))
+
+    with open(os.path.join(outdir, "entries_changes.tsv"), "wt") as fh:
+        def _sort_entries(e):
+            return 1 if isinstance(e[3], str) else 0, e[3], e[0]
+
+        fh.write("# Accession\tPrevious protein count\t"
+                 "New protein count\tChange (%)\n")
+
+        for ac, pc, nc, c in sorted(changes, key=_sort_entries):
+            if isinstance(c, str):
+                fh.write("{}\t{}\t{}\t{}\n".format(ac, pc, nc, c))
+            else:
+                fh.write("{}\t{}\t{}\t{:.0f}\n".format(ac, pc, nc, c))
+
+    changes = []
+    for dbcode, new_count in databases.items():
+        prev_count = prev["databases"].pop(dbcode, 0)
+        changes.append((dbcode, prev_count, new_count))
+
+    for dbcode, prev_count in prev["databases"].items():
+        changes.append((dbcode, prev_count, 0))
+
+    with open(os.path.join(outdir, "databases_changes.tsv"), "wt") as fh:
+        fh.write("# Code\tPrevious match count\tNew match count\n")
+
+        for dbcode, pc, nc in sorted(changes):
+            fh.write("{}\t{}\t{}\n".format(dbcode, pc, nc))
+
+
 def update_feature_matches(user: str, dsn: str, drop_indices: bool=False):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -596,56 +304,6 @@ def update_feature_matches(user: str, dsn: str, drop_indices: bool=False):
 
     cur.close()
     con.close()
-
-
-def track_count_changes(user: str, dsn: str, outdir: str):
-    with open(os.path.join(outdir, "counts.json"), "rt") as fh:
-        prev = json.load(fh)
-
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    entries, databases = _get_match_counts(cur)
-    cur.close()
-    con.close()
-
-    changes = []
-    for entry_acc, new_count in entries.items():
-        prev_count = prev["entries"].pop(entry_acc, 0)
-
-        try:
-            change = (new_count - prev_count) / prev_count * 100
-        except ZeroDivisionError:
-            changes.append((entry_acc, prev_count, new_count, "N/A"))
-        else:
-            if abs(change) >= 50:
-                changes.append((entry_acc, prev_count, new_count, change))
-
-    with open(os.path.join(outdir, "entries_changes.tsv"), "wt") as fh:
-        def _sort_entries(e):
-            return 1 if isinstance(e[3], str) else 0, e[3], e[0]
-
-        fh.write("# Accession\tPrevious protein count\t"
-                 "New protein count\tChange (%)\n")
-
-        for ac, pc, nc, c in sorted(changes, key=_sort_entries):
-            if isinstance(c, str):
-                fh.write("{}\t{}\t{}\t{}\n".format(ac, pc, nc, c))
-            else:
-                fh.write("{}\t{}\t{}\t{:.0f}\n".format(ac, pc, nc, c))
-
-    changes = []
-    for dbcode, new_count in databases.items():
-        prev_count = prev["databases"].pop(dbcode, 0)
-        changes.append((dbcode, prev_count, new_count))
-
-    for dbcode, prev_count in prev["databases"].items():
-        changes.append((dbcode, prev_count, 0))
-
-    with open(os.path.join(outdir, "databases_changes.tsv"), "wt") as fh:
-        fh.write("# Code\tPrevious match count\tNew match count\n")
-
-        for dbcode, pc, nc in sorted(changes):
-            fh.write("{}\t{}\t{}\n".format(dbcode, pc, nc))
 
 
 def update_alt_splicing_matches(user: str, dsn: str):
