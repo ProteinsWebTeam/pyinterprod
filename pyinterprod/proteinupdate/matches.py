@@ -651,7 +651,6 @@ def track_count_changes(user: str, dsn: str, outdir: str):
 def update_alt_splicing_matches(user: str, dsn: str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    logger.info("dropping table")
     for t in ("VARSPLIC_MASTER", "VARSPLIC_MATCH", "VARSPLIC_NEW"):
         orautils.drop_table(cur, "INTERPRO", t)
 
@@ -670,12 +669,7 @@ def update_alt_splicing_matches(user: str, dsn: str):
             FRAGMENTS VARCHAR2(400),
             MODEL_AC VARCHAR2(255)
         ) NOLOGGING
-        """
-    )
-
-    cur.execute(
-        """
-        INSERT /*+ APPEND */ INTO INTERPRO.VARSPLIC
+        AS
         SELECT
           XV.PROTEIN_AC,
           XV.VARIANT,
@@ -709,9 +703,9 @@ def update_alt_splicing_matches(user: str, dsn: str):
         WHERE I2D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
         """
     )
-    con.commit()
-
     orautils.grant(cur, "INTERPRO", "VARSPLIC", "SELECT", "INTERPRO_SELECT")
+
+    logger.info("analyzing table")
     orautils.gather_stats(cur, "INTERPRO", "VARSPLIC")
 
     logger.info("indexing table")
