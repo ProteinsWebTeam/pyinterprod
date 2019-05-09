@@ -122,9 +122,8 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
     signatures = {}
     for i, (acc, dbcode, _type) in enumerate(cur):
         signatures[acc] = (dbcode, _type)
-        if not i % 1000:
+        if not i % bucket_size:
             keys.append(acc)
-        i += 1
 
     names = Organizer(keys, tmpdir)
     taxa = Organizer(keys, tmpdir)
