@@ -484,7 +484,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
                     else:
                         collocations[acc_1][acc_2] = v
             else:
-                collocations[acc1] = s
+                collocations[acc_1] = s
 
         for acc_1, s in comparator.match_overlaps.items():
             if acc_1 in match_overlaps:
@@ -494,7 +494,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
                     else:
                         match_overlaps[acc_1][acc_2] = v
             else:
-                match_overlaps[acc1] = s
+                match_overlaps[acc_1] = s
 
         for acc_1, s in comparator.residue_overlaps.items():
             if acc_1 in residue_overlaps:
@@ -504,7 +504,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
                     else:
                         residue_overlaps[acc_1][acc_2] = v
             else:
-                residue_overlaps[acc1] = s
+                residue_overlaps[acc_1] = s
 
     for p in consumers:
         p.join()
