@@ -134,6 +134,94 @@ def load_comments(user: str, dsn: str):
     con.close()
 
 
+def load_descriptions_ctas(user: str, dsn: str):
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    orautils.drop_table(cur, owner, "PROTEIN_DESC_STG")
+    cur.execute(
+        """
+        CREATE TABLE {}.PROTEIN_DESC_STG
+        (
+          TEXT VARCHAR2(4000) NOT NULL,
+          PROTEIN_AC VARCHAR2(15) NOT NULL,
+          DESC_ID NUMBER(10) NOT NULL
+        ) NOLOGGING
+        AS
+        SELECT DESCR, ACCESSION, DENSE_RANK() OVER (ORDER BY DESCR)
+        FROM (
+          SELECT
+            E.ACCESSION,
+            D.DESCR,
+            ROW_NUMBER() OVER (
+              PARTITION BY E.ACCESSION
+              ORDER BY D.SECTION_GROUP_ID, D.DESC_ID
+            ) R
+          FROM SPTR.DBENTRY@SWPREAD E
+            LEFT OUTER JOIN SPTR.DBENTRY_2_DESC@SWPREAD D
+              ON E.DBENTRY_ID = D.DBENTRY_ID
+          WHERE E.ENTRY_TYPE = 0
+            AND E.MERGE_STATUS != 'R'
+            AND E.DELETED = 'N'
+            AND E.FIRST_PUBLIC IS NOT NULL
+        )
+        WHERE R = 1
+        """
+    )
+
+    for table in ("DESC_VALUE", "PROTEIN_DESC"):
+        orautils.drop_table(cur, owner, table)
+
+    cur.execute(
+        """
+        CREATE TABLE {0}.DESC_VALUE 
+        NOLOGGING
+        AS
+        SELECT DESC_ID, TEXT
+        FROM {0}.PROTEIN_DESC_STG
+        """.format(owner)
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE {0}.PROTEIN_DESC 
+        NOLOGGING
+        AS
+        SELECT PROTEIN_AC, DESC_ID
+        FROM {0}.PROTEIN_DESC_STG
+        """.format(owner)
+    )
+
+    orautils.drop_table(cur, owner, "PROTEIN_DESC_STG")
+
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX UI_DESC_VALUE
+        ON {}.DESC_VALUE (DESC_ID) NOLOGGING
+        """.format(owner)
+    )
+
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX UI_PROTEIN_DESC
+        ON {}.PROTEIN_DESC (PROTEIN_AC) NOLOGGING
+        """.format(owner)
+    )
+    cur.execute(
+        """
+        CREATE INDEX I_PROTEIN_DESC
+        ON {}.PROTEIN_DESC (DESC_ID) NOLOGGING
+        """.format(owner)
+    )
+
+    for table in ("DESC_VALUE", "PROTEIN_DESC"):
+        orautils.gather_stats(cur, owner, table)
+        orautils.grant(cur, owner, table, "SELECT", "INTERPRO_SELECT")
+
+    cur.close()
+    con.close()
+
+
 def load_descriptions(user: str, dsn: str):
     tables = ["DESC_VALUE", "PROTEIN_DESC"]
     owner = user.split('/')[0]
