@@ -2,6 +2,7 @@
 
 import heapq
 import os
+import pickle
 from multiprocessing import Process, Queue
 from typing import Optional
 
@@ -340,12 +341,58 @@ def load_proteins(user: str, dsn: str):
     con.close()
 
 
+def export_matches(user: str, dsn: str, dst: str):
+    with open(dst, "wb") as fh:
+        for row in _get_matches(user, dsn):
+            pickle.dump(row, fh)
+
+
+def _get_matches(user: str, dsn: str, filepath: Optional[str]=None):
+    if filepath is not None:
+        with open(filepath, "rb") as fh:
+            while True:
+                try:
+                    row = pickle.load(fh)
+                except EOFError:
+                    break
+                else:
+                    yield row
+    else:
+        owner = user.split('/')[0]
+        con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT
+                P.PROTEIN_AC, P.LEN, P.DBCODE, D.DESC_ID,
+                NVL(E.LEFT_NUMBER, 0),
+                MA.METHOD_AC, MA.POS_FROM, MA.POS_TO, MA.FRAGMENTS
+            FROM INTERPRO.PROTEIN P
+            INNER JOIN INTERPRO.ETAXI E
+              ON P.TAX_ID = E.TAX_ID
+            INNER JOIN {}.PROTEIN_DESC D
+              ON P.PROTEIN_AC = D.PROTEIN_AC
+            INNER JOIN INTERPRO.MATCH MA
+              ON P.PROTEIN_AC = MA.PROTEIN_AC
+            WHERE P.FRAGMENT = 'N'
+            ORDER BY P.PROTEIN_AC
+            """.format(owner)
+        )
+
+        for row in cur:
+            yield row
+
+        cur.close()
+        con.close()
+
+
 def load_signature2protein(user: str, dsn: str, processes: int=1,
-                           tmpdir: Optional[str]=None, chunk_size: int=1000):
+                           tmpdir: Optional[str]=None, chunk_size: int=1000,
+                           filepath: Optional[str]=None):
     if tmpdir is not None:
         os.makedirs(tmpdir, exist_ok=True)
 
-    task_queue = Queue(maxsize=processes)
+    task_queue = Queue(maxsize=1)
     done_queue = Queue()
     consumers = []
     for _ in range(max(processes-1, 1)):
@@ -376,29 +423,14 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         ) NOLOGGING
         """.format(owner)
     )
+    cur.close()
+    con.close()
 
-    cur.execute(
-        """
-        SELECT
-            P.PROTEIN_AC, P.LEN, P.DBCODE, D.DESC_ID,
-            NVL(E.LEFT_NUMBER, 0),
-            MA.METHOD_AC, MA.POS_FROM, MA.POS_TO, MA.FRAGMENTS
-        FROM INTERPRO.PROTEIN P
-        INNER JOIN INTERPRO.ETAXI E
-          ON P.TAX_ID = E.TAX_ID
-        INNER JOIN {}.PROTEIN_DESC D
-          ON P.PROTEIN_AC = D.PROTEIN_AC
-        INNER JOIN INTERPRO.MATCH MA
-          ON P.PROTEIN_AC = MA.PROTEIN_AC
-        WHERE P.FRAGMENT = 'N'
-        ORDER BY P.PROTEIN_AC
-        """.format(owner)
-    )
     chunk = []
     matches = []
     _protein_acc = dbcode= length = descid = left_num = None
     num_proteins = 0
-    for row in cur:
+    for row in _get_matches(user, dsn, filepath):
         protein_acc = row[0]
 
         if protein_acc != _protein_acc:
@@ -523,6 +555,8 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     for p in consumers:
         p.start()
 
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
     orautils.gather_stats(cur, owner, "METHOD2PROTEIN")
     orautils.grant(cur, owner, "METHOD2PROTEIN", "SELECT", "INTERPRO_SELECT")
     logger.debug("METHOD2PROTEIN ready")
