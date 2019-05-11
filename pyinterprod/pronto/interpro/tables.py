@@ -491,15 +491,17 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     names = []
     taxa = []
+    terms = []
     size = 0
     signatures = {}
     collocations = {}
     match_overlaps = {}
     residue_overlaps = {}
     for _ in consumers:
-        _names, _taxa, comparator, _size = done_queue.get()
+        _names, _taxa, _terms, comparator, _size = done_queue.get()
         names.append(_names)
         taxa.append(_taxa)
+        terms.append(_terms)
         size += _size
 
         for acc, s in comparator.signatures.items():
@@ -547,6 +549,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     consumers = [
         Process(target=_load_description_counts, args=(user, dsn, names)),
         Process(target=_load_taxonomy_counts, args=(user, dsn, taxa)),
+        Process(target=_load_term_counts, args=(user, dsn, terms)),
         Process(target=_load_comparisons, args=(user, dsn, signatures,
                                                 collocations, match_overlaps,
                                                 residue_overlaps))
@@ -649,6 +652,66 @@ def _load_comparisons(user: str, dsn: str, signatures: dict, collocs: dict,
     con.close()
 
 
+def _load_term_counts(user: str, dsn: str, organisers: list):
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    orautils.drop_table(cur, owner, "METHOD_TERM")
+    cur.execute(
+        """
+        CREATE TABLE {}.METHOD_TERM
+        (
+            METHOD_AC VARCHAR2(25) NOT NULL,
+            GO_ID NUMBER(10) NOT NULL,
+            PROTEIN_COUNT NUMBER(10) NOT NULL
+        ) NOLOGGING
+        """.format(owner)
+    )
+    cur.close()
+
+    table = orautils.TablePopulator(con,
+                                    query="INSERT /*+ APPEND */ "
+                                          "INTO {}.METHOD_TERM "
+                                          "VALUES (:1, :2, :3)".format(owner),
+                                    autocommit=True)
+
+    _acc = None
+    _terms = {}
+    for acc, terms in heapq.merge(*organisers):
+        if acc != _acc:
+            for go_id, count in _terms.items():
+                table.insert((_acc, go_id, count))
+
+            _acc = acc
+            _terms = {}
+
+        for go_id in terms:
+            if go_id in _terms:
+                _terms[go_id] += 1
+            else:
+                _terms[go_id] = 1
+
+    for go_id, count in _terms.items():
+        table.insert((_acc, go_id, count))
+
+    table.close()
+
+    for o in organisers:
+        o.remove()
+
+    cur = con.cursor()
+    cur.execute(
+        """
+        CREATE INDEX I_METHOD_TERM
+        ON {}.METHOD_TERM (METHOD_AC) NOLOGGING
+        """.format(owner)
+    )
+    orautils.gather_stats(cur, owner, "METHOD_TERM")
+    orautils.grant(cur, owner, "METHOD_TERM", "SELECT", "INTERPRO_SELECT")
+    logger.debug("METHOD_TERM ready")
+    cur.close()
+    con.close()
+
 def _load_description_counts(user: str, dsn: str, organisers: list):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
@@ -700,6 +763,12 @@ def _load_description_counts(user: str, dsn: str, organisers: list):
         o.remove()
 
     cur = con.cursor()
+    cur.execute(
+        """
+        CREATE INDEX I_METHOD_DESC
+        ON {}.METHOD_DESC (METHOD_AC) NOLOGGING
+        """.format(owner)
+    )
     orautils.gather_stats(cur, owner, "METHOD_DESC")
     orautils.grant(cur, owner, "METHOD_DESC", "SELECT", "INTERPRO_SELECT")
     logger.debug("METHOD_DESC ready")
@@ -778,6 +847,12 @@ def _load_taxonomy_counts(user: str, dsn: str, organisers: list):
         o.remove()
 
     cur = con.cursor()
+    cur.execute(
+        """
+        CREATE INDEX I_METHOD_TAXA
+        ON {}.METHOD_TAXA (METHOD_AC, RANK) NOLOGGING
+        """.format(owner)
+    )
     orautils.gather_stats(cur, owner, "METHOD_TAXA")
     orautils.grant(cur, owner, "METHOD_TAXA", "SELECT", "INTERPRO_SELECT")
     logger.debug("METHOD_TAXA ready")

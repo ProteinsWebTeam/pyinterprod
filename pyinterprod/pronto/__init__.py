@@ -105,6 +105,7 @@ def run(dsn: str, main_user: str, alt_user: str=None,
                 else:
                     logger.info("{:<20}done".format(name))
 
+                    # TODO: check that 'annotations' is complete as well
                     if name == "descriptions" and step_s2p:
                         # signature2protein can now run
                         fs = {f: name for f, name in fs.items() if name in running}

@@ -125,8 +125,17 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
         if not i % bucket_size:
             keys.append(acc)
 
+    proteins2go = {}
+    cur.execute("SELECT PROTEIN_AC, GO_ID FROM {}.PROTEIN2GO".format(owner))
+    for acc, go_id in cur:
+        if acc in proteins2go:
+            proteins2go[acc].add(go_id)
+        else:
+            proteins2go[acc] = {go_id}
+
     names = Organizer(keys, tmpdir)
     taxa = Organizer(keys, tmpdir)
+    terms = Organizer(keys, tmpdir)
     table = orautils.TablePopulator(
         con=con,
         query="INSERT /*+ APPEND */ "
@@ -139,22 +148,27 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
         for acc, dbcode, length, descid, leftnum, matches in chunk:
             md5 = hash_protein(matches)
             signatures = comparator.update(matches)
+            protein_terms = proteins2go.get(acc, [])
 
             for signature_acc in signatures:
                 # UniProt descriptions
                 names.add(signature_acc, (descid, dbcode))
                 # Taxonomic origins
                 taxa.add(signature_acc, leftnum)
+                # GO terms
+                for go_id in protein_terms:
+                    terms.add(signature_acc, go_id)
 
                 table.insert((signature_acc, acc, dbcode, md5, length,
                               leftnum, descid))
 
         names.flush()
         taxa.flush()
+        terms.flush()
 
     table.close()
-    size = names.merge() + taxa.merge()
-    done_queue.put((names, taxa, comparator, size))
+    size = names.merge() + taxa.merge() + terms.merge()
+    done_queue.put((names, taxa, terms, comparator, size))
 
 
 def hash_protein(matches: List[tuple]) -> str:
