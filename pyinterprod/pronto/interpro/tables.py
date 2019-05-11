@@ -423,6 +423,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
             dbcode = row[2]
             descid = row[3]
             left_num = row[4]
+            matches = []
 
         signature_acc = row[5]
         pos_start = row[6]
