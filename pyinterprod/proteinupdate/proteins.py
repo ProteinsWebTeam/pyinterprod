@@ -395,7 +395,7 @@ def insert_new(user: str, dsn: str, swissprot_path: str, trembl_path: str,
         count = sprot.load(trembl_path, db.path, "protein_new")
         logger.info("New TrEMBL: {} proteins".format(count))
 
-        logger.info("disk space used: {} bytes".format(db.size))
+        logger.info("disk space used: {:.0f} MB".format(db.size/1024**2))
 
         con = cx_Oracle.connect(url)
         _init_protein_changes(con)
