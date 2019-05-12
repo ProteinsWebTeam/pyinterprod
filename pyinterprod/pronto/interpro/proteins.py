@@ -86,7 +86,7 @@ class Organizer(object):
                     except EOFError:
                         break
                     else:
-                        for key, value in chunk:
+                        for key, value in chunk.items():
                             if key in data:
                                 data[key] += value
                             else:
