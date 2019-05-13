@@ -265,7 +265,7 @@ class SignatureComparator(object):
                     break
                 else:
                     for acc_1, s in signatures.items():
-                        yield, acc_1, s
+                        yield acc_1, s
 
     def update(self, matches: List[tuple]) -> List[str]:
         signatures = self.prepare(matches)
