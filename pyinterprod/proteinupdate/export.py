@@ -125,7 +125,11 @@ def build_xref_condensed(user: str, dsn: str):
         else:
             e = protein_matches[entry_acc] = []
 
-        # # As of May 2019, UniProt cannot use discontinuous domains
+        """
+        As of May 2019, UniProt does not use discontinuous domains
+        because their collaborators need to be able to
+        distinguish between repeated matches and fragmented matches
+        """
         # if fragments is not None:
         #     for frag in fragments.split(','):
         #         start, end, _ = frag.split('-')
