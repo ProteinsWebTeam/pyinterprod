@@ -662,7 +662,7 @@ def _load_term_counts(user: str, dsn: str, organisers: list):
         CREATE TABLE {}.METHOD_TERM
         (
             METHOD_AC VARCHAR2(25) NOT NULL,
-            GO_ID NUMBER(10) NOT NULL,
+            GO_ID VARCHAR2(10) NOT NULL,
             PROTEIN_COUNT NUMBER(10) NOT NULL
         ) NOLOGGING
         """.format(owner)
