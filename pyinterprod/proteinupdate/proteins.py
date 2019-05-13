@@ -254,7 +254,7 @@ def _update_proteins(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
       INSERT INTO INTERPRO.PROTEIN_CHANGES (NEW_PROTEIN_AC)
       VALUES (:1)
     """
-    table = orautils.TablePopulator(con, query, buffer_size=_MAX_ITEMS)
+    table = orautils.TablePopulator(con, query)
     for row in db.get_sequence_changes():
         cur.execute(
             """
@@ -291,20 +291,20 @@ def _update_proteins(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
 
 def _insert_proteins(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
     # TIMESTAMP and USERSTAMP will be set to their DEFAULT
-    query1 = """
+    query = """
         INSERT INTO INTERPRO.PROTEIN (
           PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT,
           STRUCT_FLAG, TAX_ID
         )
         VALUES (:1, :2, :3, :4, :5, :6, 'N', :7)
     """
-    table1 = orautils.TablePopulator(con, query1, buffer_size=_MAX_ITEMS)
+    table1 = orautils.TablePopulator(con, query)
 
-    query2 = """
+    query = """
         INSERT INTO INTERPRO.PROTEIN_CHANGES (NEW_PROTEIN_AC)
         VALUES (:1)
     """
-    table2 = orautils.TablePopulator(con, query2, buffer_size=_MAX_ITEMS)
+    table2 = orautils.TablePopulator(con, query)
 
     count = 0
     for row in db.get_new():
@@ -322,6 +322,7 @@ def _insert_proteins(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
 
     table1.close()
     table2.close()
+    con.commit()
     return count
 
 
