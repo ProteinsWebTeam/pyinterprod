@@ -85,11 +85,11 @@ def build_xref_condensed(user: str, dsn: str):
         signatures[method_acc] = entry_acc
         entries[entry_acc] = (entry_type, name)
 
-    query = """
-      INSERT /*+ APPEND */ INTO INTERPRO.XREF_CONDENSED
-      VALUES (:1, :2, :3, :4, :5, :6)
-    """
-    table = orautils.TablePopulator(con, query, autocommit=True)
+    table = orautils.TablePopulator(con,
+                                    query="INSERT /*+ APPEND */ "
+                                          "INTO INTERPRO.XREF_CONDENSED "
+                                          "VALUES (:1, :2, :3, :4, :5, :6)",
+                                    autocommit=True)
 
     cur.execute(
         """
