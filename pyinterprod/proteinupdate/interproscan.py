@@ -10,7 +10,16 @@ from .. import logger, orautils
 
 
 def _get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> Optional[str]:
-    # TODO: decide *which* method is the most accurate
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM IPRSCAN.IPM_RUNNING_JOBS@ISPRO
+        WHERE ANALYSIS_ID = :1
+        """, (analysis_id,)
+    )
+    if cur.fetchone()[0]:
+        return None
+
     cur.execute(
         """
         SELECT MAX(JOB_END)
@@ -22,73 +31,73 @@ def _get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> Optional[str]:
     row = cur.fetchone()
     return row[0] if row else None
 
-    upis = []
-    cur.execute(
-        """
-        SELECT MAX(HWM_SUBMITTED)
-        FROM IPRSCAN.HWM@ISPRO
-        WHERE ANALYSIS_ID = :1
-        """, (analysis_id,)
-    )
-    row = cur.fetchone()
-    if row:
-        upis.append(row[0])
-
-    cur.execute(
-        """
-        SELECT MAX(JOB_END)
-        FROM IPRSCAN.IPM_RUNNING_JOBS@ISPRO
-        WHERE ANALYSIS_ID = :1
-        """, (analysis_id,)
-    )
-    row = cur.fetchone()
-    if row:
-        upis.append(row[0])
-
-    cur.execute(
-        """
-        SELECT MIN(JOB_END)
-        FROM (
-            SELECT MIN(JOB_END) JOB_END
-            FROM IPRSCAN.IPM_COMPLETED_JOBS@ISPRO
-            WHERE ANALYSIS_ID = :analysisid
-            AND PERSISTED = 0
-            UNION ALL
-            SELECT MAX(JOB_END) JOB_END
-            FROM IPRSCAN.IPM_COMPLETED_JOBS@ISPRO
-            WHERE ANALYSIS_ID = :analysisid
-            AND PERSISTED = 1
-        )
-        """, dict(analysisid=analysis_id)
-    )
-    row = cur.fetchone()
-    if row:
-        upis.append(row[0])
-
-    cur.execute(
-        """
-        SELECT MIN(JOB_END)
-        FROM (
-            SELECT MIN(JOB_END) JOB_END
-            FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
-            WHERE ANALYSIS_ID = :analysisid
-            AND PERSISTED = 0
-            UNION ALL
-            SELECT MAX(JOB_END) JOB_END
-            FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
-            WHERE ANALYSIS_ID = :analysisid
-            AND PERSISTED = 1
-        )
-        """, dict(analysisid=analysis_id)
-    )
-    row = cur.fetchone()
-    if row:
-        upis.append(row[0])
-
-    try:
-        return max([upi for upi in upis if upi is not None])
-    except ValueError:
-        return None
+    # upis = []
+    # cur.execute(
+    #     """
+    #     SELECT MAX(HWM_SUBMITTED)
+    #     FROM IPRSCAN.HWM@ISPRO
+    #     WHERE ANALYSIS_ID = :1
+    #     """, (analysis_id,)
+    # )
+    # row = cur.fetchone()
+    # if row:
+    #     upis.append(row[0])
+    #
+    # cur.execute(
+    #     """
+    #     SELECT MAX(JOB_END)
+    #     FROM IPRSCAN.IPM_RUNNING_JOBS@ISPRO
+    #     WHERE ANALYSIS_ID = :1
+    #     """, (analysis_id,)
+    # )
+    # row = cur.fetchone()
+    # if row:
+    #     upis.append(row[0])
+    #
+    # cur.execute(
+    #     """
+    #     SELECT MIN(JOB_END)
+    #     FROM (
+    #         SELECT MIN(JOB_END) JOB_END
+    #         FROM IPRSCAN.IPM_COMPLETED_JOBS@ISPRO
+    #         WHERE ANALYSIS_ID = :analysisid
+    #         AND PERSISTED = 0
+    #         UNION ALL
+    #         SELECT MAX(JOB_END) JOB_END
+    #         FROM IPRSCAN.IPM_COMPLETED_JOBS@ISPRO
+    #         WHERE ANALYSIS_ID = :analysisid
+    #         AND PERSISTED = 1
+    #     )
+    #     """, dict(analysisid=analysis_id)
+    # )
+    # row = cur.fetchone()
+    # if row:
+    #     upis.append(row[0])
+    #
+    # cur.execute(
+    #     """
+    #     SELECT MIN(JOB_END)
+    #     FROM (
+    #         SELECT MIN(JOB_END) JOB_END
+    #         FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
+    #         WHERE ANALYSIS_ID = :analysisid
+    #         AND PERSISTED = 0
+    #         UNION ALL
+    #         SELECT MAX(JOB_END) JOB_END
+    #         FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
+    #         WHERE ANALYSIS_ID = :analysisid
+    #         AND PERSISTED = 1
+    #     )
+    #     """, dict(analysisid=analysis_id)
+    # )
+    # row = cur.fetchone()
+    # if row:
+    #     upis.append(row[0])
+    #
+    # try:
+    #     return max([upi for upi in upis if upi is not None])
+    # except ValueError:
+    #     return None
 
 
 def _get_ispro_upis(url: str) -> List[dict]:
