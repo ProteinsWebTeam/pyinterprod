@@ -500,7 +500,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         taxa.append(_taxa)
         terms.append(_terms)
         comparators.append(comparator)
-        size += _size + comparator.size
+        size += _size
 
     for p in consumers:
         p.join()

@@ -4,9 +4,8 @@ import bisect
 import hashlib
 import os
 import pickle
-import shelve
 from multiprocessing import Queue
-from tempfile import mkdtemp
+from tempfile import mkdtemp, mkstemp
 from typing import Any, Dict, List, Optional, Union
 
 import cx_Oracle
@@ -145,7 +144,7 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
               "VALUES (:1, :2, :3, :4, :5, :6, :7)".format(owner),
         autocommit=True
     )
-    comparator = SignatureComparator(dir=tmpdir)
+    comparator = SignatureComparator(tmpdir)
     for chunk in iter(task_queue.get, None):
         for acc, dbcode, length, descid, leftnum, matches in chunk:
             md5 = hash_protein(matches)
@@ -171,8 +170,7 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
 
     table.close()
     con.close()
-    comparator.close()
-    size = names.merge() + taxa.merge() + terms.merge()
+    size = names.merge() + taxa.merge() + terms.merge() + comparator.size
     done_queue.put((names, taxa, terms, comparator, size))
 
 
@@ -241,146 +239,33 @@ def hash_protein(matches: List[tuple]) -> str:
 
 class SignatureComparator(object):
     def __init__(self, dir: Optional[str]=None):
-        self.dir = mkdtemp(dir=dir)
-        self.db = shelve.open(os.path.join(self.dir, "db"), writeback=True)
-
-    def update(self, matches: List[tuple]) -> List[str]:
-        signatures = self.prepare(matches)
-
-        # Evaluate overlap between all signatures
-        for acc_1 in signatures:
-            # number of residues covered by the signature matches
-            residues = sum([e - s + 1 for s, e in signatures[acc_1]])
-            # number of (merged) matches
-            matches = len(signatures[acc_1])
-
-            if acc_1 in self.db:
-                self.db[acc_1]["proteins"] += 1
-                self.db[acc_1]["matches"] += matches
-                self.db[acc_1]["residues"] += residues
-            else:
-                self.db[acc_1] = {
-                    "proteins": 1,
-                    "matches": matches,
-                    "residues": residues,
-                    "signatures": {}
-                }
-
-            for acc_2 in signatures:
-                if acc_1 >= acc_2:
-                    continue
-                elif acc_2 not in self.db[acc_1]["signatures"]:
-                    # collocations, match overlaps, residue overlaps
-                    self.db[acc_1]["signatures"][acc_2] = [0, 0, 0]
-
-                # Increment collocations
-                self.db[acc_1]["signatures"][acc_2][0] += 1
-
-                num_match_overlaps = 0
-                i = 0
-                start_2, end_2 = signatures[acc_2][i]
-                for start_1, end_1 in signatures[acc_1]:
-                    while end_2 < start_1:
-                        i += 1
-                        try:
-                            start_2, end_2 = signatures[acc_2][i]
-                        except IndexError:
-                            break
-
-                    o = min(end_1, end_2) - max(start_1, start_2) + 1
-                    if o > 0:
-                        # o is the number of overlapping residues
-                        self.db[acc_1]["signatures"][acc_2][2] += 1
-
-                        # Shorted match
-                        shortest = min(end_1 - start_1, end_2 - start_2) + 1
-                        if o >= shortest * MIN_OVERLAP:
-                            num_match_overlaps += 1
-
-                if num_match_overlaps:
-                    """
-                    acc_1 and acc_2 overlaps
-                    (by at least 50% of the shortest match)
-                    at least once in this protein
-                    """
-                    self.db[acc_1]["signatures"][acc_2][1] += 1
-
-        return list(signatures.keys())
-
-    def sync(self):
-        self.db.sync()
-
-    def close(self):
-        self.db.close()
-
-    def remove(self):
-        for f in os.listdir(self.dir):
-            os.remove(os.path.join(self.dir, f))
-
-        os.rmdir(self.dir)
+        self.signatures = {}
+        fd, self.path = mkstemp(dir=dir)
+        os.close(fd)
+        os.remove(self.path)
 
     @property
     def size(self) -> int:
-        size = 0
-        for f in os.listdir(self.dir):
-            size += os.path.getsize(os.path.join(self.dir, f))
+        return os.path.getsize(self.path)
 
-        return size
+    def sync(self):
+        with open(self.path, "ab") as fh:
+            pickle.dump(self.signatures, fh)
+        self.signatures = {}
+
+    def remove(self):
+        os.remove(self.path)
 
     def __iter__(self):
-        with shelve.open(os.path.join(self.dir, "db")) as db:
-            for acc in db:
-                yield acc, db[acc]
-
-    @staticmethod
-    def prepare(matches: List[tuple]) -> Dict[str, list]:
-        # Group signatures
-        signatures = {}
-        for acc, pos_start, pos_end in matches:
-            if acc in signatures:
-                signatures[acc].append((pos_start, pos_end))
-            else:
-                signatures[acc] = [(pos_start, pos_end)]
-
-        # Sort/merge matches
-        for acc in signatures:
-            matches = []
-            pos_start = pos_end = None
-            for start, end in sorted(signatures[acc]):
-                if pos_start is None:
-                    # Left most match
-                    pos_start = start
-                    pos_end = end
-                elif start > pos_end:
-                    """
-                      pos_end
-                        ----] [----
-                              start
-                    """
-                    matches.append((pos_start, pos_end))
-                    pos_start = start
-                    pos_end = end
-                elif end > pos_end:
-                    """
-                            pos_end
-                        ----]
-                          ------]
-                                end
-                    """
-                    pos_end = end
-
-            matches.append((pos_start, pos_end))
-            signatures[acc] = matches
-
-        return signatures
-
-
-class _SignatureComparator(object):
-    def __init__(self):
-        self.signatures = {}
-        self.collocations = {}
-        self.match_overlaps = {}
-        self.residue_overlaps = {}
+        with open(self.path, "rb") as fh:
+            while True:
+                try:
+                    signatures = pickle.load(fh)
+                except EOFError:
+                    break
+                else:
+                    for acc_1, s in signatures.items():
+                        yield, acc_1, s
 
     def update(self, matches: List[tuple]) -> List[str]:
         signatures = self.prepare(matches)
@@ -393,28 +278,26 @@ class _SignatureComparator(object):
             matches = len(signatures[acc_1])
 
             if acc_1 in self.signatures:
-                self.signatures[acc_1]["matches"] += matches
-                self.signatures[acc_1]["proteins"] += 1
-                self.signatures[acc_1]["residues"] += residues
+                s = self.signatures[acc_1]
+                s["proteins"] += 1
+                s["matches"] += matches
+                s["residues"] += residues
             else:
-                self.signatures[acc_1] = {
-                    "matches": matches,
+                s = self.signatures[acc_1] = {
                     "proteins": 1,
-                    "residues": residues
+                    "matches": matches,
+                    "residues": residues,
+                    "signatures": {}
                 }
-                self.collocations[acc_1] = {}
-                self.match_overlaps[acc_1] = {}
-                self.residue_overlaps[acc_1] = {}
 
             for acc_2 in signatures:
                 if acc_1 >= acc_2:
                     continue
-                elif acc_2 not in self.collocations[acc_1]:
-                    self.collocations[acc_1][acc_2] = 0
-                    self.match_overlaps[acc_1][acc_2] = 0
-                    self.residue_overlaps[acc_1][acc_2] = 0
+                elif acc_2 not in s["signatures"]:
+                    # collocations, match overlaps, residue overlaps
+                    s["signatures"][acc_2] = [0, 0, 0]
 
-                self.collocations[acc_1][acc_2] += 1
+                s["signatures"][acc_2][0] += 1
                 num_match_overlaps = 0
                 i = 0
                 start_2, end_2 = signatures[acc_2][i]
@@ -429,7 +312,7 @@ class _SignatureComparator(object):
                     o = min(end_1, end_2) - max(start_1, start_2) + 1
                     if o > 0:
                         # o is the number of overlapping residues
-                        self.residue_overlaps[acc_1][acc_2] += o
+                        s["signatures"][acc_2][2] += o
 
                         # Shorted match
                         shortest = min(end_1 - start_1, end_2 - start_2) + 1
@@ -442,7 +325,7 @@ class _SignatureComparator(object):
                     (by at least 50% of the shortest match)
                     at least once in this protein
                     """
-                    self.match_overlaps[acc_1][acc_2] += 1
+                    s["signatures"][acc_2][1] += 1
 
         return list(signatures.keys())
 
