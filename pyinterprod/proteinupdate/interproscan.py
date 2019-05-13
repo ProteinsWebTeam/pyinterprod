@@ -9,6 +9,209 @@ import cx_Oracle
 from .. import logger, orautils
 
 
+def import_matches(user: str, dsn: str, **kwargs):
+    import_tables = kwargs.pop("tables", True)
+    exchange_partitions = kwargs.pop("partitions", True)
+    index_table = kwargs.pop("indices", True)
+
+    url = orautils.make_connect_string(user, dsn)
+    analyses = _check_ispro(url, **kwargs)
+
+    with ThreadPoolExecutor(max_workers=len(analyses)) as executor:
+        if import_tables:
+            logger.info("copying tables from ISPRO")
+            fs = {}
+            for analysis in analyses:
+                table = analysis["match_table"].upper()
+
+                if table not in fs.values():
+                    # Some analyses are in the same table!
+                    f = executor.submit(_import_table, url, "IPRSCAN", table)
+                    fs[f] = table
+
+            num_errors = 0
+            for f in as_completed(fs):
+                table = fs[f]
+                exc = f.exception()
+                if exc is None:
+                    logger.debug("{}: imported".format(table))
+                else:
+                    logger.error("{}: {}".format(table, exc))
+                    num_errors += 1
+
+            if num_errors:
+                raise RuntimeError("{} tables "
+                                   "were not imported".format(num_errors))
+
+        if exchange_partitions:
+            logger.info("updating MV_IPRSCAN")
+            functions = {
+                "ipm_cdd_match": _update_cdd_matches,
+                "ipm_coils_match": _update_coils,
+                "ipm_gene3d_match": _update_gene3d,
+                "ipm_hamap_match": _update_hamap,
+                "ipm_mobidblite_match": _update_mobidblite,
+                "ipm_panther_match": _update_panther,
+                "ipm_pfam_match": _update_pfam,
+                "ipm_phobius_match": _update_phobius,
+                "ipm_pirsf_match": _update_pirsf,
+                "ipm_prints_match": _update_prints,
+                "ipm_prodom_match": _update_prodom,
+                "ipm_prosite_patterns_match": _update_prosite_patterns,
+                "ipm_prosite_profiles_match": _update_prosite_profiles,
+                "ipm_sfld_match": _update_sfld_matches,
+                "ipm_smart_match": _update_smart,
+                "ipm_superfamily_match": _update_superfamily,
+                "ipm_tigrfam_match": _update_tigrfam,
+                "ipm_tmhmm_match": _update_tmhmm
+            }
+
+            signalp = {
+                "signalp_euk": _update_signalp_euk,
+                "signalp_gram_negative": _update_signalp_gram_neg,
+                "signalp_gram_positive": _update_signalp_gram_pos
+            }
+
+            fs = {}
+            for analysis in analyses:
+                _id = analysis["id"]
+                name = analysis["name"]
+                table = analysis["match_table"].lower()
+
+                if table == "ipm_signalp_match":
+                    fn = signalp[name]
+                else:
+                    fn = functions[table]
+
+                f = executor.submit(fn, url, _id)
+                fs[f] = analysis["full_name"]
+
+            num_errors = 0
+            for f in as_completed(fs):
+                full_name = fs[f]
+                exc = f.exception()
+                if exc is None:
+                    logger.debug("{}: exchanged".format(full_name))
+                else:
+                    logger.error("{}: {}".format(full_name, exc))
+                    num_errors += 1
+
+            if num_errors:
+                raise RuntimeError("{} partitions "
+                                   "were not exchanged".format(num_errors))
+
+    if index_table:
+        logger.info("indexing table")
+        con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+        cur = con.cursor()
+
+        for idx in orautils.get_indices(cur, "IPRSCAN", "MV_IPRSCAN"):
+            # logger.debug("rebuilding {}".format(idx))
+            # cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
+            orautils.drop_index(cur, "IPRSCAN", idx["name"])
+
+        cur.execute(
+            """
+            CREATE INDEX I_MV_IPRSCAN$UPI
+            ON IPRSCAN.MV_IPRSCAN (UPI) NOLOGGING
+            """
+        )
+
+        cur.close()
+        con.close()
+
+    logger.info("MV_IPRSCAN is ready")
+
+
+def import_sites(user: str, dsn: str, **kwargs):
+    import_tables = kwargs.pop("tables", True)
+    exchange_partitions = kwargs.pop("partitions", True)
+    index_table = kwargs.pop("indices", True)
+
+    url = orautils.make_connect_string(user, dsn)
+    analyses = _check_ispro(url, **kwargs)
+
+    with ThreadPoolExecutor(max_workers=len(analyses)) as executor:
+        if import_tables:
+            logger.info("copying tables from ISPRO")
+            fs = {}
+            for analysis in analyses:
+                table = analysis["site_table"]
+
+                if not table:
+                    continue
+                elif table not in fs.values():
+                    # Some analyses are in the same table!
+                    f = executor.submit(_import_table, url, "IPRSCAN", table)
+                    fs[f] = table.upper()
+
+            num_errors = 0
+            for f in as_completed(fs):
+                table = fs[f]
+                exc = f.exception()
+                if exc is None:
+                    logger.debug("{}: imported".format(table))
+                else:
+                    logger.error("{}: {}".format(table, exc))
+                    num_errors += 1
+
+            if num_errors:
+                raise RuntimeError("{} tables "
+                                   "were not imported".format(num_errors))
+
+        if exchange_partitions:
+            logger.info("updating SITE")
+            functions = {
+                "ipm_cdd_site": _update_cdd_sites,
+                "ipm_sfld_site": _update_sfld_sites
+            }
+
+            fs = {}
+            for analysis in analyses:
+                _id = analysis["id"]
+                table = analysis["site_match"]
+                if table:
+                    fn = functions[table.lower()]
+                    f = executor.submit(fn, url, _id)
+                    fs[f] = analysis["full_name"]
+
+            num_errors = 0
+            for f in as_completed(fs):
+                full_name = fs[f]
+                exc = f.exception()
+                if exc is None:
+                    logger.debug("{}: exchanged".format(full_name))
+                else:
+                    logger.error("{}: {}".format(full_name, exc))
+                    num_errors += 1
+
+            if num_errors:
+                raise RuntimeError("{} partitions "
+                                   "were not exchanged".format(num_errors))
+
+    if index_table:
+        logger.info("indexing table")
+        con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+        cur = con.cursor()
+
+        for idx in orautils.get_indices(cur, "IPRSCAN", "SITE"):
+            # logger.debug("rebuilding {}".format(idx))
+            # cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
+            orautils.drop_index(cur, "IPRSCAN", idx["name"])
+
+        cur.execute(
+            """
+            CREATE INDEX I_SITE$UPI
+            ON IPRSCAN.SITE (UPI) NOLOGGING
+            """
+        )
+
+        cur.close()
+        con.close()
+
+    logger.info("SITE is ready")
+
+
 def _get_max_upi(cur: cx_Oracle.Cursor, analysis_id: int) -> Optional[str]:
     cur.execute(
         """
@@ -792,207 +995,4 @@ def _update_tmhmm(url: str, analysis_id: int):
     orautils.drop_table(cur, "IPRSCAN", "IPM_TMHMM_MATCH_TMP")
     cur.close()
     con.close()
-
-
-def import_matches(user: str, dsn: str, **kwargs):
-    import_tables = kwargs.pop("tables", True)
-    exchange_partitions = kwargs.pop("partitions", True)
-    index_table = kwargs.pop("indices", True)
-
-    url = orautils.make_connect_string(user, dsn)
-    analyses = _check_ispro(url, **kwargs)
-
-    with ThreadPoolExecutor(max_workers=len(analyses)) as executor:
-        if import_tables:
-            logger.info("copying tables from ISPRO")
-            fs = {}
-            for analysis in analyses:
-                table = analysis["match_table"].upper()
-
-                if table not in fs.values():
-                    # Some analyses are in the same table!
-                    f = executor.submit(_import_table, url, "IPRSCAN", table)
-                    fs[f] = table
-
-            num_errors = 0
-            for f in as_completed(fs):
-                table = fs[f]
-                exc = f.exception()
-                if exc is None:
-                    logger.debug("{}: imported".format(table))
-                else:
-                    logger.error("{}: {}".format(table, exc))
-                    num_errors += 1
-
-            if num_errors:
-                raise RuntimeError("{} tables "
-                                   "were not imported".format(num_errors))
-
-        if exchange_partitions:
-            logger.info("updating MV_IPRSCAN")
-            functions = {
-                "ipm_cdd_match": _update_cdd_matches,
-                "ipm_coils_match": _update_coils,
-                "ipm_gene3d_match": _update_gene3d,
-                "ipm_hamap_match": _update_hamap,
-                "ipm_mobidblite_match": _update_mobidblite,
-                "ipm_panther_match": _update_panther,
-                "ipm_pfam_match": _update_pfam,
-                "ipm_phobius_match": _update_phobius,
-                "ipm_pirsf_match": _update_pirsf,
-                "ipm_prints_match": _update_prints,
-                "ipm_prodom_match": _update_prodom,
-                "ipm_prosite_patterns_match": _update_prosite_patterns,
-                "ipm_prosite_profiles_match": _update_prosite_profiles,
-                "ipm_sfld_match": _update_sfld_matches,
-                "ipm_smart_match": _update_smart,
-                "ipm_superfamily_match": _update_superfamily,
-                "ipm_tigrfam_match": _update_tigrfam,
-                "ipm_tmhmm_match": _update_tmhmm
-            }
-
-            signalp = {
-                "signalp_euk": _update_signalp_euk,
-                "signalp_gram_negative": _update_signalp_gram_neg,
-                "signalp_gram_positive": _update_signalp_gram_pos
-            }
-
-            fs = {}
-            for analysis in analyses:
-                _id = analysis["id"]
-                name = analysis["name"]
-                table = analysis["match_table"].lower()
-
-                if table == "ipm_signalp_match":
-                    fn = signalp[name]
-                else:
-                    fn = functions[table]
-
-                f = executor.submit(fn, url, _id)
-                fs[f] = analysis["full_name"]
-
-            num_errors = 0
-            for f in as_completed(fs):
-                full_name = fs[f]
-                exc = f.exception()
-                if exc is None:
-                    logger.debug("{}: exchanged".format(full_name))
-                else:
-                    logger.error("{}: {}".format(full_name, exc))
-                    num_errors += 1
-
-            if num_errors:
-                raise RuntimeError("{} partitions "
-                                   "were not exchanged".format(num_errors))
-
-    if index_table:
-        logger.info("indexing table")
-        con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-        cur = con.cursor()
-
-        for idx in orautils.get_indices(cur, "IPRSCAN", "MV_IPRSCAN"):
-            # logger.debug("rebuilding {}".format(idx))
-            # cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
-            orautils.drop_index(cur, "IPRSCAN", idx["name"])
-
-        cur.execute(
-            """
-            CREATE INDEX I_MV_IPRSCAN$UPI
-            ON IPRSCAN.MV_IPRSCAN (UPI) NOLOGGING
-            """
-        )
-
-        cur.close()
-        con.close()
-
-    logger.info("MV_IPRSCAN is ready")
-
-
-def import_sites(user: str, dsn: str, **kwargs):
-    import_tables = kwargs.pop("tables", True)
-    exchange_partitions = kwargs.pop("partitions", True)
-    index_table = kwargs.pop("indices", True)
-
-    url = orautils.make_connect_string(user, dsn)
-    analyses = _check_ispro(url, **kwargs)
-
-    with ThreadPoolExecutor(max_workers=len(analyses)) as executor:
-        if import_tables:
-            logger.info("copying tables from ISPRO")
-            fs = {}
-            for analysis in analyses:
-                table = analysis["site_table"]
-
-                if not table:
-                    continue
-                elif table not in fs.values():
-                    # Some analyses are in the same table!
-                    f = executor.submit(_import_table, url, "IPRSCAN", table)
-                    fs[f] = table.upper()
-
-            num_errors = 0
-            for f in as_completed(fs):
-                table = fs[f]
-                exc = f.exception()
-                if exc is None:
-                    logger.debug("{}: imported".format(table))
-                else:
-                    logger.error("{}: {}".format(table, exc))
-                    num_errors += 1
-
-            if num_errors:
-                raise RuntimeError("{} tables "
-                                   "were not imported".format(num_errors))
-
-        if exchange_partitions:
-            logger.info("updating SITE")
-            functions = {
-                "ipm_cdd_site": _update_cdd_sites,
-                "ipm_sfld_site": _update_sfld_sites
-            }
-
-            fs = {}
-            for analysis in analyses:
-                _id = analysis["id"]
-                table = analysis["site_match"]
-                if table:
-                    fn = functions[table.lower()]
-                    f = executor.submit(fn, url, _id)
-                    fs[f] = analysis["full_name"]
-
-            num_errors = 0
-            for f in as_completed(fs):
-                full_name = fs[f]
-                exc = f.exception()
-                if exc is None:
-                    logger.debug("{}: exchanged".format(full_name))
-                else:
-                    logger.error("{}: {}".format(full_name, exc))
-                    num_errors += 1
-
-            if num_errors:
-                raise RuntimeError("{} partitions "
-                                   "were not exchanged".format(num_errors))
-
-    if index_table:
-        logger.info("indexing table")
-        con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-        cur = con.cursor()
-
-        for idx in orautils.get_indices(cur, "IPRSCAN", "SITE"):
-            # logger.debug("rebuilding {}".format(idx))
-            # cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
-            orautils.drop_index(cur, "IPRSCAN", idx["name"])
-
-        cur.execute(
-            """
-            CREATE INDEX I_SITE$UPI
-            ON IPRSCAN.SITE (UPI) NOLOGGING
-            """
-        )
-
-        cur.close()
-        con.close()
-
-    logger.info("SITE is ready")
 
