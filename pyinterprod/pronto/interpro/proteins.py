@@ -132,6 +132,7 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
             proteins2go[acc].add(go_id)
         else:
             proteins2go[acc] = {go_id}
+    cur.close()
 
     names = Organizer(keys, tmpdir)
     taxa = Organizer(keys, tmpdir)
@@ -167,6 +168,7 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
         terms.flush()
 
     table.close()
+    con.close()
     size = names.merge() + taxa.merge() + terms.merge()
     done_queue.put((names, taxa, terms, comparator, size))
 
@@ -235,11 +237,12 @@ def hash_protein(matches: List[tuple]) -> str:
 
 
 class SignatureComparator(object):
-    def __init__(self):
+    def __init__(self, dir: Optional[str]=None):
         self.signatures = {}
         self.collocations = {}
         self.match_overlaps = {}
         self.residue_overlaps = {}
+        self.dir = mkdtemp(dir=dir) if dir is not None else None
 
     def update(self, matches: List[tuple]) -> List[str]:
         signatures = self.prepare(matches)
