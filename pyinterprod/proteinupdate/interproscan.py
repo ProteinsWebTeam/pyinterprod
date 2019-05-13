@@ -419,13 +419,23 @@ def _import_table(url: str, owner: str, name: str):
         """.format(owner, name)
     )
     src_upi = cur.fetchone()[0]
-    cur.execute(
-        """
-        SELECT MAX(UPI)
-        FROM {}.{}
-        """.format(owner, name)
-    )
-    dst_upi = cur.fetchone()[0]
+
+    try:
+        cur.execute(
+            """
+            SELECT MAX(UPI)
+            FROM {}.{}
+            """.format(owner, name)
+        )
+    except cx_Oracle.DatabaseError as exc:
+        error, = exc.args
+        if error.code == 942:
+            # ORA-00942 (table or view does not exist)
+            dst_upi = None
+        else:
+            raise exc
+    else:
+        dst_upi = cur.fetchone()[0]
 
     if src_upi != dst_upi:
         orautils.drop_mview(cur, owner, name)
