@@ -139,7 +139,7 @@ def drop_table(cur: cx_Oracle.Cursor, owner: str, name: str):
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
 
-        # ORA-00942 (table or view does not exist)
+        # ORA-00942 table or view does not exist
         # ORA-08103: object no longer exists
         if error.code not in (942, 8103):
             raise exc
@@ -151,7 +151,7 @@ def drop_mview(cur: cx_Oracle.Cursor, owner: str, name: str):
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
 
-        # ORA-00942 (table or view does not exist)
+        # ORA-00942 table or view does not exist
         # ORA-08103: object no longer exists
         if error.code not in (942, 8103):
             raise exc
