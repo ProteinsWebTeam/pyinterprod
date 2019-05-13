@@ -824,7 +824,7 @@ def _load_taxonomy_counts(user: str, dsn: str, organisers: list):
         if acc != _acc:
             for rank in ranks:
                 for tax_id in _ranks.get(rank, {}):
-                    table.insert((_acc, rank, tax_id, _ranks[tax_id]))
+                    table.insert((_acc, rank, tax_id, _ranks[rank][tax_id]))
 
             _acc = acc
             _ranks = {}
