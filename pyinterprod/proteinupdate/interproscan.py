@@ -392,9 +392,8 @@ def _import_signalp(url: str, owner: str, table_src: str, table_dst: str,
                     actions: List[Tuple[int, str]]):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    src_upi = _get_max_upi(cur, owner, table_src, "ISPRO")
     dst_upi = _get_max_upi(cur, owner, table_src)
-    if src_upi != dst_upi:
+    if not dst_upi or dst_upi != _get_max_upi(cur, owner, table_src, "ISPRO"):
         # Not the same UPI: import table
         orautils.drop_mview(cur, owner, table_src)
         orautils.drop_table(cur, owner, table_src)
