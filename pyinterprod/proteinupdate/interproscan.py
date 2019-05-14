@@ -474,6 +474,8 @@ def _import_member_db(url: str, owner: str, table_src: str, table_dst: str,
             """.format(owner,  table_src)
         )
 
+    logger.debug("{} imported".format(table_src))
+
     # Create temporary table for partition exchange
     table_tmp = table_src + "_TMP"
     orautils.drop_table(cur, owner, table_tmp)
@@ -819,7 +821,7 @@ def _insert_superfamily(cur: cx_Oracle.Cursor, owner: str, table_src: str,
           ANALYSIS_ID, UPI, METHOD_AC, RELNO_MAJOR, RELNO_MINOR, SEQ_START,
           SEQ_END, 0, 0, HMM_LENGTH, NULL, 0, 0, SEQEVALUE, SEQEVALUE, 0, 0,
           MODEL_AC, NULL, FRAGMENTS
-        FROM IPRSCAN.IPM_SUPERFAMILY_MATCH
+        FROM {0}.{2}
         WHERE ANALYSIS_ID = :1
         """.format(owner, table_dst, table_src),
         (analysis_id,)
@@ -836,7 +838,7 @@ def _insert_tigrfam(cur: cx_Oracle.Cursor, owner: str, table_src: str,
           SEQ_END, HMM_START, HMM_END, HMM_LENGTH, HMM_BOUNDS, SCORE,
           SEQSCORE, EVALUE, SEQEVALUE, ENV_START, ENV_END, MODEL_AC,
           NULL, FRAGMENTS
-        FROM IPRSCAN.IPM_SUPERFAMILY_MATCH
+        FROM {0}.{2}
         WHERE ANALYSIS_ID = :1
         """.format(owner, table_dst, table_src),
         (analysis_id,)
@@ -852,7 +854,7 @@ def _insert_tmhmm(cur: cx_Oracle.Cursor, owner: str, table_src: str,
           ANALYSIS_ID, UPI, METHOD_AC, RELNO_MAJOR, RELNO_MINOR, SEQ_START,
           SEQ_END, 0, 0, 0, NULL, SEQSCORE, SEQSCORE, 0, 0, 0, 0, MODEL_AC,
           NULL, FRAGMENTS
-        FROM IPRSCAN.IPM_SUPERFAMILY_MATCH
+        FROM {0}.{2}
         WHERE ANALYSIS_ID = :1
         """.format(owner, table_dst, table_src),
         (analysis_id,)
