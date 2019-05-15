@@ -639,7 +639,7 @@ def find_protein_to_refresh(user: str, dsn: str):
     # Assume CRC64 have been checked and that no mismatches were found
     cur.execute(
         """
-        CREATE INTO INTERPRO.PROTEIN_TO_SCAN NOLOGGING
+        CREATE TABLE INTERPRO.PROTEIN_TO_SCAN NOLOGGING
         AS
         SELECT P.NEW_PROTEIN_AC AS PROTEIN_AC, X.UPI
         FROM INTERPRO.PROTEIN_CHANGES P
