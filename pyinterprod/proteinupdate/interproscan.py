@@ -32,7 +32,7 @@ def import_matches(user: str, dsn: str, **kwargs):
             "ipm_phobius_match": (_insert_phobius, "PHOBIUS"),
             "ipm_pirsf_match": (_insert_pirsf, "PIRSF"),
             "ipm_prints_match": (_insert_prints, "PRINTS"),
-            "ipm_prodom_match": (_insert_prodom, "PRODOM"),
+            # "ipm_prodom_match": (_insert_prodom, "PRODOM"),
             "ipm_prosite_patterns_match": (_insert_prosite_patterns, "PROSITE_PATTERNS"),
             "ipm_prosite_profiles_match": (_insert_prosite_profiles, "PROSITE_PROFILES"),
             "ipm_sfld_match": (_insert_sfld_matches, "SFLD"),
@@ -59,7 +59,7 @@ def import_matches(user: str, dsn: str, **kwargs):
                 # SignalP has one source table, but three dbcodes
                 partition = signalp_partitions[name]
                 signalp_actions.append((_id, partition))
-            else:
+            elif table in functions:
                 fn, partition = functions[table]
                 f = executor.submit(_import_member_db, url, "IPRSCAN", table,
                                     "MV_IPRSCAN", partition, _id, fn)
