@@ -521,28 +521,28 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     cur = con.cursor()
     orautils.gather_stats(cur, owner, "METHOD2PROTEIN")
     orautils.grant(cur, owner, "METHOD2PROTEIN", "SELECT", "INTERPRO_SELECT")
-    con.execute(
+    cur.execute(
         """
         CREATE UNIQUE INDEX UI_METHOD2PROTEIN
         ON {}.METHOD2PROTEIN (METHOD_AC, PROTEIN_AC)
         NOLOGGING
         """.format(owner)
     )
-    con.execute(
+    cur.execute(
         """
         CREATE INDEX I_METHOD2PROTEIN$M
         ON {}.METHOD2PROTEIN (METHOD_AC)
         NOLOGGING
         """.format(owner)
     )
-    con.execute(
+    cur.execute(
         """
         CREATE INDEX I_METHOD2PROTEIN$P
         ON {}.METHOD2PROTEIN (PROTEIN_AC)
         NOLOGGING
         """.format(owner)
     )
-    con.execute(
+    cur.execute(
         """
         CREATE INDEX I_METHOD2PROTEIN$LN
         ON {}.METHOD2PROTEIN (LEFT_NUMBER)
