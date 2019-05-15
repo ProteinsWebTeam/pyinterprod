@@ -413,17 +413,18 @@ def _import_signalp(url: str, owner: str, table_src: str, table_dst: str,
         )
 
     table_tmp = table_src + "_TMP"
+    orautils.drop_table(cur, owner, table_tmp)
+    cur.execute(
+        """
+        CREATE TABLE {0}.{1} NOLOGGING
+        AS
+        SELECT *
+        FROM {0}.{2}
+        WHERE 1=0
+        """.format(owner, table_tmp, table_dst)
+    )
     for analysis_id, partition in actions:
-        orautils.drop_table(cur, owner, table_tmp)
-        cur.execute(
-            """
-            CREATE TABLE {0}.{1} NOLOGGING
-            AS
-            SELECT *
-            FROM {0}.{2}
-            WHERE 1=0
-            """.format(owner, table_tmp, table_dst)
-        )
+        orautils.truncate_table(cur, owner, table_tmp)
         cur.execute(
             """
             INSERT /*+ APPEND */ INTO {0}.{1}
@@ -438,8 +439,8 @@ def _import_signalp(url: str, owner: str, table_src: str, table_dst: str,
         )
         con.commit()
         orautils.exchange_partition(cur, owner, table_tmp, table_dst, partition)
-        orautils.drop_table(cur, owner, table_tmp)
 
+    orautils.drop_table(cur, owner, table_tmp)
     cur.close()
     con.close()
 
