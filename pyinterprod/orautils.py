@@ -256,15 +256,15 @@ def get_constraints(cur: cx_Oracle.Cursor, owner: str, table: str) -> List[dict]
                 "table_name": row[2],
                 "condition": row[3],
                 "cascade": row[4] == "CASCADE",
-                "is_enabled": row[4] == "ENABLED",
-                "reference": row[5],
-                "index_name": row[6],
+                "is_enabled": row[5] == "ENABLED",
+                "reference": row[6],
+                "index_name": row[7],
                 "columns": []
             }
 
         c["columns"].append({
-            "name": row[7],
-            "order": row[8]
+            "name": row[8],
+            "order": row[9]
         })
 
     return list(constraints.values())
