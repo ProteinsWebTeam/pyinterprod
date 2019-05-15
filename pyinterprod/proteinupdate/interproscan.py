@@ -76,10 +76,10 @@ def import_matches(user: str, dsn: str, **kwargs):
             name = fs[f]
             exc = f.exception()
             if exc is None:
-                logger.debug("{} is ready".format(name))
+                logger.info("\t{} is ready".format(name))
             else:
                 exc_name = exc.__class__.__name__
-                logger.error("{} failed ({}: {})".format(name, exc_name, exc))
+                logger.error("\t{} failed ({}: {})".format(name, exc_name, exc))
                 num_errors += 1
 
     if num_errors:
@@ -90,7 +90,6 @@ def import_matches(user: str, dsn: str, **kwargs):
     cur = con.cursor()
 
     for idx in orautils.get_indices(cur, "IPRSCAN", "MV_IPRSCAN"):
-        # logger.debug("rebuilding {}".format(idx))
         # cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
         orautils.drop_index(cur, "IPRSCAN", idx["name"])
 
@@ -141,10 +140,10 @@ def import_sites(user: str, dsn: str, **kwargs):
             name = fs[f]
             exc = f.exception()
             if exc is None:
-                logger.debug("{} is ready".format(name))
+                logger.info("\t{} is ready".format(name))
             else:
                 exc_name = exc.__class__.__name__
-                logger.error("{} failed ({}: {})".format(name, exc_name, exc))
+                logger.error("\t{} failed ({}: {})".format(name, exc_name, exc))
                 num_errors += 1
 
     if num_errors:
@@ -155,7 +154,6 @@ def import_sites(user: str, dsn: str, **kwargs):
     cur = con.cursor()
 
     for idx in orautils.get_indices(cur, "IPRSCAN", "SITE"):
-        # logger.debug("rebuilding {}".format(idx))
         # cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
         orautils.drop_index(cur, "IPRSCAN", idx["name"])
 
@@ -471,8 +469,6 @@ def _import_member_db(url: str, owner: str, table_src: str, table_dst: str,
             NOLOGGING
             """.format(owner,  table_src)
         )
-
-    logger.debug("{} imported".format(table_src))
 
     # Create temporary table for partition exchange
     table_tmp = table_src + "_TMP"
