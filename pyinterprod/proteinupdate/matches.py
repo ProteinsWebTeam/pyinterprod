@@ -114,14 +114,18 @@ def check_matches(user: str, dsn: str, outdir: str):
     logger.info("checking out-of-bound matches")
     cur.execute(
         """
-        SELECT COUNT(*)
+        SELECT M.PROTEIN_AC, M.METHOD_AC, M.POS_TO, P.LEN
         FROM INTERPRO.MATCH_NEW M
         INNER JOIN INTERPRO.PROTEIN P
           ON M.PROTEIN_AC = P.PROTEIN_AC
         WHERE M.POS_TO > P.LEN
         """
     )
-    n = cur.fetchone()[0]
+    n = 0
+    for row in cur:
+        logger.critical("out-of-bound: {}\t{}\t{}\t{}".format(*row))
+        n += 1
+
     if n:
         cur.close()
         con.close()
@@ -131,11 +135,16 @@ def check_matches(user: str, dsn: str, outdir: str):
     logger.info("checking invalid matches")
     cur.execute(
         """
-        SELECT COUNT(*)
+        SELECT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
         FROM INTERPRO.MATCH_NEW
         WHERE POS_FROM < 1 OR POS_FROM > POS_TO
         """
     )
+    n = 0
+    for row in cur:
+        logger.critical("invalid: {}\t{}\t{}\t{}".format(*row))
+        n += 1
+
     if n:
         cur.close()
         con.close()
