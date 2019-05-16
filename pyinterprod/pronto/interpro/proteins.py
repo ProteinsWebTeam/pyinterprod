@@ -274,18 +274,14 @@ class SignatureComparator(object):
         for acc_1 in signatures:
             # number of residues covered by the signature matches
             residues = sum([e - s + 1 for s, e in signatures[acc_1]])
-            # number of (merged) matches
-            matches = len(signatures[acc_1])
 
             if acc_1 in self.signatures:
                 s = self.signatures[acc_1]
                 s["proteins"] += 1
-                s["matches"] += matches
                 s["residues"] += residues
             else:
                 s = self.signatures[acc_1] = {
                     "proteins": 1,
-                    "matches": matches,
                     "residues": residues,
                     "signatures": {}
                 }
@@ -294,7 +290,7 @@ class SignatureComparator(object):
                 if acc_1 >= acc_2:
                     continue
                 elif acc_2 not in s["signatures"]:
-                    # collocations, match overlaps, residue overlaps
+                    # collocations, protein overlaps, residue overlaps
                     s["signatures"][acc_2] = [0, 0, 0]
 
                 s["signatures"][acc_2][0] += 1

@@ -591,7 +591,6 @@ def _load_comparisons(user: str, dsn: str, comparators: list):
         (
             METHOD_AC VARCHAR2(25) NOT NULL,
             PROTEIN_COUNT NUMBER NOT NULL,
-            MATCH_COUNT NUMBER NOT NULL,
             RESIDUE_COUNT NUMBER NOT NULL
         ) NOLOGGING
         """.format(owner)
@@ -602,16 +601,16 @@ def _load_comparisons(user: str, dsn: str, comparators: list):
         (
             METHOD_AC1 VARCHAR2(25) NOT NULL,
             METHOD_AC2 VARCHAR2(25) NOT NULL,
-            PROTEIN_COUNT NUMBER NOT NULL,
-            MATCH_COUNT NUMBER NOT NULL,
-            RESIDUE_COUNT NUMBER NOT NULL
+            COLLOCATION NUMBER NOT NULL,
+            PROTEIN_OVERLAP NUMBER NOT NULL,
+            RESIDUE_OVERLAP NUMBER NOT NULL
         ) NOLOGGING
         """.format(owner)
     )
     table1 = orautils.TablePopulator(con,
                                      query="INSERT /*+ APPEND */ "
                                            "INTO {}.METHOD_COUNT "
-                                           "VALUES (:1, :2, :3, :4)".format(owner),
+                                           "VALUES (:1, :2, :3)".format(owner),
                                      autocommit=True)
     table2 = orautils.TablePopulator(con,
                                      query="INSERT /*+ APPEND */ "
@@ -620,7 +619,7 @@ def _load_comparisons(user: str, dsn: str, comparators: list):
                                      autocommit=True)
 
     for acc_1, s in signatures.items():
-        table1.insert((acc_1, s["proteins"], s["matches"], s["residues"]))
+        table1.insert((acc_1, s["proteins"], s["residues"]))
 
         for acc_2, counts in s["signatures"].items():
             table2.insert((acc_1, acc_2, *counts))
