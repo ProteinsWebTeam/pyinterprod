@@ -149,7 +149,6 @@ def import_sites(user: str, dsn: str, **kwargs):
     if num_errors:
         raise RuntimeError("{} analyses failed".format(num_errors))
 
-    logger.info("indexing SITE")
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
@@ -157,6 +156,7 @@ def import_sites(user: str, dsn: str, **kwargs):
         # cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
         orautils.drop_index(cur, "IPRSCAN", idx["name"])
 
+    logger.info("indexing SITE")
     cur.execute(
         """
         CREATE INDEX I_SITE$UPI
