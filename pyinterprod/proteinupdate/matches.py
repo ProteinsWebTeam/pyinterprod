@@ -290,13 +290,10 @@ def update_feature_matches(user: str, dsn: str, drop_indices: bool=False):
 
     cur.execute(
         """
-        INSERT INTO INTERPRO.FEATURE_MATCH (
-          PROTEIN_AC, METHOD_AC, SEQ_FEATURE, POS_FROM, POS_TO,
-          DBCODE, SEQ_DATE, MATCH_DATE, TIMESTAMP, USERSTAMP
-        )
+        INSERT INTO INTERPRO.FEATURE_MATCH
         SELECT
           P.PROTEIN_AC, M.METHOD_AC, M.SEQ_FEATURE, M.SEQ_START, M.SEQ_END,
-          D.DBCODE, SYSDATE, SYSDATE, SYSDATE, 'INTERPRO'
+          D.DBCODE
         FROM INTERPRO.PROTEIN_TO_SCAN P
         INNER JOIN IPRSCAN.MV_IPRSCAN M
           ON P.UPI = M.UPI
