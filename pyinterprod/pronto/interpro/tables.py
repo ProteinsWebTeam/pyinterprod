@@ -123,9 +123,12 @@ def load_matches(user: str, dsn: str):
 
     cur.execute(
         """
-        SELECT METHOD_AC, COUNT(DISTINCT PROTEIN_AC)
-        FROM {}.MATCH
-        GROUP BY METHOD_AC
+        SELECT M.METHOD_AC, COUNT(DISTINCT M.PROTEIN_AC)
+        FROM INTERPRO.PROTEIN P
+        INNER JOIN {}.MATCH M 
+          ON P.PROTEIN_AC = M.PROTEIN_AC
+        WHERE P.FRAGMENT = 'N'
+        GROUP BY M.METHOD_AC
         """.format(owner)
     )
     signatures = cur.fetchall()
