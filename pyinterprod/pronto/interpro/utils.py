@@ -13,18 +13,20 @@ MIN_OVERLAP = 0.5   # at least 50% of overlap
 
 
 class Organizer(object):
-    def __init__(self, keys: List, dir: Optional[str]=None):
-        self.keys = keys
-        if keys or not dir:
-            self.dir = mkdtemp(dir=dir)
-        else:
+    def __init__(self, keys: List, dir: Optional[str]=None, exists: bool=False):
+        if exists:
+            self.keys = os.listdir(dir)
             self.dir = dir
+        else:
+            self.keys = keys
+            self.dir = mkdtemp(dir=dir)
+
         self.buckets = [
             {
                 "path": os.path.join(self.dir, str(i+1)),
                 "data": {}
             }
-            for i in range(len(keys))
+            for i in range(len(self.keys))
         ]
 
     def __iter__(self):
