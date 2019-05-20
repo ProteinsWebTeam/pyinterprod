@@ -6,7 +6,7 @@ import os
 import pickle
 from multiprocessing import Pool
 from tempfile import mkdtemp, mkstemp
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, Generator, Iterable, List, Optional, Union
 
 
 MIN_OVERLAP = 0.5   # at least 50% of overlap
@@ -106,7 +106,7 @@ class Organizer(object):
         os.rmdir(self.dir)
 
 
-def merge_organisers(organizers: Iterable[Organizer]):
+def merge_organizers(organizers: Iterable[Organizer]) -> Generator[tuple, None, None]:
     _key = None
     items = []
     for key, value in heapq.merge(*organizers):
