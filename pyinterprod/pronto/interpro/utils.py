@@ -105,7 +105,7 @@ class Organizer(object):
 
         os.rmdir(self.dir)
 
-    def from_organizers(self, organizers: Iterable[Organizer]):
+    def from_organizers(self, organizers: Iterable):
         _key = None
         items = []
         for key, value in heapq.merge(*organizers):
