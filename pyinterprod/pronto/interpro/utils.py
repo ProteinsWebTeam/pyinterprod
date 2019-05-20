@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 
 import bisect
+import heapq
 import os
 import pickle
 from multiprocessing import Pool
 from tempfile import mkdtemp, mkstemp
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 
 MIN_OVERLAP = 0.5   # at least 50% of overlap
@@ -103,6 +104,23 @@ class Organizer(object):
                 pass
 
         os.rmdir(self.dir)
+
+
+def merge_organisers(organizers: Iterable[Organizer]):
+    _key = None
+    items = []
+    for key, value in heapq.merge(*organizers):
+        if key != _key:
+            for item in items:
+                yield _key, item
+
+            _key = key
+            items = []
+
+        items.append(value)
+
+    for item in items:
+        yield _key, item
 
 
 class SignatureComparator(object):
