@@ -62,12 +62,15 @@ class Organizer(object):
         else:
             raise KeyError(key)
 
-    def flush(self):
+    def flush(self, by_key: bool=False):
         for b in self.buckets:
             if b["data"]:
                 with open(b["path"], "ab") as fh:
-                    for key, items in b["data"].items():
-                        pickle.dump((key, items), fh)
+                    if by_key:
+                        for key, items in b["data"].items():
+                            pickle.dump((key, items), fh)
+                    else:
+                        pickle.dump(b["data"], fh)
                 b["data"] = {}
 
     def merge(self, processes: int=1) -> int:
@@ -88,14 +91,15 @@ class Organizer(object):
             with open(path, "rb") as fh:
                 while True:
                     try:
-                        key, items = pickle.load(fh)
+                        chunk = pickle.load(fh)
                     except EOFError:
                         break
                     else:
-                        if key in data:
-                            data[key] += items
-                        else:
-                            data[key] = items
+                        for key, items in chunk.items():
+                            if key in data:
+                                data[key] += items
+                            else:
+                                data[key] = items
 
         with open(path, "wb") as fh:
             for key in sorted(data):
@@ -120,13 +124,13 @@ class Organizer(object):
 
                 _key = key
                 items = []
-                self.flush()
+                self.flush(by_key=True)
 
             items.append(value)
 
         for item in items:
             self.add(_key, item)
-        self.flush()
+        self.flush(by_key=True)
 
 
 class SignatureComparator(object):
