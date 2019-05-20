@@ -66,7 +66,8 @@ class Organizer(object):
         for b in self.buckets:
             if b["data"]:
                 with open(b["path"], "ab") as fh:
-                    pickle.dump(b["data"], fh)
+                    for key, items in b["data"].items():
+                        pickle.dump((key, items), fh)
                 b["data"] = {}
 
     def merge(self, processes: int=1) -> int:
@@ -87,15 +88,14 @@ class Organizer(object):
             with open(path, "rb") as fh:
                 while True:
                     try:
-                        chunk = pickle.load(fh)
+                        key, items = pickle.load(fh)
                     except EOFError:
                         break
                     else:
-                        for key, value in chunk.items():
-                            if key in data:
-                                data[key] += value
-                            else:
-                                data[key] = value
+                        if key in data:
+                            data[key] += items
+                        else:
+                            data[key] = items
 
         with open(path, "wb") as fh:
             for key in sorted(data):
