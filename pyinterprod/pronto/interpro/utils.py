@@ -105,22 +105,23 @@ class Organizer(object):
 
         os.rmdir(self.dir)
 
+    def from_organizers(self, organizers: Iterable[Organizer]):
+        _key = None
+        items = []
+        for key, value in heapq.merge(*organizers):
+            if key != _key:
+                for item in items:
+                    self.add(_key, item)
 
-def merge_organizers(organizers: Iterable[Organizer]) -> Generator[tuple, None, None]:
-    _key = None
-    items = []
-    for key, value in heapq.merge(*organizers):
-        if key != _key:
-            for item in items:
-                yield _key, item
+                _key = key
+                items = []
+                self.flush()
 
-            _key = key
-            items = []
+            items.append(value)
 
-        items.append(value)
-
-    for item in items:
-        yield _key, item
+        for item in items:
+            self.add(_key, item)
+        self.flush()
 
 
 class SignatureComparator(object):
