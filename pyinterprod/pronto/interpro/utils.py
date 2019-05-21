@@ -34,11 +34,11 @@ class Organizer(object):
             with open(b["path"], "rb") as fh:
                 while True:
                     try:
-                        key, value = pickle.load(fh)
+                        key, values = pickle.load(fh)
                     except EOFError:
                         break
                     else:
-                        yield key, value
+                        yield key, values
 
     @property
     def size(self) -> int:
@@ -67,8 +67,8 @@ class Organizer(object):
             if b["data"]:
                 with open(b["path"], "ab") as fh:
                     if by_key:
-                        for key, items in b["data"].items():
-                            pickle.dump((key, items), fh)
+                        for key, values in b["data"].items():
+                            pickle.dump((key, values), fh)
                     else:
                         pickle.dump(b["data"], fh)
                 b["data"] = {}
@@ -95,11 +95,11 @@ class Organizer(object):
                     except EOFError:
                         break
                     else:
-                        for key, items in chunk.items():
+                        for key, values in chunk.items():
                             if key in data:
-                                data[key] += items
+                                data[key] += values
                             else:
-                                data[key] = items
+                                data[key] = values
 
         with open(path, "wb") as fh:
             for key in sorted(data):
@@ -117,7 +117,7 @@ class Organizer(object):
     def from_organizers(self, organizers: Iterable):
         _key = None
         items = []
-        for key, value in heapq.merge(*organizers):
+        for key, values in heapq.merge(*organizers):
             if key != _key:
                 for item in items:
                     self.add(_key, item)
@@ -126,7 +126,7 @@ class Organizer(object):
                 items = []
                 self.flush(by_key=True)
 
-            items.append(value)
+            items += values
 
         for item in items:
             self.add(_key, item)
