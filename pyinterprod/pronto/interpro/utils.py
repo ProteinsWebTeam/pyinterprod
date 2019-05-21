@@ -31,14 +31,15 @@ class Organizer(object):
 
     def __iter__(self):
         for b in self.buckets:
-            with open(b["path"], "rb") as fh:
-                while True:
-                    try:
-                        key, values = pickle.load(fh)
-                    except EOFError:
-                        break
-                    else:
-                        yield key, values
+            if os.path.isfile(b["path"]):
+                with open(b["path"], "rb") as fh:
+                    while True:
+                        try:
+                            key, values = pickle.load(fh)
+                        except EOFError:
+                            break
+                        else:
+                            yield key, values
 
     @property
     def size(self) -> int:
@@ -106,9 +107,9 @@ class Organizer(object):
                             else:
                                 data[key] = values
 
-        with open(path, "wb") as fh:
-            for key in sorted(data):
-                pickle.dump((key, data[key]), fh)
+            with open(path, "wb") as fh:
+                for key in sorted(data):
+                    pickle.dump((key, data[key]), fh)
 
     def remove(self):
         for b in self.buckets:
