@@ -29,6 +29,11 @@ class Organizer(object):
             for i in range(len(self.keys))
         ]
 
+        # for the get() method only
+        self.key = None
+        self.val = None
+        self.eof = False
+
     def __iter__(self):
         for b in self.buckets:
             if os.path.isfile(b["path"]):
@@ -40,6 +45,23 @@ class Organizer(object):
                             break
                         else:
                             yield key, values
+
+    def get(self, key: Union[int, str], default: Optional[Any]=None):
+        if self.eof:
+            return default
+        elif key == self.key:
+            return self.val
+        elif self.key is None:
+            self.key, self.val = next(self)
+
+        while self.key < key:
+            try:
+                self.key, self.val = next(self)
+            except StopIteration:
+                self.eof = True
+                break
+
+        return self.val if key == self.key else default
 
     @property
     def size(self) -> int:
@@ -126,13 +148,15 @@ def merge_organizers(organizers: Iterable[Organizer]):
     items = []
     for key, values in heapq.merge(*organizers):
         if key != _key:
-            yield _key, items
+            if _key is not None:
+                yield _key, items
             _key = key
             items = []
 
         items += values
 
-    yield _key, items
+    if _key is not None:
+        yield _key, items
 
 
 class SignatureComparator(object):
