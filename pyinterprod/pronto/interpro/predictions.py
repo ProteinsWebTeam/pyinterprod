@@ -13,10 +13,10 @@ def _cmp_descriptions(keys: List[str], task_queue: Queue,
                       done_queue: Queue, dir: Optional[str]=None):
     o = Organizer(keys, dir)
     for accessions in iter(task_queue.get, None):
-        for acc_1 in accessions:
-            for acc_2 in accessions:
-                if acc_1 < acc_2:
-                    o.add(acc_1, acc_2)
+        accessions.sort()
+        for i, acc_1 in enumerate(accessions):
+            for acc_2 in accessions[i+1:]:
+                o.add(acc_1, acc_2)
 
         o.flush()
 
@@ -116,10 +116,10 @@ def _cmp_taxa(keys: List[str], task_queue: Queue, done_queue: Queue,
     o = Organizer(keys, dir)
     for rank, taxa in iter(task_queue.get, None):
         for taxid, accessions in taxa.items():
-            for acc_1 in accessions:
-                for acc_2 in accessions:
-                    if acc_1 < acc_2:
-                        o.add(acc_1, (rank, acc_2))
+            accessions.sort()
+            for i, acc_1 in enumerate(accessions):
+                for acc_2 in accessions[i+1:]:
+                    o.add(acc_1, (rank, acc_2))
 
         o.flush()
 
@@ -207,6 +207,7 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=100,
                     counts[rank][acc_2] = 1
             else:
                 counts[rank] = {acc_2: 1}
+
         organizer.write(acc_1, counts)
 
     size += organizer.size
@@ -216,3 +217,91 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=100,
         o.remove()
 
     return signatures, organizer
+
+
+def get_matches(user: str, dsn: str) -> Tuple[Dict, Dict]:
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT METHOD_AC, PROTEIN_COUNT, RESIDUE_COUNT
+        FROM {}.METHOD_COUNT
+        """.format(owner)
+    )
+    signatures = {}
+    for row in cur:
+        signatures[row[0]] = (row[1], row[2])
+
+    cur.execute(
+        """
+        SELECT METHOD_AC1, METHOD_AC2, COLLOCATION, PROTEIN_OVERLAP, RESIDUE_OVERLAP
+        FROM {}.METHOD_COMPARISON
+        """.format(owner)
+    )
+    comparisons = {}
+    for row in cur:
+        acc_1 = row[0]
+        acc_2 = row[1]
+        if acc_1 in comparisons:
+            comparisons[acc_1][acc_2] = row[2:]
+        else:
+            comparisons[acc_1] = {acc_2: row[2:]}
+
+    cur.close()
+    con.close()
+
+    return signatures, comparisons
+
+
+def get_terms(user: str, dsn: str) -> Tuple[Dict, Dict]:
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    terms = {}
+    signatures = {}
+    cur.execute(
+        """
+        SELECT METHOD_AC, GO_ID
+        FROM {}.METHOD_TERM
+        """.format(owner)
+    )
+    for acc, goid in cur:
+        if goid in terms:
+            terms[goid].append(acc)
+        else:
+            terms[goid] = [acc]
+
+        if acc in signatures:
+            signatures[acc] += 1
+        else:
+            signatures[acc] = 1
+
+    comparisons = {}
+    for goid, accessions in terms.items():
+        accessions.sort()
+        for i, acc_1 in enumerate(accessions):
+            for acc_2 in accessions[i+1:]:
+                if acc_1 in comparisons:
+                    if acc_2 in comparisons[acc_1]:
+                        comparisons[acc_1][acc_2] += 1
+                    else:
+                        comparisons[acc_1][acc_2] = 1
+                else:
+                    comparisons[acc_1] = {acc_2: 1}
+
+    return signatures, comparisons
+
+
+def make_predictions(user: str, dsn: str, processes: int=4,
+                     dir: Optional[str]=None):
+    sd, od = get_descriptions(user, dsn, processes=processes, dir=dir)
+    st, ot = get_taxa(user, dsn, processes=processes, dir=dir)
+    sm, cm = get_matches(user, dsn)
+    sg, cg = get_terms(user, dsn)
+
+    accessions = set()
+    for d in (sd, st, sm, sg):
+        accessions |= set(d.keys())
+
+    accessions = sorted(accessions)
