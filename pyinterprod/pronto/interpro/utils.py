@@ -62,15 +62,20 @@ class Organizer(object):
         else:
             raise KeyError(key)
 
-    def flush(self, by_key: bool=False):
+    def write(self, key: Union[int, str], value: Any):
+        i = bisect.bisect_right(self.keys, key)
+        if i:
+            bucket = self.buckets[i-1]
+            with open(bucket["path"], "ab") as fh:
+                pickle.dump((key, value), fh)
+        else:
+            raise KeyError(key)
+
+    def flush(self):
         for b in self.buckets:
             if b["data"]:
                 with open(b["path"], "ab") as fh:
-                    if by_key:
-                        for key, values in b["data"].items():
-                            pickle.dump((key, values), fh)
-                    else:
-                        pickle.dump(b["data"], fh)
+                    pickle.dump(b["data"], fh)
                 b["data"] = {}
 
     def merge(self, processes: int=1) -> int:
@@ -114,23 +119,19 @@ class Organizer(object):
 
         os.rmdir(self.dir)
 
-    def from_organizers(self, organizers: Iterable):
-        _key = None
-        items = []
-        for key, values in heapq.merge(*organizers):
-            if key != _key:
-                for item in items:
-                    self.add(_key, item)
 
-                _key = key
-                items = []
-                self.flush(by_key=True)
+def merge_organizers(organizers: Iterable[Organizer]):
+    _key = None
+    items = []
+    for key, values in heapq.merge(*organizers):
+        if key != _key:
+            yield _key, items
+            _key = key
+            items = []
 
-            items += values
+        items += values
 
-        for item in items:
-            self.add(_key, item)
-        self.flush(by_key=True)
+    yield _key, items
 
 
 class SignatureComparator(object):
