@@ -10,8 +10,6 @@ import cx_Oracle
 from . import sprot
 from .. import logger, orautils
 
-_MAX_ITEMS = 100000
-
 
 class ProteinDatabase(object):
     def __init__(self, path: Optional[str] = None, dir: Optional[str] = None):
@@ -94,10 +92,10 @@ class ProteinDatabase(object):
 
         return count
 
-    def insert_new(self, src: Generator, max_items: int=_MAX_ITEMS) -> int:
+    def insert_new(self, src: Generator, max_items: int=10000) -> int:
         return self._insert(src, "protein_new", max_items)
 
-    def insert_old(self, src: Generator, max_items: int=_MAX_ITEMS) -> int:
+    def insert_old(self, src: Generator, max_items: int=10000) -> int:
         return self._insert(src, "protein_old", max_items)
 
     def _iter(self, table_name: str) -> Generator[Tuple, None, None]:
@@ -344,12 +342,15 @@ def _prepare_deletion(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
         INSERT INTO INTERPRO.PROTEIN_TO_DELETE
         VALUES (:1, :2)
     """
-    table = orautils.TablePopulator(con, query, buffer_size=_MAX_ITEMS)
+    table = orautils.TablePopulator(con, query)
 
     count = 0
     for accession in db.get_deleted():
         table.insert((count, accession))
         count += 1
+
+    table.close()
+    con.commit()
 
     cur = con.cursor()
     orautils.gather_stats(cur, "INTERPRO", "PROTEIN_TO_DELETE")
@@ -523,7 +524,7 @@ def delete_obsolete(user: str, dsn: str, truncate: bool=False):
         fs = {}
 
         for tn, tc, pn in jobs:
-            f = executor.submit(_delete_iter, url, tn, tc, count, _MAX_ITEMS, pn)
+            f = executor.submit(_delete_iter, url, tn, tc, count, 10000, pn)
             fs[f] = (tn, tc, pn)
 
         num_errors = 0
