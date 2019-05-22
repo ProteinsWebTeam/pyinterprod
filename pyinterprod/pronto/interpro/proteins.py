@@ -76,8 +76,8 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
 
     table.close()
     con.close()
-    size = names.merge() + taxa.merge() + terms.merge() + comparator.size
-    done_queue.put((names, taxa, terms, comparator, size))
+    sizes = (names.merge(), taxa.merge(), terms.merge(), comparator.size)
+    done_queue.put((names, taxa, terms, comparator, sizes))
 
 
 def hash_protein(matches: List[tuple]) -> str:

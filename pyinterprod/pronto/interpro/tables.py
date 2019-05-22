@@ -125,7 +125,7 @@ def load_matches(user: str, dsn: str):
         """
         SELECT M.METHOD_AC, COUNT(DISTINCT M.PROTEIN_AC)
         FROM INTERPRO.PROTEIN P
-        INNER JOIN {}.MATCH M 
+        INNER JOIN {}.MATCH M
           ON P.PROTEIN_AC = M.PROTEIN_AC
         WHERE P.FRAGMENT = 'N'
         GROUP BY M.METHOD_AC
@@ -496,19 +496,26 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     taxa = []
     terms = []
     comparators = []
-    size = 0
+    sizes = [0, 0, 0, 0]
     for _ in consumers:
-        _names, _taxa, _terms, comparator, _size = done_queue.get()
+        _names, _taxa, _terms, comparator, _sizes = done_queue.get()
         names.append(_names)
         taxa.append(_taxa)
         terms.append(_terms)
         comparators.append(comparator)
-        size += _size
+
+        for i, size in enumerate(_sizes):
+            sizes[i] += size
 
     for p in consumers:
         p.join()
 
-    logger.debug("temporary size: {:.0f} MB".format(size/1024/1024))
+    logger.debug("disk usage:")
+    logger.debug("\tdescr.: {:.0f} MB".format(sizes[0]/1024**2))
+    logger.debug("\ttaxa: {:.0f} MB".format(sizes[1]/1024**2))
+    logger.debug("\tGO terms: {:.0f} MB".format(sizes[2]/1024**2))
+    logger.debug("\toverlaps: {:.0f} MB".format(sizes[3]/1024**2))
+    logger.debug("\ttotal: {:.0f} MB".format(sum(sizes)/1024**2))
 
     consumers = [
         Process(target=_load_description_counts, args=(user, dsn, names)),
