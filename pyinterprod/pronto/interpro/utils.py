@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import bisect
+import gzip
 import heapq
 import os
 import pickle
@@ -10,6 +11,7 @@ from typing import Any, Dict, Generator, Iterable, List, Optional, Union
 
 
 MIN_OVERLAP = 0.5   # at least 50% of overlap
+COMPRESS_LVL = 6
 
 
 class Organizer(object):
@@ -37,7 +39,7 @@ class Organizer(object):
     def __iter__(self):
         for b in self.buckets:
             if os.path.isfile(b["path"]):
-                with open(b["path"], "rb") as fh:
+                with gzip.open(b["path"], "rb") as fh:
                     while True:
                         try:
                             key, values = pickle.load(fh)
@@ -89,7 +91,7 @@ class Organizer(object):
         i = bisect.bisect_right(self.keys, key)
         if i:
             bucket = self.buckets[i-1]
-            with open(bucket["path"], "ab") as fh:
+            with gzip.open(bucket["path"], "ab", COMPRESS_LVL) as fh:
                 pickle.dump((key, value), fh)
         else:
             raise KeyError(key)
@@ -97,7 +99,7 @@ class Organizer(object):
     def flush(self):
         for b in self.buckets:
             if b["data"]:
-                with open(b["path"], "ab") as fh:
+                with gzip.open(b["path"], "ab", COMPRESS_LVL) as fh:
                     pickle.dump(b["data"], fh)
                 b["data"] = {}
 
@@ -116,7 +118,7 @@ class Organizer(object):
     def _merge(path: str):
         data = {}
         if os.path.isfile(path):
-            with open(path, "rb") as fh:
+            with gzip.open(path, "rb") as fh:
                 while True:
                     try:
                         chunk = pickle.load(fh)
@@ -129,7 +131,7 @@ class Organizer(object):
                             else:
                                 data[key] = values
 
-            with open(path, "wb") as fh:
+            with gzip.open(path, "wb", COMPRESS_LVL) as fh:
                 for key in sorted(data):
                     pickle.dump((key, data[key]), fh)
 
@@ -171,7 +173,7 @@ class SignatureComparator(object):
         return os.path.getsize(self.path)
 
     def sync(self):
-        with open(self.path, "ab") as fh:
+        with gzip.open(self.path, "ab", COMPRESS_LVL) as fh:
             pickle.dump(self.signatures, fh)
         self.signatures = {}
 
@@ -179,7 +181,7 @@ class SignatureComparator(object):
         os.remove(self.path)
 
     def __iter__(self):
-        with open(self.path, "rb") as fh:
+        with gzip.open(self.path, "rb") as fh:
             while True:
                 try:
                     signatures = pickle.load(fh)
