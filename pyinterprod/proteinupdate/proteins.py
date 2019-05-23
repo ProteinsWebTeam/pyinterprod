@@ -559,10 +559,10 @@ def delete_obsolete(user: str, dsn: str, truncate: bool=False):
             continue
 
         constraints.add(tc)
-        logger.debug("enabling: {}.{}.{}".format(to, tn, tc))
+        logger.debug("enabling: {}".format(tc))
 
         if not orautils.toggle_constraint(cur, to, tn, tc, True):
-            logger.error("could not enable {}.{}".format(tn, tc))
+            logger.error("could not enable {}".format(tc))
             num_errors += 1
 
     cur.close()
