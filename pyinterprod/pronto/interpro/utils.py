@@ -197,16 +197,16 @@ class SignatureComparator(object):
         # Evaluate overlap between all signatures
         for acc_1 in signatures:
             # number of residues covered by the signature matches
-            residues = sum([e - s + 1 for s, e in signatures[acc_1]])
+            residues_1 = sum([e - s + 1 for s, e in signatures[acc_1]])
 
             if acc_1 in self.signatures:
                 s = self.signatures[acc_1]
                 s["proteins"] += 1
-                s["residues"] += residues
+                s["residues"] += residues_1
             else:
                 s = self.signatures[acc_1] = {
                     "proteins": 1,
-                    "residues": residues,
+                    "residues": residues_1,
                     "signatures": {}
                 }
 
@@ -214,11 +214,19 @@ class SignatureComparator(object):
                 if acc_1 >= acc_2:
                     continue
                 elif acc_2 not in s["signatures"]:
-                    # collocations, protein overlaps, residue overlaps
-                    s["signatures"][acc_2] = [0, 0, 0]
+                    """
+                    * number of collocations
+                    * number of overlapping proteins 
+                        (at least 1 overlap >= shortest * MIN_OVERLAP)
+                    * number of overlapping proteins
+                        (residue overlap / signature with least residues >= MIN_OVERLAP)
+                    * number of overlapping residues 
+                    """
+                    s["signatures"][acc_2] = [0, 0, 0, 0]
 
-                s["signatures"][acc_2][0] += 1
-                num_match_overlaps = 0
+                residues_2 = sum([e - s + 1 for s, e in signatures[acc_2]])
+                has_match_overlap = False
+                n_residues = 0
                 i = 0
                 start_2, end_2 = signatures[acc_2][i]
                 for start_1, end_1 in signatures[acc_1]:
@@ -232,20 +240,26 @@ class SignatureComparator(object):
                     o = min(end_1, end_2) - max(start_1, start_2) + 1
                     if o > 0:
                         # o is the number of overlapping residues
-                        s["signatures"][acc_2][2] += o
+                        n_residues += o
 
-                        # Shorted match
+                        # Shortest match
                         shortest = min(end_1 - start_1, end_2 - start_2) + 1
                         if o >= shortest * MIN_OVERLAP:
-                            num_match_overlaps += 1
+                            has_match_overlap = True
 
-                if num_match_overlaps:
-                    """
-                    acc_1 and acc_2 overlaps
-                    (by at least 50% of the shortest match)
-                    at least once in this protein
-                    """
+                # collocation
+                s["signatures"][acc_2][0] += 1
+
+                # overlapping proteins (based on matches)
+                if has_match_overlap:
                     s["signatures"][acc_2][1] += 1
+
+                # overlapping proteins (based on residues)
+                if n_residues / min(residues_1, residues_2) >= MIN_OVERLAP:
+                    s["signatures"][acc_2][2] += 1
+
+                # overlapping residues
+                s["signatures"][acc_2][3] += n_residues
 
         return list(signatures.keys())
 

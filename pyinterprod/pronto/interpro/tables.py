@@ -573,8 +573,8 @@ def _load_comparisons(user: str, dsn: str, comparators: list):
         for acc_1, src in c:
             if acc_1 in signatures:
                 dst = signatures[acc_1]
-                for k in ("proteins", "matches", "residues"):
-                    dst[k] += src[k]
+                dst["proteins"] += src["proteins"]
+                dst["residues"] += src["residues"]
 
                 for acc_2, counts in src["signatures"].items():
                     if acc_2 in dst["signatures"]:
@@ -609,7 +609,8 @@ def _load_comparisons(user: str, dsn: str, comparators: list):
             METHOD_AC1 VARCHAR2(25) NOT NULL,
             METHOD_AC2 VARCHAR2(25) NOT NULL,
             COLLOCATION NUMBER NOT NULL,
-            PROTEIN_OVERLAP NUMBER NOT NULL,
+            PROTEIN_MATCH_OVERLAP_ NUMBER NOT NULL,
+            PROTEIN_RESIDUE_OVERLAP NUMBER NOT NULL,
             RESIDUE_OVERLAP NUMBER NOT NULL
         ) NOLOGGING
         """.format(owner)
@@ -622,7 +623,7 @@ def _load_comparisons(user: str, dsn: str, comparators: list):
     table2 = orautils.TablePopulator(con,
                                      query="INSERT /*+ APPEND */ "
                                            "INTO {}.METHOD_COMPARISON "
-                                           "VALUES (:1, :2, :3, :4, :5)".format(owner),
+                                           "VALUES (:1, :2, :3, :4, :5, :6)".format(owner),
                                      autocommit=True)
 
     for acc_1, s in signatures.items():
