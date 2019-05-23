@@ -36,7 +36,7 @@ class Organizer(object):
         self.val = None
         self.eof = False
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[tuple, None, None]:
         for b in self.buckets:
             if os.path.isfile(b["path"]):
                 with gzip.open(b["path"], "rb") as fh:
@@ -145,7 +145,7 @@ class Organizer(object):
         os.rmdir(self.dir)
 
 
-def merge_organizers(organizers: Iterable[Organizer]):
+def merge_organizers(organizers: Iterable[Organizer]) -> Generator[tuple, None, None]:
     _key = None
     items = []
     for key, values in heapq.merge(*organizers):
