@@ -344,10 +344,16 @@ def load_proteins(user: str, dsn: str):
     con.close()
 
 
-def export_matches(user: str, dsn: str, dst: str):
+def export_matches(user: str, dsn: str, dst: str, buffer_size: int=1000000):
     with open(dst, "wb") as fh:
+        buffer = []
         for row in _get_matches(user, dsn):
-            pickle.dump(row, fh)
+            buffer.append(row)
+            if len(buffer) == buffer_size:
+                pickle.dump(buffer, fh)
+                buffer = []
+
+        pickle.dump(buffer, fh)
 
 
 def _get_matches(user: str, dsn: str, filepath: Optional[str]=None):
@@ -355,11 +361,12 @@ def _get_matches(user: str, dsn: str, filepath: Optional[str]=None):
         with open(filepath, "rb") as fh:
             while True:
                 try:
-                    row = pickle.load(fh)
+                    buffer = pickle.load(fh)
                 except EOFError:
                     break
                 else:
-                    yield row
+                    for row in buffer:
+                        yield row
     else:
         owner = user.split('/')[0]
         con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
