@@ -32,9 +32,9 @@ class Organizer(object):
         ]
 
         # for the get() method only
+        self.it = None
         self.key = None
         self.val = None
-        self.eof = False
 
     def __iter__(self) -> Generator[tuple, None, None]:
         for b in self.buckets:
@@ -49,18 +49,17 @@ class Organizer(object):
                             yield key, values
 
     def get(self, key: Union[int, str], default: Optional[Any]=None):
-        if self.eof:
-            return default
+        if self.it is None:
+            self.it = iter(self)
         elif key == self.key:
             return self.val
         elif self.key is None:
-            self.key, self.val = next(self)
+            self.key, self.val = next(self.it)
 
         while self.key < key:
             try:
-                self.key, self.val = next(self)
+                self.key, self.val = next(self.it)
             except StopIteration:
-                self.eof = True
                 break
 
         return self.val if key == self.key else default
@@ -216,11 +215,11 @@ class SignatureComparator(object):
                 elif acc_2 not in s["signatures"]:
                     """
                     * number of collocations
-                    * number of overlapping proteins 
+                    * number of overlapping proteins
                         (at least 1 overlap >= shortest * MIN_OVERLAP)
                     * number of overlapping proteins
                         (residue overlap / signature with least residues >= MIN_OVERLAP)
-                    * number of overlapping residues 
+                    * number of overlapping residues
                     """
                     s["signatures"][acc_2] = [0, 0, 0, 0]
 
