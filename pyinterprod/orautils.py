@@ -145,9 +145,10 @@ def drop_index(cur: cx_Oracle.Cursor, owner: str, name: str):
             raise exc
 
 
-def drop_table(cur: cx_Oracle.Cursor, owner: str, name: str):
+def drop_table(cur: cx_Oracle.Cursor, owner: str, name: str, purge: bool=False):
     try:
-        cur.execute("DROP TABLE {}.{}".format(owner, name))
+        purge = " PURGE" if purge else ""
+        cur.execute("DROP TABLE {}.{}{}".format(owner, name, purge))
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
 
