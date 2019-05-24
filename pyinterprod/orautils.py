@@ -33,6 +33,18 @@ def get_tables(cur: cx_Oracle.Cursor, owner: str) -> List[str]:
     return [row[0] for row in cur]
 
 
+def get_mviews(cur: cx_Oracle.Cursor, owner: str) -> List[str]:
+    cur.execute(
+        """
+        SELECT MVIEW_NAME
+        FROM ALL_MVIEWS
+        WHERE UPPER(OWNER) = UPPER(:1)
+        ORDER BY MVIEW_NAME
+        """, (owner,)
+    )
+    return [row[0] for row in cur]
+
+
 def parse_url(url: str) -> dict:
     m = re.match(r"(.+)/(.+)@(.+):(\d+)/([a-z]+)", url, re.I)
     return {
