@@ -94,7 +94,7 @@ def main():
             args=(db_users["interpro"], db_dsn, config["export"]["matches"]),
             kwargs=dict(drop_indices=True),
             scheduler=dict(queue=queue, mem=500),
-            requires=["import-matches"]
+            requires=["import-matches", "proteins2scan"]
         ),
         Task(
             name="update-feature-matches",
@@ -102,7 +102,7 @@ def main():
             args=(db_users["interpro"], db_dsn),
             kwargs=dict(drop_indices=True),
             scheduler=dict(queue=queue, mem=500),
-            requires=["import-matches"]
+            requires=["import-matches", "proteins2scan"]
         ),
         Task(
             name="update-sites",
@@ -110,7 +110,7 @@ def main():
             args=(db_users["interpro"], db_dsn),
             kwargs=dict(drop_indices=True),
             scheduler=dict(queue=queue, mem=500),
-            requires=["import-sites"]
+            requires=["import-sites", "proteins2scan"]
         ),
         Task(
             name="aa-iprscan",
