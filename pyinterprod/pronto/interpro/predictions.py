@@ -43,7 +43,7 @@ def get_descriptions(user: str, dsn: str, processes: int=4,
             keys.append(row[0])
 
     pool = []
-    task_queue = Queue()
+    task_queue = Queue(1)
     done_queue = Queue()
     for _ in range(processes):
         p = Process(target=_cmp_descriptions,
@@ -51,8 +51,6 @@ def get_descriptions(user: str, dsn: str, processes: int=4,
         p.start()
         pool.append(p)
 
-    descriptions = {}
-    signatures = {}
     cur.execute(
         """
         SELECT MD.METHOD_AC, MD.DESC_ID
@@ -61,23 +59,28 @@ def get_descriptions(user: str, dsn: str, processes: int=4,
           ON MD.DESC_ID = DV.DESC_ID
         WHERE DV.TEXT NOT LIKE 'Predicted protein%'
           AND DV.TEXT NOT LIKE 'Uncharacterized protein%'
+        ORDER BY MD.DESC_ID
         """.format(owner)
     )
-    for acc, descid in cur:
-        if descid in descriptions:
-            descriptions[descid].append(acc)
-        else:
-            descriptions[descid] = [acc]
 
+    signatures = {}
+    accessions = []
+    _descid = None
+    for acc, descid in cur:
         if acc in signatures:
             signatures[acc] += 1
         else:
             signatures[acc] = 1
 
-    for accessions in descriptions.values():
-        task_queue.put(accessions)
+        if descid != _descid:
+            task_queue.put(accessions)
+            _descid = descid
+            accessions = []
 
-    descriptions = None
+        accessions.append(acc)
+
+    task_queue.put(accessions)
+    accessions = []
 
     for _ in pool:
         task_queue.put(None)
@@ -123,6 +126,7 @@ def _cmp_taxa(keys: List[str], task_queue: Queue, done_queue: Queue,
     #
     #     o.flush()
     for rank, accessions in iter(task_queue.get, None):
+        accessions.sort()
         for i, acc_1 in enumerate(accessions):
             for acc_2 in accessions[i+1:]:
                 o.add(acc_1, (rank, acc_2))
@@ -151,7 +155,7 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
             keys.append(row[0])
 
     pool = []
-    task_queue = Queue()
+    task_queue = Queue(1)
     done_queue = Queue()
     for _ in range(processes):
         p = Process(target=_cmp_taxa,
@@ -165,7 +169,7 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
         """
         SELECT METHOD_AC, RANK, TAX_ID
         FROM INTERPRO_ANALYSIS.METHOD_TAXA
-        ORDER BY RANK, TAX_ID, METHOD_AC
+        ORDER BY RANK, TAX_ID
         """
     )
     _rank = _taxid = None
