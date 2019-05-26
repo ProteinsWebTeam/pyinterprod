@@ -23,11 +23,6 @@ def main():
                         help="list tasks to run and exit")
     parser.add_argument("--resume", action="store_true", default=False,
                         help="skip completed tasks")
-    parser.add_argument("--detach",
-                        action="store_const",
-                        const=0,
-                        default=10,
-                        help="enqueue tasks to run and exit")
     parser.add_argument("-v", "--version", action="version",
                         version="%(prog)s {}".format(__version__),
                         help="show the version and exit")
