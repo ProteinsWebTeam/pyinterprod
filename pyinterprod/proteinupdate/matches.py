@@ -312,78 +312,6 @@ def update_feature_matches(user: str, dsn: str, drop_indices: bool=False):
     con.close()
 
 
-def update_alt_splicing_matches(user: str, dsn: str):
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    for t in ("VARSPLIC_MASTER", "VARSPLIC_MATCH", "VARSPLIC_NEW"):
-        orautils.drop_table(cur, "INTERPRO", t)
-
-    logger.info("building table")
-    cur.execute(
-        """
-        CREATE TABLE INTERPRO.VARSPLIC (
-            PROTEIN_AC VARCHAR2(15) NOT NULL,
-            VARIANT NUMBER(3) NOT NULL,
-            LEN NUMBER(5) NOT NULL,
-            IS_CANONICAL CHAR(1) NOT NULL,
-            METHOD_AC VARCHAR2(25) NOT NULL,
-            DBCODE CHAR(1) NOT NULL,
-            POS_FROM NUMBER NOT NULL,
-            POS_TO NUMBER NOT NULL,
-            FRAGMENTS VARCHAR2(400),
-            MODEL_AC VARCHAR2(255)
-        ) NOLOGGING
-        AS
-        SELECT
-          XV.PROTEIN_AC,
-          XV.VARIANT,
-          P.LEN,
-          CASE WHEN XV.UPI = XP.UPI THEN 'Y' ELSE 'N' END,
-          M.METHOD_AC,
-          I2D.DBCODE,
-          M.SEQ_START,
-          M.SEQ_END,
-          M.FRAGMENTS,
-          M.MODEL_AC
-        FROM (
-            SELECT
-                SUBSTR(AC, 1, INSTR(AC, '-') - 1) AS PROTEIN_AC,
-                SUBSTR(AC, INSTR(AC, '-') + 1) AS VARIANT,
-                UPI
-            FROM UNIPARC.XREF
-            WHERE DBID IN (24, 25)
-            AND DELETED = 'N'
-        ) XV
-        INNER JOIN UNIPARC.PROTEIN P
-            ON XV.UPI = P.UPI
-        INNER JOIN UNIPARC.XREF XP
-            ON XV.PROTEIN_AC = XP.AC
-            AND XP.DBID IN (2, 3)
-            AND XP.DELETED = 'N'
-        INNER JOIN IPRSCAN.MV_IPRSCAN M
-            ON XV.UPI = M.UPI
-        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
-            ON M.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
-        WHERE I2D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
-        """
-    )
-    orautils.grant(cur, "INTERPRO", "VARSPLIC", "SELECT", "INTERPRO_SELECT")
-
-    logger.info("analyzing table")
-    orautils.gather_stats(cur, "INTERPRO", "VARSPLIC")
-
-    logger.info("indexing table")
-    cur.execute(
-        """
-        CREATE INDEX I_VARSPLIC
-        ON INTERPRO.VARSPLIC (PROTEIN_AC, VARIANT) NOLOGGING
-        """
-    )
-
-    cur.close()
-    con.close()
-
-
 def update_site_matches(user: str, dsn: str, drop_indices: bool=False):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -408,10 +336,10 @@ def update_site_matches(user: str, dsn: str, drop_indices: bool=False):
     logger.info("indexing SITE_MATCH_NEW")
     cur.execute(
         """
-        CREATE INDEX I_SITE_NEW 
-        ON INTERPRO.SITE_MATCH_NEW 
-        (PROTEIN_AC, METHOD_AC, LOC_START, LOC_END) 
-        NOLOGGING 
+        CREATE INDEX I_SITE_NEW
+        ON INTERPRO.SITE_MATCH_NEW
+        (PROTEIN_AC, METHOD_AC, LOC_START, LOC_END)
+        NOLOGGING
         """
     )
 
@@ -421,14 +349,14 @@ def update_site_matches(user: str, dsn: str, drop_indices: bool=False):
         SELECT COUNT(*)
         FROM (
             SELECT DISTINCT PROTEIN_AC, METHOD_AC, LOC_START, LOC_END
-            FROM INTERPRO.SITE_MATCH_NEW 
+            FROM INTERPRO.SITE_MATCH_NEW
             MINUS (
-              SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO 
+              SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
               FROM INTERPRO.MATCH PARTITION (MATCH_DBCODE_J)
               UNION ALL
               SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
               FROM INTERPRO.MATCH PARTITION (MATCH_DBCODE_B)
-            )        
+            )
         )
         """
     )
