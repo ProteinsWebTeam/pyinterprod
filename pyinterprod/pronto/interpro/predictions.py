@@ -159,17 +159,11 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=100,
         """
         SELECT METHOD_AC, RANK, TAX_ID
         FROM INTERPRO_ANALYSIS.METHOD_TAXA
+        ORDER BY RANK
         """
     )
+    _rank = None
     for acc, rank, taxid in cur:
-        if rank in taxa:
-            if taxid in taxa[rank]:
-                taxa[rank][taxid].append(acc)
-            else:
-                taxa[rank][taxid] = [acc]
-        else:
-            taxa[rank] = {taxid: [acc]}
-
         if acc in signatures:
             if rank in signatures[acc]:
                 signatures[acc][rank] += 1
@@ -178,10 +172,20 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=100,
         else:
             signatures[acc] = {rank: 1}
 
-    for rank in taxa:
-        task_queue.put((rank, taxa[rank]))
+        if rank =! _rank:
+            task_queue.put((_rank, taxa))
+            _rank = rank
+            taxa = {}
 
-    taxa = None
+        if taxid in taxa:
+            taxa[rank][taxid].append(acc)
+        else:
+            taxa[rank][taxid] = [acc]
+
+    task_queue.put((_rank, taxa))
+    taxa = {}
+    cur.close()
+    con.close()
 
     for _ in pool:
         task_queue.put(None)
