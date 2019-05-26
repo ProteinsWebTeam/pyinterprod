@@ -84,7 +84,7 @@ def run(dsn: str, main_user: str, alt_user: str=None,
 
     if steps:
         num_errors = 0
-        with ThreadPoolExecutor(max_workers=len(steps)) as executor:
+        with ThreadPoolExecutor(max_workers=processes) as executor:
             fs = {}
             running = set()
             for name, step in steps.items():
