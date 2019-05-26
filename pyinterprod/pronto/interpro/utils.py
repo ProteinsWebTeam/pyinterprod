@@ -163,6 +163,7 @@ def merge_organizers(organizers: Iterable[Organizer]) -> Generator[tuple, None, 
 class SignatureComparator(object):
     def __init__(self, dir: Optional[str]=None):
         self.signatures = {}
+        self.comparisons = {}
         fd, self.path = mkstemp(dir=dir)
         os.close(fd)
         os.remove(self.path)
@@ -173,8 +174,9 @@ class SignatureComparator(object):
 
     def sync(self):
         with gzip.open(self.path, "ab", COMPRESS_LVL) as fh:
-            pickle.dump(self.signatures, fh)
+            pickle.dump((self.signatures, self.comparisons), fh)
         self.signatures = {}
+        self.comparisons = {}
 
     def remove(self):
         os.remove(self.path)
@@ -183,12 +185,12 @@ class SignatureComparator(object):
         with gzip.open(self.path, "rb") as fh:
             while True:
                 try:
-                    signatures = pickle.load(fh)
+                    signatures, comparisons = pickle.load(fh)
                 except EOFError:
                     break
                 else:
-                    for acc_1, s in signatures.items():
-                        yield acc_1, s
+                    for acc_1, cnts in signatures.items():
+                        yield acc_1, cnts, comparisons[acc_1]
 
     def update(self, matches: List[tuple]) -> List[str]:
         signatures = self.prepare(matches)
@@ -199,20 +201,16 @@ class SignatureComparator(object):
             residues_1 = sum([e - s + 1 for s, e in signatures[acc_1]])
 
             if acc_1 in self.signatures:
-                s = self.signatures[acc_1]
-                s["proteins"] += 1
-                s["residues"] += residues_1
+                self.signatures[acc_1][0] += 1
+                self.signatures[acc_1][1] += residues_1
             else:
-                s = self.signatures[acc_1] = {
-                    "proteins": 1,
-                    "residues": residues_1,
-                    "signatures": {}
-                }
+                self.signatures[acc_1] = [1, residues_1]
+                self.comparisons[acc_1] = {}
 
             for acc_2 in signatures:
                 if acc_1 >= acc_2:
                     continue
-                elif acc_2 not in s["signatures"]:
+                elif acc_2 not in self.comparisons[acc_1]:
                     """
                     * number of collocations
                     * number of overlapping proteins
@@ -221,7 +219,7 @@ class SignatureComparator(object):
                         (residue overlap / signature with least residues >= MIN_OVERLAP)
                     * number of overlapping residues
                     """
-                    s["signatures"][acc_2] = [0, 0, 0, 0]
+                    self.comparisons[acc_1][acc_2] = [0, 0, 0, 0]
 
                 residues_2 = sum([e - s + 1 for s, e in signatures[acc_2]])
                 has_match_overlap = False
@@ -247,18 +245,18 @@ class SignatureComparator(object):
                             has_match_overlap = True
 
                 # collocation
-                s["signatures"][acc_2][0] += 1
+                self.comparisons[acc_1][acc_2][0] += 1
 
                 # overlapping proteins (based on matches)
                 if has_match_overlap:
-                    s["signatures"][acc_2][1] += 1
+                    self.comparisons[acc_1][acc_2][1] += 1
 
                 # overlapping proteins (based on residues)
                 if n_residues / min(residues_1, residues_2) >= MIN_OVERLAP:
-                    s["signatures"][acc_2][2] += 1
+                    self.comparisons[acc_1][acc_2][2] += 1
 
                 # overlapping residues
-                s["signatures"][acc_2][3] += n_residues
+                self.comparisons[acc_1][acc_2][3] += n_residues
 
         return list(signatures.keys())
 

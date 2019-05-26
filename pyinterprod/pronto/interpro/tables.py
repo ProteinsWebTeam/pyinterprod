@@ -576,21 +576,22 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
 def _load_comparisons(user: str, dsn: str, comparators: list):
     signatures = {}
+    comparisons = {}
     for c in comparators:
-        for acc_1, src in c:
+        for acc_1, cnts, _comparisons in c:
             if acc_1 in signatures:
-                dst = signatures[acc_1]
-                dst["proteins"] += src["proteins"]
-                dst["residues"] += src["residues"]
+                for i, cnt in enumerate(cnts):
+                    signatures[acc_1][i] += cnt
 
-                for acc_2, counts in src["signatures"].items():
-                    if acc_2 in dst["signatures"]:
-                        for i, cnt in enumerate(counts):
-                            dst["signatures"][acc_2][i] += cnt
+                for acc_2, cnts in _comparisons.items():
+                    if acc_2 in comparisons[acc_1]:
+                        for i, cnt in enumerate(cnts):
+                            comparisons[acc_1][acc_2][i] += cnt
                     else:
-                        dst["signatures"][acc_2] = counts
+                        comparisons[acc_1][acc_2] = cnts
             else:
-                signatures[acc_1] = src
+                signatures[acc_1] = cnts
+                comparisons[acc_1] = _comparisons
 
         c.remove()
 
@@ -622,26 +623,26 @@ def _load_comparisons(user: str, dsn: str, comparators: list):
         ) NOLOGGING
         """.format(owner)
     )
-    table1 = orautils.TablePopulator(con,
-                                     query="INSERT /*+ APPEND */ "
-                                           "INTO {}.METHOD_COUNT "
-                                           "VALUES (:1, :2, :3)".format(owner),
-                                     autocommit=True)
-    table2 = orautils.TablePopulator(con,
-                                     query="INSERT /*+ APPEND */ "
-                                           "INTO {}.METHOD_COMPARISON "
-                                           "VALUES (:1, :2, :3, :4, :5, :6)".format(owner),
-                                     autocommit=True)
-
-    for acc_1, s in signatures.items():
-        table1.insert((acc_1, s["proteins"], s["residues"]))
-
-        for acc_2, counts in s["signatures"].items():
-            table2.insert((acc_1, acc_2, *counts))
-
+    table = orautils.TablePopulator(con,
+                                    query="INSERT /*+ APPEND */ "
+                                          "INTO {}.METHOD_COUNT "
+                                          "VALUES (:1, :2, :3)".format(owner),
+                                    autocommit=True)
+    for acc_1, cnts in signatures.items():
+        table.insert((acc_1, *cnts))
+    table.close()
     signatures = None
-    table1.close()
+
+    table = orautils.TablePopulator(con,
+                                    query="INSERT /*+ APPEND */ "
+                                          "INTO {}.METHOD_COMPARISON "
+                                          "VALUES (:1, :2, :3, :4, :5, :6)".format(owner),
+                                    autocommit=True)
+    for acc_1 in comparisons:
+        for acc_2, cnts in comparisons[acc_1].items():
+            table.insert((acc_1, acc_2, *cnts))
     table2.close()
+    comparisons = None
 
     for table in ("METHOD_COUNT", "METHOD_COMPARISON"):
         orautils.gather_stats(cur, owner, table)
