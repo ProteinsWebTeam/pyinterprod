@@ -12,7 +12,7 @@ def main():
 
     from . import (export, interproscan, matches, proteins, signatures,
                    taxonomy, uniparc)
-    from ..pronto import run as update_pronto
+    from .. import __version__, pronto
 
     parser = argparse.ArgumentParser(description="InterPro protein update")
     parser.add_argument("config", metavar="CONFIG.JSON",
@@ -159,7 +159,7 @@ def main():
         ),
         Task(
             name="pronto",
-            fn=update_pronto,
+            fn=pronto.run,
             args=(db_dsn, db_users["pronto_main"], db_users["pronto_alt"]),
             kwargs=dict(tmpdir="/scratch", processes=16),
             scheduler=dict(queue=queue, cpu=16, mem=32000, scratch=32000),
