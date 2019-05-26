@@ -114,20 +114,26 @@ def get_descriptions(user: str, dsn: str, processes: int=4,
 def _cmp_taxa(keys: List[str], task_queue: Queue, done_queue: Queue,
               dir: Optional[str]=None):
     o = Organizer(keys, dir)
-    for rank, taxa in iter(task_queue.get, None):
-        for taxid, accessions in taxa.items():
-            accessions.sort()
-            for i, acc_1 in enumerate(accessions):
-                for acc_2 in accessions[i+1:]:
-                    o.add(acc_1, (rank, acc_2))
+    # for rank, taxa in iter(task_queue.get, None):
+    #     for taxid, accessions in taxa.items():
+    #         accessions.sort()
+    #         for i, acc_1 in enumerate(accessions):
+    #             for acc_2 in accessions[i+1:]:
+    #                 o.add(acc_1, (rank, acc_2))
+    #
+    #     o.flush()
+    for rank, accessions in iter(task_queue.get, None):
+        for i, acc_1 in enumerate(accessions):
+            for acc_2 in accessions[i+1:]
+                o.add(acc_1, (rank, acc_2))
 
-        o.flush()
+            o.flush()
 
     size = o.merge()
     done_queue.put((o, size))
 
 
-def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=100,
+def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
              dir: Optional[str]=None) -> Tuple[Dict, Organizer]:
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
@@ -154,15 +160,15 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=100,
         pool.append(p)
 
     signatures = {}
-    taxa = {}
+    accessions = []
     cur.execute(
         """
         SELECT METHOD_AC, RANK, TAX_ID
         FROM INTERPRO_ANALYSIS.METHOD_TAXA
-        ORDER BY RANK
+        ORDER BY RANK, TAX_ID, METHOD_AC
         """
     )
-    _rank = None
+    _rank, _taxid = None
     for acc, rank, taxid in cur:
         if acc in signatures:
             if rank in signatures[acc]:
@@ -172,18 +178,16 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=100,
         else:
             signatures[acc] = {rank: 1}
 
-        if rank != _rank:
-            task_queue.put((_rank, taxa))
+        if rank != _rank or taxid != _taxid:
+            task_queue.put((_rank, accessions))
             _rank = rank
-            taxa = {}
+            _taxid = taxid
+            accessions = []
 
-        if taxid in taxa:
-            taxa[taxid].append(acc)
-        else:
-            taxa[taxid] = [acc]
+        accessions.append(acc)
 
-    task_queue.put((_rank, taxa))
-    taxa = {}
+    task_queue.put((_rank, accessions))
+    accessions = []
     cur.close()
     con.close()
 
