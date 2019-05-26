@@ -172,7 +172,7 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=100,
         else:
             signatures[acc] = {rank: 1}
 
-        if rank =! _rank:
+        if rank != _rank:
             task_queue.put((_rank, taxa))
             _rank = rank
             taxa = {}
