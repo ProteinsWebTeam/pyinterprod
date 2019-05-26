@@ -124,7 +124,7 @@ def _cmp_taxa(keys: List[str], task_queue: Queue, done_queue: Queue,
     #     o.flush()
     for rank, accessions in iter(task_queue.get, None):
         for i, acc_1 in enumerate(accessions):
-            for acc_2 in accessions[i+1:]
+            for acc_2 in accessions[i+1:]:
                 o.add(acc_1, (rank, acc_2))
 
             o.flush()
