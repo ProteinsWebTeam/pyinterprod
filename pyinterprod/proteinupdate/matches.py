@@ -1,12 +1,13 @@
 import json
 import os
+from typing import Tuple
 
 import cx_Oracle
 
 from .. import logger, orautils
 
 
-def _get_match_counts(cur: cx_Oracle.Cursor) -> (str, int):
+def _get_match_counts(cur: cx_Oracle.Cursor) -> Tuple[dict, dict]:
     logger.info("counting entries protein counts")
     cur.execute(
         """
@@ -30,6 +31,13 @@ def _get_match_counts(cur: cx_Oracle.Cursor) -> (str, int):
     databases = dict(cur.fetchall())
 
     return entries, databases
+
+
+def update_matches(user: str, dsn: str, dst: str, drop_indices: bool=False):
+    prepare_matches(user, dsn)
+    check_matches(user, dsn, dst)
+    insert_matches(user, dsn, drop_indices=drop_indices)
+    track_count_changes(user, dsn, dst)
 
 
 def prepare_matches(user: str, dsn: str):
@@ -155,10 +163,10 @@ def check_matches(user: str, dsn: str, outdir: str):
     con.close()
 
     with open(os.path.join(outdir, "counts.json"), "wt") as fh:
-        json.dump(dict(entries=entries, databases=databases), fh)
+        json.dump((entries, databases), fh)
 
 
-def update_matches(user: str, dsn: str, drop_indices: bool=False):
+def insert_matches(user: str, dsn: str, drop_indices: bool=False):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
@@ -208,7 +216,7 @@ def update_matches(user: str, dsn: str, drop_indices: bool=False):
 
 def track_count_changes(user: str, dsn: str, outdir: str):
     with open(os.path.join(outdir, "counts.json"), "rt") as fh:
-        prev = json.load(fh)
+        prev_entries, prev_databases = json.load(fh)
 
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -218,35 +226,29 @@ def track_count_changes(user: str, dsn: str, outdir: str):
 
     changes = []
     for entry_acc, new_count in entries.items():
-        prev_count = prev["entries"].pop(entry_acc, 0)
-
         try:
-            change = (new_count - prev_count) / prev_count * 100
-        except ZeroDivisionError:
-            changes.append((entry_acc, prev_count, new_count, "N/A"))
+            prev_count = prev_entries[entry_acc]
+        except KeyError:
+            # First time the entry has matches: skip
+            continue
         else:
+            change = (new_count - prev_count) / prev_count * 100
             if abs(change) >= 50:
                 changes.append((entry_acc, prev_count, new_count, change))
 
     with open(os.path.join(outdir, "entries_changes.tsv"), "wt") as fh:
-        def _sort_entries(e):
-            return 1 if isinstance(e[3], str) else 0, e[3], e[0]
-
         fh.write("# Accession\tPrevious protein count\t"
                  "New protein count\tChange (%)\n")
 
-        for ac, pc, nc, c in sorted(changes, key=_sort_entries):
-            if isinstance(c, str):
-                fh.write("{}\t{}\t{}\t{}\n".format(ac, pc, nc, c))
-            else:
-                fh.write("{}\t{}\t{}\t{:.0f}\n".format(ac, pc, nc, c))
+        for ac, pc, nc, c in sorted(changes, key=lambda e: abs(e[3])):
+            fh.write("{}\t{}\t{}\t{:.0f}\n".format(ac, pc, nc, c))
 
     changes = []
     for dbcode, new_count in databases.items():
-        prev_count = prev["databases"].pop(dbcode, 0)
+        prev_count = prev_databases.pop(dbcode, 0)
         changes.append((dbcode, prev_count, new_count))
 
-    for dbcode, prev_count in prev["databases"].items():
+    for dbcode, prev_count in prev_databases.items():
         changes.append((dbcode, prev_count, 0))
 
     with open(os.path.join(outdir, "databases_changes.tsv"), "wt") as fh:
