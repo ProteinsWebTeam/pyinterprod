@@ -57,13 +57,13 @@ def main():
                 config["release"]["version"], config["release"]["date"]
             ),
             kwargs=dict(dir="/scratch"),
-            scheduler=dict(queue=queue, mem=500, scratch=32000),
+            scheduler=dict(queue=queue, mem=500, scratch=32000)
         ),
         Task(
             name="update-uniparc",
             fn=uniparc.update,
             args=(db_users["uniparc"], db_dsn),
-            scheduler=dict(queue=queue, mem=500),
+            scheduler=dict(queue=queue, mem=500)
         ),
         Task(
             name="check-crc64",
@@ -83,14 +83,14 @@ def main():
             name="import-matches",
             fn=interproscan.import_matches,
             args=(db_users["iprscan"], db_dsn),
-            kwargs=dict(max_attempts=3*24, secs=3600, max_workers=4)
+            kwargs=dict(max_attempts=3*24, secs=3600, max_workers=4),
             scheduler=dict(queue=queue, mem=500)
         ),
         Task(
             name="import-sites",
             fn=interproscan.import_sites,
             args=(db_users["iprscan"], db_dsn),
-            kwargs=dict(max_attempts=3*24, secs=3600)
+            kwargs=dict(max_attempts=3*24, secs=3600),
             scheduler=dict(queue=queue, mem=500)
         ),
         Task(
