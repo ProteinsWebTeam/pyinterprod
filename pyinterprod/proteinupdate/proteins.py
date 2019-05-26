@@ -11,6 +11,13 @@ from . import sprot
 from .. import logger, orautils
 
 
+def update(user: str, dsn: str, swissprot_path: str, trembl_path: str,
+           version: str, date: str, dir: Optional[str]=None):
+    insert_new(user, dsn, swissprot_path, trembl_path, dir=dir)
+    delete_obsolete(user, dsn, truncate=True)
+    update_database_info(user, dsn, version, date)
+
+
 class ProteinDatabase(object):
     def __init__(self, path: Optional[str] = None, dir: Optional[str] = None):
         if path:
@@ -538,7 +545,7 @@ def delete_obsolete(user: str, dsn: str, truncate: bool=False):
                 logger.error("{}: exited ({}: {})".format(name, exc.__class__.__name__, exc))
                 num_errors += 1
             else:
-                logger.debug("{}: done".format(name))
+                logger.info("{}: done".format(name))
 
         if num_errors:
             cur.close()
@@ -679,7 +686,7 @@ def check_crc64(user: str, dsn: str):
 
     num_errors = 0
     for row in cur:
-        logger.debug("{}: {} / {}".format(*row))
+        logger.error("{}: {} / {}".format(*row))
         num_errors += 1
 
     cur.close()
