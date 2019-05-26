@@ -126,17 +126,17 @@ def hash_protein(matches: List[tuple]) -> str:
 
     for pos, acc in locations:
         if pos > offset + MAX_GAP:
-            for _pos, _ac in signatures:
-                structure.append(_ac)
+            for _acc in signatures:
+                structure.append(_acc)
 
             signatures = []
             structure.append('')  # add a gap
 
         offset = pos
-        signatures.append((pos, acc))
+        signatures.append(acc)
 
-    for _pos, _ac in signatures:
-        structure.append(_ac)
+    for _acc in signatures:
+        structure.append(_acc)
 
     return hashlib.md5(
         '/'.join(structure).encode("utf-8")
