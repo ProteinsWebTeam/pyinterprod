@@ -178,9 +178,9 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=100,
             taxa = {}
 
         if taxid in taxa:
-            taxa[rank][taxid].append(acc)
+            taxa[taxid].append(acc)
         else:
-            taxa[rank][taxid] = [acc]
+            taxa[taxid] = [acc]
 
     task_queue.put((_rank, taxa))
     taxa = {}
