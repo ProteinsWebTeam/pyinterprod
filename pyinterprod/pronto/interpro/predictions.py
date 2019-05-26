@@ -168,7 +168,7 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
         ORDER BY RANK, TAX_ID, METHOD_AC
         """
     )
-    _rank, _taxid = None
+    _rank = _taxid = None
     for acc, rank, taxid in cur:
         if acc in signatures:
             if rank in signatures[acc]:
