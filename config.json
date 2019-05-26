@@ -1,29 +1,28 @@
 {
-  "databases": {
-    "interpro": {
-      "dsn": "",
-      "users": {
-        "interpro": "",
-        "iprscan": "",
-        "uniparc": "",
-        "pronto_main": "",
-        "pronto_alt": ""
-      }
+    "database": {
+        "dsn": "",
+        "users": {
+            "interpro": "",
+            "iprscan": "",
+            "uniparc": "",
+            "pronto_main": "",
+            "pronto_alt": ""
+        }
     },
-    "others": {
-
+    "flat_files": {
+        "swissprot": "",
+        "trembl": ""
+    },
+    "release": {
+        "version": "",
+        "date": ""
+    },
+    "export": {
+        "matches": "",
+        "xrefs": ""
+    },
+    "workflow": {
+        "lsf-queue": "",
+        "dir": ""
     }
-  },
-  "flat_files": {
-    "swissprot": "",
-    "trembl": ""
-  },
-  "release": {
-    "version": "",
-    "date": ""
-  },
-  "export": {
-    "matches": "",
-    "xrefs": ""
-  }
 }
