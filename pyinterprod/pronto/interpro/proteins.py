@@ -72,10 +72,10 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
         names.flush()
         taxa.flush()
         terms.flush()
-        comparator.sync()
 
     table.close()
     con.close()
+    comparator.sync()
     sizes = (names.merge(), taxa.merge(), terms.merge(), comparator.size)
     done_queue.put((names, taxa, terms, comparator, sizes))
 
