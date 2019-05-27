@@ -52,7 +52,7 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
     )
     comparator = SignatureComparator(tmpdir)
     for chunk in iter(task_queue.get, None):
-        for acc, dbcode, length, descid, leftnum, matches in chunk:
+        for acc, dbcode, length, taxid, descid, matches in chunk:
             md5 = hash_protein(matches)
             signatures = comparator.update(matches)
             protein_terms = proteins2go.get(acc, [])
@@ -61,13 +61,13 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
                 # UniProt descriptions
                 names.add(signature_acc, (descid, dbcode))
                 # Taxonomic origins
-                taxa.add(signature_acc, leftnum)
+                taxa.add(signature_acc, taxid)
                 # GO terms
                 for go_id in protein_terms:
                     terms.add(signature_acc, go_id)
 
                 table.insert((signature_acc, acc, dbcode, md5, length,
-                              leftnum, descid))
+                              taxid, descid))
 
         names.flush()
         taxa.flush()

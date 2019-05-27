@@ -212,8 +212,7 @@ def load_taxa(user: str, dsn: str):
         NOLOGGING
         AS
         SELECT
-          TAX_ID, PARENT_ID, SCIENTIFIC_NAME, RANK,
-          LEFT_NUMBER, RIGHT_NUMBER, FULL_NAME
+          TAX_ID, PARENT_ID, SCIENTIFIC_NAME, RANK, FULL_NAME
         FROM INTERPRO.ETAXI
         """.format(owner)
     )
@@ -360,12 +359,9 @@ def _get_matches(user: str, dsn: str, filepath: Optional[str]=None):
         cur.execute(
             """
             SELECT
-                P.PROTEIN_AC, P.LEN, P.DBCODE, D.DESC_ID,
-                NVL(E.LEFT_NUMBER, 0),
+                P.PROTEIN_AC, P.LEN, P.DBCODE, P.TAX_ID, D.DESC_ID,
                 MA.METHOD_AC, MA.POS_FROM, MA.POS_TO, MA.FRAGMENTS
             FROM INTERPRO.PROTEIN P
-            INNER JOIN INTERPRO.ETAXI E
-              ON P.TAX_ID = E.TAX_ID
             INNER JOIN {}.PROTEIN_DESC D
               ON P.PROTEIN_AC = D.PROTEIN_AC
             INNER JOIN INTERPRO.MATCH MA
@@ -410,7 +406,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
             DBCODE CHAR(1) NOT NULL,
             MD5 VARCHAR(32) NOT NULL,
             LEN NUMBER(5) NOT NULL,
-            LEFT_NUMBER NUMBER NOT NULL,
+            TAX_ID NUMBER(10) NOT NULL
             DESC_ID NUMBER(10) NOT NULL
         )
         PARTITION BY LIST (DBCODE) (
@@ -424,15 +420,14 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     chunk = []
     matches = []
-    _protein_acc = dbcode= length = descid = left_num = None
+    _protein_acc = dbcode = length = descid = taxid = None
     num_proteins = 0
     for row in _get_matches(user, dsn, filepath):
         protein_acc = row[0]
 
         if protein_acc != _protein_acc:
             if _protein_acc:
-                # acc, dbcode, length, descid, leftnum, matches
-                chunk.append((_protein_acc, dbcode, length, descid, left_num,
+                chunk.append((_protein_acc, dbcode, length, taxid, descid,
                               matches))
 
                 if len(chunk) == chunk_size:
@@ -449,8 +444,8 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
             _protein_acc = protein_acc
             length = row[1]
             dbcode = row[2]
-            descid = row[3]
-            left_num = row[4]
+            taxid = row[3]
+            descid = row[4]
             matches = []
 
         signature_acc = row[5]
@@ -474,7 +469,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     if _protein_acc:
         # Last protein
-        chunk.append((_protein_acc, dbcode, length, descid, left_num,
+        chunk.append((_protein_acc, dbcode, length, taxid, descid,
                       matches))
         task_queue.put(chunk)
         chunk = []
@@ -547,8 +542,8 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     )
     cur.execute(
         """
-        CREATE INDEX I_METHOD2PROTEIN$LN
-        ON {}.METHOD2PROTEIN (LEFT_NUMBER)
+        CREATE INDEX I_METHOD2PROTEIN$T
+        ON {}.METHOD2PROTEIN (TAX_ID)
         NOLOGGING
         """.format(owner)
     )
@@ -795,31 +790,18 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
     )
 
     # Get lineages for the METHOD_TAXA table
-    ranks_str = ','.join(':'+str(i+1) for i in range(len(RANKS)))
     cur.execute(
         """
-        SELECT LEFT_NUMBER, TAX_ID, RANK
+        SELECT TAX_ID, RANK, RANK_TAX_ID
         FROM {}.LINEAGE
-        WHERE RANK IN ({})
-        """.format(owner, ranks_str),
-        RANKS
+        """.format(owner)
     )
     lineages = {}
-    for left_num, tax_id, rank in cur:
-        if left_num in lineages:
-            lineages[left_num][rank] = tax_id
+    for tax_id, rank, rank_tax_id in cur:
+        if tax_id in lineages:
+            lineages[tax_id][rank] = rank_tax_id
         else:
-            lineages[left_num] = {rank: tax_id}
-
-    # Get taxa for the METHOD_TAXA_TMP table
-    cur.execute(
-        """
-        SELECT LEFT_NUMBER, TAX_ID, RANK
-        FROM {}.ETAXI
-        WHERE RANK IN ({})
-        """.format(owner, ranks_str)
-    )
-    taxa = {row[0]: row[1:] for row in cur}
+            lineages[tax_id] = {rank: rank_tax_id}
 
     table1 = orautils.TablePopulator(con,
                                      query="INSERT /*+ APPEND */ "
@@ -833,27 +815,34 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
                                            "VALUES (:1, :2, :3)".format(owner),
                                      autocommit=True)
 
-    for acc, left_numbers in merge_organizers(organizers):
+    for acc, tax_ids in merge_organizers(organizers):
         counts = {}
-        for left_num in left_numbers:
-            if left_num in lineages:
-                for rank, tax_id in lineages[left_num].items():
+        taxa = set()
+        for tax_id in tax_ids:
+            if tax_id in lineages:
+                taxa.add(tax_id)  # we want unique Ids
+
+                for rank, rank_tax_id in lineages[tax_id].items():
                     if rank in counts:
-                        if tax_id in counts[rank]:
-                            counts[rank][tax_id] += 1
+                        if rank_tax_id in counts[rank]:
+                            counts[rank][rank_tax_id] += 1
                         else:
-                            counts[rank][tax_id] = 1
+                            counts[rank][rank_tax_id] = 1
                     else:
-                        counts[rank] = {tax_id: 1}
+                        counts[rank] = {rank_tax_id: 1}
+            else:
+                logger.warning("invalid taxID: {}".format(tax_id))
 
-        for rank in RANKS:
-            if rank in counts:
-                for tax_id, count in counts[rank].items():
-                    table1.insert((acc, rank, tax_id, count))
+        if rank in counts:
+            for rank_tax_id, count in counts[rank].items():
+                table1.insert((acc, rank, rank_tax_id, count))
 
-        if left_num in taxa:
-            tax_id, rank = taxa[left_num]
-            table2.insert((acc, rank, tax_id))
+        for tax_id in taxa:
+            for rank, rank_tax_id in lineages[tax_id].items():
+                if tax_id == rank_tax_id:
+                    # Do not use parents
+                    table2.insert((acc, rank, tax_id))
+                    break
 
     table1.close()
     table2.close()
