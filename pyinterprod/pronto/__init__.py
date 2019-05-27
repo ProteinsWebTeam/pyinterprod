@@ -64,11 +64,11 @@ def _get_steps() -> dict:
     }
 
 
-def run(dsn: str, main_user: str, alt_user: str=None,
-        steps: dict=_get_steps(), **kwargs):
-    tmpdir = kwargs.get("tmpdir", gettempdir())
-    processes = kwargs.get("processes", 1)
+def run(dsn: str, main_user: str, alt_user: str=None, **kwargs):
     level = kwargs.get("level", logging.INFO)
+    processes = kwargs.get("processes", 1)
+    steps = kwargs.get("steps", _get_steps())
+    tmpdir = kwargs.get("tmpdir", gettempdir())
 
     from .. import logger
     logger.setLevel(level)
