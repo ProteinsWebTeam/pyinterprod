@@ -24,12 +24,10 @@ class Organizer(object):
             self.dir = mkdtemp(dir=dir)
 
         self.buckets = [
-            {
-                "path": os.path.join(self.dir, str(i+1)),
-                "data": {}
-            }
+            os.path.join(self.dir, str(i+1))
             for i in range(len(self.keys))
         ]
+        self.buffer = {}
 
         # for the get() method only
         self.it = None
@@ -67,49 +65,59 @@ class Organizer(object):
     @property
     def size(self) -> int:
         size = 0
-        for b in self.buckets:
+        for bucket in self.buckets:
             try:
-                size += os.path.getsize(b["path"])
+                size += os.path.getsize(bucket)
             except FileNotFoundError:
                 continue
 
         return size
 
     def add(self, key: Union[int, str], value: Any):
-        i = bisect.bisect_right(self.keys, key)
-        if i:
-            bucket = self.buckets[i-1]
-            if key in bucket["data"]:
-                bucket["data"][key].append(value)
-            else:
-                bucket["data"][key] = [value]
+        if key in self.buffer:
+            self.buffer[key].append(value)
         else:
-            raise KeyError(key)
+            self.buffer[key] = [value]
 
     def write(self, key: Union[int, str], value: Any):
         i = bisect.bisect_right(self.keys, key)
         if i:
-            bucket = self.buckets[i-1]
-            with gzip.open(bucket["path"], "ab", COMPRESS_LVL) as fh:
+            with gzip.open(self.buckets[i-1], "ab", COMPRESS_LVL) as fh:
                 pickle.dump((key, value), fh)
         else:
             raise KeyError(key)
 
     def flush(self):
-        for b in self.buckets:
-            if b["data"]:
-                with gzip.open(b["path"], "ab", COMPRESS_LVL) as fh:
-                    pickle.dump(b["data"], fh)
-                b["data"] = {}
+        _bucket = None
+        data = {}
+        for key in sorted(self.buffer):
+            i = bisect.bisect_right(self.keys, key)
+            if i:
+                bucket = self.buckets[i-1]
+                if bucket != _bucket:
+                    if _bucket:
+                        with gzip.open(_bucket, "ab", COMPRESS_LVL) as fh:
+                            pickle.dump(data, fh)
+
+                    _bucket = bucket
+                    data = {}
+
+                data[key] = self.buffer[key]
+            else:
+                raise KeyError(key)
+
+        if _bucket:
+            with gzip.open(_bucket, "ab", COMPRESS_LVL) as fh:
+                pickle.dump(data, fh)
 
     def merge(self, processes: int=1) -> int:
         size_before = self.size
         if processes > 1:
             with Pool(processes-1) as pool:
-                pool.map(self._merge, [b["path"] for b in self.buckets])
+                pool.map(self._merge, self.buckets)
         else:
-            for b in self.buckets:
-                self._merge(b["path"])
+            for bucket in self.buckets:
+                self._merge(bucket)
 
         return max(size_before, self.size)
 
@@ -135,9 +143,9 @@ class Organizer(object):
                     pickle.dump((key, data[key]), fh)
 
     def remove(self):
-        for b in self.buckets:
+        for bucket in self.buckets:
             try:
-                os.remove(b["path"])
+                os.remove(bucket)
             except FileNotFoundError:
                 pass
 
