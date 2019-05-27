@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Tuple
 
 import cx_Oracle
 
+from . import RANKS
 from .utils import Organizer, merge_organizers
 from ... import logger, orautils
 
@@ -117,14 +118,6 @@ def get_descriptions(user: str, dsn: str, processes: int=4,
 def _cmp_taxa(keys: List[str], task_queue: Queue, done_queue: Queue,
               dir: Optional[str]=None):
     o = Organizer(keys, dir)
-    # for rank, taxa in iter(task_queue.get, None):
-    #     for taxid, accessions in taxa.items():
-    #         accessions.sort()
-    #         for i, acc_1 in enumerate(accessions):
-    #             for acc_2 in accessions[i+1:]:
-    #                 o.add(acc_1, (rank, acc_2))
-    #
-    #     o.flush()
     for rank, accessions in iter(task_queue.get, None):
         accessions.sort()
         for i, acc_1 in enumerate(accessions):
@@ -163,15 +156,32 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
         p.start()
         pool.append(p)
 
-    signatures = {}
-    accessions = []
+    # See tables.load_taxa() for why we exclude 131567
+    cur.execute(
+        """
+        SELECT TAX_ID, RANK, PARENT_ID
+        FROM {}.ETAXI
+        WHERE TAX_ID != 131567
+        """.format(owner)
+    )
+    taxa = {}
+    for tax_id, rank, parent_id in cur:
+        if parent_id == 1:
+            rank = "superkingdom"
+        elif rank not in RANKS:
+            continue
+
+        taxa[tax_id] = (rank, parent_id)
+
     cur.execute(
         """
         SELECT METHOD_AC, RANK, TAX_ID
-        FROM INTERPRO_ANALYSIS.METHOD_TAXA
+        FROM {}.METHOD_TAXA
         ORDER BY RANK, TAX_ID
-        """
+        """.format(owner)
     )
+    signatures = {}
+    accessions = []
     _rank = _taxid = None
     for acc, rank, taxid in cur:
         if acc in signatures:

@@ -7,7 +7,7 @@ from typing import Optional
 
 import cx_Oracle
 
-from . import proteins
+from . import proteins, RANKS
 from .utils import merge_organizers
 from ... import logger, orautils
 
@@ -231,72 +231,58 @@ def load_taxa(user: str, dsn: str):
         """
         CREATE TABLE {}.LINEAGE
         (
-            LEFT_NUMBER NUMBER NOT NULL,
             TAX_ID NUMBER(10) NOT NULL,
-            RANK VARCHAR2(50)
+            RANK VARCHAR2(50) NOT NULL,
+            RANK_TAX_ID NUMBER(10)
         ) NOLOGGING
         """.format(owner)
     )
 
-    taxons = {}
+    """
+    taxID 131567 (cellular organisms) contains three superkingdoms:
+        * Bacteria (2)
+        * Archaea (2157)
+        * Eukaryota (2759)
+
+    therefore it is not needed (we don't want a meta-superkingdom)
+    """
     cur.execute(
         """
-        SELECT TAX_ID, PARENT_ID, LEFT_NUMBER, RANK
+        SELECT TAX_ID, PARENT_ID, RANK
         FROM {}.ETAXI
+        WHERE TAX_ID != 131567
         """.format(owner)
     )
-    for tax_id, parent_id, left_num, rank in cur:
-        if tax_id != 131567:
-            """
-            taxID 131567 (cellular organisms) contains three superkingdoms:
-                * Bacteria (2)
-                * Archaea (2157)
-                * Eukaryota (2759)
-
-            therefore it is not needed (we don't want a meta-superkingdom)
-            """
-            taxons[tax_id] = {
-                "parent": parent_id,
-                "left_num": left_num,
-                "rank": "superkingdom" if parent_id == 1 else rank
-            }
-
-    lineage = []
-    for tax_id in taxons:
-        t = taxons[tax_id]
-        left_num = t["left_num"]
-        if not left_num:
-            continue
-        elif t["rank"] != "no rank":
-            lineage.append((left_num, tax_id, t["rank"]))
-
-        parent_id = t["parent"]
-        while parent_id:
-            if parent_id not in taxons:
-                # taxID 131567 missing from dictionary
-                break
-
-            t = taxons[parent_id]
-            if t["rank"] != "no rank":
-                lineage.append((left_num, parent_id, t["rank"]))
-
-            parent_id = t["parent"]
+    taxa = {}
+    for tax_id, parent_id, rank in cur:
+        if parent_id == 1:
+            taxa[tax_id] = ("superkingdom", parent_id)
+        else:
+            taxa[tax_id] = (rank, parent_id)
 
     table = orautils.TablePopulator(con,
                                     query="INSERT /*+ APPEND */ "
                                           "INTO {}.LINEAGE "
                                           "VALUES (:1, :2, :3)".format(owner),
                                     autocommit=True)
-    for record in lineage:
-        table.insert(record)
+    for tax_id in taxa:
+        rank, parent_id = taxons[tax_id]
+        if rank in RANKS:
+            table.insert((tax_id, rank, tax_id))
+
+        while parent_id in taxa:
+            rank_tax_id = parent_id
+            rank, parent_id = taxons[rank_tax_id]
+            if rank in RANKS:
+                table.insert((tax_id, rank, rank_tax_id))
     table.close()
 
     orautils.gather_stats(cur, owner, "LINEAGE")
     orautils.grant(cur, owner, "LINEAGE", "SELECT", "INTERPRO_SELECT")
     cur.execute(
         """
-        CREATE INDEX I_LINEAGE$L$R
-        ON {}.LINEAGE (LEFT_NUMBER, RANK)
+        CREATE INDEX I_LINEAGE
+        ON {}.LINEAGE (TAX_ID, RANK)
         NOLOGGING
         """.format(owner)
     )
@@ -808,18 +794,15 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
         """.format(owner)
     )
 
-    ranks = ["superkingdom", "kingdom", "phylum", "class", "order",
-             "family", "genus", "species"]
-    ranks_str = ','.join(':'+str(i+1) for i in range(len(ranks)))
-
     # Get lineages for the METHOD_TAXA table
+    ranks_str = ','.join(':'+str(i+1) for i in range(len(RANKS)))
     cur.execute(
         """
         SELECT LEFT_NUMBER, TAX_ID, RANK
         FROM {}.LINEAGE
         WHERE RANK IN ({})
         """.format(owner, ranks_str),
-        ranks
+        RANKS
     )
     lineages = {}
     for left_num, tax_id, rank in cur:
@@ -863,7 +846,7 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
                     else:
                         counts[rank] = {tax_id: 1}
 
-        for rank in ranks:
+        for rank in RANKS:
             if rank in counts:
                 for tax_id, count in counts[rank].items():
                     table1.insert((acc, rank, tax_id, count))

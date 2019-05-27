@@ -1,3 +1,4 @@
 #!/usr/bin/env python
 
-from . import tables
+RANKS = ["superkingdom", "kingdom", "phylum", "class", "order",
+         "family", "genus", "species"]
