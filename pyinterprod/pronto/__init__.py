@@ -88,6 +88,8 @@ def run(dsn: str, main_user: str, alt_user: str=None, **kwargs):
         with ThreadPoolExecutor(max_workers=processes) as executor:
             fs = {}
             running = set()
+            required = {"descriptions", "taxa", "terms"}
+            required_counter = 0
             for name, step in steps.items():
                 step = steps[name]
                 f = executor.submit(step["func"], main_user, dsn)
@@ -95,7 +97,9 @@ def run(dsn: str, main_user: str, alt_user: str=None, **kwargs):
                 logger.info("{:<20}running".format(name))
                 running.add(name)
 
-            required = {"descriptions", "taxa", "terms"}
+                if name in required:
+                    required_counter += 1
+
             for f in as_completed(fs):
                 name = fs[f]
                 running.remove(name)
@@ -108,12 +112,11 @@ def run(dsn: str, main_user: str, alt_user: str=None, **kwargs):
                     logger.info("{:<20}done".format(name))
 
                     if name in required:
-                        required.remove(name)
+                        required_counter -= 1
 
-                        if not required:
+                        if not required_counter:
                             # signature2protein can now run
                             break
-
 
             fs = {f: name for f, name in fs.items() if name in running}
             if step_s2p:
