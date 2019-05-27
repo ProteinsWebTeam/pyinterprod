@@ -593,7 +593,7 @@ def update_database_info(user: str, dsn: str, version: str, date: str):
     cur.execute("SELECT COUNT(*) FROM INTERPRO.PROTEIN WHERE DBCODE = 'T'")
     n_trembl = cur.fetchone()[0]
 
-    cur.execute(
+    cur.executemany(
         """
         UPDATE INTERPRO.DB_VERSION
         SET
@@ -601,34 +601,14 @@ def update_database_info(user: str, dsn: str, version: str, date: str):
           ENTRY_COUNT = :2,
           FILE_DATE = :3,
           LOAD_DATE = SYSDATE
-          WHERE INTERPRO.DB_VERSION.DBCODE = 'S'
-        """, (version, n_swissprot, date)
+          WHERE DBCODE = :4
+        """,
+        [
+            (version, n_swissprot, date, 'S'),
+            (version, n_trembl, date, 'T'),
+            (version, n_swissprot + n_trembl, date, 'u')
+        ]
     )
-
-    cur.execute(
-        """
-        UPDATE INTERPRO.DB_VERSION
-        SET
-          VERSION = :1,
-          ENTRY_COUNT = :2,
-          FILE_DATE = :3,
-          LOAD_DATE = SYSDATE
-          WHERE INTERPRO.DB_VERSION.DBCODE = 'T'
-        """, (version, n_trembl, date)
-    )
-
-    cur.execute(
-        """
-        UPDATE INTERPRO.DB_VERSION
-        SET
-          VERSION = :1,
-          ENTRY_COUNT = :2,
-          FILE_DATE = :3,
-          LOAD_DATE = SYSDATE
-          WHERE INTERPRO.DB_VERSION.DBCODE = 'u'
-        """, (version, n_swissprot + n_trembl, date)
-    )
-
     con.commit()
     cur.close()
     con.close()
