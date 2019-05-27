@@ -95,6 +95,7 @@ def run(dsn: str, main_user: str, alt_user: str=None, **kwargs):
                 logger.info("{:<20}running".format(name))
                 running.add(name)
 
+            required = {"descriptions", "taxa", "terms"}
             for f in as_completed(fs):
                 name = fs[f]
                 running.remove(name)
@@ -106,15 +107,20 @@ def run(dsn: str, main_user: str, alt_user: str=None, **kwargs):
                 else:
                     logger.info("{:<20}done".format(name))
 
-                    # TODO: check that 'annotations' is complete as well
-                    if name == "descriptions" and step_s2p:
-                        # signature2protein can now run
-                        fs = {f: name for f, name in fs.items() if name in running}
-                        f = executor.submit(step_s2p["func"], main_user, dsn,
-                                            processes, tmpdir)
-                        fs[f] = "signature2protein"
-                        logger.info("{:<20}running".format(fs[f]))
-                        break
+                    if name in required:
+                        required.remove(name)
+
+                        if not required:
+                            # signature2protein can now run
+                            break
+
+
+            fs = {f: name for f, name in fs.items() if name in running}
+            if step_s2p:
+                f = executor.submit(step_s2p["func"], main_user, dsn,
+                                    processes, tmpdir)
+                fs[f] = "signature2protein"
+                logger.info("{:<20}running".format(fs[f]))
 
             for f in as_completed(fs):
                 name = fs[f]

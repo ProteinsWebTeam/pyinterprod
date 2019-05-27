@@ -266,13 +266,13 @@ def load_taxa(user: str, dsn: str):
                                           "VALUES (:1, :2, :3)".format(owner),
                                     autocommit=True)
     for tax_id in taxa:
-        rank, parent_id = taxons[tax_id]
+        rank, parent_id = taxa[tax_id]
         if rank in RANKS:
             table.insert((tax_id, rank, tax_id))
 
         while parent_id in taxa:
             rank_tax_id = parent_id
-            rank, parent_id = taxons[rank_tax_id]
+            rank, parent_id = taxa[rank_tax_id]
             if rank in RANKS:
                 table.insert((tax_id, rank, rank_tax_id))
     table.close()
