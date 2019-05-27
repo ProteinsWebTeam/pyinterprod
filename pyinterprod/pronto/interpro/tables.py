@@ -406,7 +406,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
             DBCODE CHAR(1) NOT NULL,
             MD5 VARCHAR(32) NOT NULL,
             LEN NUMBER(5) NOT NULL,
-            TAX_ID NUMBER(10) NOT NULL
+            TAX_ID NUMBER(10) NOT NULL,
             DESC_ID NUMBER(10) NOT NULL
         )
         PARTITION BY LIST (DBCODE) (
