@@ -35,9 +35,9 @@ class Organizer(object):
         self.val = None
 
     def __iter__(self) -> Generator[tuple, None, None]:
-        for b in self.buckets:
-            if os.path.isfile(b["path"]):
-                with gzip.open(b["path"], "rb") as fh:
+        for bucket in self.buckets:
+            if os.path.isfile(bucket):
+                with gzip.open(bucket, "rb") as fh:
                     while True:
                         try:
                             key, values = pickle.load(fh)
