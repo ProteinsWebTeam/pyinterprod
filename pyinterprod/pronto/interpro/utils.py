@@ -110,6 +110,8 @@ class Organizer(object):
             with gzip.open(_bucket, "ab", COMPRESS_LVL) as fh:
                 pickle.dump(data, fh)
 
+        self.buffer = {}
+
     def merge(self, processes: int=1) -> int:
         size_before = self.size
         if processes > 1:
