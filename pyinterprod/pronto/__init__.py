@@ -14,8 +14,9 @@ def _default_steps() -> list:
 
 
 def _get_steps() -> dict:
+    from . import goa, uniprot
+    from .interpro import tables as interpro
     from .. import orautils
-    from . import interpro, goa, uniprot
 
     return {
         "clear": {
@@ -29,7 +30,7 @@ def _get_steps() -> dict:
             "func": uniprot.load_comments
         },
         "databases": {
-            "func": interpro.tables.load_databases
+            "func": interpro.load_databases
         },
         "descriptions": {
             "func": uniprot.load_descriptions
@@ -38,28 +39,28 @@ def _get_steps() -> dict:
             "func": uniprot.load_enzymes
         },
         "matches": {
-            "func": interpro.tables.load_matches
+            "func": interpro.load_matches
         },
         "proteins": {
-            "func": interpro.tables.load_proteins
+            "func": interpro.load_proteins
         },
         "publications": {
             "func": goa.load_publications
         },
         "signatures": {
-            "func": interpro.tables.load_signatures
+            "func": interpro.load_signatures
         },
         "taxa": {
-            "func": interpro.tables.load_taxa
+            "func": interpro.load_taxa
         },
         "terms": {
             "func": goa.load_terms
         },
         "signature2protein": {
-            "func": interpro.tables.load_signature2protein
+            "func": interpro.load_signature2protein
         },
         "copy": {
-            "func": interpro.tables.copy_schema
+            "func": interpro.copy_schema
         }
     }
 
