@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import heapq
 import os
 import pickle
 from multiprocessing import Process, Queue
@@ -8,8 +7,9 @@ from typing import Optional
 
 import cx_Oracle
 
-from ... import logger, orautils
 from . import proteins
+from .utils import merge_organizers
+from ... import logger, orautils
 
 
 def load_databases(user: str, dsn: str):
@@ -671,7 +671,7 @@ def _load_comparisons(user: str, dsn: str, comparators: list):
     con.close()
 
 
-def _load_term_counts(user: str, dsn: str, organisers: list):
+def _load_term_counts(user: str, dsn: str, organizers: list):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -694,28 +694,20 @@ def _load_term_counts(user: str, dsn: str, organisers: list):
                                           "VALUES (:1, :2, :3)".format(owner),
                                     autocommit=True)
 
-    _acc = None
-    _terms = {}
-    for acc, terms in heapq.merge(*organisers):
-        if acc != _acc:
-            for go_id, count in _terms.items():
-                table.insert((_acc, go_id, count))
-
-            _acc = acc
-            _terms = {}
-
+    for acc, terms in merge_organizers(organizers):
+        counts = {}
         for go_id in terms:
             if go_id in _terms:
-                _terms[go_id] += 1
+                counts[go_id] += 1
             else:
-                _terms[go_id] = 1
+                counts[go_id] = 1
 
-    for go_id, count in _terms.items():
-        table.insert((_acc, go_id, count))
+        for go_id, count in counts.items():
+            table.insert((acc, go_id, count))
 
     table.close()
 
-    for o in organisers:
+    for o in organizers:
         o.remove()
 
     cur = con.cursor()
@@ -731,7 +723,7 @@ def _load_term_counts(user: str, dsn: str, organisers: list):
     cur.close()
     con.close()
 
-def _load_description_counts(user: str, dsn: str, organisers: list):
+def _load_description_counts(user: str, dsn: str, organizers: list):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -755,30 +747,22 @@ def _load_description_counts(user: str, dsn: str, organisers: list):
                                           "VALUES (:1, :2, :3, :4)".format(owner),
                                     autocommit=True)
 
-    _acc = None
-    _descriptions = {}
-    for acc, descriptions in heapq.merge(*organisers):
-        if acc != _acc:
-            for descid, counts in _descriptions.items():
-                table.insert((_acc, descid, counts['S'], counts['T']))
-
-            _acc = acc
-            _descriptions = {}
-
+    for acc, descriptions in merge_organizers(organizers):
+        counts = {}
         for descid, dbcode in descriptions:
-            if descid in _descriptions:
-                d = _descriptions[descid]
+            if descid in counts:
+                d = counts[descid]
             else:
-                d = _descriptions[descid] = {'S': 0, 'T': 0}
+                d = counts[descid] = {'S': 0, 'T': 0}
 
-            d[dbcode] += 1
+            counts[dbcode] += 1
 
-    for descid, counts in _descriptions.items():
-        table.insert((_acc, descid, counts['S'], counts['T']))
+        for descid, dbcodes in counts.items():
+            table.insert((acc, descid, dbcodes['S'], dbcodes['T']))
 
     table.close()
 
-    for o in organisers:
+    for o in organizers:
         o.remove()
 
     cur = con.cursor()
@@ -795,7 +779,7 @@ def _load_description_counts(user: str, dsn: str, organisers: list):
     con.close()
 
 
-def _load_taxonomy_counts(user: str, dsn: str, organisers: list):
+def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -812,8 +796,21 @@ def _load_taxonomy_counts(user: str, dsn: str, organisers: list):
         """.format(owner)
     )
 
+    orautils.drop_table(cur, owner, "METHOD_TAXA_TMP")
+    cur.execute(
+        """
+        CREATE TABLE {}.METHOD_TAXA_TMP
+        (
+            METHOD_AC VARCHAR2(25) NOT NULL,
+            RANK VARCHAR2(50) NOT NULL,
+            TAX_ID NUMBER(10) NOT NULL
+        ) NOLOGGING
+        """.format(owner)
+    )
+
     ranks = ["superkingdom", "kingdom", "phylum", "class", "order",
              "family", "genus", "species"]
+    ranks_str = ','.join(':'+str(i+1) for i in range(len(ranks)))
 
     # Get lineages for the METHOD_TAXA table
     cur.execute(
@@ -821,7 +818,7 @@ def _load_taxonomy_counts(user: str, dsn: str, organisers: list):
         SELECT LEFT_NUMBER, TAX_ID, RANK
         FROM {}.LINEAGE
         WHERE RANK IN ({})
-        """.format(owner, ','.join(':'+str(i+1) for i in range(len(ranks)))),
+        """.format(owner, ranks_str),
         ranks
     )
     lineages = {}
@@ -831,38 +828,54 @@ def _load_taxonomy_counts(user: str, dsn: str, organisers: list):
         else:
             lineages[left_num] = {rank: tax_id}
 
-    table = orautils.TablePopulator(con,
-                                    query="INSERT /*+ APPEND */ "
-                                          "INTO {}.METHOD_TAXA "
-                                          "VALUES (:1, :2, :3, :4)".format(owner),
-                                    autocommit=True)
+    # Get taxa for the METHOD_TAXA_TMP table
+    cur.execute(
+        """
+        SELECT LEFT_NUMBER, TAX_ID, RANK
+        FROM {}.ETAXI
+        WHERE RANK IN ({})
+        """.format(owner, ranks_str)
+    )
+    taxa = {row[0]: row[1:] for row in cur}
 
-    _acc = None
-    _ranks = {}
-    for acc, left_numbers in heapq.merge(*organisers):
-        if acc != _acc:
-            for rank in ranks:
-                for tax_id in _ranks.get(rank, {}):
-                    table.insert((_acc, rank, tax_id, _ranks[rank][tax_id]))
+    table1 = orautils.TablePopulator(con,
+                                     query="INSERT /*+ APPEND */ "
+                                           "INTO {}.METHOD_TAXA "
+                                           "VALUES (:1, :2, :3, :4)".format(owner),
+                                     autocommit=True)
 
-            _acc = acc
-            _ranks = {}
+    table2 = orautils.TablePopulator(con,
+                                     query="INSERT /*+ APPEND */ "
+                                           "INTO {}.METHOD_TAXA_TMP "
+                                           "VALUES (:1, :2, :3)".format(owner),
+                                     autocommit=True)
 
+    for acc, left_numbers in merge_organizers(organizers):
+        counts = {}
         for left_num in left_numbers:
-            for rank, tax_id in lineages.get(left_num, {}).items():
-                if rank in _ranks:
-                    r = _ranks[rank]
-                else:
-                    r = _ranks[rank] = {}
+            if left_num in lineages:
+                for rank, tax_id in lineages[left_num].items():
+                    if rank in counts:
+                        if tax_id in counts[rank]:
+                            counts[rank][tax_id] += 1
+                        else:
+                            counts[rank][tax_id] = 1
+                    else:
+                        counts[rank] = {tax_id: 1}
 
-                if tax_id in r:
-                    r[tax_id] += 1
-                else:
-                    r[tax_id] = 1
+        for rank in ranks:
+            if rank in counts:
+                for tax_id, count in counts[rank].items():
+                    table1.insert((acc, rank, tax_id, count))
 
-    table.close()
+        if left_num in taxa:
+            tax_id, rank = taxa[left_num]
+            table2.insert((acc, rank, tax_id))
 
-    for o in organisers:
+    table1.close()
+    table2.close()
+
+    for o in organizers:
         o.remove()
 
     cur = con.cursor()
@@ -874,6 +887,8 @@ def _load_taxonomy_counts(user: str, dsn: str, organisers: list):
     )
     orautils.gather_stats(cur, owner, "METHOD_TAXA")
     orautils.grant(cur, owner, "METHOD_TAXA", "SELECT", "INTERPRO_SELECT")
+    orautils.gather_stats(cur, owner, "METHOD_TAXA_TMP")
+    orautils.grant(cur, owner, "METHOD_TAXA_TMP", "SELECT", "INTERPRO_SELECT")
     logger.debug("METHOD_TAXA ready")
     cur.close()
     con.close()
