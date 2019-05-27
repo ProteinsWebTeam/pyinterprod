@@ -52,7 +52,7 @@ def main():
                 config["release"]["version"], config["release"]["date"]
             ),
             kwargs=dict(dir="/scratch"),
-            scheduler=dict(queue=queue, mem=500, scratch=32000)
+            scheduler=dict(queue=queue, mem=500, scratch=30000)
         ),
         Task(
             name="update-uniparc",
