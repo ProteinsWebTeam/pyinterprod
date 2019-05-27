@@ -118,11 +118,12 @@ def get_descriptions(user: str, dsn: str, processes: int=4,
 def _cmp_taxa(keys: List[str], task_queue: Queue, done_queue: Queue,
               dir: Optional[str]=None):
     o = Organizer(keys, dir)
-    for rank, accessions in iter(task_queue.get, None):
+    for ranks, accessions in iter(task_queue.get, None):
         accessions.sort()
         for i, acc_1 in enumerate(accessions):
             for acc_2 in accessions[i+1:]:
-                o.add(acc_1, (rank, acc_2))
+                for rank in ranks:
+                    o.add(acc_1, (rank, acc_2))
 
             o.flush()
 
@@ -156,34 +157,35 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
         p.start()
         pool.append(p)
 
-    # See tables.load_taxa() for why we exclude 131567
     cur.execute(
         """
-        SELECT TAX_ID, RANK, PARENT_ID
-        FROM {}.ETAXI
-        WHERE TAX_ID != 131567
+        SELECT TAX_ID, RANK, RANK_TAX_ID
+        FROM {}.LINEAGE
         """.format(owner)
     )
+    ranks = {}
     taxa = {}
-    for tax_id, rank, parent_id in cur:
-        if parent_id == 1:
-            rank = "superkingdom"
-        elif rank not in RANKS:
-            continue
+    for tax_id, rank, rank_tax_id in cur:
+        if tax_id in ranks:
+            ranks[tax_id].append(rank)
+        else:
+            ranks[tax_id] = [rank]
 
-        taxa[tax_id] = (rank, parent_id)
+        if tax_id == rank_tax_id:
+            taxa[tax_id] = rank
 
     cur.execute(
         """
-        SELECT METHOD_AC, RANK, TAX_ID
-        FROM {}.METHOD_TAXA
-        ORDER BY RANK, TAX_ID
+        SELECT METHOD_AC, TAX_ID
+        FROM {}.METHOD_TAXA_TMP
+        ORDER BY TAX_ID
         """.format(owner)
     )
     signatures = {}
     accessions = []
-    _rank = _taxid = None
-    for acc, rank, taxid in cur:
+    _tax_id = None
+    for acc, tax_id in cur:
+        rank = taxa[tax_id]
         if acc in signatures:
             if rank in signatures[acc]:
                 signatures[acc][rank] += 1
@@ -192,15 +194,14 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
         else:
             signatures[acc] = {rank: 1}
 
-        if rank != _rank or taxid != _taxid:
-            task_queue.put((_rank, accessions))
-            _rank = rank
-            _taxid = taxid
+        if tax_id != _tax_id:
+            task_queue.put((ranks[_tax_id], accessions))
+            _tax_id = tax_id
             accessions = []
 
         accessions.append(acc)
 
-    task_queue.put((_rank, accessions))
+    task_queue.put((ranks[_tax_id], accessions))
     accessions = []
     cur.close()
     con.close()

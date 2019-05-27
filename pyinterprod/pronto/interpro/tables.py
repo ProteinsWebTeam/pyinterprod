@@ -783,7 +783,6 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
         CREATE TABLE {}.METHOD_TAXA_TMP
         (
             METHOD_AC VARCHAR2(25) NOT NULL,
-            RANK VARCHAR2(50) NOT NULL,
             TAX_ID NUMBER(10) NOT NULL
         ) NOLOGGING
         """.format(owner)
@@ -812,7 +811,7 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
     table2 = orautils.TablePopulator(con,
                                      query="INSERT /*+ APPEND */ "
                                            "INTO {}.METHOD_TAXA_TMP "
-                                           "VALUES (:1, :2, :3)".format(owner),
+                                           "VALUES (:1, :2)".format(owner),
                                      autocommit=True)
 
     for acc, tax_ids in merge_organizers(organizers):
@@ -838,11 +837,7 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
                 table1.insert((acc, rank, rank_tax_id, count))
 
         for tax_id in taxa:
-            for rank, rank_tax_id in lineages[tax_id].items():
-                if tax_id == rank_tax_id:
-                    # Do not use parents
-                    table2.insert((acc, rank, tax_id))
-                    break
+            table2.insert((acc, tax_id))
 
     table1.close()
     table2.close()
@@ -859,8 +854,6 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
     )
     orautils.gather_stats(cur, owner, "METHOD_TAXA")
     orautils.grant(cur, owner, "METHOD_TAXA", "SELECT", "INTERPRO_SELECT")
-    orautils.gather_stats(cur, owner, "METHOD_TAXA_TMP")
-    orautils.grant(cur, owner, "METHOD_TAXA_TMP", "SELECT", "INTERPRO_SELECT")
     logger.debug("METHOD_TAXA ready")
     cur.close()
     con.close()
