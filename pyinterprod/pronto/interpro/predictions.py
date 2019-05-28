@@ -12,7 +12,7 @@ from ... import logger, orautils
 
 def _cmp_descriptions(keys: List[str], task_queue: Queue,
                       done_queue: Queue, dir: Optional[str]=None):
-    o = Organizer(keys, dir)
+    o = Organizer(keys, dir=dir)
     for accessions in iter(task_queue.get, None):
         accessions.sort()
         for i, acc_1 in enumerate(accessions):
@@ -96,7 +96,7 @@ def get_descriptions(user: str, dsn: str, processes: int=4,
     for p in pool:
         p.join()
 
-    organizer = Organizer(keys, dir)
+    organizer = Organizer(keys, dir=dir)
     for acc_1, accessions in merge_organizers(organizers):
         counts = {}
         for acc_2 in accessions:
@@ -117,7 +117,7 @@ def get_descriptions(user: str, dsn: str, processes: int=4,
 
 def _cmp_taxa(keys: List[str], task_queue: Queue, done_queue: Queue,
               dir: Optional[str]=None):
-    o = Organizer(keys, dir)
+    o = Organizer(keys, dir=dir)
     for ranks, accessions in iter(task_queue.get, None):
         accessions.sort()
         for i, acc_1 in enumerate(accessions):
@@ -219,7 +219,7 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
     for p in pool:
         p.join()
 
-    organizer = Organizer(keys, dir)
+    organizer = Organizer(keys, dir=dir)
     for acc_1, items in merge_organizers(organizers):
         counts = {}
         for rank, acc_2 in items:

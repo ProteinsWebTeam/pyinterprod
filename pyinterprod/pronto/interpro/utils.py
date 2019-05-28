@@ -15,13 +15,14 @@ COMPRESS_LVL = 6
 
 
 class Organizer(object):
-    def __init__(self, keys: List, dir: Optional[str]=None, exists: bool=False):
+    def __init__(self, keys: List, exists: bool=False,
+                 dir: Optional[str]=None, prefix: Optional[str]=None):
         if exists:
             self.keys = os.listdir(dir)
             self.dir = dir
         else:
             self.keys = keys
-            self.dir = mkdtemp(dir=dir)
+            self.dir = mkdtemp(dir=dir, prefix=prefix)
 
         self.buckets = [
             os.path.join(self.dir, str(i+1))

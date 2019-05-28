@@ -40,9 +40,9 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
             proteins2go[acc] = {go_id}
     cur.close()
 
-    names = Organizer(keys, tmpdir)
-    taxa = Organizer(keys, tmpdir)
-    terms = Organizer(keys, tmpdir)
+    names = Organizer(keys, dir=tmpdir, prefix="names_")
+    taxa = Organizer(keys, dir=tmpdir, prefix="taxa_")
+    terms = Organizer(keys, dir=tmpdir, prefix="terms_")
     table = orautils.TablePopulator(
         con=con,
         query="INSERT /*+ APPEND */ "
