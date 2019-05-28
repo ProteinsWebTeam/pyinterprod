@@ -8,8 +8,8 @@ def main():
 
     from mundone import Task, Workflow
 
-    from . import (export, interproscan, matches, proteins, signatures,
-                   taxonomy, uniparc)
+    from . import (interproscan, matches, proteins, signatures,
+                   taxonomy, uniparc, uniprot)
     from .. import __version__, pronto
 
     parser = argparse.ArgumentParser(description="InterPro protein update")
@@ -121,35 +121,35 @@ def main():
         ),
         Task(
             name="aa-iprscan",
-            fn=export.build_aa_iprscan,
+            fn=uniprot.build_aa_iprscan,
             args=(db_users["iprscan"], db_dsn),
             scheduler=dict(queue=queue, mem=500),
             requires=["import-matches"]
         ),
         Task(
             name="xref-summary",
-            fn=export.build_xref_summary,
+            fn=uniprot.build_xref_summary,
             args=(db_users["interpro"], db_dsn),
             scheduler=dict(queue=queue, mem=500),
             requires=["update-matches"]
         ),
         Task(
             name="xref-condensed",
-            fn=export.build_xref_condensed,
+            fn=uniprot.build_xref_condensed,
             args=(db_users["interpro"], db_dsn),
             scheduler=dict(queue=queue, mem=500),
             requires=["update-matches"]
         ),
         Task(
             name="alert-interpro",
-            fn=export.ask_to_snapshot,
+            fn=uniprot.ask_to_snapshot,
             args=(db_users["interpro"], db_dsn),
             scheduler=dict(queue=queue, mem=500),
             requires=["xref-summary", "xref-condensed"]
         ),
         Task(
             name="dump-xrefs",
-            fn=export.export_databases,
+            fn=uniprot.export_databases,
             args=(db_users["interpro"], db_dsn, config["export"]["xrefs"]),
             scheduler=dict(queue=queue, mem=500),
             requires=["xref-summary"]
