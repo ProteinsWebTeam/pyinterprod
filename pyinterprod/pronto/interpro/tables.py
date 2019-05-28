@@ -732,11 +732,11 @@ def _load_description_counts(user: str, dsn: str, organizers: list):
         counts = {}
         for descid, dbcode in descriptions:
             if descid in counts:
-                d = counts[descid]
+                dbcodes = counts[descid]
             else:
-                d = counts[descid] = {'S': 0, 'T': 0}
+                dbcodes = counts[descid] = {'S': 0, 'T': 0}
 
-            counts[dbcode] += 1
+            dbcodes[dbcode] += 1
 
         for descid, dbcodes in counts.items():
             table.insert((acc, descid, dbcodes['S'], dbcodes['T']))
