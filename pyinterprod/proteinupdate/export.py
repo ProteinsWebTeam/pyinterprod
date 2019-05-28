@@ -3,6 +3,7 @@ from typing import Tuple
 
 import cx_Oracle
 
+from .sendmail import send_mail
 from .. import logger, orautils
 
 
@@ -252,6 +253,8 @@ def export_databases(user: str, dsn: str, dst: str):
     os.makedirs(dst, exist_ok=True)
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
+    cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
+    release = cur.fetchone()[0]
     cur.execute(
         """
         SELECT
@@ -360,6 +363,22 @@ def export_databases(user: str, dsn: str, dst: str):
     for path in files:
         os.chmod(path, 0o775)
 
+    send_mail(
+        to_addrs=["uniprot-database@ebi.ac.uk"],
+        subject="InterPro XREF files are ready",
+        content="""\
+Dear UniProt team,
+
+The InterPro cross-references files for {} are available in the following directory:
+  {} 
+  
+Best regards,
+The InterPro Production Team
+        """.format(release, dst),
+        cc_addrs=["uniprot-prod@ebi.ac.uk"],
+        bcc_addrs=["interpro-team@ebi.ac.uk"]
+    )
+
     logger.info("complete")
 
 
@@ -434,3 +453,75 @@ def build_aa_iprscan(user: str, dsn: str):
     cur.close()
     con.close()
     logger.info("AA_IPRSCAN is ready")
+
+
+def ask_to_snapshot(user: str, dsn: str):
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
+    release = cur.fetchone()[0]
+    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
+    max_upi = cur.fetchone()[0]
+    cur.execute(
+        """
+        SELECT I.IPRSCAN_SIG_LIB_REL_ID, D.DBNAME, V.VERSION
+        FROM INTERPRO.IPRSCAN2DBCODE I
+        INNER JOIN INTERPRO.CV_DATABASE D ON I.DBCODE = D.DBCODE
+        LEFT OUTER JOIN INTERPRO.DB_VERSION V ON I.DBCODE = V.DBCODE
+        WHERE I.IPRSCAN_SIG_LIB_REL_ID != I.PREV_ID
+        ORDER BY D.DBNAME
+        """
+    )
+    updates = []
+    for analysis_id, name, version in cur:
+        if version:
+            name += " (" + version + ")"
+        updates.append((name, analysis_id))
+    cur.close()
+    con.close()
+
+    content = """\
+INTERPRO.XREF_SUMMARY and INTERPRO.XREF_CONDENSED are ready.
+
+Please, take a snapshot of IPPRO, and inform UniProt they can refresh IPREADU.
+
+Recipients
+----------
+  To: uniprot-database@ebi.ac.uk
+  Cc: automated_annotation@ebi.ac.uk, uniprot-prod@ebi.ac.uk
+
+Subject
+-------
+Protein update {} completed: please refresh IPREADU
+
+Body (change text between square brackets)
+------------------------------------------
+Dear UniProt team,
+
+You may refresh IPREADU with the snapshot of IPPRO from [date/time].
+
+The max UPI we processed up to in this update is {}.
+    """.format(release, max_upi)
+
+    if updates:
+        content += """
+We have updated the following databases since the previous protein update:
+        """
+
+        for db in updates:
+            content += "  - {:<30}{:<15}\n".format(*db)
+    else:
+        content += """
+There are no changes to the analysis IDs for this protein update.
+        """
+
+    content += """
+Best regards,
+The InterPro Production Team
+    """
+
+    send_mail(
+        to_addrs=["interpro-team@ebi.ac.uk"],
+        subject="Protein update {}: please snapshot IPPRO".format(release),
+        content=content
+    )

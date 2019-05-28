@@ -61,7 +61,6 @@ def main():
             scheduler=dict(queue=queue, mem=500),
             requires=["load-proteins"]
         ),
-
         Task(
             name="update-uniparc",
             fn=uniparc.update,
@@ -140,6 +139,13 @@ def main():
             args=(db_users["interpro"], db_dsn),
             scheduler=dict(queue=queue, mem=500),
             requires=["update-matches"]
+        ),
+        Task(
+            name="alert-interpro",
+            fn=export.ask_to_snapshot,
+            args=(db_users["interpro"], db_dsn),
+            scheduler=dict(queue=queue, mem=500),
+            requires=["xref-summary", "xref-condensed"]
         ),
         Task(
             name="dump-xrefs",
