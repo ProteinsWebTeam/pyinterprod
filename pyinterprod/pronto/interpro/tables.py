@@ -159,7 +159,7 @@ def load_signatures(user: str, dsn: str):
             NAME VARCHAR2(100),
             DBCODE CHAR(1) NOT NULL,
             CANDIDATE CHAR(1) NOT NULL,
-            DESCRIPTION VARCHAR2(220),
+            DESCRIPTION VARCHAR2(400),
             SIG_TYPE CHAR(1),
             ABSTRACT VARCHAR2(4000),
             ABSTRACT_LONG CLOB,
