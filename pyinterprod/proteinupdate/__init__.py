@@ -5,8 +5,6 @@
 def main():
     import argparse
     import json
-    import os
-    from tempfile import gettempdir
 
     from mundone import Task, Workflow
 
