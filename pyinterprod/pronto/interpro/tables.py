@@ -814,6 +814,7 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
                                            "VALUES (:1, :2)".format(owner),
                                      autocommit=True)
 
+    invalid_taxa = set()
     for acc, tax_ids in merge_organizers(organizers):
         counts = {}
         taxa = set()
@@ -830,9 +831,9 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
                     else:
                         counts[rank] = {rank_tax_id: 1}
             else:
-                logger.warning("invalid taxID: {}".format(tax_id))
+                invalid_taxa.add(tax_id)
 
-        if rank in counts:
+        for rank in counts:
             for rank_tax_id, count in counts[rank].items():
                 table1.insert((acc, rank, rank_tax_id, count))
 
@@ -841,6 +842,11 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
 
     table1.close()
     table2.close()
+
+    if invalid_taxa:
+        for tax_id in invalid_taxa:
+            logger.debug("invalid tax ID: {}".format(tax_id))
+        logger.warning("{} invalid tax IDs".format(len(invalid_taxa)))
 
     for o in organizers:
         o.remove()
