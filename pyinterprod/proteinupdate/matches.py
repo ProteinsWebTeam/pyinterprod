@@ -45,8 +45,7 @@ def prepare_matches(user: str, dsn: str):
     cur = con.cursor()
 
     logger.info("adding new matches")
-    # cur.execute("TRUNCATE TABLE INTERPRO.MATCH_NEW")
-    orautils.drop_table(cur, "INTERPRO", "MATCH_NEW")
+    orautils.drop_table(cur, "INTERPRO", "MATCH_NEW", purge=True)
     cur.execute(
         """
         CREATE TABLE INTERPRO.MATCH_NEW NOLOGGING
@@ -210,6 +209,7 @@ def insert_matches(user: str, dsn: str, drop_indices: bool=False):
     for index in to_recreate:
         orautils.recreate_index(cur, index)
 
+    orautils.drop_table(cur, "INTERPRO", "MATCH_NEW", purge=True)
     cur.close()
     con.close()
 
@@ -319,7 +319,7 @@ def update_site_matches(user: str, dsn: str, drop_indices: bool=False):
     cur = con.cursor()
 
     logger.info("creating SITE_MATCH_NEW")
-    orautils.drop_table(cur, "INTERPRO", "SITE_MATCH_NEW")
+    orautils.drop_table(cur, "INTERPRO", "SITE_MATCH_NEW", purge=True)
     cur.execute(
         """
         CREATE TABLE INTERPRO.SITE_MATCH_NEW
@@ -410,5 +410,6 @@ def update_site_matches(user: str, dsn: str, drop_indices: bool=False):
     for index in to_recreate:
         orautils.recreate_index(cur, index)
 
+    orautils.drop_table(cur, "INTERPRO", "SITE_MATCH_NEW", purge=True)
     cur.close()
     con.close()
