@@ -145,7 +145,8 @@ def main():
             fn=uniprot.ask_to_snapshot,
             args=(db_users["interpro"], db_dsn),
             scheduler=dict(queue=queue, mem=500),
-            requires=["xref-summary", "xref-condensed"]
+            requires=["aa-iprscan", "xref-summary", "xref-condensed",
+                      "update-feature-matches"]
         ),
         Task(
             name="dump-xrefs",
