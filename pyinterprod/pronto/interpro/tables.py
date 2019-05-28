@@ -678,7 +678,7 @@ def _load_term_counts(user: str, dsn: str, organizers: list):
     for acc, terms in merge_organizers(organizers):
         counts = {}
         for go_id in terms:
-            if go_id in _terms:
+            if go_id in counts:
                 counts[go_id] += 1
             else:
                 counts[go_id] = 1
