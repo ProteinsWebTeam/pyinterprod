@@ -639,10 +639,8 @@ def _delete_iter(url: str, table: str, column: str, stop: int, step: int,
 
     if partition:
         dst = "{} PARTITION ({})".format(table, partition)
-        name = "{} ({})".format(table, partition)
     else:
         dst = "{}".format(table)
-        name = table
 
     cur.execute(
         """
