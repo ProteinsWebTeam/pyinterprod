@@ -438,19 +438,20 @@ def export_databases(user: str, dsn: str, dst: str):
         os.chmod(path, 0o775)
 
     send_mail(
-        to_addrs=["uniprot-database@ebi.ac.uk"],
+        to_addrs=["mblum@ebi.ac.uk"],
+        #to_addrs=["uniprot-database@ebi.ac.uk"],
         subject="InterPro XREF files are ready",
         content="""\
 Dear UniProt team,
 
 The InterPro cross-references files for {} are available in the following directory:
-  {} 
+  {}
 
 Best regards,
 The InterPro Production Team
         """.format(release, dst),
-        cc_addrs=["uniprot-prod@ebi.ac.uk"],
-        bcc_addrs=["interpro-team@ebi.ac.uk"]
+        #cc_addrs=["uniprot-prod@ebi.ac.uk"],
+        #bcc_addrs=["interpro-team@ebi.ac.uk"]
     )
 
     logger.info("complete")
@@ -595,7 +596,8 @@ The InterPro Production Team
 """
 
     send_mail(
-        to_addrs=["interpro-team@ebi.ac.uk"],
+        #to_addrs=["interpro-team@ebi.ac.uk"],
+        to_addrs=["mblum@ebi.ac.uk"],
         subject="Protein update {}: please snapshot IPPRO".format(release),
         content=content
     )
@@ -606,7 +608,7 @@ def report_integration_changes(user: str, dsn: str):
     cur = con.cursor()
     cur.execute(
         """
-        SELECT DISTINCT METHOD_AC, ENTRY_AC 
+        SELECT DISTINCT METHOD_AC, ENTRY_AC
         FROM INTERPRO.XREF_SUMMARY
         """
     )
@@ -614,7 +616,7 @@ def report_integration_changes(user: str, dsn: str):
     cur.execute(
         """
         SELECT M.METHOD_AC, EM.ENTRY_AC
-        FROM INTERPRO.METHOD M 
+        FROM INTERPRO.METHOD M
         LEFT OUTER JOIN INTERPRO.ENTRY2METHOD EM
           ON M.METHOD_AC = EM.METHOD_AC
         """
@@ -678,9 +680,10 @@ Entries
         content += "  - {:<40}{}\n".format(acc, lost_entries[acc])
 
     send_mail(
-        to_addrs=["aa_dev@ebi.ac.uk"],
-        cc_addrs=["unirule@ebi.ac.uk"],
-        bcc_addrs=["interpro-team@ebi.ac.uk"],
+        to_addrs=["mblum@ebi.ac.uk"],
+        #to_addrs=["aa_dev@ebi.ac.uk"],
+        #cc_addrs=["unirule@ebi.ac.uk"],
+        #bcc_addrs=["interpro-team@ebi.ac.uk"],
         subject="Protein update {}: integration changes".format(release),
         content=content
     )
