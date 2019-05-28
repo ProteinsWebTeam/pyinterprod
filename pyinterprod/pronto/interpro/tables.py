@@ -844,8 +844,6 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
     table2.close()
 
     if invalid_taxa:
-        for tax_id in invalid_taxa:
-            logger.debug("invalid tax ID: {}".format(tax_id))
         logger.warning("{} invalid tax IDs".format(len(invalid_taxa)))
 
     for o in organizers:
