@@ -622,7 +622,7 @@ def _load_comparisons(user: str, dsn: str, comparators: list):
     for acc_1 in comparisons:
         for acc_2, cnts in comparisons[acc_1].items():
             table.insert((acc_1, acc_2, *cnts))
-    table2.close()
+    table.close()
     comparisons = None
 
     for table in ("METHOD_COUNT", "METHOD_COMPARISON"):
