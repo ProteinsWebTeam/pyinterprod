@@ -273,7 +273,7 @@ def export_databases(user: str, dsn: str, dst: str):
 
     dbcodes = {
         'B': ("SFLD", "SFLD"),
-        'D': ("ProDom", "PD"),
+        #'D': ("ProDom", "PD"),  # ProDom removed from InterPro
         'F': ("PRINTS", "PP"),
         'H': ("Pfam", "PF"),
         'J': ("CDD", "CDD"),
