@@ -11,11 +11,254 @@ from . import sprot
 from .. import logger, orautils
 
 
-def update(user: str, dsn: str, swissprot_path: str, trembl_path: str,
-           version: str, date: str, dir: Optional[str]=None):
-    insert_new(user, dsn, swissprot_path, trembl_path, dir=dir)
+def insert_new(user: str, dsn: str, swissprot_path: str, trembl_path: str,
+               dir: Optional[str]=None):
+    logger.info("loading proteins")
+    with ProteinDatabase(dir=dir) as db:
+        url = orautils.make_connect_string(user, dsn)
+
+        count = db.insert_old(_get_proteins(url))
+        logger.info("UniProt proteins in InterPro: {}".format(count))
+
+        count = sprot.load(swissprot_path, db.path, "protein_new")
+        logger.info("New Swiss-Prot: {} proteins".format(count))
+
+        count = sprot.load(trembl_path, db.path, "protein_new")
+        logger.info("New TrEMBL: {} proteins".format(count))
+
+        logger.info("disk space used: {:.0f} MB".format(db.size/1024**2))
+
+        con = cx_Oracle.connect(url)
+        _init_protein_changes(con)
+
+        count = _update_proteins(con, db)
+        logger.info("{} proteins updated".format(count))
+
+        count = _insert_proteins(con, db)
+        logger.info("{} proteins added".format(count))
+
+        count = _prepare_deletion(con, db)
+        logger.info("{} proteins to delete".format(count))
+
+        con.close()
+
+
+def update_proteins(user: str, dsn: str, version: str, date: str):
     delete_obsolete(user, dsn, truncate=True)
     update_database_info(user, dsn, version, date)
+
+
+def delete_obsolete(user: str, dsn: str, truncate: bool=False):
+    url = orautils.make_connect_string(user, dsn)
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    tables = orautils.get_child_tables(cur, "INTERPRO", "PROTEIN")
+    tables.append({
+        "owner": "INTERPRO",
+        "name": "PROTEIN",
+        "constraint": None,
+        "column": "PROTEIN_AC"
+    })
+
+    if truncate:
+        logger.info("truncating MV*/*NEW tables")
+        _tables = []
+
+        for t in tables:
+            if t["name"].startswith("MV_") or t["name"].endswith("_NEW"):
+                cur.execute("TRUNCATE TABLE INTERPRO.{}".format(t["name"]))
+            else:
+                _tables.append(t)
+
+        tables = _tables
+
+    logger.info("disabling referential constraints")
+    num_errors = 0
+    for t in tables:
+        if t["constraint"]:
+            to, tn, tc = t["owner"], t["name"], t["constraint"]
+            if not orautils.toggle_constraint(cur, to, tn, tc, False):
+                logger.error("could not disable {}.{}".format(tn, tc))
+                num_errors += 1
+
+    if num_errors:
+        cur.close()
+        con.close()
+        raise RuntimeError("{} constraints "
+                           "could not be disabled".format(num_errors))
+
+    count = _count_proteins_to_delete(cur)
+    logger.info("{} proteins to delete".format(count))
+
+    jobs = []
+    for t in tables:
+        to, tn, tc = t["owner"], t["name"], t["column"]
+
+        if tn == "MATCH":
+            for p in orautils.get_partitions(cur, to, tn):
+                jobs.append((tn, tc, p["name"]))
+        else:
+            jobs.append((tn, tc, None))
+
+        # # TODO: fix: FEATURE_MATCH has partitions but then
+        # # ORA-02149: Specified partition does not exist is raised
+        # partitions = orautils.get_partitions(cur, to, tn)
+        # if partitions:
+        #     for p in partitions:
+        #         jobs.append((tn, tc, p["name"]))
+        # else:
+        #     jobs.append((tn, tc, None))
+
+    with ThreadPoolExecutor(max_workers=len(jobs)) as executor:
+        fs = {}
+
+        for tn, tc, pn in jobs:
+            f = executor.submit(_delete_iter, url, tn, tc, count, 10000, pn)
+            fs[f] = (tn, tc, pn)
+
+        num_errors = 0
+        for f in as_completed(fs):
+            tn, tc, pn = fs[f]
+            name = tn if pn is None else "{} ({})".format(tn, pn)
+
+            try:
+                f.result()  # returns None
+            except Exception as exc:
+                logger.error("{}: exited ({}: {})".format(name, exc.__class__.__name__, exc))
+                num_errors += 1
+            else:
+                logger.info("{}: done".format(name))
+
+        if num_errors:
+            cur.close()
+            con.close()
+            raise RuntimeError("{} tables failed".format(num_errors))
+
+    logger.info("enabling referential constraints")
+    num_errors = 0
+    constraints = set()
+    for t in tables:
+        to, tn, tc = t["owner"], t["name"], t["constraint"]
+
+        if not tc or tc in constraints:
+            """
+            Either no constraint
+            or prevent the same constrain to be enabled several times
+            """
+            continue
+
+        constraints.add(tc)
+        logger.debug("enabling: {}".format(tc))
+
+        if not orautils.toggle_constraint(cur, to, tn, tc, True):
+            logger.error("could not enable {}".format(tc))
+            num_errors += 1
+
+    cur.close()
+    con.close()
+    if num_errors:
+        raise RuntimeError("{} constraints "
+                           "could not be disabled".format(num_errors))
+
+    logger.info("complete")
+
+
+def update_database_info(user: str, dsn: str, version: str, date: str):
+    date = datetime.strptime(date, "%d-%b-%Y")
+    url = orautils.make_connect_string(user, dsn)
+
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute("SELECT COUNT(*) FROM INTERPRO.PROTEIN WHERE DBCODE = 'S'")
+    n_swissprot = cur.fetchone()[0]
+
+    cur.execute("SELECT COUNT(*) FROM INTERPRO.PROTEIN WHERE DBCODE = 'T'")
+    n_trembl = cur.fetchone()[0]
+
+    cur.executemany(
+        """
+        UPDATE INTERPRO.DB_VERSION
+        SET
+          VERSION = :1,
+          ENTRY_COUNT = :2,
+          FILE_DATE = :3,
+          LOAD_DATE = SYSDATE
+          WHERE DBCODE = :4
+        """,
+        [
+            (version, n_swissprot, date, 'S'),
+            (version, n_trembl, date, 'T'),
+            (version, n_swissprot + n_trembl, date, 'u')
+        ]
+    )
+    con.commit()
+    cur.close()
+    con.close()
+
+
+def find_protein_to_refresh(user: str, dsn: str):
+    logger.info("PROTEIN_TO_SCAN: refreshing")
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    orautils.drop_table(cur, "INTERPRO", "PROTEIN_TO_SCAN")
+
+    # Assume CRC64 have been checked and that no mismatches were found
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.PROTEIN_TO_SCAN NOLOGGING
+        AS
+        SELECT P.NEW_PROTEIN_AC AS PROTEIN_AC, X.UPI
+        FROM INTERPRO.PROTEIN_CHANGES P
+        INNER JOIN UNIPARC.XREF X
+          ON P.NEW_PROTEIN_AC = X.AC
+        WHERE X.DBID IN (2, 3)
+        AND X.DELETED = 'N'
+        """
+    )
+
+    orautils.gather_stats(cur, "INTERPRO", "PROTEIN_TO_SCAN")
+
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX PK_PROTEIN_TO_SCAN
+        ON INTERPRO.PROTEIN_TO_SCAN (PROTEIN_AC) NOLOGGING
+        """
+    )
+
+    cur.close()
+    con.close()
+
+
+def check_crc64(user: str, dsn: str):
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT IP.PROTEIN_AC, IP.CRC64, UP.CRC64
+        FROM INTERPRO.PROTEIN IP
+        INNER JOIN UNIPARC.XREF UX
+          ON IP.PROTEIN_AC = UX.AC
+        INNER JOIN UNIPARC.PROTEIN UP
+          ON UX.UPI = UP.UPI
+        WHERE UX.DBID IN (2, 3)
+        AND UX.DELETED = 'N'
+        AND IP.CRC64 != UP.CRC64
+        """
+    )
+
+    num_errors = 0
+    for row in cur:
+        logger.error("{}: {} / {}".format(*row))
+        num_errors += 1
+
+    cur.close()
+    con.close()
+
+    if num_errors:
+        raise RuntimeError("{} CRC64 mismatches".format(num_errors))
+    else:
+        logger.info("no CRC64 mismatches")
 
 
 class ProteinDatabase(object):
@@ -389,38 +632,6 @@ def _init_protein_changes(con: cx_Oracle.Connection):
     cur.close()
 
 
-def insert_new(user: str, dsn: str, swissprot_path: str, trembl_path: str,
-               dir: Optional[str]=None):
-    logger.info("loading proteins")
-    with ProteinDatabase(dir=dir) as db:
-        url = orautils.make_connect_string(user, dsn)
-
-        count = db.insert_old(_get_proteins(url))
-        logger.info("UniProt proteins in InterPro: {}".format(count))
-
-        count = sprot.load(swissprot_path, db.path, "protein_new")
-        logger.info("New Swiss-Prot: {} proteins".format(count))
-
-        count = sprot.load(trembl_path, db.path, "protein_new")
-        logger.info("New TrEMBL: {} proteins".format(count))
-
-        logger.info("disk space used: {:.0f} MB".format(db.size/1024**2))
-
-        con = cx_Oracle.connect(url)
-        _init_protein_changes(con)
-
-        count = _update_proteins(con, db)
-        logger.info("{} proteins updated".format(count))
-
-        count = _insert_proteins(con, db)
-        logger.info("{} proteins added".format(count))
-
-        count = _prepare_deletion(con, db)
-        logger.info("{} proteins to delete".format(count))
-
-        con.close()
-
-
 def _delete_iter(url: str, table: str, column: str, stop: int, step: int,
                  partition: Optional[str]=None):
     con = cx_Oracle.connect(url)
@@ -463,216 +674,3 @@ def _delete_iter(url: str, table: str, column: str, stop: int, step: int,
 
     cur.close()
     con.close()
-
-
-def delete_obsolete(user: str, dsn: str, truncate: bool=False):
-    url = orautils.make_connect_string(user, dsn)
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-
-    tables = orautils.get_child_tables(cur, "INTERPRO", "PROTEIN")
-    tables.append({
-        "owner": "INTERPRO",
-        "name": "PROTEIN",
-        "constraint": None,
-        "column": "PROTEIN_AC"
-    })
-
-    if truncate:
-        logger.info("truncating MV*/*NEW tables")
-        _tables = []
-
-        for t in tables:
-            if t["name"].startswith("MV_") or t["name"].endswith("_NEW"):
-                cur.execute("TRUNCATE TABLE INTERPRO.{}".format(t["name"]))
-            else:
-                _tables.append(t)
-
-        tables = _tables
-
-    logger.info("disabling referential constraints")
-    num_errors = 0
-    for t in tables:
-        if t["constraint"]:
-            to, tn, tc = t["owner"], t["name"], t["constraint"]
-            if not orautils.toggle_constraint(cur, to, tn, tc, False):
-                logger.error("could not disable {}.{}".format(tn, tc))
-                num_errors += 1
-
-    if num_errors:
-        cur.close()
-        con.close()
-        raise RuntimeError("{} constraints "
-                           "could not be disabled".format(num_errors))
-
-    count = _count_proteins_to_delete(cur)
-    logger.info("{} proteins to delete".format(count))
-
-    jobs = []
-    for t in tables:
-        to, tn, tc = t["owner"], t["name"], t["column"]
-
-        if tn == "MATCH":
-            for p in orautils.get_partitions(cur, to, tn):
-                jobs.append((tn, tc, p["name"]))
-        else:
-            jobs.append((tn, tc, None))
-
-        # # TODO: fix: FEATURE_MATCH has partitions but then
-        # # ORA-02149: Specified partition does not exist is raised
-        # partitions = orautils.get_partitions(cur, to, tn)
-        # if partitions:
-        #     for p in partitions:
-        #         jobs.append((tn, tc, p["name"]))
-        # else:
-        #     jobs.append((tn, tc, None))
-
-    with ThreadPoolExecutor(max_workers=len(jobs)) as executor:
-        fs = {}
-
-        for tn, tc, pn in jobs:
-            f = executor.submit(_delete_iter, url, tn, tc, count, 10000, pn)
-            fs[f] = (tn, tc, pn)
-
-        num_errors = 0
-        for f in as_completed(fs):
-            tn, tc, pn = fs[f]
-            name = tn if pn is None else "{} ({})".format(tn, pn)
-
-            try:
-                f.result()  # returns None
-            except Exception as exc:
-                logger.error("{}: exited ({}: {})".format(name, exc.__class__.__name__, exc))
-                num_errors += 1
-            else:
-                logger.info("{}: done".format(name))
-
-        if num_errors:
-            cur.close()
-            con.close()
-            raise RuntimeError("{} tables failed".format(num_errors))
-
-    logger.info("enabling referential constraints")
-    num_errors = 0
-    constraints = set()
-    for t in tables:
-        to, tn, tc = t["owner"], t["name"], t["constraint"]
-
-        if not tc or tc in constraints:
-            """
-            Either no constraint
-            or prevent the same constrain to be enabled several times
-            """
-            continue
-
-        constraints.add(tc)
-        logger.debug("enabling: {}".format(tc))
-
-        if not orautils.toggle_constraint(cur, to, tn, tc, True):
-            logger.error("could not enable {}".format(tc))
-            num_errors += 1
-
-    cur.close()
-    con.close()
-    if num_errors:
-        raise RuntimeError("{} constraints "
-                           "could not be disabled".format(num_errors))
-
-    logger.info("complete")
-
-
-def update_database_info(user: str, dsn: str, version: str, date: str):
-    date = datetime.strptime(date, "%d-%b-%Y")
-    url = orautils.make_connect_string(user, dsn)
-
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute("SELECT COUNT(*) FROM INTERPRO.PROTEIN WHERE DBCODE = 'S'")
-    n_swissprot = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM INTERPRO.PROTEIN WHERE DBCODE = 'T'")
-    n_trembl = cur.fetchone()[0]
-
-    cur.executemany(
-        """
-        UPDATE INTERPRO.DB_VERSION
-        SET
-          VERSION = :1,
-          ENTRY_COUNT = :2,
-          FILE_DATE = :3,
-          LOAD_DATE = SYSDATE
-          WHERE DBCODE = :4
-        """,
-        [
-            (version, n_swissprot, date, 'S'),
-            (version, n_trembl, date, 'T'),
-            (version, n_swissprot + n_trembl, date, 'u')
-        ]
-    )
-    con.commit()
-    cur.close()
-    con.close()
-
-
-def find_protein_to_refresh(user: str, dsn: str):
-    logger.info("PROTEIN_TO_SCAN: refreshing")
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    orautils.drop_table(cur, "INTERPRO", "PROTEIN_TO_SCAN")
-
-    # Assume CRC64 have been checked and that no mismatches were found
-    cur.execute(
-        """
-        CREATE TABLE INTERPRO.PROTEIN_TO_SCAN NOLOGGING
-        AS
-        SELECT P.NEW_PROTEIN_AC AS PROTEIN_AC, X.UPI
-        FROM INTERPRO.PROTEIN_CHANGES P
-        INNER JOIN UNIPARC.XREF X
-          ON P.NEW_PROTEIN_AC = X.AC
-        WHERE X.DBID IN (2, 3)
-        AND X.DELETED = 'N'
-        """
-    )
-
-    orautils.gather_stats(cur, "INTERPRO", "PROTEIN_TO_SCAN")
-
-    cur.execute(
-        """
-        CREATE UNIQUE INDEX PK_PROTEIN_TO_SCAN
-        ON INTERPRO.PROTEIN_TO_SCAN (PROTEIN_AC) NOLOGGING
-        """
-    )
-
-    cur.close()
-    con.close()
-
-
-def check_crc64(user: str, dsn: str):
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT IP.PROTEIN_AC, IP.CRC64, UP.CRC64
-        FROM INTERPRO.PROTEIN IP
-        INNER JOIN UNIPARC.XREF UX
-          ON IP.PROTEIN_AC = UX.AC
-        INNER JOIN UNIPARC.PROTEIN UP
-          ON UX.UPI = UP.UPI
-        WHERE UX.DBID IN (2, 3)
-        AND UX.DELETED = 'N'
-        AND IP.CRC64 != UP.CRC64
-        """
-    )
-
-    num_errors = 0
-    for row in cur:
-        logger.error("{}: {} / {}".format(*row))
-        num_errors += 1
-
-    cur.close()
-    con.close()
-
-    if num_errors:
-        raise RuntimeError("{} CRC64 mismatches".format(num_errors))
-    else:
-        logger.info("no CRC64 mismatches")

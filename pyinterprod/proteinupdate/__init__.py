@@ -41,17 +41,27 @@ def main():
 
     tasks = [
         Task(
-            name="update-proteins",
-            fn=proteins.update,
+            name="load-proteins",
+            fn=proteins.insert_new,
             args=(
                 db_users["interpro"], db_dsn,
                 config["flat_files"]["swissprot"],
-                config["flat_files"]["trembl"],
-                config["release"]["version"], config["release"]["date"]
+                config["flat_files"]["trembl"]
             ),
             kwargs=dict(dir="/scratch"),
             scheduler=dict(queue=queue, mem=500, scratch=30000)
         ),
+        Task(
+            name="update-proteins",
+            fn=proteins.update_proteins,
+            args=(
+                db_users["interpro"], db_dsn,
+                config["release"]["version"], config["release"]["date"]
+            ),
+            scheduler=dict(queue=queue, mem=500),
+            requires=["load-proteins"]
+        ),
+
         Task(
             name="update-uniparc",
             fn=uniparc.update,
