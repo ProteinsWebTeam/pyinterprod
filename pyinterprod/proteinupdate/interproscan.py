@@ -343,15 +343,15 @@ def _check_ispro(url: str, max_attempts: int=1, secs: int=3600,
                 status = "not ready"
                 not_ready += 1
 
-            if e["site_table"]:
-                _site_table = e["site_table"]
-            else:
-                _site_table = ""
+
+            _site_table = e["site_table"] if e["site_table"] else ""
+            _upi = e["upi"] if e["upi"] else ""
 
             logger.debug("{id:<5}{full_name:<30}{match_table:<30}"
-                         "{_site_table:<30}{upi:<20}"
+                         "{_site_table:<30}{_upi:<20}"
                          "{status}".format(**e, status=status,
-                                           _site_table=_site_table))
+                                           _site_table=_site_table,
+                                           _upi=_upi))
 
         num_attempts += 1
         if not_ready == 0:
@@ -568,8 +568,8 @@ def _insert_sites(cur: cx_Oracle.Cursor, owner: str, table_src: str,
     cur.execute(
         """
         INSERT /*+ APPEND */ INTO {0}.{1}
-        SELECT 
-            UPI, ANALYSIS_ID, METHOD_AC, LOC_START, LOC_END, NUM_SITES, 
+        SELECT
+            UPI, ANALYSIS_ID, METHOD_AC, LOC_START, LOC_END, NUM_SITES,
             RESIDUE, RES_START, RES_END, DESCRIPTION
         FROM {0}.{2}
         WHERE ANALYSIS_ID = :1
