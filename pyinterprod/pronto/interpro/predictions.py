@@ -164,15 +164,11 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
         """.format(owner)
     )
     ranks = {}
-    taxa = {}
     for tax_id, rank, rank_tax_id in cur:
         if tax_id in ranks:
             ranks[tax_id].append(rank)
         else:
             ranks[tax_id] = [rank]
-
-        if tax_id == rank_tax_id:
-            taxa[tax_id] = rank
 
     cur.execute(
         """
@@ -185,14 +181,16 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
     accessions = []
     _tax_id = None
     for acc, tax_id in cur:
-        rank = taxa[tax_id]
         if acc in signatures:
-            if rank in signatures[acc]:
-                signatures[acc][rank] += 1
-            else:
-                signatures[acc][rank] = 1
+            s = signatures[acc]
         else:
-            signatures[acc] = {rank: 1}
+            s = signatures[acc] = {}
+
+        for rank in ranks[tax_id]:
+            if rank in s:
+                s[rank] += 1
+            else:
+                s[rank] = 1
 
         if tax_id != _tax_id:
             task_queue.put((ranks[_tax_id], accessions))
