@@ -193,13 +193,15 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
                 s[rank] = 1
 
         if tax_id != _tax_id:
-            task_queue.put((ranks[_tax_id], accessions))
+            if _tax_id:
+                task_queue.put((ranks[_tax_id], accessions))
             _tax_id = tax_id
             accessions = []
 
         accessions.append(acc)
 
-    task_queue.put((ranks[_tax_id], accessions))
+    if _tax_id:
+        task_queue.put((ranks[_tax_id], accessions))
     accessions = []
     cur.close()
     con.close()
