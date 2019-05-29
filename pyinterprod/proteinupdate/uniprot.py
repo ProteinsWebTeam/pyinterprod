@@ -552,6 +552,14 @@ def ask_to_snapshot(user: str, dsn: str):
         if version:
             name += " (" + version + ")"
         updates.append((name, analysis_id))
+
+    cur.execute(
+        """
+        UPDATE INTERPRO.IPRSCAN2DBCODE
+        SET PREV_ID = IPRSCAN_SIG_LIB_REL_ID
+        """
+    )
+    con.commit()
     cur.close()
     con.close()
 
@@ -582,7 +590,6 @@ The max UPI we processed up to in this update is {}.
         content += """
 We have updated the following databases since the previous protein update:
 """
-
         for db in updates:
             content += "  - {:<30}{:<15}\n".format(*db)
     else:
