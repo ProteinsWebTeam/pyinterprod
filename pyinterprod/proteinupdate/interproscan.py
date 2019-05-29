@@ -304,7 +304,8 @@ def _get_analyses(url: str) -> List[dict]:
 
         match_tables.add(match_table)
         analyses.append({
-            "id": row[0],
+            # TODO: remove after debug
+            "id": row[0] if row[4] == "ipm_cdd_site" else 57,
             "full_name": row[1],
             "name": row[2],
             "match_table": match_table,
