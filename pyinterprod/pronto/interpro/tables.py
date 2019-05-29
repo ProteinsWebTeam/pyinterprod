@@ -475,7 +475,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         chunk = []
         matches = []
         num_proteins += 1
-        logger.debug("proteins: {:,}".format(num_proteins))
+    logger.debug("proteins: {:,}".format(num_proteins))
 
     for _ in consumers:
         task_queue.put(None)
