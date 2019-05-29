@@ -95,20 +95,18 @@ def delete_obsolete(user: str, dsn: str, truncate: bool=False):
     for t in tables:
         to, tn, tc = t["owner"], t["name"], t["column"]
 
-        if tn == "MATCH":
-            for p in orautils.get_partitions(cur, to, tn):
-                jobs.append((tn, tc, p["name"]))
-        else:
-            jobs.append((tn, tc, None))
-
-        # # TODO: fix: FEATURE_MATCH has partitions but then
-        # # ORA-02149: Specified partition does not exist is raised
-        # partitions = orautils.get_partitions(cur, to, tn)
-        # if partitions:
-        #     for p in partitions:
+        # if tn == "MATCH":
+        #     for p in orautils.get_partitions(cur, to, tn):
         #         jobs.append((tn, tc, p["name"]))
         # else:
         #     jobs.append((tn, tc, None))
+
+        partitions = orautils.get_partitions(cur, to, tn)
+        if partitions:
+            for p in partitions:
+                jobs.append((tn, tc, p["name"]))
+        else:
+            jobs.append((tn, tc, None))
 
     with ThreadPoolExecutor(max_workers=len(jobs)) as executor:
         fs = {}
