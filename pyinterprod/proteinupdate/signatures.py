@@ -21,9 +21,9 @@ def update_method2descriptions(user: str, dsn: str):
 
     cur.execute(
         """
-        ALTER TABLE INTERPRO.METHOD2SWISS_DE 
-        ADD CONSTRAINT PK_METHOD2SWISS 
-        PRIMARY KEY (PROTEIN_AC, METHOD_AC);
+        ALTER TABLE INTERPRO.METHOD2SWISS_DE
+        ADD CONSTRAINT PK_METHOD2SWISS
+        PRIMARY KEY (PROTEIN_AC, METHOD_AC)
         """
     )
 
