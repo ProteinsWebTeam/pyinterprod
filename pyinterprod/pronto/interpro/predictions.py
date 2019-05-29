@@ -46,7 +46,7 @@ def get_descriptions(user: str, dsn: str, processes: int=4,
     pool = []
     task_queue = Queue(1)
     done_queue = Queue()
-    for _ in range(processes):
+    for _ in range(max(1, processes-1)):
         p = Process(target=_cmp_descriptions,
                     args=(keys, task_queue, done_queue, dir))
         p.start()
@@ -151,7 +151,7 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
     pool = []
     task_queue = Queue(1)
     done_queue = Queue()
-    for _ in range(processes):
+    for _ in range(max(1, processes-1)):
         p = Process(target=_cmp_taxa,
                     args=(keys, task_queue, done_queue, dir))
         p.start()
