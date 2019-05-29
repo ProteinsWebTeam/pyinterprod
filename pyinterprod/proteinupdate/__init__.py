@@ -5,6 +5,7 @@
 def main():
     import argparse
     import json
+    import sys
 
     from mundone import Task, Workflow
 
@@ -193,5 +194,7 @@ def main():
 
     wdir = config["workflow"]["dir"]
     wname = "Protein Update"
-    with Workflow(tasks, name=wname, dir=wdir, mail=None) as w:
-        w.run(args.tasks, resume=args.resume, dry=args.dry_run)
+    with Workflow(tasks, name=wname, dir=wdir) as w:
+        success = w.run(args.tasks, resume=args.resume, dry=args.dry_run)
+
+    sys.exit(0 if success else 1)
