@@ -123,7 +123,7 @@ def _cmp_taxa(keys: List[str], task_queue: Queue, done_queue: Queue,
             for acc_2 in accessions[i+1:]:
                 o.add(acc_1, (acc_2, tax_id))
 
-        o.flush()
+            o.flush()
 
     size = o.merge()
     done_queue.put((o, size))
