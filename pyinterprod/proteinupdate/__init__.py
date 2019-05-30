@@ -199,6 +199,6 @@ def main():
     wname = "Protein Update"
     with Workflow(tasks, name=wname, dir=wdir) as w:
         success = w.run(args.tasks, resume=args.resume, dry=args.dry_run,
-                        self=args.submit)
+                        secs=args.submit)
 
     sys.exit(0 if success else 1)
