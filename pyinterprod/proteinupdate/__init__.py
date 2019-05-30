@@ -22,6 +22,9 @@ def main():
                         help="list tasks to run and exit")
     parser.add_argument("--resume", action="store_true", default=False,
                         help="skip completed tasks")
+    parser.add_argument("--submit", action="store_const",
+                        const=0, default=60,
+                        help="submit tasks to run and exit")
     parser.add_argument("-v", "--version", action="version",
                         version="%(prog)s {}".format(__version__),
                         help="show the version and exit")
@@ -195,6 +198,7 @@ def main():
     wdir = config["workflow"]["dir"]
     wname = "Protein Update"
     with Workflow(tasks, name=wname, dir=wdir) as w:
-        success = w.run(args.tasks, resume=args.resume, dry=args.dry_run)
+        success = w.run(args.tasks, resume=args.resume, dry=args.dry_run,
+                        self=args.submit)
 
     sys.exit(0 if success else 1)
