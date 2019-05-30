@@ -5,7 +5,6 @@ from typing import Dict, List, Optional, Tuple
 
 import cx_Oracle
 
-from . import RANKS
 from .utils import Organizer, merge_organizers
 from ... import logger, orautils
 
@@ -118,14 +117,13 @@ def get_descriptions(user: str, dsn: str, processes: int=4,
 def _cmp_taxa(keys: List[str], task_queue: Queue, done_queue: Queue,
               dir: Optional[str]=None):
     o = Organizer(keys, dir=dir)
-    for ranks, accessions in iter(task_queue.get, None):
+    for tax_id, accessions in iter(task_queue.get, None):
         accessions.sort()
         for i, acc_1 in enumerate(accessions):
             for acc_2 in accessions[i+1:]:
-                for rank in ranks:
-                    o.add(acc_1, (rank, acc_2))
+                o.add(acc_1, (acc_2, tax_id))
 
-            o.flush()
+        o.flush()
 
     size = o.merge()
     done_queue.put((o, size))
@@ -159,19 +157,6 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
 
     cur.execute(
         """
-        SELECT TAX_ID, RANK, RANK_TAX_ID
-        FROM {}.LINEAGE
-        """.format(owner)
-    )
-    ranks = {}
-    for tax_id, rank, rank_tax_id in cur:
-        if tax_id in ranks:
-            ranks[tax_id].append(rank)
-        else:
-            ranks[tax_id] = [rank]
-
-    cur.execute(
-        """
         SELECT METHOD_AC, TAX_ID
         FROM {}.METHOD_TAXA_TMP
         ORDER BY TAX_ID
@@ -179,29 +164,29 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
     )
     signatures = {}
     accessions = []
+    n = -1
     _tax_id = None
     for acc, tax_id in cur:
         if acc in signatures:
-            s = signatures[acc]
-        else:
-            s = signatures[acc] = {}
-
-        for rank in ranks[tax_id]:
-            if rank in s:
-                s[rank] += 1
+            if tax_id in signatures[acc]:
+                signatures[acc][tax_id] += 1
             else:
-                s[rank] = 1
+                signatures[acc][tax_id] = 1
+        else:
+            signatures[acc] = {tax_id: 1}
 
         if tax_id != _tax_id:
-            if _tax_id:
-                task_queue.put((ranks[_tax_id], accessions))
+            task_queue.put((_tax_id, accessions))
+            n += 1
+            logger.debug("{:>10}\t{:<20}".format(n, _tax_id))
             _tax_id = tax_id
             accessions = []
 
         accessions.append(acc)
 
-    if _tax_id:
-        task_queue.put((ranks[_tax_id], accessions))
+    task_queue.put((_tax_id, accessions))
+    n += 1
+    logger.debug("{:>10}\t{:<20}".format(n, _tax_id))
     accessions = []
     cur.close()
     con.close()
@@ -222,14 +207,14 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
     organizer = Organizer(keys, dir=dir)
     for acc_1, items in merge_organizers(organizers):
         counts = {}
-        for rank, acc_2 in items:
-            if rank in counts:
-                if acc_2 in counts[rank]:
-                    counts[rank][acc_2] += 1
+        for acc_2, tax_id in items:
+            if acc_2 in counts:
+                if tax_id in counts[acc_2]:
+                    counts[acc_2][tax_id] += 1
                 else:
-                    counts[rank][acc_2] = 1
+                    counts[acc_2][tax_id] = 1
             else:
-                counts[rank] = {acc_2: 1}
+                counts[acc_2] = {tax_id: 1}
 
         organizer.write(acc_1, counts)
 
