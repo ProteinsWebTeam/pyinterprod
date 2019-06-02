@@ -165,7 +165,7 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
     signatures = {}
     accessions = []
     n = -1
-    _tax_id = None
+    _tax_id = ""
     for acc, tax_id in cur:
         if acc in signatures:
             if tax_id in signatures[acc]:
