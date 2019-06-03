@@ -343,7 +343,6 @@ def _check_ispro(url: str, max_attempts: int=1, secs: int=3600,
                 status = "not ready"
                 not_ready += 1
 
-
             _site_table = e["site_table"] if e["site_table"] else ""
             _upi = e["upi"] if e["upi"] else ""
 
