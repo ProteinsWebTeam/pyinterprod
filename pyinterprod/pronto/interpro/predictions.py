@@ -173,9 +173,9 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
     cur.execute(
         """
         SELECT METHOD_AC, TAX_ID
-        FROM INTERPRO_ANALYSIS_LOAD.METHOD_TAXA_TMP
+        FROM {}.METHOD_TAXA_TMP
         ORDER BY METHOD_AC
-        """
+        """.format(owner)
     )
     _acc = None
     taxa = set()
