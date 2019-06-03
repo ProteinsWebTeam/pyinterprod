@@ -221,6 +221,7 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
     for p in pool:
         p.join()
 
+    done_queue.put(None)
     agg.join()
 
     signatures = {}
