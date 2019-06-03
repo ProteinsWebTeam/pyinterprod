@@ -147,7 +147,8 @@ def _cmp_taxa(keys: List[str], src: str, task_queue: Queue, done_queue: Queue):
 
     for acc_1, taxa_1 in iter(task_queue.get, None):
         for acc_2, taxa_2 in o:
-            done_queue.put((acc_1, acc_2, taxa_1 & taxa_2))
+            if acc_1 < acc_2:
+                done_queue.put((acc_1, acc_2, taxa_1 & taxa_2))
 
 
 def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
