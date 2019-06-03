@@ -114,19 +114,42 @@ def get_descriptions(user: str, dsn: str, processes: int=4,
     return signatures, organizer
 
 
-def _cmp_taxa(keys: List[str], task_queue: Queue, done_queue: Queue,
+def _agg_taxa(user: str, dsn: str, keys: List[str], task_queue: Queue,
               dir: Optional[str]=None):
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    cur.execute("SELECT TAX_ID, RANK FROM {}.LINEAGE".format(owner))
+    ranks = {}
+    for tax_id, rank in cur:
+        if tax_id in ranks:
+            ranks[tax_id].append(rank)
+        else:
+            ranks[tax_id] = [rank]
+    cur.close()
+    con.close()
+
     o = Organizer(keys, dir=dir)
-    for tax_id, accessions in iter(task_queue.get, None):
-        accessions.sort()
-        for i, acc_1 in enumerate(accessions):
-            for acc_2 in accessions[i+1:]:
-                o.add(acc_1, (acc_2, tax_id))
+    for acc_1, acc_2, taxa in iter(task_queue.get, None):
+        counts = {}
+        for tax_id in taxa:
+            for rank in ranks[tax_id]:
+                if rank in counts:
+                    counts[rank] += 1
+                else:
+                    counts[rank] = 1
 
-            o.flush()
+        o.write(acc_1, (acc_2, counts))
+        logger.debug("{:<30}\t{:<30}".format(acc_1, acc_2))
 
-    size = o.merge()
-    done_queue.put((o, size))
+
+def _cmp_taxa(keys: List[str], src: str, task_queue: Queue, done_queue: Queue):
+    o = Organizer(keys, exists=True, dir=src)
+
+    for acc_1, taxa_1 in iter(task_queue.get, None):
+        for acc_2, items in o:
+            taxa_2 = items[0]
+            done_queue.put((acc_1, acc_2, taxa_1 & taxa_2))
 
 
 def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
@@ -146,84 +169,61 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
         if not i % bucket_size:
             keys.append(row[0])
 
-    pool = []
-    task_queue = Queue(1)
-    done_queue = Queue()
-    for _ in range(max(1, processes-1)):
-        p = Process(target=_cmp_taxa,
-                    args=(keys, task_queue, done_queue, dir))
-        p.start()
-        pool.append(p)
-
+    logger.debug("exporting")
     cur.execute(
         """
         SELECT METHOD_AC, TAX_ID
-        FROM {}.METHOD_TAXA_TMP
-        ORDER BY TAX_ID
-        """.format(owner)
+        FROM INTERPRO_ANALYSIS_LOAD.METHOD_TAXA_TMP
+        ORDER BY METHOD_AC
+        """
     )
-    signatures = {}
-    accessions = []
-    n = -1
-    _tax_id = ""
+    _acc = None
+    taxa = set()
+    organizer = Organizer(keys, dir=dir)
     for acc, tax_id in cur:
-        if acc in signatures:
-            if tax_id in signatures[acc]:
-                signatures[acc][tax_id] += 1
-            else:
-                signatures[acc][tax_id] = 1
-        else:
-            signatures[acc] = {tax_id: 1}
+        if acc != _acc:
+            if _acc:
+                organizer.write(_acc, taxa)
 
-        if tax_id != _tax_id:
-            task_queue.put((_tax_id, accessions))
-            n += 1
-            logger.debug("{:>10}\t{:<20}".format(n, _tax_id))
-            _tax_id = tax_id
-            accessions = []
+            _acc = acc
+            taxa = set()
 
-        accessions.append(acc)
+        taxa.add(tax_id)
 
-    task_queue.put((_tax_id, accessions))
-    n += 1
-    logger.debug("{:>10}\t{:<20}".format(n, _tax_id))
-    accessions = []
+    if _acc:
+        organizer.write(_acc, taxa)
+        taxa = set()
+
     cur.close()
     con.close()
+
+    logger.debug("disk usage (taxonomy): {:.0f} MB".format(organizer.size/1024**2))
+
+    pool = []
+    task_queue = Queue(1)
+    done_queue = Queue(1)
+    for _ in range(max(1, processes - 2)):
+        p = Process(target=_cmp_taxa,
+                    args=(keys, organizer.dir, task_queue, done_queue))
+        p.start()
+        pool.append(p)
+
+    agg = Process(target=_agg_taxa, args=(user, dsn, keys, done_queue, dir))
+    agg.start()
+
+    logger.debug("comparing")
+    for acc, items in organizer:
+        task_queue.put((acc, items[0]))
 
     for _ in pool:
         task_queue.put(None)
 
-    organizers = []
-    size = 0
-    for _ in pool:
-        o, s = done_queue.get()
-        organizers.append(o)
-        size += s
-
     for p in pool:
         p.join()
 
-    organizer = Organizer(keys, dir=dir)
-    for acc_1, items in merge_organizers(organizers):
-        counts = {}
-        for acc_2, tax_id in items:
-            if acc_2 in counts:
-                if tax_id in counts[acc_2]:
-                    counts[acc_2][tax_id] += 1
-                else:
-                    counts[acc_2][tax_id] = 1
-            else:
-                counts[acc_2] = {tax_id: 1}
+    agg.join()
 
-        organizer.write(acc_1, counts)
-
-    size += organizer.size
-    logger.debug("disk usage (taxonomy): {:.0f} MB".format(size/1024**2))
-
-    for o in organizers:
-        o.remove()
-
+    signatures = {}
     return signatures, organizer
 
 
