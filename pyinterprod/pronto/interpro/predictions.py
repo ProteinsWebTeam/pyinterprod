@@ -147,8 +147,7 @@ def _cmp_taxa(keys: List[str], src: str, task_queue: Queue, done_queue: Queue):
     o = Organizer(keys, exists=True, dir=src)
 
     for acc_1, taxa_1 in iter(task_queue.get, None):
-        for acc_2, items in o:
-            taxa_2 = items[0]
+        for acc_2, taxa_2 in o:
             done_queue.put((acc_1, acc_2, taxa_1 & taxa_2))
 
 
@@ -212,8 +211,8 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
     agg.start()
 
     logger.debug("comparing")
-    for acc, items in organizer:
-        task_queue.put((acc, items[0]))
+    for acc, taxa in organizer:
+        task_queue.put((acc, taxa))
 
     for _ in pool:
         task_queue.put(None)
