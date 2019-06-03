@@ -140,7 +140,6 @@ def _agg_taxa(user: str, dsn: str, keys: List[str], task_queue: Queue,
                     counts[rank] = 1
 
         o.write(acc_1, (acc_2, counts))
-        logger.debug("{:<30}\t{:<30}".format(acc_1, acc_2))
 
 
 def _cmp_taxa(keys: List[str], src: str, task_queue: Queue, done_queue: Queue):
@@ -213,6 +212,7 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
     logger.debug("comparing")
     for acc, taxa in organizer:
         task_queue.put((acc, taxa))
+        logger.debug(acc)
 
     for _ in pool:
         task_queue.put(None)
