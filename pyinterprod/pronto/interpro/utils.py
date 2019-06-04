@@ -6,7 +6,7 @@ import heapq
 import os
 import pickle
 import sqlite3
-from abc import ABC, abstractmethod
+from abc import ABC
 from multiprocessing import Pool
 from tempfile import mkdtemp, mkstemp
 from typing import Any, Dict, Generator, Iterable, List, Optional, Union
@@ -191,8 +191,8 @@ class Comparator(ABC):
                 except EOFError:
                     break
                 else:
-                    for acc_1, cnts in signatures.items():
-                        yield acc_1, cnts, comparisons[acc_1]
+                    for acc_1, val in signatures.items():
+                        yield acc_1, val, comparisons[acc_1]
 
     @property
     def size(self) -> int:
@@ -207,9 +207,24 @@ class Comparator(ABC):
     def remove(self):
         os.remove(self.path)
 
-    @abstractmethod
-    def update(self, *args):
-        pass
+    def update(self, accessions: List[str], incr: int=1):
+        if not incr:
+            return
+            
+        for acc_1 in accessions:
+            if acc_1 in self.signatures:
+                self.signatures[acc_1] += incr
+            else:
+                self.signatures[acc_1] = incr
+                self.comparisons[acc_1] = {}
+
+            for acc_2 in signatures:
+                if acc_1 >= acc_2:
+                    continue
+                elif acc_2 in self.comparisons[acc_1]:
+                    self.comparisons[acc_1][acc_2] += incr
+                else:
+                    self.comparisons[acc_1][acc_2] = incr
 
 
 class TaxonomyComparator(Comparator):
@@ -415,3 +430,33 @@ class Kvdb(object):
     def remove(self):
         self.close()
         os.remove(self.filepath)
+
+
+def merge_comparators(comparators: Iterable[Comparator]) -> Tuple[dict, dict]:
+    signatures = {}
+    comparisons = {}
+    for c in comparators:
+        for acc_1, val, _comparisons in c:
+            if acc_1 in signatures:
+                if isinstance(val, list):
+                    for i, v in enumerate(val):
+                        signatures[acc_1][i] += v
+                else:
+                    signatures[acc_1] += val
+
+                for acc_2, val in _comparisons.items():
+                    if acc_2 in comparisons[acc_1]:
+                        if isinstance(val, list):
+                            for i, v in enumerate(val):
+                                comparisons[acc_1][acc_2][i] += v
+                        else:
+                            comparisons[acc_1][acc_2] += val
+                    else:
+                        comparisons[acc_1][acc_2] = val
+            else:
+                signatures[acc_1] = val
+                comparisons[acc_1] = _comparisons
+
+        c.remove()
+
+    return signatures, comparisons

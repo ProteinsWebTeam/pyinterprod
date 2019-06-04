@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 
+import json
 import os
 import pickle
 from multiprocessing import Process, Queue
-from typing import Optional
+from typing import Optional, Tuple
 
 import cx_Oracle
 
 from . import proteins, RANKS
-from .utils import Kvdb, merge_organizers
+from .utils import Kvdb, merge_comparators, merge_organizers
 from ... import logger, orautils
 
 
@@ -502,36 +503,31 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     names = []
     taxa = []
     terms = []
-    m_comparators = []
-    t_comparators = []
-    sizes = [0, 0, 0, 0, 0]
+    comparators = ([], [], [], [])
+    size = 0
     for _ in consumers:
-        _names, _taxa, _terms, m_comparator, t_comparator, _sizes = done_queue.get()
-        names.append(_names)
-        taxa.append(_taxa)
-        terms.append(_terms)
-        m_comparators.append(m_comparator)
-        t_comparators.append(t_comparator)
-
-        for i, size in enumerate(_sizes):
-            sizes[i] += size
+        # 4 comparators, 3 organizers, size
+        obj = done_queue.get()
+        for i in range(4):
+            comparators[i].append(obj[i])
+        names.append(obj[4])
+        taxa.append(obj[5])
+        terms.append(obj[6])
+        size += obj[7]
 
     for p in consumers:
         p.join()
 
-    logger.debug("disk usage:")
-    logger.debug("\tdescr.: {:.0f} MB".format(sizes[0]/1024**2))
-    logger.debug("\ttaxa: {:.0f} MB".format(sizes[1]/1024**2))
-    logger.debug("\tranks: {:.0f} MB".format(sizes[2]/1024**2))
-    logger.debug("\tGO terms: {:.0f} MB".format(sizes[3]/1024**2))
-    logger.debug("\toverlaps: {:.0f} MB".format(sizes[4]/1024**2))
-    logger.debug("\ttotal: {:.0f} MB".format(sum(sizes)/1024**2))
+    logger.info("disk usage: {:.0f} MB".format(size))
+
+    with open(os.path.join(tmpdir, "comparators"), "wb") as fh:
+        pickle.dump(comparators, fh)
 
     consumers = [
         Process(target=_load_description_counts, args=(user, dsn, names)),
         Process(target=_load_taxonomy_counts, args=(user, dsn, taxa)),
         Process(target=_load_term_counts, args=(user, dsn, terms)),
-        Process(target=_load_comparisons, args=(user, dsn, m_comparators))
+        #Process(target=_load_comparisons, args=(user, dsn, comparators))
     ]
 
     for p in consumers:
@@ -577,98 +573,86 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         p.join()
 
 
-def _load_comparisons(user: str, dsn: str, comparators: list):
-    signatures = {}
-    comparisons = {}
-    for c in comparators:
-        for acc_1, cnts, _comparisons in c:
-            if acc_1 in signatures:
-                for i, cnt in enumerate(cnts):
-                    signatures[acc_1][i] += cnt
-
-                for acc_2, cnts in _comparisons.items():
-                    if acc_2 in comparisons[acc_1]:
-                        for i, cnt in enumerate(cnts):
-                            comparisons[acc_1][acc_2][i] += cnt
-                    else:
-                        comparisons[acc_1][acc_2] = cnts
-            else:
-                signatures[acc_1] = cnts
-                comparisons[acc_1] = _comparisons
-
-        c.remove()
+def _load_comparisons(user: str, dsn: str, comparators: tuple):
+    # Merging comparisons (based on matches, descr, taxonomy, GO terms)
+    m_signatures, m_comparisons = merge_comparators(comparators[0])
+    d_signatures, d_comparisons = merge_comparators(comparators[1])
+    ta_signatures, ta_comparisons = merge_comparators(comparators[2])
+    te_signatures, te_comparisons = merge_comparators(comparators[3])
 
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "METHOD_COUNT")
+    orautils.drop_table(cur, owner, "METHOD_TMP")
     orautils.drop_table(cur, owner, "METHOD_COMPARISON")
     cur.execute(
         """
-        CREATE TABLE {}.METHOD_COUNT
+        CREATE TABLE {}.METHOD_TMP
         (
             METHOD_AC VARCHAR2(25) NOT NULL,
             PROTEIN_COUNT NUMBER NOT NULL,
-            RESIDUE_COUNT NUMBER NOT NULL
+            RESIDUE_COUNT NUMBER NOT NULL,
+            RANK_COUNT VARCHAR2(250) NOT NULL
         ) NOLOGGING
         """.format(owner)
     )
     cur.execute(
         """
-        CREATE TABLE {}.METHOD_COMPARISON
+        CREATE TABLE {}.METHOD_COMPARISON_TMP
         (
             METHOD_AC1 VARCHAR2(25) NOT NULL,
             METHOD_AC2 VARCHAR2(25) NOT NULL,
             COLLOCATION NUMBER NOT NULL,
             PROTEIN_MATCH_OVERLAP_ NUMBER NOT NULL,
             PROTEIN_RESIDUE_OVERLAP NUMBER NOT NULL,
-            RESIDUE_OVERLAP NUMBER NOT NULL
+            RESIDUE_OVERLAP NUMBER NOT NULL,
+            RANK_OVERLAP VARCHAR2(250) NOT NULL
         ) NOLOGGING
         """.format(owner)
     )
     table = orautils.TablePopulator(con,
                                     query="INSERT /*+ APPEND */ "
-                                          "INTO {}.METHOD_COUNT "
-                                          "VALUES (:1, :2, :3)".format(owner),
+                                          "INTO {}.METHOD_TMP "
+                                          "VALUES (:1, :2, :3, :4)".format(owner),
                                     autocommit=True)
-    for acc_1, cnts in signatures.items():
-        table.insert((acc_1, *cnts))
+    for acc_1, cnts in m_signatures.items():
+        table.insert((acc_1, *cnts, json.dumps(t_signatures[acc_1])))
     table.close()
-    signatures = None
 
     table = orautils.TablePopulator(con,
                                     query="INSERT /*+ APPEND */ "
-                                          "INTO {}.METHOD_COMPARISON "
-                                          "VALUES (:1, :2, :3, :4, :5, :6)".format(owner),
+                                          "INTO {}.METHOD_COMPARISON_TMP "
+                                          "VALUES (:1, :2, :3, :4, :5, :6, :7)".format(owner),
                                     autocommit=True)
-    for acc_1 in comparisons:
-        for acc_2, cnts in comparisons[acc_1].items():
-            table.insert((acc_1, acc_2, *cnts))
+    for acc_1 in m_comparisons:
+        for acc_2, m_cnts in m_comparisons[acc_1].items():
+            t_cnts = t_comparisons[acc_1][acc_2]
+            table.insert((acc_1, acc_2, *m_cnts, json.dumps(t_cnts)))
     table.close()
     comparisons = None
 
-    for table in ("METHOD_COUNT", "METHOD_COMPARISON"):
+    for table in ("METHOD_TMP", "METHOD_COMPARISON_TMP"):
         orautils.gather_stats(cur, owner, table)
         orautils.grant(cur, owner, table, "SELECT", "INTERPRO_SELECT")
 
-    cur.execute(
-        """
-        CREATE UNIQUE INDEX UI_METHOD_COUNT
-        ON {}.METHOD_COUNT (METHOD_AC) NOLOGGING
-        """.format(owner)
-    )
-    cur.execute(
-        """
-        CREATE INDEX I_METHOD_COMPARISON$AC1
-        ON {}.METHOD_COMPARISON (METHOD_AC1) NOLOGGING
-        """.format(owner)
-    )
-    cur.execute(
-        """
-        CREATE INDEX I_METHOD_COMPARISON$AC2
-        ON {}.METHOD_COMPARISON (METHOD_AC2) NOLOGGING
-        """.format(owner)
-    )
+    # cur.execute(
+    #     """
+    #     CREATE UNIQUE INDEX UI_METHOD_COUNT
+    #     ON {}.METHOD_TMP (METHOD_AC) NOLOGGING
+    #     """.format(owner)
+    # )
+    # cur.execute(
+    #     """
+    #     CREATE INDEX I_METHOD_COMPARISON$AC1
+    #     ON {}.METHOD_COMPARISON_TMP (METHOD_AC1) NOLOGGING
+    #     """.format(owner)
+    # )
+    # cur.execute(
+    #     """
+    #     CREATE INDEX I_METHOD_COMPARISON$AC2
+    #     ON {}.METHOD_COMPARISON (METHOD_AC2) NOLOGGING
+    #     """.format(owner)
+    # )
     logger.debug("METHOD_COUNT and METHOD_COMPARISON ready")
     cur.close()
     con.close()

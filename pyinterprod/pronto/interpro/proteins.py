@@ -6,31 +6,21 @@ from typing import List, Optional
 
 import cx_Oracle
 
-from .utils import Kvdb, MatchComparator, Organizer, TaxonomyComparator
+from . import utils
 from ... import orautils
 
 MAX_GAP = 20        # at least 20 residues between positions
 
 
-def consume_proteins(user: str, dsn: str, kvdb: Kvdb, task_queue: Queue,
+def consume_proteins(user: str, dsn: str, kvdb: utils.Kvdb, task_queue: Queue,
                      done_queue: Queue, tmpdir: Optional[str]=None,
                      bucket_size: int=100):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    cur.execute(
-        """
-        SELECT METHOD_AC, DBCODE, SIG_TYPE
-        FROM {}.METHOD
-        ORDER BY METHOD_AC
-        """.format(owner)
-    )
-    keys = []
-    signatures = {}
-    for i, (acc, dbcode, _type) in enumerate(cur):
-        signatures[acc] = (dbcode, _type)
-        if not i % bucket_size:
-            keys.append(acc)
+    cur.execute("SELECT METHOD_AC FROM {}.METHOD".format(owner))
+    keys = sorted([row[0] for row in cur])
+    keys = [keys[i] for i in range(0, len(keys), bucket_size)]
 
     proteins2go = {}
     cur.execute("SELECT PROTEIN_AC, GO_ID FROM {}.PROTEIN2GO".format(owner))
@@ -39,14 +29,26 @@ def consume_proteins(user: str, dsn: str, kvdb: Kvdb, task_queue: Queue,
             proteins2go[acc].add(go_id)
         else:
             proteins2go[acc] = {go_id}
+
+    cur.execute(
+        """
+        SELECT DESC_ID
+        FROM {0}.DESC_VALUE
+        WHERE TEXT LIKE 'Predicted protein%'
+          OR TEXT LIKE 'Uncharacterized protein%'
+        """.format(owner)
+    )
+    excluded_descr = {row[0] for row in cur}
     cur.close()
 
     kvdb.open()
-    names = Organizer(keys, dir=tmpdir)
-    taxa = Organizer(keys, dir=tmpdir)
-    terms = Organizer(keys, dir=tmpdir)
-    m_comparator = MatchComparator(tmpdir)
-    t_comparator = TaxonomyComparator(tmpdir)
+    names = utils.Organizer(keys, dir=tmpdir)
+    taxa = utils.Organizer(keys, dir=tmpdir)
+    terms = utils.Organizer(keys, dir=tmpdir)
+    m_comparator = utils.MatchComparator(tmpdir)
+    n_comparator = utils.Comparator(tmpdir)
+    ta_comparator = utils.TaxonomyComparator(tmpdir)
+    te_comparator = utils.Comparator(tmpdir)
     table = orautils.TablePopulator(
         con=con,
         query="INSERT /*+ APPEND */ "
@@ -58,7 +60,12 @@ def consume_proteins(user: str, dsn: str, kvdb: Kvdb, task_queue: Queue,
         for acc, dbcode, length, taxid, descid, matches in chunk:
             md5 = hash_protein(matches)
             protein_terms = proteins2go.get(acc, [])
+
+            # Update comparators
             signatures = m_comparator.update(matches)
+
+            if descid not in excluded_descr:
+                n_comparator.update(signatures)
 
             try:
                 tax_ranks = kvdb[taxid]
@@ -67,6 +74,9 @@ def consume_proteins(user: str, dsn: str, kvdb: Kvdb, task_queue: Queue,
             else:
                 t_comparator.update(signatures, tax_ranks.keys())
 
+            te_comparator.update(signatures, incr=len(protein_terms))
+
+            # Update organizers and populate table
             for signature_acc in signatures:
                 # UniProt descriptions
                 names.add(signature_acc, (descid, dbcode))
@@ -87,10 +97,17 @@ def consume_proteins(user: str, dsn: str, kvdb: Kvdb, task_queue: Queue,
     table.close()
     con.close()
     kvdb.close()
-    m_comparator.sync()
-    t_comparator.sync()
-    sizes = sum((names.merge(), taxa.merge(), terms.merge(), m_comparator.size, t_comparator.size))
-    done_queue.put((names, taxa, terms, m_comparator, t_comparator, sizes))
+    size = 0
+    comparators = (m_comparator, n_comparator, ta_comparator, te_comparator)
+    for c in comparators:
+        c.sync()
+        size += c.size
+
+    organizers = (names, taxa, terms)
+    for o in organizers:
+        size += o.merge()
+
+    done_queue.put((*comparators, *organizers, size))
 
 
 def hash_protein(matches: List[tuple]) -> str:
