@@ -5,6 +5,7 @@ import gzip
 import heapq
 import os
 import pickle
+import sqlite3
 from multiprocessing import Pool
 from tempfile import mkdtemp, mkstemp
 from typing import Any, Dict, Generator, Iterable, List, Optional, Union
@@ -312,3 +313,62 @@ class SignatureComparator(object):
             signatures[acc] = matches
 
         return signatures
+
+
+class Kvdb(object):
+    def __init__(self, dir: Optional[str]=None):
+        fd, self.filepath = mkstemp(dir=dir)
+        os.close(fd)
+        os.remove(self.filepath)
+        self.con = sqlite3.connect(self.filepath)
+        self.con.execute(
+            """
+            CREATE TABLE data (
+                id TEXT PRIMARY KEY NOT NULL,
+                val TEXT NOT NULL
+            )
+            """
+        )
+        self.pending = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __del__(self):
+        self.close()
+
+    def __setitem__(self, key: str, value: Any):
+        self.con.execute(
+            "INSERT INTO data (id, val) VALUES (?, ?)",
+            (key, pickle.dumps(value))
+        )
+        self.pending += 1
+
+    def __getitem__(self, key: str) -> dict:
+        cur = self.con.execute("SELECT val FROM data WHERE id=?", (key,))
+        row = cur.fetchone()
+        if row:
+            return pickle.loads(row[0])
+        else:
+            raise KeyError(key)
+
+    def keys(self) -> List[str]:
+        return [row[0] for row in self.con.execute("SELECT id FROM data")]
+
+    def commit(self):
+        if self.pending:
+            self.con.commit()
+            self.pending = 0
+
+    def close(self):
+        if self.con is not None:
+            self.commit()
+            self.con.close()
+            self.con = None
+
+    def remove(self):
+        self.close()
+        os.remove(self.filepath)
