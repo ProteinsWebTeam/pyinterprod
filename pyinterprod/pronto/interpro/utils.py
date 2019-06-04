@@ -172,7 +172,7 @@ def merge_organizers(organizers: Iterable[Organizer]) -> Generator[tuple, None, 
         yield _key, items
 
 
-class SignatureComparator(object):
+class MatchComparator(object):
     def __init__(self, dir: Optional[str]=None):
         self.signatures = {}
         self.comparisons = {}

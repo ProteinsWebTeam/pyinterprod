@@ -6,7 +6,7 @@ from typing import List, Optional
 
 import cx_Oracle
 
-from .utils import Kvdb, Organizer, SignatureComparator
+from .utils import Kvdb, MatchComparator, Organizer
 from ... import orautils
 
 MAX_GAP = 20        # at least 20 residues between positions
@@ -53,7 +53,7 @@ def consume_proteins(user: str, dsn: str, kvdb: Kvdb, task_queue: Queue,
               "VALUES (:1, :2, :3, :4, :5, :6, :7)".format(owner),
         autocommit=True
     )
-    comparator = SignatureComparator(tmpdir)
+    comparator = MatchComparator(tmpdir)
     for chunk in iter(task_queue.get, None):
         for acc, dbcode, length, taxid, descid, matches in chunk:
             md5 = hash_protein(matches)
