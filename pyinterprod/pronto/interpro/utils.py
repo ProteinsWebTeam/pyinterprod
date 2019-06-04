@@ -432,7 +432,7 @@ class Kvdb(object):
         os.remove(self.filepath)
 
 
-def merge_comparators(comparators: Iterable[Comparator]) -> Tuple[dict, dict]:
+def merge_comparators(comparators: Iterable[Comparator], remove: bool=False) -> Tuple[dict, dict]:
     signatures = {}
     comparisons = {}
     for c in comparators:
@@ -457,6 +457,7 @@ def merge_comparators(comparators: Iterable[Comparator]) -> Tuple[dict, dict]:
                 signatures[acc_1] = val
                 comparisons[acc_1] = _comparisons
 
-        c.remove()
+        if remove:
+            c.remove()
 
     return signatures, comparisons
