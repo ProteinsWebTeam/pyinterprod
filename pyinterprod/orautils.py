@@ -424,20 +424,17 @@ class TablePopulator(object):
         self.records.append(record)
 
         if len(self.records) == self.buffer_size:
-            self.flush(commit=self.autocommit)
+            self.flush()
 
-    def flush(self, commit: bool=False):
+    def flush(self):
         if not self.records:
             return
 
         self.cur.executemany(self.query, self.records)
         self.records = []
 
-        if commit:
-            self.commit()
-
-    def commit(self):
-        self.con.commit()
+        if self.autocommit:
+            self.con.commit()
 
     def close(self):
         if self.cur is not None:
