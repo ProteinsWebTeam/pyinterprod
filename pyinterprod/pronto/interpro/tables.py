@@ -482,13 +482,15 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     names = []
     taxa = []
+    ranks = []
     terms = []
     comparators = []
-    sizes = [0, 0, 0, 0]
+    sizes = [0, 0, 0, 0, 0]
     for _ in consumers:
-        _names, _taxa, _terms, comparator, _sizes = done_queue.get()
+        _names, _taxa, _ranks, _terms, comparator, _sizes = done_queue.get()
         names.append(_names)
         taxa.append(_taxa)
+        ranks.append(_ranks)
         terms.append(_terms)
         comparators.append(comparator)
 
@@ -501,8 +503,9 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     logger.debug("disk usage:")
     logger.debug("\tdescr.: {:.0f} MB".format(sizes[0]/1024**2))
     logger.debug("\ttaxa: {:.0f} MB".format(sizes[1]/1024**2))
-    logger.debug("\tGO terms: {:.0f} MB".format(sizes[2]/1024**2))
-    logger.debug("\toverlaps: {:.0f} MB".format(sizes[3]/1024**2))
+    logger.debug("\tranks: {:.0f} MB".format(sizes[2]/1024**2))
+    logger.debug("\tGO terms: {:.0f} MB".format(sizes[3]/1024**2))
+    logger.debug("\toverlaps: {:.0f} MB".format(sizes[4]/1024**2))
     logger.debug("\ttotal: {:.0f} MB".format(sum(sizes)/1024**2))
 
     consumers = [
@@ -777,74 +780,27 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
         """.format(owner)
     )
 
-    orautils.drop_table(cur, owner, "METHOD_TAXA_TMP")
-    cur.execute(
-        """
-        CREATE TABLE {}.METHOD_TAXA_TMP
-        (
-            METHOD_AC VARCHAR2(25) NOT NULL,
-            TAX_ID NUMBER(10) NOT NULL
-        ) NOLOGGING
-        """.format(owner)
-    )
+    table = orautils.TablePopulator(con,
+                                    query="INSERT /*+ APPEND */ "
+                                          "INTO {}.METHOD_TAXA "
+                                          "VALUES (:1, :2, :3, :4)".format(owner),
+                                    autocommit=True)
 
-    # Get lineages for the METHOD_TAXA table
-    cur.execute(
-        """
-        SELECT TAX_ID, RANK, RANK_TAX_ID
-        FROM {}.LINEAGE
-        """.format(owner)
-    )
-    lineages = {}
-    for tax_id, rank, rank_tax_id in cur:
-        if tax_id in lineages:
-            lineages[tax_id][rank] = rank_tax_id
-        else:
-            lineages[tax_id] = {rank: rank_tax_id}
-
-    table1 = orautils.TablePopulator(con,
-                                     query="INSERT /*+ APPEND */ "
-                                           "INTO {}.METHOD_TAXA "
-                                           "VALUES (:1, :2, :3, :4)".format(owner),
-                                     autocommit=True)
-
-    table2 = orautils.TablePopulator(con,
-                                     query="INSERT /*+ APPEND */ "
-                                           "INTO {}.METHOD_TAXA_TMP "
-                                           "VALUES (:1, :2)".format(owner),
-                                     autocommit=True)
-
-    invalid_taxa = set()
-    for acc, tax_ids in merge_organizers(organizers):
+    for acc, ranks in merge_organizers(organizers):
         counts = {}
-        taxa = set()
-        for tax_id in tax_ids:
-            if tax_id in lineages:
-                taxa.add(tax_id)  # we want unique Ids
-
-                for rank, rank_tax_id in lineages[tax_id].items():
-                    if rank in counts:
-                        if rank_tax_id in counts[rank]:
-                            counts[rank][rank_tax_id] += 1
-                        else:
-                            counts[rank][rank_tax_id] = 1
-                    else:
-                        counts[rank] = {rank_tax_id: 1}
+        for rank, tax_id in ranks:
+            if rank in counts:
+                if tax_id in counts[rank]:
+                    counts[rank][tax_id] += 1
+                else:
+                    counts[rank][tax_id] = 1
             else:
-                invalid_taxa.add(tax_id)
+                counts[rank] = {tax_id: 1}
 
         for rank in counts:
-            for rank_tax_id, count in counts[rank].items():
-                table1.insert((acc, rank, rank_tax_id, count))
-
-        for tax_id in taxa:
-            table2.insert((acc, tax_id))
-
-    table1.close()
-    table2.close()
-
-    if invalid_taxa:
-        logger.warning("{} invalid tax IDs".format(len(invalid_taxa)))
+            for tax_id, count in counts[rank].items():
+                table.insert((acc, rank, tax_id, count))
+    table.close()
 
     for o in organizers:
         o.remove()

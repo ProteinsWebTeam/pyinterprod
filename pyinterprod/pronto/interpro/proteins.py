@@ -38,10 +38,19 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
             proteins2go[acc].add(go_id)
         else:
             proteins2go[acc] = {go_id}
+
+    cur.execute("SELECT TAX_ID, RANK, RANK_TAX_ID FROM {}.LINEAGE".format(owner))
+    lineages = {}
+    for tax_id, rank, rank_tax_id in cur:
+        if tax_id in lineages:
+            lineages[tax_id][rank] = rank_tax_id
+        else:
+            lineages[tax_id] = {rank: rank_tax_id}
     cur.close()
 
     names = Organizer(keys, dir=tmpdir)
     taxa = Organizer(keys, dir=tmpdir)
+    ranks = Organizer(keys, dir=tmpdir)
     terms = Organizer(keys, dir=tmpdir)
     table = orautils.TablePopulator(
         con=con,
@@ -57,11 +66,13 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
             signatures = comparator.update(matches)
             protein_terms = proteins2go.get(acc, [])
 
+            tax_ranks = lineages.get(taxid, {})
             for signature_acc in signatures:
                 # UniProt descriptions
                 names.add(signature_acc, (descid, dbcode))
                 # Taxonomic origins
-                taxa.add(signature_acc, taxid)
+                for rank, rank_tax_id in tax_ranks.items()
+                    taxa.add(signature_acc, (rank, rank_tax_id))
                 # GO terms
                 for go_id in protein_terms:
                     terms.add(signature_acc, go_id)
@@ -69,15 +80,23 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
                 table.insert((signature_acc, acc, dbcode, md5, length,
                               taxid, descid))
 
+                accessions = []
+                for signature_acc_2 in signatures:
+                    if signature_acc < signature_acc_2:
+                        accessions.append(signature_acc_2)
+
+                ranks.add(signature_acc, (accessions, list(tax_ranks.keys())))
+
         names.flush()
         taxa.flush()
+        ranks.flush()
         terms.flush()
 
     table.close()
     con.close()
     comparator.sync()
-    sizes = (names.merge(), taxa.merge(), terms.merge(), comparator.size)
-    done_queue.put((names, taxa, terms, comparator, sizes))
+    sizes = (names.merge(), taxa.merge(), ranks.merge(), terms.merge(), comparator.size)
+    done_queue.put((names, taxa, ranks, terms, comparator, sizes))
 
 
 def hash_protein(matches: List[tuple]) -> str:
