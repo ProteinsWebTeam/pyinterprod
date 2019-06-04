@@ -218,7 +218,7 @@ class Comparator(ABC):
                 self.signatures[acc_1] = incr
                 self.comparisons[acc_1] = {}
 
-            for acc_2 in signatures:
+            for acc_2 in accessions:
                 if acc_1 >= acc_2:
                     continue
                 elif acc_2 in self.comparisons[acc_1]:
