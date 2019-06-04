@@ -65,7 +65,7 @@ def consume_proteins(user: str, dsn: str, kvdb: Kvdb, task_queue: Queue,
             except KeyError:
                 tax_ranks = {}
             else:
-                t_comparator.update(accessions, tax_ranks.keys())
+                t_comparator.update(signatures, tax_ranks.keys())
 
             for signature_acc in signatures:
                 # UniProt descriptions
