@@ -9,7 +9,7 @@ import sqlite3
 from abc import ABC
 from multiprocessing import Pool
 from tempfile import mkdtemp, mkstemp
-from typing import Any, Dict, Generator, Iterable, List, Optional, Union
+from typing import Any, Dict, Generator, Iterable, List, Optional, Tuple, Union
 
 from . import RANKS
 
@@ -210,7 +210,7 @@ class Comparator(ABC):
     def update(self, accessions: List[str], incr: int=1):
         if not incr:
             return
-            
+
         for acc_1 in accessions:
             if acc_1 in self.signatures:
                 self.signatures[acc_1] += incr
