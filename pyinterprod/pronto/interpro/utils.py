@@ -176,7 +176,9 @@ def merge_organizers(organizers: Iterable[Organizer]) -> Generator[tuple, None, 
 
 
 class Comparator(ABC):
-    def __init__(self, dir: Optional[str]=None):
+    def __init__(self, buffer_size: int=0, dir: Optional[str]=None):
+        self.buffer_size = buffer_size
+        self.num_items = 0
         self.signatures = {}
         self.comparisons = {}
         fd, self.path = mkstemp(dir=dir)
@@ -203,6 +205,7 @@ class Comparator(ABC):
             pickle.dump((self.signatures, self.comparisons), fh)
         self.signatures = {}
         self.comparisons = {}
+        self.num_items = 0
 
     def remove(self):
         os.remove(self.path)
@@ -217,6 +220,7 @@ class Comparator(ABC):
             else:
                 self.signatures[acc_1] = incr
                 self.comparisons[acc_1] = {}
+                self.num_items += 1
 
             for acc_2 in accessions:
                 if acc_1 >= acc_2:
@@ -225,11 +229,18 @@ class Comparator(ABC):
                     self.comparisons[acc_1][acc_2] += incr
                 else:
                     self.comparisons[acc_1][acc_2] = incr
+                    self.num_items += 1
+
+        self.post_update()
+
+    def post_update(self):
+        if self.buffer_size and self.num_items >= self.buffer_size:
+            self.sync()
 
 
 class TaxonomyComparator(Comparator):
-    def __init__(self, dir: Optional[str]=None):
-        super().__init__(dir)
+    def __init__(self, buffer_size: int=0, dir: Optional[str]=None):
+        super().__init__(buffer_size, dir)
         self.ranks = {rank: i for i, rank in enumerate(RANKS)}
 
     def update(self, accessions: List[str], ranks: Iterable[str]):
@@ -237,6 +248,7 @@ class TaxonomyComparator(Comparator):
             if acc_1 not in self.signatures:
                 self.signatures[acc_1] = [0] * len(self.ranks)
                 self.comparisons[acc_1] = {}
+                self.num_items += 1
 
             for rank in ranks:
                 i = self.ranks[rank]
@@ -248,6 +260,7 @@ class TaxonomyComparator(Comparator):
                     continue
                 elif acc_2 not in self.comparisons[acc_1]:
                     self.comparisons[acc_1][acc_2] = [0] * len(self.ranks)
+                    self.num_items += 1
 
                 _accessions.append(acc_2)
 
@@ -255,6 +268,8 @@ class TaxonomyComparator(Comparator):
                 i = self.ranks[rank]
                 for acc_2 in _accessions:
                     self.comparisons[acc_1][acc_2][i] += 1
+
+        self.post_update()
 
 
 class MatchComparator(Comparator):
@@ -272,6 +287,7 @@ class MatchComparator(Comparator):
             else:
                 self.signatures[acc_1] = [1, residues_1]
                 self.comparisons[acc_1] = {}
+                self.num_items += 1
 
             for acc_2 in signatures:
                 if acc_1 >= acc_2:
@@ -286,6 +302,7 @@ class MatchComparator(Comparator):
                     * number of overlapping residues
                     """
                     self.comparisons[acc_1][acc_2] = [0, 0, 0, 0]
+                    self.num_items += 1
 
                 residues_2 = sum([e - s + 1 for s, e in signatures[acc_2]])
                 has_match_overlap = False
@@ -324,6 +341,7 @@ class MatchComparator(Comparator):
                 # overlapping residues
                 self.comparisons[acc_1][acc_2][3] += n_residues
 
+        self.post_update()
         return list(signatures.keys())
 
     @staticmethod

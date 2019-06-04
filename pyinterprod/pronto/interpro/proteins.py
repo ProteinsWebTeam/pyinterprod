@@ -45,10 +45,10 @@ def consume_proteins(user: str, dsn: str, kvdb: utils.Kvdb, task_queue: Queue,
     names = utils.Organizer(keys, dir=tmpdir)
     taxa = utils.Organizer(keys, dir=tmpdir)
     terms = utils.Organizer(keys, dir=tmpdir)
-    m_comparator = utils.MatchComparator(tmpdir)
-    n_comparator = utils.Comparator(tmpdir)
-    ta_comparator = utils.TaxonomyComparator(tmpdir)
-    te_comparator = utils.Comparator(tmpdir)
+    m_comparator = utils.MatchComparator(dir=tmpdir)
+    n_comparator = utils.Comparator(dir=tmpdir)
+    ta_comparator = utils.TaxonomyComparator(dir=tmpdir)
+    te_comparator = utils.Comparator(dir=tmpdir)
     table = orautils.TablePopulator(
         con=con,
         query="INSERT /*+ APPEND */ "
