@@ -582,7 +582,6 @@ def _load_comparisons(user: str, dsn: str, comparators: tuple):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-
     query = """
         UPDATE {}.METHOD
         SET
@@ -622,8 +621,7 @@ def _load_comparisons(user: str, dsn: str, comparators: tuple):
         """.format(owner)
     )
     query = """
-        INSERT /*+ APPEND */
-        INTO {}.METHOD_COMPARISON
+        INSERT /*+ APPEND */ INTO {}.METHOD_COMPARISON
         VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9)
     """.format(owner)
     table = orautils.TablePopulator(con, query=query, autocommit=True)
@@ -832,12 +830,15 @@ def _enable_schema(user: str, dsn: str):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    cur.execute(
-        """
-        UPDATE {}.CV_DATABASE
-        SET IS_READY = 'Y'
-        """.format(owner)
-    )
+    cur.execute("UPDATE {}.CV_DATABASE SET IS_READY = 'Y'".format(owner))
     con.commit()
+    cur.close()
+    con.close()
+
+def load_predictions(user: str, dsn: str):
+    raise NotImplementedError()
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
     cur.close()
     con.close()
