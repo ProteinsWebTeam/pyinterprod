@@ -21,7 +21,8 @@ def _get_steps() -> dict:
     return {
         "clear": {
             "func": orautils.clear_schema,
-            "skip": True
+            "skip": True,
+            "pre": True
         },
         "annotations": {
             "func": goa.load_annotations
@@ -57,12 +58,76 @@ def _get_steps() -> dict:
             "func": goa.load_terms
         },
         "signature2protein": {
-            "func": interpro.load_signature2protein
+            "func": interpro.load_signature2protein,
+            "requires": ("descriptions", "signatures", "taxa", "terms")
+        },
+        "predictions": {
+            "func": interpro.load_predictions,
+            "requires": ("signature2protein",)
         },
         "copy": {
-            "func": interpro.copy_schema
+            "func": interpro.copy_schema,
+            "post": True
         }
     }
+
+
+def _submit(pool, name, step):
+    logger.info("{:<20}running".format(name))
+    return pool.submit(step["func"], *step["args"])
+
+
+def _run(pool: ThreadPoolExecutor, steps: dict, done: set, failed: set):
+    running = {}
+    pending = {}
+    for n, s in steps.items():
+        if s["requires"]:
+            pending[n] = s
+        else:
+            running[n] = s
+
+    fs = {_submit(pool, n, s): n for n, s in running.items()}
+
+    while fs or pending:
+        for f in as_completed(fs):
+            n = fs[f]
+            try:
+                f.result()
+            except Exception as exc:
+                logger.error("{:<19}failed ({})".format(n, exc))
+                failed.add(n)
+            else:
+                logger.info("{:<20}done".format(n))
+                done.add(n)
+
+            del running[n]
+
+            # Look if any pending step can be submitted/cancelled
+            num_submitted = 0
+            for o in pending.keys():
+                s = pending[o]
+                tmp = []
+                for r in s["requires"]:
+                    if r in failed:
+                        del pending[o]  # cancel step (one dependency failed)
+                        break
+                    elif r not in done:
+                        tmp.append(r)
+                else:
+                    # No dependency failed
+                    s["requires"] = tmp
+                    if not tmp:
+                        # All dependencies completed
+                        del pending[o]
+                        running[o] = s
+                        f = _submit(pool, o, s)
+                        fs[f] = o
+                        num_submitted += 1
+
+            if num_submitted:
+                break
+
+        fs = {f: n for f, n in fs.items() if n in running}
 
 
 def run(dsn: str, main_user: str, alt_user: str=None, **kwargs):
@@ -74,78 +139,40 @@ def run(dsn: str, main_user: str, alt_user: str=None, **kwargs):
     from .. import logger
     logger.setLevel(level)
 
-    step = steps.pop("clear", None)
-    if step is not None:
-        logger.info("{:<20}running".format("clear"))
-        step["func"](main_user, dsn)
-        logger.info("{:<20}done".format("clear"))
+    for n, s in steps.items():
+        if n == "copy":
+            s["args"] = (main_user, alt_user, dsn)
+        elif n == "signature2protein":
+            s["args"] = (main_user, dsn, processes, tmpdir)
+        else:
+            s["args"] = (main_user, dsn)
 
-    step_s2p = steps.pop("signature2protein", None)
-    step_copy = steps.pop("copy", None)
+    pre = {}
+    post = {}
+    others = {}
+    for n, s in steps.items():
+        s["requires"] = list(s.get("requires", []))
+        if s.get("pre"):
+            pre[n] = s
+        elif s.get("post"):
+            post[n] = s
+        else:
+            others[n] = s
 
-    if steps:
-        num_errors = 0
-        with ThreadPoolExecutor(max_workers=processes) as executor:
-            fs = {}
-            running = set()
-            required = {"descriptions", "taxa", "terms"}
-            required_counter = 0
-            for name, step in steps.items():
-                step = steps[name]
-                f = executor.submit(step["func"], main_user, dsn)
-                fs[f] = name
-                logger.info("{:<20}running".format(name))
-                running.add(name)
-
-                if name in required:
-                    required_counter += 1
-
-            for f in as_completed(fs):
-                name = fs[f]
-                running.remove(name)
-                try:
-                    f.result()
-                except Exception as exc:
-                    logger.error("{:<19}failed ({})".format(name, exc))
-                    num_errors += 1
-                else:
-                    logger.info("{:<20}done".format(name))
-
-                    if name in required:
-                        required_counter -= 1
-
-                        if not required_counter:
-                            # signature2protein can now run
-                            break
-
-            fs = {f: name for f, name in fs.items() if name in running}
-            if step_s2p:
-                f = executor.submit(step_s2p["func"], main_user, dsn,
-                                    processes, tmpdir)
-                fs[f] = "signature2protein"
-                logger.info("{:<20}running".format(fs[f]))
-
-            for f in as_completed(fs):
-                name = fs[f]
-                try:
-                    f.result()
-                except Exception as exc:
-                    logger.error("{:<19}failed ({})".format(name, exc))
-                    num_errors += 1
-                else:
-                    logger.info("{:<20}done".format(name))
-
-        if num_errors:
+    with ThreadPoolExecutor(max_workers=processes) as executor:
+        done = set()
+        failed = set()
+        _run(executor, pre, done, failed)
+        if failed:
             raise RuntimeError("one or more step failed")
-    elif step_s2p:
-        logger.info("{:<20}running".format("signature2protein"))
-        step_s2p["func"](main_user, dsn, processes=processes, tmpdir=tmpdir)
-        logger.info("{:<20}done".format("signature2protein"))
 
-    if step_copy and alt_user:
-        logger.info("{:<20}running".format("copy"))
-        step_copy["func"](main_user, alt_user, dsn)
-        logger.info("{:<20}done".format("copy"))
+        _run(executor, others, done, failed)
+        if failed:
+            raise RuntimeError("one or more step failed")
+
+        _run(executor, post, done, failed)
+        if failed:
+            raise RuntimeError("one or more step failed")
 
 
 def main():
