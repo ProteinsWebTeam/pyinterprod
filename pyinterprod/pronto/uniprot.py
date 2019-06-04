@@ -13,7 +13,7 @@ def load_comments(user: str, dsn: str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     for table in tables:
-        orautils.drop_table(cur, owner, table)
+        orautils.drop_table(cur, owner, table, purge=True)
 
     cur.execute(
         """
@@ -138,7 +138,7 @@ def load_descriptions_ctas(user: str, dsn: str):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "PROTEIN_DESC_STG")
+    orautils.drop_table(cur, owner, "PROTEIN_DESC_STG", purge=True)
     cur.execute(
         """
         CREATE TABLE {}.PROTEIN_DESC_STG
@@ -170,11 +170,11 @@ def load_descriptions_ctas(user: str, dsn: str):
     )
 
     for table in ("DESC_VALUE", "PROTEIN_DESC"):
-        orautils.drop_table(cur, owner, table)
+        orautils.drop_table(cur, owner, table, purge=True)
 
     cur.execute(
         """
-        CREATE TABLE {0}.DESC_VALUE 
+        CREATE TABLE {0}.DESC_VALUE
         NOLOGGING
         AS
         SELECT DESC_ID, TEXT
@@ -184,7 +184,7 @@ def load_descriptions_ctas(user: str, dsn: str):
 
     cur.execute(
         """
-        CREATE TABLE {0}.PROTEIN_DESC 
+        CREATE TABLE {0}.PROTEIN_DESC
         NOLOGGING
         AS
         SELECT PROTEIN_AC, DESC_ID
@@ -192,7 +192,7 @@ def load_descriptions_ctas(user: str, dsn: str):
         """.format(owner)
     )
 
-    orautils.drop_table(cur, owner, "PROTEIN_DESC_STG")
+    orautils.drop_table(cur, owner, "PROTEIN_DESC_STG", purge=True)
 
     cur.execute(
         """
@@ -228,7 +228,7 @@ def load_descriptions(user: str, dsn: str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     for table in tables:
-        orautils.drop_table(cur, owner, table)
+        orautils.drop_table(cur, owner, table, purge=True)
 
     cur.execute(
         """
@@ -329,7 +329,7 @@ def load_enzymes(user: str, dsn: str):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "ENZYME")
+    orautils.drop_table(cur, owner, "ENZYME", purge=True)
     cur.execute(
         """
         CREATE TABLE {}.ENZYME

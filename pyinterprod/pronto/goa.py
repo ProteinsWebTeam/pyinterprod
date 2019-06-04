@@ -9,7 +9,7 @@ def load_annotations(user: str, dsn: str):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "PROTEIN2GO")
+    orautils.drop_table(cur, owner, "PROTEIN2GO", purge=True)
     cur.execute(
         """
         CREATE TABLE {}.PROTEIN2GO
@@ -76,7 +76,7 @@ def load_publications(user: str, dsn: str):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "PUBLICATION")
+    orautils.drop_table(cur, owner, "PUBLICATION", purge=True)
     cur.execute(
         """
         CREATE TABLE {}.PUBLICATION
@@ -160,7 +160,7 @@ def load_terms(user: str, dsn: str):
         else:
             constraints[go_id] = {constraint_id}
 
-    orautils.drop_table(cur, owner, "TERM")
+    orautils.drop_table(cur, owner, "TERM", purge=True)
     cur.execute(
         """
         CREATE TABLE {}.TERM

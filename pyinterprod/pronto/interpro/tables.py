@@ -17,7 +17,7 @@ def load_databases(user: str, dsn: str):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "CV_DATABASE")
+    orautils.drop_table(cur, owner, "CV_DATABASE", purge=True)
     cur.execute(
         """
         CREATE TABLE {}.CV_DATABASE
@@ -56,7 +56,7 @@ def load_matches(user: str, dsn: str):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "MATCH")
+    orautils.drop_table(cur, owner, "MATCH", purge=True)
     cur.execute(
         """
         CREATE TABLE {}.MATCH
@@ -151,7 +151,7 @@ def load_signatures(user: str, dsn: str):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "METHOD")
+    orautils.drop_table(cur, owner, "METHOD", purge=True)
     cur.execute(
         """
         CREATE TABLE {}.METHOD
@@ -206,7 +206,7 @@ def load_taxa(user: str, dsn: str):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "ETAXI")
+    orautils.drop_table(cur, owner, "ETAXI", purge=True)
     cur.execute(
         """
         CREATE TABLE {}.ETAXI
@@ -226,7 +226,7 @@ def load_taxa(user: str, dsn: str):
         """.format(owner)
     )
 
-    orautils.drop_table(cur, owner, "LINEAGE")
+    orautils.drop_table(cur, owner, "LINEAGE", purge=True)
     cur.execute(
         """
         CREATE TABLE {}.LINEAGE
@@ -295,7 +295,7 @@ def load_proteins(user: str, dsn: str):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "PROTEIN")
+    orautils.drop_table(cur, owner, "PROTEIN", purge=True)
     cur.execute(
         """
         CREATE TABLE {}.PROTEIN
@@ -398,7 +398,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "METHOD2PROTEIN")
+    orautils.drop_table(cur, owner, "METHOD2PROTEIN", purge=True)
     cur.execute(
         """
         CREATE TABLE {}.METHOD2PROTEIN
@@ -583,8 +583,8 @@ def _load_comparisons(user: str, dsn: str, comparators: tuple):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "METHOD_TMP")
-    orautils.drop_table(cur, owner, "METHOD_COMPARISON")
+    orautils.drop_table(cur, owner, "METHOD_TMP", purge=True)
+    orautils.drop_table(cur, owner, "METHOD_COMPARISON", purge=True)
     cur.execute(
         """
         CREATE TABLE {}.METHOD_TMP
@@ -662,7 +662,7 @@ def _load_term_counts(user: str, dsn: str, organizers: list):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "METHOD_TERM")
+    orautils.drop_table(cur, owner, "METHOD_TERM", purge=True)
     cur.execute(
         """
         CREATE TABLE {}.METHOD_TERM
@@ -714,7 +714,7 @@ def _load_description_counts(user: str, dsn: str, organizers: list):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "METHOD_DESC")
+    orautils.drop_table(cur, owner, "METHOD_DESC", purge=True)
     cur.execute(
         """
         CREATE TABLE {}.METHOD_DESC
@@ -770,7 +770,7 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "METHOD_TAXA")
+    orautils.drop_table(cur, owner, "METHOD_TAXA", purge=True)
     cur.execute(
         """
         CREATE TABLE {}.METHOD_TAXA
