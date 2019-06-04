@@ -6,14 +6,15 @@ from typing import List, Optional
 
 import cx_Oracle
 
-from .utils import Organizer, SignatureComparator
+from .utils import Kvdb, Organizer, SignatureComparator
 from ... import orautils
 
 MAX_GAP = 20        # at least 20 residues between positions
 
 
-def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
-                     tmpdir: Optional[str]=None, bucket_size: int=100):
+def consume_proteins(user: str, dsn: str, kvdb: Kvdb, task_queue: Queue,
+                     done_queue: Queue, tmpdir: Optional[str]=None,
+                     bucket_size: int=100):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -38,16 +39,9 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
             proteins2go[acc].add(go_id)
         else:
             proteins2go[acc] = {go_id}
-
-    cur.execute("SELECT TAX_ID, RANK, RANK_TAX_ID FROM {}.LINEAGE".format(owner))
-    lineages = {}
-    for tax_id, rank, rank_tax_id in cur:
-        if tax_id in lineages:
-            lineages[tax_id][rank] = rank_tax_id
-        else:
-            lineages[tax_id] = {rank: rank_tax_id}
     cur.close()
 
+    kvdb.open()
     names = Organizer(keys, dir=tmpdir)
     taxa = Organizer(keys, dir=tmpdir)
     ranks = Organizer(keys, dir=tmpdir)
@@ -66,7 +60,11 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
             signatures = comparator.update(matches)
             protein_terms = proteins2go.get(acc, [])
 
-            tax_ranks = lineages.get(taxid, {})
+            try:
+                tax_ranks = kvdb[taxid]
+            except KeyError:
+                tax_ranks = {}
+
             for signature_acc in signatures:
                 # UniProt descriptions
                 names.add(signature_acc, (descid, dbcode))
@@ -94,6 +92,7 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
 
     table.close()
     con.close()
+    kvdb.close()
     comparator.sync()
     sizes = (names.merge(), taxa.merge(), ranks.merge(), terms.merge(), comparator.size)
     done_queue.put((names, taxa, ranks, terms, comparator, sizes))

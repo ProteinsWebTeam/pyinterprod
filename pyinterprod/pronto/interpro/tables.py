@@ -8,7 +8,7 @@ from typing import Optional
 import cx_Oracle
 
 from . import proteins, RANKS
-from .utils import merge_organizers
+from .utils import Kvdb, merge_organizers
 from ... import logger, orautils
 
 
@@ -384,12 +384,13 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     if tmpdir is not None:
         os.makedirs(tmpdir, exist_ok=True)
 
+    kvdb = Kvdb(dir=tmpdir)
     task_queue = Queue(maxsize=1)
     done_queue = Queue()
     consumers = []
     for _ in range(max(processes-1, 1)):
         p = Process(target=proteins.consume_proteins,
-                    args=(user, dsn, task_queue, done_queue, tmpdir))
+                    args=(user, dsn, kvdb, task_queue, done_queue, tmpdir))
         consumers.append(p)
         p.start()
 
@@ -415,8 +416,26 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         ) NOLOGGING
         """.format(owner)
     )
+
+    taxa = {}
+    cur.execute(
+        """
+        SELECT TAX_ID, RANK, RANK_TAX_ID
+        FROM {}.LINEAGE
+        """.format(owner)
+    )
+    for tax_id, rank, rank_tax_id in cur:
+        if tax_id in taxa:
+            taxa[tax_id][rank] = rank_tax_id
+        else:
+            taxa[tax_id] = {rank: tax_id}
     cur.close()
     con.close()
+
+    for tax_id in taxa:
+        kvdb[tax_id] = taxa[tax_id]
+    taxa = {}
+    kvdb.close()
 
     chunk = []
     matches = []
