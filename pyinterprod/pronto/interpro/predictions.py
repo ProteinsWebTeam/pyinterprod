@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Tuple
 
 import cx_Oracle
 
-from .utils import Organizer, merge_organizers
+from .utils import Kvdb, Organizer, merge_organizers
 from ... import logger, orautils
 
 
@@ -114,41 +114,19 @@ def get_descriptions(user: str, dsn: str, processes: int=4,
     return signatures, organizer
 
 
-def _agg_taxa(user: str, dsn: str, keys: List[str], task_queue: Queue,
-              dir: Optional[str]=None):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    cur.execute("SELECT TAX_ID, RANK FROM {}.LINEAGE".format(owner))
-    ranks = {}
-    for tax_id, rank in cur:
-        if tax_id in ranks:
-            ranks[tax_id].append(rank)
-        else:
-            ranks[tax_id] = [rank]
-    cur.close()
-    con.close()
-
-    o = Organizer(keys, dir=dir)
-    for acc_1, acc_2, taxa in iter(task_queue.get, None):
-        counts = {}
-        for tax_id in taxa:
-            for rank in ranks[tax_id]:
-                if rank in counts:
-                    counts[rank] += 1
-                else:
-                    counts[rank] = 1
-
-        o.write(acc_1, (acc_2, counts))
-
-
-def _cmp_taxa(keys: List[str], src: str, task_queue: Queue, done_queue: Queue):
-    o = Organizer(keys, exists=True, dir=src)
+def _cmp_taxa(keys: List[str], kvdb: Kvdb, task_queue: Queue,
+              done_queue: Queue, dir: Optional[str]=None):
+    o = Organizer(keys, dir=src)
+    kvdb.open()
+    keys = kvdb.keys()
 
     for acc_1, taxa_1 in iter(task_queue.get, None):
-        for acc_2, taxa_2 in o:
+        for acc_2 in keys:
             if acc_1 < acc_2:
-                done_queue.put((acc_1, acc_2, taxa_1 & taxa_2))
+                o.write(acc_1, (acc_2, taxa_1 & kvdb[acc_2]))
+
+    kvdb.close()
+    done_queue.put(o)
 
 
 def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
@@ -178,11 +156,11 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
     )
     _acc = None
     taxa = set()
-    organizer = Organizer(keys, dir=dir)
+    kvdb = Kvdb(dir=dir)
     for acc, tax_id in cur:
         if acc != _acc:
             if _acc:
-                organizer.write(_acc, taxa)
+                kvdb[_acc] = taxa
 
             _acc = acc
             taxa = set()
@@ -190,29 +168,26 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
         taxa.add(tax_id)
 
     if _acc:
-        organizer.write(_acc, taxa)
+        kvdb[_acc] = taxa
         taxa = set()
 
     cur.close()
     con.close()
-
-    logger.debug("disk usage (taxonomy): {:.0f} MB".format(organizer.size/1024**2))
+    kvdb.close()
 
     pool = []
     task_queue = Queue(1)
-    done_queue = Queue(1)
-    for _ in range(max(1, processes - 2)):
+    done_queue = Queue()
+    for _ in range(max(1, processes - 1)):
         p = Process(target=_cmp_taxa,
-                    args=(keys, organizer.dir, task_queue, done_queue))
+                    args=(keys, kvdb, task_queue, done_queue, dir))
         p.start()
         pool.append(p)
 
-    agg = Process(target=_agg_taxa, args=(user, dsn, keys, done_queue, dir))
-    agg.start()
-
     logger.debug("comparing")
-    for acc, taxa in organizer:
-        task_queue.put((acc, taxa))
+    kvdb.open()
+    for acc in sorted(kvdb.keys()):
+        task_queue.put((acc, kvdb[acc]))
         logger.debug(acc)
 
     for _ in pool:
@@ -221,11 +196,12 @@ def get_taxa(user: str, dsn: str, processes: int=4, bucket_size: int=20,
     for p in pool:
         p.join()
 
-    done_queue.put(None)
-    agg.join()
+    organizers = []
+    for _ in pool:
+        organizers.append(done_queue.get())
 
     signatures = {}
-    return signatures, organizer
+    return signatures, organizers
 
 
 def get_matches(user: str, dsn: str) -> Tuple[Dict, Dict]:
