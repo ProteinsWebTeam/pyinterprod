@@ -9,7 +9,7 @@ from typing import Optional, Tuple
 import cx_Oracle
 
 from . import proteins, RANKS
-from .utils import Kvdb, merge_comparators, merge_organizers
+from .utils import merge_comparators, merge_organizers
 from ... import logger, orautils
 
 
@@ -390,13 +390,12 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     if tmpdir is not None:
         os.makedirs(tmpdir, exist_ok=True)
 
-    kvdb = Kvdb(dir=tmpdir)
     task_queue = Queue(maxsize=1)
     done_queue = Queue()
     consumers = []
     for _ in range(max(processes-1, 1)):
         p = Process(target=proteins.consume_proteins,
-                    args=(user, dsn, kvdb, task_queue, done_queue, tmpdir))
+                    args=(user, dsn, task_queue, done_queue, tmpdir))
         consumers.append(p)
         p.start()
 
@@ -438,29 +437,24 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     cur.close()
     con.close()
 
-    for tax_id in taxa:
-        kvdb[tax_id] = taxa[tax_id]
-    taxa = {}
-    kvdb.close()
-
     chunk = []
     matches = []
-    _protein_acc = dbcode = length = descid = taxid = None
+    _protein_acc = dbcode = length = descid = tax_id = None
     num_proteins = 0
     for row in _get_matches(user, dsn, filepath):
         protein_acc = row[0]
 
         if protein_acc != _protein_acc:
             if _protein_acc:
-                chunk.append((_protein_acc, dbcode, length, taxid, descid,
-                              matches))
+                chunk.append((_protein_acc, dbcode, length, tax_id,
+                              taxa.get(tax_id, {}), descid, matches))
 
                 if len(chunk) == chunk_size:
                     task_queue.put(chunk)
                     chunk = []
 
                 num_proteins += 1
-                if not num_proteins % 1e7:
+                if not num_proteins % 1e6:
                     logger.debug("proteins: {:,}".format(num_proteins))
 
             elif _protein_acc is None:
@@ -469,7 +463,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
             _protein_acc = protein_acc
             length = row[1]
             dbcode = row[2]
-            taxid = row[3]
+            tax_id = row[3]
             descid = row[4]
             matches = []
 
@@ -494,8 +488,8 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     if _protein_acc:
         # Last protein
-        chunk.append((_protein_acc, dbcode, length, taxid, descid,
-                      matches))
+        chunk.append((_protein_acc, dbcode, length, tax_id,
+                      taxa.get(tax_id, {}), descid, matches))
         task_queue.put(chunk)
         chunk = []
         matches = []

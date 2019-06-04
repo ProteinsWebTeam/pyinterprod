@@ -12,7 +12,7 @@ from ... import orautils
 MAX_GAP = 20        # at least 20 residues between positions
 
 
-def consume_proteins(user: str, dsn: str, kvdb: utils.Kvdb, task_queue: Queue,
+def consume_proteins(user: str, dsn: str, task_queue: Queue,
                      done_queue: Queue, tmpdir: Optional[str]=None,
                      bucket_size: int=100):
     owner = user.split('/')[0]
@@ -41,7 +41,6 @@ def consume_proteins(user: str, dsn: str, kvdb: utils.Kvdb, task_queue: Queue,
     excluded_descr = {row[0] for row in cur}
     cur.close()
 
-    kvdb.open()
     names = utils.Organizer(keys, dir=tmpdir)
     taxa = utils.Organizer(keys, dir=tmpdir)
     terms = utils.Organizer(keys, dir=tmpdir)
@@ -57,38 +56,34 @@ def consume_proteins(user: str, dsn: str, kvdb: utils.Kvdb, task_queue: Queue,
         autocommit=True
     )
     for chunk in iter(task_queue.get, None):
-        for acc, dbcode, length, taxid, descid, matches in chunk:
+        for acc, dbcode, length, tax_id, ranks, desc_id, matches in chunk:
             md5 = hash_protein(matches)
             protein_terms = proteins2go.get(acc, [])
 
             # Update comparators
             signatures = m_comparator.update(matches)
 
-            if descid not in excluded_descr:
+            if desc_id not in excluded_descr:
                 n_comparator.update(signatures)
 
-            try:
-                tax_ranks = kvdb[taxid]
-            except KeyError:
-                tax_ranks = {}
-            else:
-                ta_comparator.update(signatures, tax_ranks.keys())
+            if ranks:
+                ta_comparator.update(signatures, ranks.keys())
 
             te_comparator.update(signatures, incr=len(protein_terms))
 
             # Update organizers and populate table
             for signature_acc in signatures:
                 # UniProt descriptions
-                names.add(signature_acc, (descid, dbcode))
+                names.add(signature_acc, (desc_id, dbcode))
                 # Taxonomic origins
-                for rank, rank_tax_id in tax_ranks.items():
+                for rank, rank_tax_id in ranks.items():
                     taxa.add(signature_acc, (rank, rank_tax_id))
                 # GO terms
                 for go_id in protein_terms:
                     terms.add(signature_acc, go_id)
 
                 table.insert((signature_acc, acc, dbcode, md5, length,
-                              taxid, descid))
+                              tax_id, desc_id))
 
         names.flush()
         taxa.flush()
@@ -96,7 +91,6 @@ def consume_proteins(user: str, dsn: str, kvdb: utils.Kvdb, task_queue: Queue,
 
     table.close()
     con.close()
-    kvdb.close()
     size = 0
     comparators = (m_comparator, n_comparator, ta_comparator, te_comparator)
     for c in comparators:
