@@ -454,7 +454,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
                     chunk = []
 
                 num_proteins += 1
-                if not num_proteins % 1e6:
+                if not num_proteins % 1e7:
                     logger.debug("proteins: {:,}".format(num_proteins))
 
             elif _protein_acc is None:
