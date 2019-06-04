@@ -227,6 +227,7 @@ class TaxonomyComparator(Comparator):
                 i = self.ranks[rank]
                 self.signatures[acc_1][i] += 1
 
+            _accessions = []
             for acc_2 in accessions:
                 if acc_1 >= acc_2:
                     continue
