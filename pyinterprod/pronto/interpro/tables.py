@@ -164,7 +164,12 @@ def load_signatures(user: str, dsn: str):
             SIG_TYPE CHAR(1),
             ABSTRACT VARCHAR2(4000),
             ABSTRACT_LONG CLOB,
-            PROTEIN_COUNT NUMBER(8) DEFAULT 0 NOT NULL
+            PROTEIN_COUNT NUMBER DEFAULT 0 NOT NULL,
+            FULL_SEQ_COUNT NUMBER DEFAULT 0 NOT NULL,
+            RESIDUE_COUNT NUMBER DEFAULT 0 NOT NULL,
+            DESC_COUNT NUMBER DEFAULT 0 NOT NULL,
+            RANK_COUNT VARCHAR2(250) DEFAULT '{}' NOT NULL,
+            TERM_COUNT NUMBER DEFAULT 0 NOT NULL
         ) NOLOGGING
         """.format(owner)
     )
@@ -583,22 +588,32 @@ def _load_comparisons(user: str, dsn: str, comparators: tuple):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "METHOD_TMP", purge=True)
+
+    query = """
+        UPDATE {}.METHOD
+        SET
+          FULL_SEQ_COUNT = :1,
+          RESIDUE_COUNT = :2,
+          DESC_COUNT = :3,
+          RANK_COUNT = :4,
+          TERM_COUNT = :5
+        WHERE METHOD_AC = :6
+    """.format(owner)
+    table = orautils.TablePopulator(con, query=query, autocommit=True)
+    for acc, (n_seq, n_res) in m_signatures.items():
+        n_descr = d_signatures.get(acc, 0)
+        if acc in ta_signatures:
+            ranks = dict(zip(RANKS, ta_signatures[acc]))
+        else:
+            ranks = {}
+        n_terms = te_signatures.get(acc, 0)
+        table.insert((n_seq, n_res, n_descr, json.dumps(ranks), n_terms, acc))
+    table.close()
+
     orautils.drop_table(cur, owner, "METHOD_COMPARISON", purge=True)
     cur.execute(
         """
-        CREATE TABLE {}.METHOD_TMP
-        (
-            METHOD_AC VARCHAR2(25) NOT NULL,
-            PROTEIN_COUNT NUMBER NOT NULL,
-            RESIDUE_COUNT NUMBER NOT NULL,
-            RANK_COUNT VARCHAR2(250) NOT NULL
-        ) NOLOGGING
-        """.format(owner)
-    )
-    cur.execute(
-        """
-        CREATE TABLE {}.METHOD_COMPARISON_TMP
+        CREATE TABLE {}.METHOD_COMPARISON
         (
             METHOD_AC1 VARCHAR2(25) NOT NULL,
             METHOD_AC2 VARCHAR2(25) NOT NULL,
@@ -606,54 +621,46 @@ def _load_comparisons(user: str, dsn: str, comparators: tuple):
             PROTEIN_MATCH_OVERLAP_ NUMBER NOT NULL,
             PROTEIN_RESIDUE_OVERLAP NUMBER NOT NULL,
             RESIDUE_OVERLAP NUMBER NOT NULL,
-            RANK_OVERLAP VARCHAR2(250) NOT NULL
+            DESC_COUNT NUMBER NOT NULL,
+            RANK_COUNT VARCHAR2(250) NOT NULL,
+            TERM_COUNT NUMBER NOT NULL
         ) NOLOGGING
         """.format(owner)
     )
-    table = orautils.TablePopulator(con,
-                                    query="INSERT /*+ APPEND */ "
-                                          "INTO {}.METHOD_TMP "
-                                          "VALUES (:1, :2, :3, :4)".format(owner),
-                                    autocommit=True)
-    for acc_1, cnts in m_signatures.items():
-        table.insert((acc_1, *cnts, json.dumps(t_signatures[acc_1])))
-    table.close()
-
-    table = orautils.TablePopulator(con,
-                                    query="INSERT /*+ APPEND */ "
-                                          "INTO {}.METHOD_COMPARISON_TMP "
-                                          "VALUES (:1, :2, :3, :4, :5, :6, :7)".format(owner),
-                                    autocommit=True)
+    query = """
+        INSERT /*+ APPEND */
+        INTO {}.METHOD_COMPARISON
+        VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9)
+    """.format(owner)
+    table = orautils.TablePopulator(con, query=query, autocommit=True)
     for acc_1 in m_comparisons:
-        for acc_2, m_cnts in m_comparisons[acc_1].items():
-            t_cnts = t_comparisons[acc_1][acc_2]
-            table.insert((acc_1, acc_2, *m_cnts, json.dumps(t_cnts)))
+        d = d_comparisons.get(acc_1, {})
+        ta = ta_comparisons.get(acc_1, {})
+        te = te_comparisons.get(acc_1, {})
+        for acc_2, m_counts in m_comparisons[acc_1].items():
+            d_count = d.get(acc_2, 0)
+            if acc_2 in ta:
+                ranks = dict(zip(RANKS, ta[acc_2]))
+            else:
+                ranks = {}
+            te_count = te.get(acc_2, 0)
+            table.insert((acc_1, acc_2, *m_counts, d_count, json.dumps(ranks), te_count))
     table.close()
-    comparisons = None
-
-    for table in ("METHOD_TMP", "METHOD_COMPARISON_TMP"):
-        orautils.gather_stats(cur, owner, table)
-        orautils.grant(cur, owner, table, "SELECT", "INTERPRO_SELECT")
-
-    # cur.execute(
-    #     """
-    #     CREATE UNIQUE INDEX UI_METHOD_COUNT
-    #     ON {}.METHOD_TMP (METHOD_AC) NOLOGGING
-    #     """.format(owner)
-    # )
-    # cur.execute(
-    #     """
-    #     CREATE INDEX I_METHOD_COMPARISON$AC1
-    #     ON {}.METHOD_COMPARISON_TMP (METHOD_AC1) NOLOGGING
-    #     """.format(owner)
-    # )
-    # cur.execute(
-    #     """
-    #     CREATE INDEX I_METHOD_COMPARISON$AC2
-    #     ON {}.METHOD_COMPARISON (METHOD_AC2) NOLOGGING
-    #     """.format(owner)
-    # )
-    logger.debug("METHOD_COUNT and METHOD_COMPARISON ready")
+    orautils.gather_stats(cur, owner, "METHOD_COMPARISON")
+    orautils.grant(cur, owner, "METHOD_COMPARISON", "SELECT", "INTERPRO_SELECT")
+    cur.execute(
+        """
+        CREATE INDEX I_METHOD_COMPARISON$AC1
+        ON {}.METHOD_COMPARISON (METHOD_AC1) NOLOGGING
+        """.format(owner)
+    )
+    cur.execute(
+        """
+        CREATE INDEX I_METHOD_COMPARISON$AC2
+        ON {}.METHOD_COMPARISON (METHOD_AC2) NOLOGGING
+        """.format(owner)
+    )
+    logger.debug("METHOD_COMPARISON ready")
     cur.close()
     con.close()
 
