@@ -72,7 +72,7 @@ def consume_proteins(user: str, dsn: str, kvdb: utils.Kvdb, task_queue: Queue,
             except KeyError:
                 tax_ranks = {}
             else:
-                t_comparator.update(signatures, tax_ranks.keys())
+                ta_comparator.update(signatures, tax_ranks.keys())
 
             te_comparator.update(signatures, incr=len(protein_terms))
 
