@@ -116,7 +116,7 @@ def get_descriptions(user: str, dsn: str, processes: int=4,
 
 def _cmp_taxa(keys: List[str], kvdb: Kvdb, task_queue: Queue,
               done_queue: Queue, dir: Optional[str]=None):
-    o = Organizer(keys, dir=src)
+    o = Organizer(keys, dir=dir)
     kvdb.open()
     keys = kvdb.keys()
 
