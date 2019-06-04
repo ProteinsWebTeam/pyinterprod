@@ -363,6 +363,10 @@ class Kvdb(object):
             self.con.commit()
             self.pending = 0
 
+    def open(self):
+        self.close()
+        self.con = sqlite3.connect(self.filepath)
+
     def close(self):
         if self.con is not None:
             self.commit()
