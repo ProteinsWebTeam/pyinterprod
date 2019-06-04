@@ -501,17 +501,17 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     names = []
     taxa = []
-    ranks = []
     terms = []
-    comparators = []
+    m_comparators = []
+    t_comparators = []
     sizes = [0, 0, 0, 0, 0]
     for _ in consumers:
-        _names, _taxa, _ranks, _terms, comparator, _sizes = done_queue.get()
+        _names, _taxa, _terms, m_comparator, t_comparator, _sizes = done_queue.get()
         names.append(_names)
         taxa.append(_taxa)
-        ranks.append(_ranks)
         terms.append(_terms)
-        comparators.append(comparator)
+        m_comparators.append(m_comparator)
+        t_comparators.append(t_comparator)
 
         for i, size in enumerate(_sizes):
             sizes[i] += size
@@ -531,7 +531,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         Process(target=_load_description_counts, args=(user, dsn, names)),
         Process(target=_load_taxonomy_counts, args=(user, dsn, taxa)),
         Process(target=_load_term_counts, args=(user, dsn, terms)),
-        Process(target=_load_comparisons, args=(user, dsn, comparators))
+        Process(target=_load_comparisons, args=(user, dsn, m_comparators))
     ]
 
     for p in consumers:

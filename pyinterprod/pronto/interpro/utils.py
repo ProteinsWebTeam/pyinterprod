@@ -6,9 +6,12 @@ import heapq
 import os
 import pickle
 import sqlite3
+from abc import ABC, abstractmethod
 from multiprocessing import Pool
 from tempfile import mkdtemp, mkstemp
 from typing import Any, Dict, Generator, Iterable, List, Optional, Union
+
+from . import RANKS
 
 
 MIN_OVERLAP = 0.5   # at least 50% of overlap
@@ -172,13 +175,24 @@ def merge_organizers(organizers: Iterable[Organizer]) -> Generator[tuple, None, 
         yield _key, items
 
 
-class MatchComparator(object):
+class Comparator(ABC):
     def __init__(self, dir: Optional[str]=None):
         self.signatures = {}
         self.comparisons = {}
         fd, self.path = mkstemp(dir=dir)
         os.close(fd)
         os.remove(self.path)
+
+    def __iter__(self):
+        with gzip.open(self.path, "rb") as fh:
+            while True:
+                try:
+                    signatures, comparisons = pickle.load(fh)
+                except EOFError:
+                    break
+                else:
+                    for acc_1, cnts in signatures.items():
+                        yield acc_1, cnts, comparisons[acc_1]
 
     @property
     def size(self) -> int:
@@ -193,17 +207,41 @@ class MatchComparator(object):
     def remove(self):
         os.remove(self.path)
 
-    def __iter__(self):
-        with gzip.open(self.path, "rb") as fh:
-            while True:
-                try:
-                    signatures, comparisons = pickle.load(fh)
-                except EOFError:
-                    break
-                else:
-                    for acc_1, cnts in signatures.items():
-                        yield acc_1, cnts, comparisons[acc_1]
+    @abstractmethod
+    def update(self, *args):
+        pass
 
+
+class TaxonomyComparator(Comparator):
+    def __init__(self, dir: Optional[str]=None):
+        super().__init__(dir)
+        self.ranks = {rank: i for i, rank in enumerate(RANKS)}
+
+    def update(self, accessions: List[str], ranks: Iterable[str]):
+        for acc_1 in accessions:
+            if acc_1 not in self.signatures:
+                self.signatures[acc_1] = [0] * len(self.ranks)
+                self.comparisons[acc_1] = {}
+
+            for rank in ranks:
+                i = self.ranks[rank]
+                self.signatures[acc_1][i] += 1
+
+            for acc_2 in accessions:
+                if acc_1 >= acc_2:
+                    continue
+                elif acc_2 not in self.comparisons[acc_1]:
+                    self.comparisons[acc_1][acc_2] = [0] * len(self.ranks)
+
+                _accessions.append(acc_2)
+
+            for rank in ranks:
+                i = self.ranks[rank]
+                for acc_2 in _accessions:
+                    self.comparisons[acc_1][acc_2][i] += 1
+
+
+class MatchComparator(Comparator):
     def update(self, matches: List[tuple]) -> List[str]:
         signatures = self.prepare(matches)
 

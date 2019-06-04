@@ -6,7 +6,7 @@ from typing import List, Optional
 
 import cx_Oracle
 
-from .utils import Kvdb, MatchComparator, Organizer
+from .utils import Kvdb, MatchComparator, Organizer, TaxonomyComparator
 from ... import orautils
 
 MAX_GAP = 20        # at least 20 residues between positions
@@ -44,8 +44,9 @@ def consume_proteins(user: str, dsn: str, kvdb: Kvdb, task_queue: Queue,
     kvdb.open()
     names = Organizer(keys, dir=tmpdir)
     taxa = Organizer(keys, dir=tmpdir)
-    ranks = Organizer(keys, dir=tmpdir)
     terms = Organizer(keys, dir=tmpdir)
+    m_comparator = MatchComparator(tmpdir)
+    t_comparator = TaxonomyComparator(tmpdir)
     table = orautils.TablePopulator(
         con=con,
         query="INSERT /*+ APPEND */ "
@@ -53,17 +54,18 @@ def consume_proteins(user: str, dsn: str, kvdb: Kvdb, task_queue: Queue,
               "VALUES (:1, :2, :3, :4, :5, :6, :7)".format(owner),
         autocommit=True
     )
-    comparator = MatchComparator(tmpdir)
     for chunk in iter(task_queue.get, None):
         for acc, dbcode, length, taxid, descid, matches in chunk:
             md5 = hash_protein(matches)
-            signatures = comparator.update(matches)
             protein_terms = proteins2go.get(acc, [])
+            signatures = m_comparator.update(matches)
 
             try:
                 tax_ranks = kvdb[taxid]
             except KeyError:
                 tax_ranks = {}
+            else:
+                t_comparator.update(accessions, tax_ranks.keys())
 
             for signature_acc in signatures:
                 # UniProt descriptions
@@ -78,24 +80,17 @@ def consume_proteins(user: str, dsn: str, kvdb: Kvdb, task_queue: Queue,
                 table.insert((signature_acc, acc, dbcode, md5, length,
                               taxid, descid))
 
-                accessions = []
-                for signature_acc_2 in signatures:
-                    if signature_acc < signature_acc_2:
-                        accessions.append(signature_acc_2)
-
-                ranks.add(signature_acc, (accessions, list(tax_ranks.keys())))
-
         names.flush()
         taxa.flush()
-        ranks.flush()
         terms.flush()
 
     table.close()
     con.close()
     kvdb.close()
-    comparator.sync()
-    sizes = (names.merge(), taxa.merge(), ranks.merge(), terms.merge(), comparator.size)
-    done_queue.put((names, taxa, ranks, terms, comparator, sizes))
+    m_comparator.sync()
+    t_comparator.sync()
+    sizes = sum((names.merge(), taxa.merge(), terms.merge(), m_comparator.size, t_comparator.size))
+    done_queue.put((names, taxa, terms, m_comparator, t_comparator, sizes))
 
 
 def hash_protein(matches: List[tuple]) -> str:
