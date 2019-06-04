@@ -71,7 +71,7 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue, done_queue: Queue,
                 # UniProt descriptions
                 names.add(signature_acc, (descid, dbcode))
                 # Taxonomic origins
-                for rank, rank_tax_id in tax_ranks.items()
+                for rank, rank_tax_id in tax_ranks.items():
                     taxa.add(signature_acc, (rank, rank_tax_id))
                 # GO terms
                 for go_id in protein_terms:
