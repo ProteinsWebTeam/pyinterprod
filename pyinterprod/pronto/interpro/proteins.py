@@ -12,7 +12,7 @@ from ... import orautils
 MAX_GAP = 20        # at least 20 residues between positions
 
 
-def consume_proteins(user: str, dsn: str, task_queue: Queue,
+def consume_proteins(user: str, dsn: str, ranks: List[str], task_queue: Queue,
                      done_queue: Queue, tmpdir: Optional[str]=None,
                      bucket_size: int=100):
     owner = user.split('/')[0]
@@ -46,7 +46,7 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue,
     terms = utils.Organizer(keys, dir=tmpdir)
     m_comparator = utils.MatchComparator(dir=tmpdir)
     n_comparator = utils.Comparator(dir=tmpdir)
-    ta_comparator = utils.TaxonomyComparator(dir=tmpdir)
+    ta_comparator = utils.TaxonomyComparator(ranks, dir=tmpdir)
     te_comparator = utils.Comparator(dir=tmpdir)
     table = orautils.TablePopulator(
         con=con,

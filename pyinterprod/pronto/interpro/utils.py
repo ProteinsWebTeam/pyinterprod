@@ -11,8 +11,6 @@ from multiprocessing import Pool
 from tempfile import mkdtemp, mkstemp
 from typing import Any, Dict, Generator, Iterable, List, Optional, Tuple, Union
 
-from . import RANKS
-
 
 MIN_OVERLAP = 0.5   # at least 50% of overlap
 COMPRESS_LVL = 6
@@ -241,9 +239,9 @@ class Comparator(ABC):
 
 
 class TaxonomyComparator(Comparator):
-    def __init__(self, buffer_size: int=0, dir: Optional[str]=None):
+    def __init__(self, ranks: List[str], buffer_size: int=0, dir: Optional[str]=None):
         super().__init__(buffer_size, dir)
-        self.ranks = {rank: i for i, rank in enumerate(RANKS)}
+        self.ranks = {rank: i for i, rank in enumerate(ranks)}
 
     def update(self, accessions: List[str], ranks: Iterable[str]):
         for acc_1 in accessions:

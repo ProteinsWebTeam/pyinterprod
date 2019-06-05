@@ -399,7 +399,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     consumers = []
     for _ in range(max(processes-1, 1)):
         p = Process(target=proteins.consume_proteins,
-                    args=(user, dsn, task_queue, done_queue, tmpdir))
+                    args=(user, dsn, RANKS, task_queue, done_queue, tmpdir))
         consumers.append(p)
         p.start()
 
