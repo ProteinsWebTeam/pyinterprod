@@ -507,16 +507,18 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     names = []
     taxa = []
     terms = []
-    comparators = ([], [], [], [])
+    comparators = []
+    kvdbs = ([], [], [])
     size = 0
     for _ in consumers:
-        # 4 comparators, 3 organizers, size
+        # 1 comparator, 3 organizers, 3 kvdbs, size
         obj = done_queue.get()
-        for i in range(4):
-            comparators[i].append(obj[i])
-        names.append(obj[4])
-        taxa.append(obj[5])
-        terms.append(obj[6])
+        comparators.append(obj[0])
+        names.append(obj[1])
+        taxa.append(obj[2])
+        terms.append(obj[3])
+        for i in range(3):
+            kvdbs[i].append(obj[4+i])
         size += obj[7]
 
     for p in consumers:
@@ -526,6 +528,9 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     with open(os.path.join(tmpdir, "comparators"), "wb") as fh:
         pickle.dump(comparators, fh)
+
+    with open(os.path.join(tmpdir, "kvdbs"), "wb") as fh:
+        pickle.dump(kvdbs, fh)
 
     consumers = [
         Process(target=_load_description_counts, args=(user, dsn, names)),

@@ -44,10 +44,10 @@ def consume_proteins(user: str, dsn: str, ranks: List[str], task_queue: Queue,
     names = utils.Organizer(keys, dir=tmpdir)
     taxa = utils.Organizer(keys, dir=tmpdir)
     terms = utils.Organizer(keys, dir=tmpdir)
-    m_comparator = utils.MatchComparator(dir=tmpdir)
-    n_comparator = utils.Comparator(dir=tmpdir)
-    ta_comparator = utils.TaxonomyComparator(ranks, dir=tmpdir)
-    te_comparator = utils.Comparator(dir=tmpdir)
+    comparator = utils.MatchComparator(dir=tmpdir)
+    n_kvdb = utils.Kvdb(dir=tmpdir)
+    ta_kvdb = utils.Kvdb(dir=tmpdir)
+    te_kvdb = utils.Kvdb(dir=tmpdir)
     table = orautils.TablePopulator(
         con=con,
         query="INSERT /*+ APPEND */ "
@@ -60,16 +60,23 @@ def consume_proteins(user: str, dsn: str, ranks: List[str], task_queue: Queue,
             md5 = hash_protein(matches)
             protein_terms = proteins2go.get(acc, [])
 
-            # Update comparators
-            signatures = m_comparator.update(matches)
+            signatures = comparator.update(matches)
+            ssignatures = set(signatures)
 
             if desc_id not in excluded_descr:
-                n_comparator.update(signatures)
+                if desc_id in n_kvdb:
+                    n_kvdb[desc_id] |= ssignatures
+                else:
+                    n_kvdb[desc_id] = ssignatures
 
-            if ranks:
-                ta_comparator.update(signatures, ranks.keys())
+            if tax_id in ta_kvdb:
+                ta_kvdb[tax_id] |= ssignatures
+            else:
+                ta_kvdb[tax_id] = ssignatures
 
-            te_comparator.update(signatures, incr=len(protein_terms))
+            for go_id in protein_terms:
+                if go_id in te_kvdb:
+                    te_kvdb[go_id] |= ssignatures
 
             # Update organizers and populate table
             for signature_acc in signatures:
@@ -88,20 +95,20 @@ def consume_proteins(user: str, dsn: str, ranks: List[str], task_queue: Queue,
         names.flush()
         taxa.flush()
         terms.flush()
+        n_kvdb.sync()
+        ta_kvdb.sync()
+        te_kvdb.sync()
 
     table.close()
     con.close()
-    size = 0
-    comparators = (m_comparator, n_comparator, ta_comparator, te_comparator)
-    for c in comparators:
-        c.sync()
-        size += c.size
 
+    comparator.sync()
+    size = comparator.size
     organizers = (names, taxa, terms)
     for o in organizers:
         size += o.merge()
 
-    done_queue.put((*comparators, *organizers, size))
+    done_queue.put((comparator, *organizers, n_kvdb, ta_kvdb, te_kvdb, size))
 
 
 def hash_protein(matches: List[tuple]) -> str:

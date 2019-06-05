@@ -389,7 +389,7 @@ class Kvdb(object):
             )
             """
         )
-        self.pending = 0
+        self.buffer = {}
 
     def __enter__(self):
         return self
@@ -400,28 +400,48 @@ class Kvdb(object):
     def __del__(self):
         self.close()
 
-    def __setitem__(self, key: str, value: Any):
-        self.con.execute(
-            "INSERT INTO data (id, val) VALUES (?, ?)",
-            (key, pickle.dumps(value))
-        )
-        self.pending += 1
+    def __contains__(self, key: str) -> bool:
+        if key in self.buffer:
+            return True
 
-    def __getitem__(self, key: str) -> dict:
         cur = self.con.execute("SELECT val FROM data WHERE id=?", (key,))
         row = cur.fetchone()
         if row:
-            return pickle.loads(row[0])
-        else:
-            raise KeyError(key)
+            self.buffer[key] = pickle.loads(row[0])
+            return True
+        return False
+
+    def __setitem__(self, key: str, value: Any):
+        self.buffer[key] = value
+
+    def __getitem__(self, key: str) -> Any:
+        if key in self.buffer:
+            return self.buffer[key]
+
+        cur = self.con.execute("SELECT val FROM data WHERE id=?", (key,))
+        row = cur.fetchone()
+        if row:
+            self.buffer[key] = pickle.loads(row[0])
+            return self.buffer[key]
+        raise KeyError(key)
+
+    @property
+    def size(self) -> int:
+        return os.path.getsize(self.filepath)
+
+    def sync(self):
+        if not self.buffer:
+            return
+
+        self.con.executemany(
+            "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
+            [(k, pickle.dumps(v)) for k, v in self.buffer.items()]
+        )
+        self.con.commit()
+        self.buffer = {}
 
     def keys(self) -> List[str]:
         return [row[0] for row in self.con.execute("SELECT id FROM data")]
-
-    def commit(self):
-        if self.pending:
-            self.con.commit()
-            self.pending = 0
 
     def open(self):
         self.close()
@@ -429,7 +449,7 @@ class Kvdb(object):
 
     def close(self):
         if self.con is not None:
-            self.commit()
+            self.sync()
             self.con.close()
             self.con = None
 
