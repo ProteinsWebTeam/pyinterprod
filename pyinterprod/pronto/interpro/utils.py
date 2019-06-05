@@ -400,6 +400,11 @@ class Kvdb(object):
     def __del__(self):
         self.close()
 
+    def __iter__(self):
+        with sqlite3.connect(self.filepath) as con:
+            for row in con.execute("SELECT id, val FROM data ORDER BY id"):
+                yield row[0], pickle.loads(row[1])
+
     def __contains__(self, key: str) -> bool:
         if key in self.buffer:
             return True
@@ -440,13 +445,6 @@ class Kvdb(object):
         self.con.commit()
         self.buffer = {}
 
-    def keys(self) -> List[str]:
-        return [row[0] for row in self.con.execute("SELECT id FROM data")]
-
-    def open(self):
-        self.close()
-        self.con = sqlite3.connect(self.filepath)
-
     def close(self):
         if self.con is not None:
             self.sync()
@@ -456,6 +454,22 @@ class Kvdb(object):
     def remove(self):
         self.close()
         os.remove(self.filepath)
+
+
+def merge_kvdbs(iterable: Iterable[Kvdb]):
+    items = []
+    _key = None
+    for key, value in heapq.merge(*iterable):
+        if key != _key:
+            if _key is not None:
+                yield _key, items
+            _key = key
+            items = []
+
+        items.append(value)
+
+    if _key is not None:
+        yield _key, items
 
 
 def merge_comparators(comparators: Iterable[Comparator], remove: bool=False) -> Tuple[dict, dict]:

@@ -4,12 +4,13 @@ import json
 import os
 import pickle
 from multiprocessing import Process, Queue
+from threading import Thread
 from typing import Optional, Tuple
 
 import cx_Oracle
 
-from . import proteins
-from .utils import merge_comparators, merge_organizers
+from . import proteins, signatures
+from .utils import merge_comparators, merge_kvdbs, merge_organizers
 from ... import logger, orautils
 
 
@@ -397,11 +398,11 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     task_queue = Queue(maxsize=1)
     done_queue = Queue()
-    consumers = []
+    pool = []
     for _ in range(max(processes-1, 1)):
         p = Process(target=proteins.consume_proteins,
-                    args=(user, dsn, RANKS, task_queue, done_queue, tmpdir))
-        consumers.append(p)
+                    args=(user, dsn, task_queue, done_queue, tmpdir))
+        pool.append(p)
         p.start()
 
     owner = user.split('/')[0]
@@ -501,7 +502,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         num_proteins += 1
     logger.debug("proteins: {:,}".format(num_proteins))
 
-    for _ in consumers:
+    for _ in pool:
         task_queue.put(None)
 
     names = []
@@ -510,7 +511,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     comparators = []
     kvdbs = ([], [], [])
     size = 0
-    for _ in consumers:
+    for _ in pool:
         # 1 comparator, 3 organizers, 3 kvdbs, size
         obj = done_queue.get()
         comparators.append(obj[0])
@@ -521,7 +522,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
             kvdbs[i].append(obj[4+i])
         size += obj[7]
 
-    for p in consumers:
+    for p in pool:
         p.join()
 
     logger.info("disk usage: {:.0f} MB".format(size/1024**2))
@@ -532,16 +533,24 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     with open(os.path.join(tmpdir, "kvdbs"), "wb") as fh:
         pickle.dump(kvdbs, fh)
 
-    consumers = [
+    pool = [
+        Thread(target=_finalize_method2protein, args=(user, dsn)),
         Process(target=_load_description_counts, args=(user, dsn, names)),
         Process(target=_load_taxonomy_counts, args=(user, dsn, taxa)),
         Process(target=_load_term_counts, args=(user, dsn, terms)),
-        #Process(target=_load_comparisons, args=(user, dsn, comparators))
     ]
 
-    for p in consumers:
+    for p in pool:
         p.start()
 
+    _load_comparisons(user, dsn, comparators, kvdbs, processes=processes-3)
+
+    for p in pool:
+        p.join()
+
+
+def _finalize_method2protein(user: str, dsn: str):
+    owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     orautils.gather_stats(cur, owner, "METHOD2PROTEIN")
@@ -578,16 +587,28 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     cur.close()
     con.close()
 
-    for p in consumers:
-        p.join()
+
+def _load_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple, processes: int=1):
+    # m_signatures, m_comparisons = merge_comparators(comparators)
+
+    pool = []
+    task_queue = Queue(maxsize=1)
+    done_queue = Queue()
+    for _ in range(max(1, processes-1)):
+        p = Process(target=signatures.agg_kvdb, args=(task_queue, done_queue))
+        p.start()
+        pool.append(p)
+
+    # kvdbs: descriptions, taxa, terms
+    for desc_id, values in merge_kvdbs(kvdbs[0]):
+        task_queue.put(values)
 
 
-def _load_comparisons(user: str, dsn: str, comparators: tuple):
-    # Merging comparisons (based on matches, descr, taxonomy, GO terms)
-    m_signatures, m_comparisons = merge_comparators(comparators[0])
-    d_signatures, d_comparisons = merge_comparators(comparators[1])
-    ta_signatures, ta_comparisons = merge_comparators(comparators[2])
-    te_signatures, te_comparisons = merge_comparators(comparators[3])
+
+
+    return
+
+
 
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))

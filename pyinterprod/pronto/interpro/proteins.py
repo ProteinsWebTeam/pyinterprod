@@ -12,7 +12,7 @@ from ... import orautils
 MAX_GAP = 20        # at least 20 residues between positions
 
 
-def consume_proteins(user: str, dsn: str, ranks: List[str], task_queue: Queue,
+def consume_proteins(user: str, dsn: str, task_queue: Queue,
                      done_queue: Queue, tmpdir: Optional[str]=None,
                      bucket_size: int=100):
     owner = user.split('/')[0]
@@ -69,10 +69,11 @@ def consume_proteins(user: str, dsn: str, ranks: List[str], task_queue: Queue,
                 else:
                     n_kvdb[desc_id] = ssignatures
 
-            if tax_id in ta_kvdb:
-                ta_kvdb[tax_id] |= ssignatures
-            else:
-                ta_kvdb[tax_id] = ssignatures
+            for rank_tax_id in ranks.values():
+                if rank_tax_id in ta_kvdb:
+                    ta_kvdb[rank_tax_id] |= ssignatures
+                else:
+                    ta_kvdb[rank_tax_id] = ssignatures
 
             for go_id in protein_terms:
                 if go_id in te_kvdb:
