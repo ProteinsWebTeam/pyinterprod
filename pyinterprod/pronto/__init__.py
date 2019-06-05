@@ -16,8 +16,7 @@ def _default_steps() -> list:
 
 
 def _get_steps() -> dict:
-    from . import goa, uniprot
-    from .interpro import tables as interpro
+    from . import goa, interpro, uniprot
     from .. import orautils
 
     return {
