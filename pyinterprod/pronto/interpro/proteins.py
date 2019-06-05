@@ -77,6 +77,8 @@ def consume_proteins(user: str, dsn: str, ranks: List[str], task_queue: Queue,
             for go_id in protein_terms:
                 if go_id in te_kvdb:
                     te_kvdb[go_id] |= ssignatures
+                else:
+                    te_kvdb[go_id] = ssignatures
 
             # Update organizers and populate table
             for signature_acc in signatures:
@@ -107,8 +109,12 @@ def consume_proteins(user: str, dsn: str, ranks: List[str], task_queue: Queue,
     organizers = (names, taxa, terms)
     for o in organizers:
         size += o.merge()
+    kvdbs = (n_kvdb, ta_kvdb, te_kvdb)
+    for k in kvdbs:
+        k.close()
+        size += k.size
 
-    done_queue.put((comparator, *organizers, n_kvdb, ta_kvdb, te_kvdb, size))
+    done_queue.put((comparator, *organizers, *kvdbs, size))
 
 
 def hash_protein(matches: List[tuple]) -> str:
