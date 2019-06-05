@@ -4,7 +4,7 @@ import json
 import os
 import pickle
 from multiprocessing import Process, Queue
-from typing import Optional
+from typing import Optional, Tuple
 
 import cx_Oracle
 
@@ -15,6 +15,7 @@ from ... import logger, orautils
 
 RANKS = ["superkingdom", "kingdom", "phylum", "class", "order",
          "family", "genus", "species"]
+RANK_WEIGHTS = [0.025, 0.05, 0.075, 0.1, 0.15, 0.175, 0.2, 0.225]
 
 
 def load_databases(user: str, dsn: str):
@@ -841,6 +842,15 @@ def _enable_schema(user: str, dsn: str):
     con.close()
 
 
+def _calc_sim(set_1: int, set_2: int, intersection: int) -> Tuple[float, float, float]:
+    union = set_1 + set_2 - intersection
+    return (
+        intersection / union,
+        intersection / set_1 if set_1 else 0,
+        intersection / set_2 if set_2 else 0
+    )
+
+
 def load_predictions(user: str, dsn: str):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
@@ -859,15 +869,41 @@ def load_predictions(user: str, dsn: str):
             "seq": row[1],
             "res": row[2],
             "desc": row[3],
-            "rank": json.loads(row[4]),
+            "ranks": json.loads(row[4]),
             "term": row[5],
         }
 
-    for row in cur.execute("SELECT * FROM {}.METHOD_COMPARISON WHERE ROWNUM <=5".format(owner)):
+    for row in cur.execute("SELECT * FROM {}.METHOD_COMPARISON".format(owner)):
         acc_1 = row[0]
         acc_2 = row[1]
-        n_collocations = row[3]
-        n_protein
+        s1 = signatures[acc_1]
+        s2 = signatures[acc_2]
+
+        seq_cf, seq_ct1, seq_ct2 = _calc_sim(s1["seq"], s2["seq"], row[3])
+        res_cf, res_ct1, res_ct2 = _calc_sim(s1["res"], s2["res"], row[4])
+        desc_cf, desc_ct1, desc_ct2 = _calc_sim(s1["desc"], s2["desc"], row[5])
+        term_cf, term_ct1, term_ct2 = _calc_sim(s1["term"], s2["term"], row[7])
+        rank_cf = rank_ct1 = rank_ct2 = 0
+
+        ranks = {}
+        for k, v in json.loads(row[6]).items():
+            i = RANKS.index(k)
+            w = RANK_WEIGHTS[i]
+            cf, ct1, ct2 = _calc_sim(s1["ranks"][k], s2["ranks"][k], v)
+            ranks[k] = (cf, ct1, ct2)
+            rank_cf += cf * w
+            rank_ct1 += ct1 * w
+            rank_ct2 += ct2 * w
+
+
+        # print(acc_1, acc_2)
+        # print(seq_cf, seq_ct1, seq_ct2)
+        # print(res_cf, res_ct1, res_ct2)
+        # print(desc_cf, desc_ct1, desc_ct2)
+        # print(term_cf, term_ct1, term_ct2)
+        # print(ranks)
+        # print( rank_cf, rank_ct1, rank_ct2)
+        # print("----------")
 
     cur.close()
     con.close()
