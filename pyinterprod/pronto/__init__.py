@@ -8,6 +8,8 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tempfile import gettempdir
 
+from .. import logger
+
 
 def _default_steps() -> list:
     return sorted(k for k, v in _get_steps().items() if not v.get("skip"))
@@ -136,7 +138,6 @@ def run(dsn: str, main_user: str, alt_user: str=None, **kwargs):
     steps = kwargs.get("steps", _get_steps())
     tmpdir = kwargs.get("tmpdir", gettempdir())
 
-    from .. import logger
     logger.setLevel(level)
 
     for n, s in steps.items():
