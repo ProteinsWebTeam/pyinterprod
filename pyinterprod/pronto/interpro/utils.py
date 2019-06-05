@@ -296,16 +296,13 @@ class MatchComparator(Comparator):
                     """
                     * number of collocations
                     * number of overlapping proteins
-                        (at least 1 overlap >= shortest * MIN_OVERLAP)
-                    * number of overlapping proteins
                         (residue overlap / signature with least residues >= MIN_OVERLAP)
                     * number of overlapping residues
                     """
-                    self.comparisons[acc_1][acc_2] = [0, 0, 0, 0]
+                    self.comparisons[acc_1][acc_2] = [0, 0, 0]
                     self.num_items += 1
 
                 residues_2 = sum([e - s + 1 for s, e in signatures[acc_2]])
-                has_match_overlap = False
                 n_residues = 0
                 i = 0
                 start_2, end_2 = signatures[acc_2][i]
@@ -322,24 +319,15 @@ class MatchComparator(Comparator):
                         # o is the number of overlapping residues
                         n_residues += o
 
-                        # Shortest match
-                        shortest = min(end_1 - start_1, end_2 - start_2) + 1
-                        if o >= shortest * MIN_OVERLAP:
-                            has_match_overlap = True
-
                 # collocation
                 self.comparisons[acc_1][acc_2][0] += 1
 
-                # overlapping proteins (based on matches)
-                if has_match_overlap:
+                # overlapping proteins
+                if n_residues / min(residues_1, residues_2) >= MIN_OVERLAP:
                     self.comparisons[acc_1][acc_2][1] += 1
 
-                # overlapping proteins (based on residues)
-                if n_residues / min(residues_1, residues_2) >= MIN_OVERLAP:
-                    self.comparisons[acc_1][acc_2][2] += 1
-
                 # overlapping residues
-                self.comparisons[acc_1][acc_2][3] += n_residues
+                self.comparisons[acc_1][acc_2][2] += n_residues
 
         self.post_update()
         return list(signatures.keys())

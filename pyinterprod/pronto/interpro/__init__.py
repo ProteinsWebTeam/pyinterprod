@@ -616,8 +616,7 @@ def _load_comparisons(user: str, dsn: str, comparators: tuple):
             METHOD_AC1 VARCHAR2(25) NOT NULL,
             METHOD_AC2 VARCHAR2(25) NOT NULL,
             COLLOCATION NUMBER NOT NULL,
-            PROTEIN_MATCH_OVERLAP_ NUMBER NOT NULL,
-            PROTEIN_RESIDUE_OVERLAP NUMBER NOT NULL,
+            PROTEIN_OVERLAP NUMBER NOT NULL,
             RESIDUE_OVERLAP NUMBER NOT NULL,
             DESC_COUNT NUMBER NOT NULL,
             RANK_COUNT VARCHAR2(250) NOT NULL,
@@ -627,7 +626,7 @@ def _load_comparisons(user: str, dsn: str, comparators: tuple):
     )
     query = """
         INSERT /*+ APPEND */ INTO {}.METHOD_COMPARISON
-        VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9)
+        VALUES (:1, :2, :3, :4, :5, :6, :7, :8)
     """.format(owner)
     table = orautils.TablePopulator(con, query=query, autocommit=True)
     for acc_1 in m_comparisons:
@@ -843,9 +842,32 @@ def _enable_schema(user: str, dsn: str):
 
 
 def load_predictions(user: str, dsn: str):
-    raise NotImplementedError()
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
+    cur.execute(
+        """
+        SELECT 
+          METHOD_AC, FULL_SEQ_COUNT, RESIDUE_COUNT, DESC_COUNT, RANK_COUNT, 
+          TERM_COUNT
+        FROM {}.METHOD
+        """.format(owner)
+    )
+    signatures = {}
+    for row in cur:
+        signatures[row[0]] = {
+            "seq": row[1],
+            "res": row[2],
+            "desc": row[3],
+            "rank": json.loads(row[4]),
+            "term": row[5],
+        }
+
+    for row in cur.execute("SELECT * FROM {}.METHOD_COMPARISON WHERE ROWNUM <=5".format(owner)):
+        acc_1 = row[0]
+        acc_2 = row[1]
+        n_collocations = row[3]
+        n_protein
+
     cur.close()
     con.close()
