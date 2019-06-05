@@ -4,7 +4,7 @@ import json
 import os
 import pickle
 from multiprocessing import Process, Queue
-from typing import Optional, Tuple
+from typing import Optional
 
 import cx_Oracle
 
@@ -517,7 +517,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     for p in consumers:
         p.join()
 
-    logger.info("disk usage: {:.0f} MB".format(size))
+    logger.info("disk usage: {:.0f} MB".format(size/1024**2))
 
     with open(os.path.join(tmpdir, "comparators"), "wb") as fh:
         pickle.dump(comparators, fh)
