@@ -210,7 +210,9 @@ class Comparator(ABC):
     def remove(self):
         os.remove(self.path)
 
-    def update(self, accessions: List[str], incr: int=1):
+    def update(self, *args, **kwargs):
+        accessions, = args
+        incr = kwargs.get("incr", 1)
         if not incr:
             return
 
