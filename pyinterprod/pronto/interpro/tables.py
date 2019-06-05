@@ -592,7 +592,7 @@ def _load_comparisons(user: str, dsn: str, comparators: tuple):
           TERM_COUNT = :5
         WHERE METHOD_AC = :6
     """.format(owner)
-    table = orautils.TablePopulator(con, query=query, autocommit=True)
+    table = orautils.TablePopulator(con, query=query)
     for acc, (n_seq, n_res) in m_signatures.items():
         n_descr = d_signatures.get(acc, 0)
         if acc in ta_signatures:
@@ -602,6 +602,7 @@ def _load_comparisons(user: str, dsn: str, comparators: tuple):
         n_terms = te_signatures.get(acc, 0)
         table.insert((n_seq, n_res, n_descr, json.dumps(ranks), n_terms, acc))
     table.close()
+    con.commit()
 
     orautils.drop_table(cur, owner, "METHOD_COMPARISON", purge=True)
     cur.execute(
@@ -708,6 +709,7 @@ def _load_term_counts(user: str, dsn: str, organizers: list):
     logger.debug("METHOD_TERM ready")
     cur.close()
     con.close()
+
 
 def _load_description_counts(user: str, dsn: str, organizers: list):
     owner = user.split('/')[0]
