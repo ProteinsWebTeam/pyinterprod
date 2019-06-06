@@ -6,7 +6,6 @@ import heapq
 import os
 import pickle
 import sqlite3
-from abc import ABC
 from multiprocessing import Pool
 from tempfile import mkdtemp, mkstemp
 from typing import Any, Dict, Generator, Iterable, List, Optional, Tuple, Union
@@ -173,7 +172,7 @@ def merge_organizers(organizers: Iterable[Organizer]) -> Generator[tuple, None, 
         yield _key, items
 
 
-class Comparator(ABC):
+class MatchComparator(object):
     def __init__(self, buffer_size: int=0, dir: Optional[str]=None):
         self.buffer_size = buffer_size
         self.num_items = 0
@@ -208,71 +207,6 @@ class Comparator(ABC):
     def remove(self):
         os.remove(self.path)
 
-    def update(self, *args, **kwargs):
-        accessions, = args
-        incr = kwargs.get("incr", 1)
-        if not incr:
-            return
-
-        for acc_1 in accessions:
-            if acc_1 in self.signatures:
-                self.signatures[acc_1] += incr
-            else:
-                self.signatures[acc_1] = incr
-                self.comparisons[acc_1] = {}
-                self.num_items += 1
-
-            for acc_2 in accessions:
-                if acc_1 >= acc_2:
-                    continue
-                elif acc_2 in self.comparisons[acc_1]:
-                    self.comparisons[acc_1][acc_2] += incr
-                else:
-                    self.comparisons[acc_1][acc_2] = incr
-                    self.num_items += 1
-
-        self.post_update()
-
-    def post_update(self):
-        if self.buffer_size and self.num_items >= self.buffer_size:
-            self.sync()
-
-
-class TaxonomyComparator(Comparator):
-    def __init__(self, ranks: List[str], buffer_size: int=0, dir: Optional[str]=None):
-        super().__init__(buffer_size, dir)
-        self.ranks = {rank: i for i, rank in enumerate(ranks)}
-
-    def update(self, accessions: List[str], ranks: Iterable[str]):
-        for acc_1 in accessions:
-            if acc_1 not in self.signatures:
-                self.signatures[acc_1] = [0] * len(self.ranks)
-                self.comparisons[acc_1] = {}
-                self.num_items += 1
-
-            for rank in ranks:
-                i = self.ranks[rank]
-                self.signatures[acc_1][i] += 1
-
-            _accessions = []
-            for acc_2 in accessions:
-                if acc_1 >= acc_2:
-                    continue
-                elif acc_2 not in self.comparisons[acc_1]:
-                    self.comparisons[acc_1][acc_2] = [0] * len(self.ranks)
-                    self.num_items += 1
-
-                _accessions.append(acc_2)
-
-            for rank in ranks:
-                i = self.ranks[rank]
-                for acc_2 in _accessions:
-                    self.comparisons[acc_1][acc_2][i] += 1
-
-        self.post_update()
-
-
-class MatchComparator(Comparator):
     def update(self, matches: List[tuple]) -> List[str]:
         signatures = self.prepare(matches)
 
@@ -329,7 +263,9 @@ class MatchComparator(Comparator):
                 # overlapping residues
                 self.comparisons[acc_1][acc_2][2] += n_residues
 
-        self.post_update()
+        if self.buffer_size and self.num_items >= self.buffer_size:
+            self.sync()
+
         return list(signatures.keys())
 
     @staticmethod
@@ -376,12 +312,13 @@ class MatchComparator(Comparator):
 
 
 class Kvdb(object):
-    def __init__(self, dir: Optional[str]=None):
+    def __init__(self, dir: Optional[str]=None, cache: bool=True):
         fd, self.filepath = mkstemp(dir=dir)
         os.close(fd)
         os.remove(self.filepath)
-        self.con = sqlite3.connect(self.filepath)
-        self.con.execute(
+        self.con = self.cur = None
+        self._ensure_open()
+        self.cur.execute(
             """
             CREATE TABLE data (
                 id TEXT PRIMARY KEY NOT NULL,
@@ -390,6 +327,7 @@ class Kvdb(object):
             """
         )
         self.buffer = {}
+        self.cache = cache
 
     def __enter__(self):
         return self
@@ -406,29 +344,44 @@ class Kvdb(object):
                 yield row[0], pickle.loads(row[1])
 
     def __contains__(self, key: str) -> bool:
-        if key in self.buffer:
-            return True
-
-        cur = self.con.execute("SELECT val FROM data WHERE id=?", (key,))
-        row = cur.fetchone()
-        if row:
-            self.buffer[key] = pickle.loads(row[0])
-            return True
-        return False
+        found, value = self._getitem(key)
+        return found
 
     def __setitem__(self, key: str, value: Any):
-        self.buffer[key] = value
+        if self.cache:
+            self.buffer[key] = value
+        else:
+            self._ensure_open()
+            self.cur.execute(
+                "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
+                (key, pickle.dumps(value))
+            )
+            self.con.commit()
 
     def __getitem__(self, key: str) -> Any:
-        if key in self.buffer:
-            return self.buffer[key]
-
-        cur = self.con.execute("SELECT val FROM data WHERE id=?", (key,))
-        row = cur.fetchone()
-        if row:
-            self.buffer[key] = pickle.loads(row[0])
-            return self.buffer[key]
+        found, value = self._getitem(key)
+        if found:
+            return value
         raise KeyError(key)
+
+    def _ensure_open(self):
+        if not self.con:
+            self.con = sqlite3.connect(self.filepath)
+            self.cur = self.con.cursor()
+
+    def _getitem(self, key: str):
+        if key in self.buffer:
+            return True, self.buffer[key]
+
+        self._ensure_open()
+        self.cur.execute("SELECT val FROM data WHERE id=?", (key,))
+        row = self.cur.fetchone()
+        if row:
+            value = pickle.loads(row[0])
+            if self.cache:
+                self.buffer[key] = value
+            return True, value
+        return False, None
 
     @property
     def size(self) -> int:
@@ -438,9 +391,10 @@ class Kvdb(object):
         if not self.buffer:
             return
 
-        self.con.executemany(
+        self._ensure_open()
+        self.cur.executemany(
             "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
-            [(k, pickle.dumps(v)) for k, v in self.buffer.items()]
+            ((k, pickle.dumps(v)) for k, v in self.buffer.items())
         )
         self.con.commit()
         self.buffer = {}
@@ -448,8 +402,9 @@ class Kvdb(object):
     def close(self):
         if self.con is not None:
             self.sync()
+            self.cur.close()
             self.con.close()
-            self.con = None
+            self.con = self.cur = None
 
     def remove(self):
         self.close()
@@ -459,7 +414,7 @@ class Kvdb(object):
 def merge_kvdbs(iterable: Iterable[Kvdb]):
     items = []
     _key = None
-    for key, value in heapq.merge(*iterable):
+    for key, value in heapq.merge(*iterable, key=lambda x: x[0]):
         if key != _key:
             if _key is not None:
                 yield _key, items
@@ -472,7 +427,8 @@ def merge_kvdbs(iterable: Iterable[Kvdb]):
         yield _key, items
 
 
-def merge_comparators(comparators: Iterable[Comparator], remove: bool=False) -> Tuple[dict, dict]:
+def merge_comparators(comparators: Iterable[MatchComparator],
+                      remove: bool=False) -> Tuple[dict, dict]:
     signatures = {}
     comparisons = {}
     for c in comparators:

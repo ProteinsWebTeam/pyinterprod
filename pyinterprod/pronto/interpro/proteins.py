@@ -110,9 +110,9 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue,
     organizers = (names, taxa, terms)
     for o in organizers:
         size += o.merge()
-    kvdbs = (n_kvdb, ta_kvdb, te_kvdb)
+    kvdbs = (n_kvdb, te_kvdb, ta_kvdb)
     for k in kvdbs:
-        k.close()
+        k.close()  # Important! We need to close the connection!
         size += k.size
 
     done_queue.put((comparator, *organizers, *kvdbs, size))

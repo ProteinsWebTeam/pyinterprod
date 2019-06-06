@@ -543,10 +543,13 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     for p in pool:
         p.start()
 
-    _load_comparisons(user, dsn, comparators, kvdbs, processes=processes-3)
-
     for p in pool:
         p.join()
+
+    # signatures.merge_comparisons(user, dsn, comparators, kvdbs,
+    #                              processes=processes-3)
+
+
 
 
 def _finalize_method2protein(user: str, dsn: str):
