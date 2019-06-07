@@ -98,18 +98,14 @@ def collect_counts(pool: List[Process], queue: Queue, dir: Optional[str]=None) -
     for acc, items in merge_kvdbs(kvdbs):
         queue2.put((acc, items))
         queue_size += 1
-        if not queue_size % 1000:
-            logger.debug("\tmerging counts: {}".format(acc))
+    for _ in pool:
+        queue2.put(None)
 
     logger.debug("\tstoring counts")
     with Kvdb(dir=dir, cache=False) as kvdb:
-        i = 0
         for _ in range(queue_size):
             acc, count, comp = queue.get()
             kvdb[acc] = (count, comp)
-            i += 1
-            if not i % 1000:
-                logger.debug("\tstoring counts: {}".format(acc))
 
     for p in pool:
         p.join()
