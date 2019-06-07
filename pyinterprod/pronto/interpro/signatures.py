@@ -39,23 +39,24 @@ def compare2(ranks: List[str], task_queue: Queue, done_queue: Queue, dir: Option
     ranks = {rank: i for i, rank in enumerate(ranks)}
     signatures = {}
     comparisons = {}
-    for rank, values in iter(task_queue.get, None):
-        i = ranks[rank]
-        accessions = sorted({acc for val in values for acc in val})
-        for j, acc_1 in enumerate(accessions):
-            if acc_1 not in signatures:
-                signatures[acc_1] = [0] * len(ranks)
-                comparisons[acc_1] = {}
-
-            signatures[acc_1][i] += 1
-            for acc_2 in accessions[j:]:
-                if acc_2 not in comparisons[acc_1]:
-                    comparisons[acc_1][acc_2] = [0] * len(ranks)
-                comparisons[acc_1][acc_2][i] += 1
-
     with Kvdb(dir=dir, cache=False) as kvdb:
-        for acc, count in signatures.items():
-            kvdb[acc] = (count, comparisons[acc])
+        for rank, values in iter(task_queue.get, None):
+            i = ranks[rank]
+            accessions = sorted({acc for val in values for acc in val})
+            for j, acc_1 in enumerate(accessions):
+                try:
+                    counts, comparisons = kvdb[acc_1]
+                except KeyError:
+                    counts = [0] * len(ranks)
+                    comparisons = {}
+
+                counts[i] += 1
+                for acc_2 in accessions[j:]:
+                    if acc_2 not in comparisons:
+                        comparisons[acc_2] = [0] * len(ranks)
+                    comparisons[acc_2][i] += 1
+
+                kvdb[acc_1] = (counts, comparisons)
 
     done_queue.put(kvdb)
 
