@@ -64,16 +64,18 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue,
             ssignatures = set(signatures)
 
             if desc_id not in excluded_descr:
-                if desc_id in n_kvdb:
-                    n_kvdb[desc_id] |= ssignatures
+                key = str(desc_id)
+                if key in n_kvdb:
+                    n_kvdb[key] |= ssignatures
                 else:
-                    n_kvdb[desc_id] = ssignatures
+                    n_kvdb[key] = ssignatures
 
             for rank_tax_id in ranks.values():
-                if rank_tax_id in ta_kvdb:
-                    ta_kvdb[rank_tax_id] |= ssignatures
+                key = str(rank_tax_id)
+                if key in ta_kvdb:
+                    ta_kvdb[key] |= ssignatures
                 else:
-                    ta_kvdb[rank_tax_id] = ssignatures
+                    ta_kvdb[key] = ssignatures
 
             for go_id in protein_terms:
                 if go_id in te_kvdb:
