@@ -40,8 +40,7 @@ def compare2(ranks: List[str], task_queue: Queue, done_queue: Queue, dir: Option
     signatures = {}
     comparisons = {}
     with Kvdb(dir=dir, cache=False) as kvdb:
-        for rank, values in iter(task_queue.get, None):
-            i = ranks[rank]
+        for ranks, values in iter(task_queue.get, None):
             accessions = sorted({acc for val in values for acc in val})
             for j, acc_1 in enumerate(accessions):
                 try:
@@ -50,11 +49,17 @@ def compare2(ranks: List[str], task_queue: Queue, done_queue: Queue, dir: Option
                     counts = [0] * len(ranks)
                     comparisons = {}
 
-                counts[i] += 1
+                for rank in ranks:
+                    i = ranks[rank]
+                    counts[i] += 1
+
                 for acc_2 in accessions[j:]:
                     if acc_2 not in comparisons:
                         comparisons[acc_2] = [0] * len(ranks)
-                    comparisons[acc_2][i] += 1
+
+                    for rank in ranks:
+                        i = ranks[rank]
+                        comparisons[acc_2][i] += 1
 
                 kvdb[acc_1] = (counts, comparisons)
 
@@ -135,12 +140,18 @@ def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    cur.execute("SELECT TAX_ID, RANK FROM {}.ETAXI".format(owner))
-    tax2rank = {str(row[0]): row[1] for row in cur}
+    taxa = {}
+    cur.execute("SELECT TAX_ID, RANK FROM {}.LINEAGE".format(owner))
+    for tax_id, rank in cur:
+        key = str(tax_id)
+        if key in taxa:
+            taxa[key].append(rank)
+        else:
+            taxa[key] = [rank]
     cur.close()
     con.close()
     for tax_id, values in merge_kvdbs(kvdbs[2]):
-        task_queue.put((tax2rank[tax_id], values))
+        task_queue.put((taxa[tax_id], values))
     for _ in pool:
         task_queue.put(None)
     ta_kvdb = collect_counts(pool, done_queue, dir=dir)
