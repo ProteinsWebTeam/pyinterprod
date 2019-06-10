@@ -61,58 +61,39 @@ def compare2(ranks: List[str], task_queue: Queue, done_queue: Queue, dir: Option
     done_queue.put(kvdb)
 
 
-def merge_counts(task_queue: Queue, done_queue: Queue):
-    for acc_1, items in iter(task_queue.get, None):
-        count = None
-        comp = {}
-        for cnt, cmp in items:
-            if count is None:
-                count = cnt
-            elif isinstance(count, list):
-                for i, c in enumerate(cnt):
-                    count[i] += c
-            else:
-                count += cnt
-
-            for acc_2, cnt in cmp.items():
-                if acc_2 in comp:
-                    if isinstance(cnt, list):
-                        for i, c in enumerate(cnt):
-                            comp[acc_2][i] += c
-                    else:
-                        comp[acc_2] += cnt
-                else:
-                    comp[acc_2] = cnt
-
-        done_queue.put((acc_1, count, comp))
-
-
 def collect_counts(pool: List[Process], queue: Queue, dir: Optional[str]=None) -> Kvdb:
     kvdbs = [queue.get() for _ in pool]
     for p in pool:
         p.join()
 
-    logger.debug("\tmerging counts")
-    queue2 = Queue()
-    pool = init_pool(len(pool), merge_counts, (queue2, queue))
-    queue_size = 0
-    for acc, items in merge_kvdbs(kvdbs):
-        queue2.put((acc, items))
-        queue_size += 1
-    for _ in pool:
-        queue2.put(None)
-
     logger.debug("\tstoring counts")
     with Kvdb(dir=dir, cache=False) as kvdb:
-        for _ in range(queue_size):
-            acc, count, comp = queue.get()
+        for acc_1, items in merge_kvdbs(kvdbs):
+            count = None
+            comp = {}
+            for cnt, cmp in items:
+                if count is None:
+                    count = cnt
+                elif isinstance(count, list):
+                    for i, c in enumerate(cnt):
+                        count[i] += c
+                else:
+                    count += cnt
+
+                for acc_2, cnt in cmp.items():
+                    if acc_2 in comp:
+                        if isinstance(cnt, list):
+                            for i, c in enumerate(cnt):
+                                comp[acc_2][i] += c
+                        else:
+                            comp[acc_2] += cnt
+                    else:
+                        comp[acc_2] = cnt
+
             kvdb[acc] = (count, comp)
 
-    for p in pool:
-        p.join()
-
-    for db in kvdbs:
-        db.remove()
+    # for db in kvdbs:
+    #     db.remove()
 
     return kvdb
 
@@ -199,6 +180,6 @@ def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
 
         yield row1, rows
 
-    d_kvdb.remove()
-    te_kvdb.remove()
-    ta_kvdb.remove()
+    # d_kvdb.remove()
+    # te_kvdb.remove()
+    # ta_kvdb.remove()
