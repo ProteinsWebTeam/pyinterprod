@@ -36,7 +36,7 @@ def compare(task_queue: Queue, done_queue: Queue, dir: Optional[str]=None):
 
 
 def compare2(ranks: List[str], task_queue: Queue, done_queue: Queue, dir: Optional[str]=None):
-    ranks = {rank: i for i, rank in enumerate(ranks)}
+    indices = {rank: i for i, rank in enumerate(ranks)}
     signatures = {}
     comparisons = {}
     with Kvdb(dir=dir, cache=False) as kvdb:
@@ -50,7 +50,7 @@ def compare2(ranks: List[str], task_queue: Queue, done_queue: Queue, dir: Option
                     comparisons = {}
 
                 for rank in ranks:
-                    i = ranks[rank]
+                    i = indices[rank]
                     counts[i] += 1
 
                 for acc_2 in accessions[j:]:
@@ -58,7 +58,7 @@ def compare2(ranks: List[str], task_queue: Queue, done_queue: Queue, dir: Option
                         comparisons[acc_2] = [0] * len(ranks)
 
                     for rank in ranks:
-                        i = ranks[rank]
+                        i = indices[rank]
                         comparisons[acc_2][i] += 1
 
                 kvdb[acc_1] = (counts, comparisons)
