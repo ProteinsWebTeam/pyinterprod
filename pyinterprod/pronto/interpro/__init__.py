@@ -439,7 +439,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         if tax_id in taxa:
             taxa[tax_id][rank] = rank_tax_id
         else:
-            taxa[tax_id] = {rank: tax_id}
+            taxa[tax_id] = {rank: rank_tax_id}
     cur.close()
     con.close()
 
@@ -886,8 +886,8 @@ def load_predictions(user: str, dsn: str):
     cur = con.cursor()
     cur.execute(
         """
-        SELECT 
-          METHOD_AC, FULL_SEQ_COUNT, RESIDUE_COUNT, DESC_COUNT, RANK_COUNT, 
+        SELECT
+          METHOD_AC, FULL_SEQ_COUNT, RESIDUE_COUNT, DESC_COUNT, RANK_COUNT,
           TERM_COUNT
         FROM {}.METHOD
         """.format(owner)
