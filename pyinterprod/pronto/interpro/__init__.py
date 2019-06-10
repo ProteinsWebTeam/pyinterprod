@@ -427,19 +427,6 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         ) NOLOGGING
         """.format(owner)
     )
-
-    taxa = {}
-    cur.execute(
-        """
-        SELECT TAX_ID, RANK, RANK_TAX_ID
-        FROM {}.LINEAGE
-        """.format(owner)
-    )
-    for tax_id, rank, rank_tax_id in cur:
-        if tax_id in taxa:
-            taxa[tax_id][rank] = rank_tax_id
-        else:
-            taxa[tax_id] = {rank: rank_tax_id}
     cur.close()
     con.close()
 
@@ -453,7 +440,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         if protein_acc != _protein_acc:
             if _protein_acc:
                 chunk.append((_protein_acc, dbcode, length, tax_id,
-                              taxa.get(tax_id, {}), descid, matches))
+                              descid, matches))
 
                 if len(chunk) == chunk_size:
                     task_queue.put(chunk)
@@ -495,7 +482,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     if _protein_acc:
         # Last protein
         chunk.append((_protein_acc, dbcode, length, tax_id,
-                      taxa.get(tax_id, {}), descid, matches))
+                      descid, matches))
         task_queue.put(chunk)
         chunk = []
         matches = []
@@ -817,22 +804,36 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
         """.format(owner)
     )
 
+    taxa = {}
+    cur.execute(
+        """
+        SELECT TAX_ID, RANK, RANK_TAX_ID
+        FROM {}.LINEAGE
+        """.format(owner)
+    )
+    for tax_id, rank, rank_tax_id in cur:
+        if tax_id in taxa:
+            taxa[tax_id][rank] = rank_tax_id
+        else:
+            taxa[tax_id] = {rank: rank_tax_id}
+
     table = orautils.TablePopulator(con,
                                     query="INSERT /*+ APPEND */ "
                                           "INTO {}.METHOD_TAXA "
                                           "VALUES (:1, :2, :3, :4)".format(owner),
                                     autocommit=True)
 
-    for acc, ranks in merge_organizers(organizers):
+    for acc, tax_ids in merge_organizers(organizers):
         counts = {}
-        for rank, tax_id in ranks:
-            if rank in counts:
-                if tax_id in counts[rank]:
-                    counts[rank][tax_id] += 1
+        for tax_id in tax_ids:
+            for rank, rank_tax_id in taxa[tax_id].items():
+                if rank in counts:
+                    if rank_tax_id in counts[rank]:
+                        counts[rank][rank_tax_id] += 1
+                    else:
+                        counts[rank][rank_tax_id] = 1
                 else:
-                    counts[rank][tax_id] = 1
-            else:
-                counts[rank] = {tax_id: 1}
+                    counts[rank] = {rank_tax_id: 1}
 
         for rank in counts:
             for tax_id, count in counts[rank].items():

@@ -56,7 +56,7 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue,
         autocommit=True
     )
     for chunk in iter(task_queue.get, None):
-        for acc, dbcode, length, tax_id, ranks, desc_id, matches in chunk:
+        for acc, dbcode, length, tax_id, desc_id, matches in chunk:
             md5 = hash_protein(matches)
             protein_terms = proteins2go.get(acc, [])
 
@@ -70,12 +70,11 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue,
                 else:
                     n_kvdb[key] = ssignatures
 
-            for rank_tax_id in ranks.values():
-                key = str(rank_tax_id)
-                if key in ta_kvdb:
-                    ta_kvdb[key] |= ssignatures
-                else:
-                    ta_kvdb[key] = ssignatures
+            key = str(tax_id)
+            if key in ta_kvdb:
+                ta_kvdb[key] |= ssignatures
+            else:
+                ta_kvdb[key] = ssignatures
 
             for go_id in protein_terms:
                 if go_id in te_kvdb:
@@ -88,8 +87,7 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue,
                 # UniProt descriptions
                 names.add(signature_acc, (desc_id, dbcode))
                 # Taxonomic origins
-                for rank, rank_tax_id in ranks.items():
-                    taxa.add(signature_acc, (rank, rank_tax_id))
+                taxa.add(signature_acc, tax_id)
                 # GO terms
                 for go_id in protein_terms:
                     terms.add(signature_acc, go_id)
