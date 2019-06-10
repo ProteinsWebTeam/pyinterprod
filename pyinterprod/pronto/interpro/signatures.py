@@ -90,7 +90,7 @@ def collect_counts(pool: List[Process], queue: Queue, dir: Optional[str]=None) -
                     else:
                         comp[acc_2] = cnt
 
-            kvdb[acc] = (count, comp)
+            kvdb[acc_1] = (count, comp)
 
     # for db in kvdbs:
     #     db.remove()
