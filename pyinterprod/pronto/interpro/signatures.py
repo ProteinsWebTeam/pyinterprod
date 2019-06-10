@@ -46,7 +46,7 @@ def compare2(ranks: List[str], task_queue: Queue, done_queue: Queue, dir: Option
                 try:
                     counts, comparisons = kvdb[acc_1]
                 except KeyError:
-                    counts = [0] * len(ranks)
+                    counts = [0] * len(indices)
                     comparisons = {}
 
                 for rank in ranks:
@@ -55,7 +55,7 @@ def compare2(ranks: List[str], task_queue: Queue, done_queue: Queue, dir: Option
 
                 for acc_2 in accessions[j:]:
                     if acc_2 not in comparisons:
-                        comparisons[acc_2] = [0] * len(ranks)
+                        comparisons[acc_2] = [0] * len(indices)
 
                     for rank in ranks:
                         i = indices[rank]
