@@ -826,7 +826,12 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
     for acc, tax_ids in merge_organizers(organizers):
         counts = {}
         for tax_id in tax_ids:
-            for rank, rank_tax_id in taxa[tax_id].items():
+            try:
+                ranks = taxa[tax_id]
+            except KeyError:
+                continue  # should never happend (or ETAXI is incomplete)
+
+            for rank, rank_tax_id in ranks.items():
                 if rank in counts:
                     if rank_tax_id in counts[rank]:
                         counts[rank][rank_tax_id] += 1

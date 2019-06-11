@@ -151,7 +151,11 @@ def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
     cur.close()
     con.close()
     for tax_id, values in merge_kvdbs(kvdbs[2]):
-        task_queue.put((taxa[tax_id], values))
+        try:
+            ranks = taxa[tax_id]
+        except KeyError:
+            continue  # if it happens, ETAXI is incomplete
+        task_queue.put((ranks, values))
     for _ in pool:
         task_queue.put(None)
     ta_kvdb = collect_counts(pool, done_queue, dir=dir)
