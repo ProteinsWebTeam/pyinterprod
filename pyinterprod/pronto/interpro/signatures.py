@@ -11,34 +11,30 @@ from ... import logger, orautils
 
 
 def compare(task_queue: Queue, done_queue: Queue, dir: Optional[str]=None):
-    signatures = {}
-    comparisons = {}
-    for values in iter(task_queue.get, None):
-        accessions = sorted({acc for val in values for acc in val})
-        for i, acc_1 in enumerate(accessions):
-            if acc_1 in signatures:
-                signatures[acc_1] += 1
-            else:
-                signatures[acc_1] = 1
-                comparisons[acc_1] = {}
-
-            for acc_2 in accessions[i:]:
-                if acc_2 in comparisons[acc_1]:
-                    comparisons[acc_1][acc_2] += 1
-                else:
-                    comparisons[acc_1][acc_2] = 1
-
     with Kvdb(dir=dir, cache=False) as kvdb:
-        for acc, count in signatures.items():
-            kvdb[acc] = (count, comparisons[acc])
+        for values in iter(task_queue.get, None):
+            accessions = sorted({acc for val in values for acc in val})
+            for i, acc_1 in enumerate(accessions):
+                try:
+                    count, comparisons = kvdb[acc_1]
+                except KeyError:
+                    count = 0
+                    comparisons = {}
+
+                count += 1
+                for acc_2 in accessions[i:]:
+                    if acc_2 in comparisons:
+                        comparisons[acc_2] += 1
+                    else:
+                        comparisons[acc_2] = 1
+
+                kvdb[acc_1] = (count, comparisons)
 
     done_queue.put(kvdb)
 
 
 def compare2(ranks: List[str], task_queue: Queue, done_queue: Queue, dir: Optional[str]=None):
     indices = {rank: i for i, rank in enumerate(ranks)}
-    signatures = {}
-    comparisons = {}
     with Kvdb(dir=dir, cache=False) as kvdb:
         for ranks, values in iter(task_queue.get, None):
             accessions = sorted({acc for val in values for acc in val})
