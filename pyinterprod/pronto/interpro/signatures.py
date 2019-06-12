@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import json
+import time
 from multiprocessing import Process, Queue
 from typing import Callable, List, Optional, Tuple
 
@@ -11,7 +12,7 @@ from ... import logger, orautils
 
 
 def compare(task_queue: Queue, done_queue: Queue, dir: Optional[str]=None):
-    with Kvdb(dir=dir, cache=False) as kvdb:
+    with Kvdb(dir=dir) as kvdb:
         for values in iter(task_queue.get, None):
             accessions = sorted({acc for val in values for acc in val})
             for i, acc_1 in enumerate(accessions):
@@ -30,6 +31,9 @@ def compare(task_queue: Queue, done_queue: Queue, dir: Optional[str]=None):
 
                 kvdb[acc_1] = (count, comparisons)
 
+            kvdb.sync()
+
+    time.sleep(5)
     done_queue.put(kvdb)
 
 
@@ -118,6 +122,7 @@ def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
     logger.debug("collecting descriptions")
     pool = init_pool(processes, compare, (task_queue, done_queue, dir))
     for desc_id, values in merge_kvdbs(kvdbs[0]):
+        logger.debug("descriptions: {}: {}".format(desc_id, len(values)))
         task_queue.put(values)
     for _ in pool:
         task_queue.put(None)
@@ -126,6 +131,7 @@ def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
     logger.debug("collecting terms")
     pool = init_pool(processes, compare, (task_queue, done_queue, dir))
     for go_id, values in merge_kvdbs(kvdbs[1]):
+        logger.debug("terms: {}: {}".format(go_id, len(values)))
         task_queue.put(values)
     for _ in pool:
         task_queue.put(None)
@@ -151,6 +157,7 @@ def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
             ranks = taxa[tax_id]
         except KeyError:
             continue  # if it happens, ETAXI is incomplete
+        logger.debug("ranks: {}: {}".format(tax_id, len(values)))
         task_queue.put((ranks, values))
     for _ in pool:
         task_queue.put(None)
