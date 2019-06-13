@@ -445,19 +445,13 @@ def merge_comparators(comparators: Iterable[MatchComparator],
     for c in comparators:
         for acc_1, val, _comparisons in c:
             if acc_1 in signatures:
-                if isinstance(val, list):
-                    for i, v in enumerate(val):
-                        signatures[acc_1][i] += v
-                else:
-                    signatures[acc_1] += val
+                for i, v in enumerate(val):
+                    signatures[acc_1][i] += v
 
                 for acc_2, val in _comparisons.items():
                     if acc_2 in comparisons[acc_1]:
-                        if isinstance(val, list):
-                            for i, v in enumerate(val):
-                                comparisons[acc_1][acc_2][i] += v
-                        else:
-                            comparisons[acc_1][acc_2] += val
+                        for i, v in enumerate(val):
+                            comparisons[acc_1][acc_2][i] += v
                     else:
                         comparisons[acc_1][acc_2] = val
             else:

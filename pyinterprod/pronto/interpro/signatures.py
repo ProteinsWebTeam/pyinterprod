@@ -11,36 +11,8 @@ from .utils import merge_comparators, merge_kvdbs, merge_organizers, Kvdb, Organ
 from ... import logger, orautils
 
 
-# def compare(task_queue: Queue, done_queue: Queue, dir: Optional[str]=None,
-#             buffer_size: int=0):
-#     with Kvdb(dir=dir, buffer_size=buffer_size) as kvdb:
-#         for values in iter(task_queue.get, None):
-#             accessions = sorted({acc for val in values for acc in val})
-#             for i, acc_1 in enumerate(accessions):
-#                 try:
-#                     count, comparisons = kvdb[acc_1]
-#                 except KeyError:
-#                     count = 0
-#                     comparisons = {}
-#
-#                 count += 1
-#                 for acc_2 in accessions[i:]:
-#                     if acc_2 in comparisons:
-#                         comparisons[acc_2] += 1
-#                     else:
-#                         comparisons[acc_2] = 1
-#
-#                 kvdb[acc_1] = (count, comparisons)
-#                 if len(kvdb) == 1000:
-#                     kvdb.sync()
-#
-#         kvdb.sync()
-#     time.sleep(5)
-#     done_queue.put(kvdb)
-
-
-def compare(task_queue: Queue, done_queue: Queue, dir: Optional[str]=None):
-    organizer = Organizer(keys=task_queue.get(), dir=dir)
+def compare(keys: List[str], task_queue: Queue, done_queue: Queue, dir: Optional[str]=None):
+    organizer = Organizer(keys, dir=dir)
     signatures = {}
     for values in iter(task_queue.get, None):
         accessions = sorted({acc for val in values for acc in val})
@@ -58,83 +30,18 @@ def compare(task_queue: Queue, done_queue: Queue, dir: Optional[str]=None):
     done_queue.put((signatures, organizer))
 
 
-def compare2(ranks: List[str], task_queue: Queue, done_queue: Queue, dir: Optional[str]=None):
-    indices = {rank: i for i, rank in enumerate(ranks)}
-    with Kvdb(dir=dir, cache=False) as kvdb:
-        for ranks, values in iter(task_queue.get, None):
-            accessions = sorted({acc for val in values for acc in val})
-            for j, acc_1 in enumerate(accessions):
-                try:
-                    counts, comparisons = kvdb[acc_1]
-                except KeyError:
-                    counts = [0] * len(indices)
-                    comparisons = {}
-
-                for rank in ranks:
-                    i = indices[rank]
-                    counts[i] += 1
-
-                for acc_2 in accessions[j:]:
-                    if acc_2 not in comparisons:
-                        comparisons[acc_2] = [0] * len(indices)
-
-                    for rank in ranks:
-                        i = indices[rank]
-                        comparisons[acc_2][i] += 1
-
-                kvdb[acc_1] = (counts, comparisons)
-
-    done_queue.put(kvdb)
-
-
-# def collect_counts(pool: List[Process], queue: Queue, dir: Optional[str]=None) -> Kvdb:
-#     kvdbs = [queue.get() for _ in pool]
-#     for p in pool:
-#         p.join()
-#
-#     logger.debug("\tstoring counts")
-#     with Kvdb(dir=dir) as kvdb:
-#         for acc_1, items in merge_kvdbs(kvdbs):
-#             count = None
-#             comp = {}
-#             for cnt, cmp in items:
-#                 if count is None:
-#                     count = cnt
-#                 elif isinstance(count, list):
-#                     for i, c in enumerate(cnt):
-#                         count[i] += c
-#                 else:
-#                     count += cnt
-#
-#                 for acc_2, cnt in cmp.items():
-#                     if acc_2 in comp:
-#                         if isinstance(cnt, list):
-#                             for i, c in enumerate(cnt):
-#                                 comp[acc_2][i] += c
-#                         else:
-#                             comp[acc_2] += cnt
-#                     else:
-#                         comp[acc_2] = cnt
-#
-#             kvdb[acc_1] = (count, comp)
-#
-#     # for db in kvdbs:
-#     #     db.remove()
-#
-#     return kvdb
-
-
 def collect_counts(pool: List[Process], queue: Queue, dir: Optional[str]=None) -> Kvdb:
     signatures = {}
     organizers = []
+    logger.debug("\tgathering results")
     for _ in pool:
         counts, organizer = queue.get()
         organizers.append(organizer)
-        for acc in counts:
+        for acc, cnt in counts.items():
             if acc in signatures:
-                signatures[acc] += counts[acc]
+                signatures[acc] += cnt
             else:
-                signatures[acc] = counts[acc]
+                signatures[acc]  = cnt
     for p in pool:
         p.join()
 
@@ -150,8 +57,67 @@ def collect_counts(pool: List[Process], queue: Queue, dir: Optional[str]=None) -
 
             kvdb[acc_1] = (signatures[acc_1], comparisons)
 
-    # for db in kvdbs:
-    #     db.remove()
+    # for o in organizers:
+    #     o.remove()
+
+    return kvdb
+
+
+def compare2(keys: List[str], ranks: List[str], task_queue: Queue, done_queue: Queue, dir: Optional[str]=None):
+    organizer = Organizer(keys, dir=dir)
+    signatures = {}
+    indices = {rank: i for i, rank in enumerate(ranks)}
+    for ranks, values in iter(task_queue.get, None):
+        ranks = [indices[rank] for rank in ranks]
+        accessions = sorted({acc for val in values for acc in val})
+        for i, acc_1 in enumerate(accessions):
+            if acc_1 not in signatures:
+                signatures[acc_1] = [0] * len(indices)
+
+            for x in ranks:
+                signatures[acc_1][x] += 1
+
+            for acc_2 in accessions[i:]:
+                organizer.add(acc_1, (acc_2, ranks))
+
+        organizer.flush()
+    organizer.merge()
+    done_queue.put((signatures, organizer))
+
+
+def collect_counts2(pool: List[Process], queue: Queue, dir: Optional[str]=None) -> Kvdb:
+    signatures = {}
+    organizers = []
+    num_items = None
+    logger.debug("\tgathering results")
+    for _ in pool:
+        counts, organizer = queue.get()
+        organizers.append(organizer)
+        for acc, val in counts.items():
+            if acc in signatures:
+                for i, v in enumerate(val):
+                    signatures[acc][i] += v
+            else:
+                signatures[acc] = val
+                num_items = len(val)  # we need to know the number of ranks
+    for p in pool:
+        p.join()
+
+    logger.debug("\tstoring counts")
+    with Kvdb(dir=dir) as kvdb:
+        for acc_1, items in merge_organizers(organizers):
+            comparisons = {}
+            for acc_2, indices in items:
+                if acc_2 not in comparisons:
+                    comparisons[acc_2] = [0] * num_items
+
+                for x in indices:
+                    comparisons[acc_2][x] += 1
+
+            kvdb[acc_1] = (signatures[acc_1], comparisons)
+
+    # for o in organizers:
+    #     o.remove()
 
     return kvdb
 
@@ -174,12 +140,6 @@ def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
     processes = kwargs.get("processes", 1)
 
     owner = user.split('/')[0]
-
-    task_queue = Queue(maxsize=1)
-    done_queue = Queue()
-
-    logger.debug("collecting descriptions")
-    pool = init_pool(processes, compare, (task_queue, done_queue, dir))
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     cur.execute("SELECT METHOD_AC FROM {}.METHOD".format(owner))
@@ -187,8 +147,12 @@ def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
     keys = [keys[i] for i in range(0, len(keys), bucket_size)]
     cur.close()
     con.close()
-    for _ in pool:
-        task_queue.put(keys)
+
+    task_queue = Queue(maxsize=1)
+    done_queue = Queue()
+
+    logger.debug("collecting descriptions")
+    pool = init_pool(processes, compare, (keys, task_queue, done_queue, dir))
     i = 0
     for desc_id, values in merge_kvdbs(kvdbs[0]):
         task_queue.put(values)
@@ -199,20 +163,16 @@ def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
         task_queue.put(None)
     d_kvdb = collect_counts(pool, done_queue, dir=dir)
 
-    import sys
-    sys.exit(0)
-
     logger.debug("collecting terms")
-    pool = init_pool(processes, compare, (task_queue, done_queue, dir))
+    pool = init_pool(processes, compare, (keys, task_queue, done_queue, dir))
     for go_id, values in merge_kvdbs(kvdbs[1]):
-        logger.debug("terms: {}: {}".format(go_id, len(values)))
         task_queue.put(values)
     for _ in pool:
         task_queue.put(None)
     te_kvdb = collect_counts(pool, done_queue, dir=dir)
 
     logger.debug("collecting ranks")
-    pool = init_pool(processes, compare2, (ranks, task_queue, done_queue, dir))
+    pool = init_pool(processes, compare2, (keys, ranks, task_queue, done_queue, dir))
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     taxa = {}
@@ -225,16 +185,19 @@ def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
             taxa[key] = [rank]
     cur.close()
     con.close()
+    i = 0
     for tax_id, values in merge_kvdbs(kvdbs[2]):
         try:
             ranks = taxa[tax_id]
         except KeyError:
             continue  # if it happens, ETAXI is incomplete
-        logger.debug("ranks: {}: {}".format(tax_id, len(values)))
         task_queue.put((ranks, values))
+        i += 1
+        if not i % 1000:
+            logger.debug("{:>15}".format(i))
     for _ in pool:
         task_queue.put(None)
-    ta_kvdb = collect_counts(pool, done_queue, dir=dir)
+    ta_kvdb = collect_counts2(ranks, pool, done_queue, dir=dir)
 
     signatures, comparisons = merge_comparators(comparators)
 
