@@ -30,9 +30,10 @@ def compare(task_queue: Queue, done_queue: Queue, dir: Optional[str]=None):
                         comparisons[acc_2] = 1
 
                 kvdb[acc_1] = (count, comparisons)
+                if len(kvdb) == 1000:
+                    kvdb.sync()
 
-            kvdb.sync()
-
+        kvdb.sync()
     time.sleep(5)
     done_queue.put(kvdb)
 

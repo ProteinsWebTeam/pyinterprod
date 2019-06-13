@@ -364,6 +364,14 @@ class Kvdb(object):
             return value
         raise KeyError(key)
 
+    def __len__(self) -> int:
+        if self.cache:
+            return len(self.buffer)
+        else:
+            self._ensure_open()
+            self.cur.execute("SELECT count(*) FROM data")
+            return cur.fetchone()[0]
+
     def _ensure_open(self):
         if not self.con:
             self.con = sqlite3.connect(self.filepath)
