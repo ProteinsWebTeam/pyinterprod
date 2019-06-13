@@ -129,6 +129,9 @@ def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
         task_queue.put(None)
     d_kvdb = collect_counts(pool, done_queue, dir=dir)
 
+    import sys
+    sys.exit(0)
+
     logger.debug("collecting terms")
     pool = init_pool(processes, compare, (task_queue, done_queue, dir))
     for go_id, values in merge_kvdbs(kvdbs[1]):
