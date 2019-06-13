@@ -312,7 +312,7 @@ class MatchComparator(object):
 
 
 class Kvdb(object):
-    def __init__(self, dir: Optional[str]=None, cache: bool=True):
+    def __init__(self, dir: Optional[str]=None, buffer_size: int=0):
         fd, self.filepath = mkstemp(dir=dir)
         os.close(fd)
         os.remove(self.filepath)
@@ -327,7 +327,8 @@ class Kvdb(object):
             """
         )
         self.buffer = {}
-        self.cache = cache
+        # < 0: unlimited, 0: disabled, > 0: normal (auto-scyn)
+        self.buffer_size = buffer_size
 
     def __enter__(self):
         return self
@@ -348,8 +349,10 @@ class Kvdb(object):
         return found
 
     def __setitem__(self, key: str, value: Any):
-        if self.cache:
+        if self.buffer_size:
             self.buffer[key] = value
+            if len(self.buffer) == self.buffer_size:
+                self.sync()
         else:
             self._ensure_open()
             self.cur.execute(
@@ -365,7 +368,7 @@ class Kvdb(object):
         raise KeyError(key)
 
     def __len__(self) -> int:
-        if self.cache:
+        if self.buffer_size:
             return len(self.buffer)
         else:
             self._ensure_open()
@@ -386,7 +389,7 @@ class Kvdb(object):
         row = self.cur.fetchone()
         if row:
             value = pickle.loads(row[0])
-            if self.cache:
+            if self.buffer_size:
                 self.buffer[key] = value
             return True, value
         return False, None

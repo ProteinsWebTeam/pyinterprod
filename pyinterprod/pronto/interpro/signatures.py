@@ -11,8 +11,9 @@ from .utils import merge_comparators, merge_kvdbs, Kvdb
 from ... import logger, orautils
 
 
-def compare(task_queue: Queue, done_queue: Queue, dir: Optional[str]=None):
-    with Kvdb(dir=dir) as kvdb:
+def compare(task_queue: Queue, done_queue: Queue, dir: Optional[str]=None,
+            buffer_size: int=0):
+    with Kvdb(dir=dir, buffer_size=buffer_size) as kvdb:
         for values in iter(task_queue.get, None):
             accessions = sorted({acc for val in values for acc in val})
             for i, acc_1 in enumerate(accessions):
@@ -73,7 +74,7 @@ def collect_counts(pool: List[Process], queue: Queue, dir: Optional[str]=None) -
         p.join()
 
     logger.debug("\tstoring counts")
-    with Kvdb(dir=dir, cache=False) as kvdb:
+    with Kvdb(dir=dir) as kvdb:
         for acc_1, items in merge_kvdbs(kvdbs):
             count = None
             comp = {}
@@ -115,16 +116,21 @@ def init_pool(size: int, func: Callable, args: Tuple) -> List[Process]:
 
 
 def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
-                      ranks: List[str], processes: int=1,
-                      dir: Optional[str]=None):
+                      ranks: List[str], **kwargs):
+    buffer_size = kwargs.get("buffer_size", 0)
+    dir = kwargs.get("dir")
+    processes = kwargs.get("processes", 1)
     task_queue = Queue(maxsize=1)
     done_queue = Queue()
 
     logger.debug("collecting descriptions")
-    pool = init_pool(processes, compare, (task_queue, done_queue, dir))
+    pool = init_pool(processes, compare, (task_queue, done_queue, dir, buffer_size))
+    i = 0
     for desc_id, values in merge_kvdbs(kvdbs[0]):
-        logger.debug("descriptions: {}: {}".format(desc_id, len(values)))
         task_queue.put(values)
+        i += 1
+        if not i % 1000:
+            logger.debug("{:>15}".format(i))
     for _ in pool:
         task_queue.put(None)
     d_kvdb = collect_counts(pool, done_queue, dir=dir)
