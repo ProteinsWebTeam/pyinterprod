@@ -157,7 +157,7 @@ def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
     for desc_id, values in merge_kvdbs(kvdbs[0]):
         task_queue.put(values)
         i += 1
-        if not i % 1000:
+        if not i % 100000:
             logger.debug("{:>15}".format(i))
     for _ in pool:
         task_queue.put(None)
@@ -193,7 +193,7 @@ def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
             continue  # if it happens, ETAXI is incomplete
         task_queue.put((ranks, values))
         i += 1
-        if not i % 1000:
+        if not i % 1000000:
             logger.debug("{:>15}".format(i))
     for _ in pool:
         task_queue.put(None)
