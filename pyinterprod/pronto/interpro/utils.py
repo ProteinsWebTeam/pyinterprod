@@ -16,8 +16,8 @@ COMPRESS_LVL = 6
 
 
 class Organizer(object):
-    def __init__(self, keys: List, exists: bool=False,
-                 dir: Optional[str]=None, prefix: Optional[str]=None):
+    def __init__(self, keys: List, exists: bool=False, dir: Optional[str]=None,
+                 prefix: Optional[str]=None, buffer_size: int=0):
         if exists:
             self.keys = os.listdir(dir)
             self.dir = dir
@@ -30,6 +30,8 @@ class Organizer(object):
             for i in range(len(self.keys))
         ]
         self.buffer = {}
+        self.buffer_size = 0
+        self.buffer_max_size = buffer_size
 
         # for the get() method only
         self.it = None
@@ -81,6 +83,10 @@ class Organizer(object):
         else:
             self.buffer[key] = [value]
 
+        self.buffer_size += 1
+        if self.buffer_size == self.buffer_max_size:
+            self.flush()
+
     def write(self, key: Union[int, str], value: Any):
         i = bisect.bisect_right(self.keys, key)
         if i:
@@ -113,6 +119,7 @@ class Organizer(object):
                 pickle.dump(data, fh)
 
         self.buffer = {}
+        self.buffer_size = 0
 
     def merge(self, processes: int=1, fn: Optional[Callable]=None) -> int:
         size_before = self.size
