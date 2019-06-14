@@ -33,11 +33,6 @@ class Organizer(object):
         self.buffer_size = 0
         self.buffer_max_size = buffer_size
 
-        # for the get() method only
-        self.it = None
-        self.key = None
-        self.val = None
-
     def __iter__(self) -> Generator[tuple, None, None]:
         for bucket in self.buckets:
             if os.path.isfile(bucket):
@@ -49,22 +44,6 @@ class Organizer(object):
                             break
                         else:
                             yield key, values
-
-    def get(self, key: Union[int, str], default: Optional[Any]=None):
-        if self.it is None:
-            self.it = iter(self)
-        elif key == self.key:
-            return self.val
-        elif self.key is None:
-            self.key, self.val = next(self.it)
-
-        while self.key < key:
-            try:
-                self.key, self.val = next(self.it)
-            except StopIteration:
-                break
-
-        return self.val if key == self.key else default
 
     @property
     def size(self) -> int:
