@@ -59,7 +59,7 @@ def collect_counts(pool: List[Process], queue: Queue, dir: Optional[str]=None) -
 
     logger.debug("\tdisk space: {} MB".format(size/1024**2))
     with Kvdb(dir=dir) as kvdb:
-        for acc_1, cmp in merge_organizers(organizers):
+        for acc_1, cmp in merge_organizers(organizers, remove=False):
             comparisons = {}
             for acc_2, cnt in cmp:
                 if acc_2 in comparisons:
@@ -68,9 +68,6 @@ def collect_counts(pool: List[Process], queue: Queue, dir: Optional[str]=None) -
                     comparisons[acc_2] = cnt
 
             kvdb[acc_1] = (signatures[acc_1], comparisons)
-
-    # for o in organizers:
-    #     o.remove()
 
     return kvdb
 
@@ -127,7 +124,7 @@ def collect_counts2(pool: List[Process], queue: Queue, dir: Optional[str]=None) 
 
     logger.debug("\tdisk space: {} MB".format(size/1024**2))
     with Kvdb(dir=dir) as kvdb:
-        for acc_1, cmp in merge_organizers(organizers):
+        for acc_1, cmp in merge_organizers(organizers, remove=False):
             comparisons = {}
             for acc_2, incr in cmp:
                 if acc_2 in comparisons:
@@ -137,9 +134,6 @@ def collect_counts2(pool: List[Process], queue: Queue, dir: Optional[str]=None) 
                     comparisons[acc_2] = incr
 
             kvdb[acc_1] = (signatures[acc_1], comparisons)
-
-    # for o in organizers:
-    #     o.remove()
 
     return kvdb
 
@@ -154,13 +148,7 @@ def init_pool(size: int, func: Callable, args: Tuple) -> List[Process]:
     return pool
 
 
-def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
-                      ranks: List[str], **kwargs):
-    bucket_size = kwargs.get("bucket_size", 100)
-    buffer_size = kwargs.get("buffer_size", 0)
-    dir = kwargs.get("dir")
-    processes = kwargs.get("processes", 1)
-
+def chunk_accessions(user: str, dsn: str, bucket_size: int) -> List[str]:
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -169,32 +157,11 @@ def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
     keys = [keys[i] for i in range(0, len(keys), bucket_size)]
     cur.close()
     con.close()
+    return keys
 
-    task_queue = Queue(maxsize=1)
-    done_queue = Queue()
 
-    logger.debug("collecting descriptions")
-    pool = init_pool(processes, compare, (keys, task_queue, done_queue, dir, buffer_size))
-    i = 0
-    for desc_id, values in merge_kvdbs(kvdbs[0]):
-        task_queue.put(values)
-        i += 1
-        if not i % 100000:
-            logger.debug("{:>15}".format(i))
-    for _ in pool:
-        task_queue.put(None)
-    d_kvdb = collect_counts(pool, done_queue, dir=dir)
-
-    logger.debug("collecting terms")
-    pool = init_pool(processes, compare, (keys, task_queue, done_queue, dir, buffer_size))
-    for go_id, values in merge_kvdbs(kvdbs[1]):
-        task_queue.put(values)
-    for _ in pool:
-        task_queue.put(None)
-    te_kvdb = collect_counts(pool, done_queue, dir=dir)
-
-    logger.debug("collecting ranks")
-    pool = init_pool(processes, compare2, (keys, ranks, task_queue, done_queue, dir, buffer_size))
+def get_lineages(user: str, dsn: str) -> Dict[str, List[str]]:
+    owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     taxa = {}
@@ -207,21 +174,92 @@ def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
             taxa[key] = [rank]
     cur.close()
     con.close()
+    return taxa
+
+
+def compare_descriptions(user: str, dsn: str, kvdbs: tuple, **kwargs) -> Kvdb:
+    bucket_size = kwargs.get("bucket_size", 100)
+    buffer_size = kwargs.get("buffer_size", 0)
+    dir = kwargs.get("dir")
+    processes = kwargs.get("processes", 1)
+
+    keys = chunk_accessions(user, dsn, bucket_size)
+    task_queue = Queue(maxsize=1)
+    done_queue = Queue()
+    pool = init_pool(processes, compare, (keys, task_queue, done_queue, dir, buffer_size))
     i = 0
-    for tax_id, values in merge_kvdbs(kvdbs[2]):
-        try:
-            ranks = taxa[tax_id]
-        except KeyError:
-            continue  # if it happens, ETAXI is incomplete
-        task_queue.put((ranks, values))
+    for desc_id, values in merge_kvdbs(kvdbs[0], remove=False):
+        task_queue.put(values)
         i += 1
-        if not i % 1000000:
+        if not i % 100000:
             logger.debug("{:>15}".format(i))
     for _ in pool:
         task_queue.put(None)
-    ta_kvdb = collect_counts2(ranks, pool, done_queue, dir=dir)
+    return collect_counts(pool, done_queue, dir=dir)
 
-    signatures, comparisons = merge_comparators(comparators)
+
+def compare_terms(user: str, dsn: str, kvdbs: tuple, **kwargs) -> Kvdb:
+    bucket_size = kwargs.get("bucket_size", 100)
+    buffer_size = kwargs.get("buffer_size", 0)
+    dir = kwargs.get("dir")
+    processes = kwargs.get("processes", 1)
+
+    keys = chunk_accessions(user, dsn, bucket_size)
+    task_queue = Queue(maxsize=1)
+    done_queue = Queue()
+    pool = init_pool(processes, compare, (keys, task_queue, done_queue, dir, buffer_size))
+    i = 0
+    for desc_id, values in merge_kvdbs(kvdbs[1], remove=False):
+        task_queue.put(values)
+        i += 1
+        if not i % 1000:
+            logger.debug("{:>15}".format(i))
+    for _ in pool:
+        task_queue.put(None)
+    return collect_counts(pool, done_queue, dir=dir)
+    return t_kvdb
+
+
+def compare_taxa(user: str, dsn: str, kvdbs: tuple, ranks: List[str], **kwargs) -> Kvdb:
+    bucket_size = kwargs.get("bucket_size", 100)
+    buffer_size = kwargs.get("buffer_size", 0)
+    dir = kwargs.get("dir")
+    processes = kwargs.get("processes", 1)
+
+    keys = chunk_accessions(user, dsn, bucket_size)
+    task_queue = Queue(maxsize=1)
+    done_queue = Queue()
+    pool = init_pool(processes, compare2, (keys, ranks, task_queue, done_queue, dir, buffer_size))
+    taxa = get_lineages(user, dsn)
+    i = 0
+    for tax_id, values in merge_kvdbs(kvdbs[2], remove=False):
+        try:
+            ranks = taxa[tax_id]
+        except KeyError:
+            pass  # ETAXI is incomplete
+        else:
+            task_queue.put((ranks, values))
+            i += 1
+            if not i % 1000000:
+                logger.debug("{:>15}".format(i))
+    for _ in pool:
+        task_queue.put(None)
+    return collect_counts2(ranks, pool, done_queue, dir=dir)
+
+
+def merge_comparisons(user: str, dsn: str, kvdbs: tuple, comparators: list,
+                      ranks: List[str], **kwargs):
+    logger.debug("collecting descriptions")
+    de_kvdb = compare_descriptions(user, dsn, kvdbs[0], **kwargs)
+
+    logger.debug("collecting terms")
+    te_kvdb = compare_terms(user, dsn, kvdbs[1], **kwargs)
+
+    logger.debug("collecting ranks")
+    ta_kvdb = compare_taxa(user, dsn, kvdbs[2], ranks, **kwargs)
+
+    logger.debug("collecting overlaps")
+    signatures, comparisons = merge_comparators(comparators, remove=False)
 
     for acc_1, (n_seq, n_res) in signatures.items():
         try:
@@ -256,6 +294,5 @@ def merge_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple,
 
         yield row1, rows
 
-    # d_kvdb.remove()
-    # te_kvdb.remove()
-    # ta_kvdb.remove()
+    for kvdb in (de_kvdb, te_kvdb, ta_kvdb):
+        kvdb.remove()

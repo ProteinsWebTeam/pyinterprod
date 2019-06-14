@@ -145,22 +145,6 @@ class Organizer(object):
         os.rmdir(self.dir)
 
 
-def merge_organizers(organizers: Iterable[Organizer]) -> Generator[tuple, None, None]:
-    _key = None
-    items = []
-    for key, values in heapq.merge(*organizers):
-        if key != _key:
-            if _key is not None:
-                yield _key, items
-            _key = key
-            items = []
-
-        items += values
-
-    if _key is not None:
-        yield _key, items
-
-
 class MatchComparator(object):
     def __init__(self, buffer_size: int=0, dir: Optional[str]=None):
         self.buffer_size = buffer_size
@@ -411,24 +395,7 @@ class Kvdb(object):
         os.remove(self.filepath)
 
 
-def merge_kvdbs(iterable: Iterable[Kvdb]):
-    items = []
-    _key = None
-    for key, value in heapq.merge(*iterable, key=lambda x: x[0]):
-        if key != _key:
-            if _key is not None:
-                yield _key, items
-            _key = key
-            items = []
-
-        items.append(value)
-
-    if _key is not None:
-        yield _key, items
-
-
-def merge_comparators(comparators: Iterable[MatchComparator],
-                      remove: bool=False) -> Tuple[dict, dict]:
+def merge_comparators(comparators: Iterable[MatchComparator], remove: bool=False):
     signatures = {}
     comparisons = {}
     for c in comparators:
@@ -451,3 +418,43 @@ def merge_comparators(comparators: Iterable[MatchComparator],
             c.remove()
 
     return signatures, comparisons
+
+
+def merge_kvdbs(iterable: Iterable[Kvdb], remove: bool=False):
+    items = []
+    _key = None
+    for key, value in heapq.merge(*iterable, key=lambda x: x[0]):
+        if key != _key:
+            if _key is not None:
+                yield _key, items
+            _key = key
+            items = []
+
+        items.append(value)
+
+    if _key is not None:
+        yield _key, items
+
+    if remove:
+        for kvdb in iterable:
+            kvdb.remove()
+
+
+def merge_organizers(iterable: Iterable[Organizer], remove: bool=False):
+    _key = None
+    items = []
+    for key, values in heapq.merge(*iterable):
+        if key != _key:
+            if _key is not None:
+                yield _key, items
+            _key = key
+            items = []
+
+        items += values
+
+    if _key is not None:
+        yield _key, items
+
+    if remove:
+        for organizer in iterable:
+            organizer.remove()
