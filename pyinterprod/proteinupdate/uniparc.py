@@ -18,11 +18,11 @@ def _update_database(cur: cx_Oracle.Cursor):
     orautils.drop_table(cur, "UNIPARC", "CV_DATABASE")
     cur.execute(
         """
-        CREATE TABLE UNIPARC.CV_DATABASE 
+        CREATE TABLE UNIPARC.CV_DATABASE
         TABLESPACE UNIPARC_TAB
-        NOLOGGING 
+        NOLOGGING
         AS
-        SELECT * 
+        SELECT *
         FROM UNIPARC.CV_DATABASE@UAREAD
         """
     )
@@ -72,11 +72,11 @@ def _update_protein(user: str, dsn: str):
     orautils.drop_mview(cur, "UNIPARC", "PROTEIN")
     cur.execute(
         """
-        CREATE TABLE UNIPARC.PROTEIN 
-        TABLESPACE UNIPARC_TAB 
+        CREATE TABLE UNIPARC.PROTEIN
+        TABLESPACE UNIPARC_TAB
         NOLOGGING
         AS
-        SELECT 
+        SELECT
             UPI, TIMESTAMP, USERSTAMP, CRC64, LEN, SEQ_SHORT, SEQ_LONG, MD5
         FROM UNIPARC.PROTEIN@UAPRO
         """
@@ -91,7 +91,7 @@ def _update_protein(user: str, dsn: str):
         """
         CREATE UNIQUE INDEX PK_PROTEIN
         ON UNIPARC.PROTEIN (UPI)
-        TABLESPACE UNIPARC_IND 
+        TABLESPACE UNIPARC_IND
         """
     )
 
@@ -109,8 +109,8 @@ def _update_xref(cur: cx_Oracle.Cursor):
     orautils.drop_table(cur, "UNIPARC", "XREF_OLD")
     cur.execute(
         """
-        CREATE TABLE UNIPARC.XREF 
-        TABLESPACE UNIPARC_TAB 
+        CREATE TABLE UNIPARC.XREF
+        TABLESPACE UNIPARC_TAB
         NOLOGGING
         AS
         SELECT UPI, AC, DBID, DELETED, VERSION
@@ -122,30 +122,15 @@ def _update_xref(cur: cx_Oracle.Cursor):
     logger.info("analyzing UNIPARC.XREF")
     orautils.gather_stats(cur, "UNIPARC", "XREF")
 
-    logger.info("indexing UNIPARC.XREF")
-    cur.execute(
-        """
-        CREATE INDEX I_XREF$UPI
-        ON UNIPARC.XREF(UPI)
-        TABLESPACE UNIPARC_IND
-        NOLOGGING
-        """
-    )
-    cur.execute(
-        """
-        CREATE INDEX I_XREF$AC
-        ON UNIPARC.XREF(AC)
-        TABLESPACE UNIPARC_IND
-        NOLOGGING
-        """
-    )
-    cur.execute(
-        """
-        CREATE INDEX I_XREF$DBID
-        ON UNIPARC.XREF(DBID)
-        TABLESPACE UNIPARC_IND
-        NOLOGGING
-        """
-    )
+    for col in ("UPI", "AC", "DBID"):
+        logger.info("creating index INDEX I_XREF${}".format(col))
+        cur.execute(
+            """
+            CREATE INDEX I_XREF${0}
+            ON UNIPARC.XREF({0})
+            TABLESPACE UNIPARC_IND
+            NOLOGGING
+            """.format(col)
+        )
 
     logger.info("UNIPARC.XREF ready")
