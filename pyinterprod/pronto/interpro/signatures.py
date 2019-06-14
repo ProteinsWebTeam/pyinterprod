@@ -3,7 +3,7 @@
 import json
 import time
 from multiprocessing import Process, Queue
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import cx_Oracle
 
