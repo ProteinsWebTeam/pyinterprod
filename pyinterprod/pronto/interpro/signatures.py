@@ -41,7 +41,7 @@ def count_accessions(values: List[str]) -> List[Tuple[str, int]]:
 
 
 def collect_counts(pool: List[Process], queue: Queue, dir: Optional[str]=None) -> Kvdb:
-    logger.debug("\tgatering counts")
+    logger.debug("\tgathering")
     signatures = {}
     organizers = []
     size = 0
@@ -105,7 +105,7 @@ def count_accessions_per_rank(values: List[Tuple[str, list]]) -> List[Tuple[str,
 
 
 def collect_counts2(pool: List[Process], queue: Queue, dir: Optional[str]=None) -> Kvdb:
-    ogger.debug("\tgatering counts")
+    logger.debug("\tgathering")
     signatures = {}
     organizers = []
     size = 0
