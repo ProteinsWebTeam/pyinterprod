@@ -49,7 +49,6 @@ def compare(task_queue: Queue, done_queue: Queue, dir: Optional[str]=None,
                         comparisons[acc_2] += 1
                     except KeyError:
                         comparisons[acc_2] = 1
-                        num_items += 1
 
                 kvdb[acc_1] = (count, comparisons)
             n_iter += 1
