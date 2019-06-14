@@ -31,9 +31,8 @@ from ... import logger, orautils
 
 
 def compare(task_queue: Queue, done_queue: Queue, dir: Optional[str]=None,
-            sync_freq: int=1):
+            max_items: int=0):
     with Kvdb(dir=dir, buffer_size=-1) as kvdb:
-        n_iter = 0
         for values in iter(task_queue.get, None):
             accessions = sorted({acc for val in values for acc in val})
             for i, acc_1 in enumerate(accessions):
@@ -51,9 +50,8 @@ def compare(task_queue: Queue, done_queue: Queue, dir: Optional[str]=None,
                         comparisons[acc_2] = 1
 
                 kvdb[acc_1] = (count, comparisons)
-            n_iter += 1
-            if not n_iter %  sync_freq:
-                kvdb.sync()
+                if len(kvdb) == max_items:
+                    kvdb.sync()
 
     done_queue.put(kvdb)
 
