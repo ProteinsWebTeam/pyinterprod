@@ -177,7 +177,7 @@ def get_lineages(user: str, dsn: str) -> Dict[str, List[str]]:
     return taxa
 
 
-def compare_descriptions(user: str, dsn: str, kvdbs: tuple, **kwargs) -> Kvdb:
+def compare_descriptions(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Kvdb:
     bucket_size = kwargs.get("bucket_size", 100)
     buffer_size = kwargs.get("buffer_size", 0)
     dir = kwargs.get("dir")
@@ -188,7 +188,7 @@ def compare_descriptions(user: str, dsn: str, kvdbs: tuple, **kwargs) -> Kvdb:
     done_queue = Queue()
     pool = init_pool(processes, compare, (keys, task_queue, done_queue, dir, buffer_size))
     i = 0
-    for desc_id, values in merge_kvdbs(kvdbs[0], remove=False):
+    for desc_id, values in merge_kvdbs(kvdbs, remove=False):
         task_queue.put(values)
         i += 1
         if not i % 100000:
@@ -198,7 +198,7 @@ def compare_descriptions(user: str, dsn: str, kvdbs: tuple, **kwargs) -> Kvdb:
     return collect_counts(pool, done_queue, dir=dir)
 
 
-def compare_terms(user: str, dsn: str, kvdbs: tuple, **kwargs) -> Kvdb:
+def compare_terms(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Kvdb:
     bucket_size = kwargs.get("bucket_size", 100)
     buffer_size = kwargs.get("buffer_size", 0)
     dir = kwargs.get("dir")
@@ -209,7 +209,7 @@ def compare_terms(user: str, dsn: str, kvdbs: tuple, **kwargs) -> Kvdb:
     done_queue = Queue()
     pool = init_pool(processes, compare, (keys, task_queue, done_queue, dir, buffer_size))
     i = 0
-    for desc_id, values in merge_kvdbs(kvdbs[1], remove=False):
+    for desc_id, values in merge_kvdbs(kvdbs, remove=False):
         task_queue.put(values)
         i += 1
         if not i % 1000:
@@ -220,7 +220,7 @@ def compare_terms(user: str, dsn: str, kvdbs: tuple, **kwargs) -> Kvdb:
     return t_kvdb
 
 
-def compare_taxa(user: str, dsn: str, kvdbs: tuple, ranks: List[str], **kwargs) -> Kvdb:
+def compare_taxa(user: str, dsn: str, kvdbs: List[Kvdb], ranks: List[str], **kwargs) -> Kvdb:
     bucket_size = kwargs.get("bucket_size", 100)
     buffer_size = kwargs.get("buffer_size", 0)
     dir = kwargs.get("dir")
@@ -232,7 +232,7 @@ def compare_taxa(user: str, dsn: str, kvdbs: tuple, ranks: List[str], **kwargs) 
     pool = init_pool(processes, compare2, (keys, ranks, task_queue, done_queue, dir, buffer_size))
     taxa = get_lineages(user, dsn)
     i = 0
-    for tax_id, values in merge_kvdbs(kvdbs[2], remove=False):
+    for tax_id, values in merge_kvdbs(kvdbs, remove=False):
         try:
             ranks = taxa[tax_id]
         except KeyError:
