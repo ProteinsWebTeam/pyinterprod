@@ -31,8 +31,9 @@ from ... import logger, orautils
 
 
 def compare(task_queue: Queue, done_queue: Queue, dir: Optional[str]=None,
-            buffer_size: int=0):
-    with Kvdb(dir=dir, buffer_size=buffer_size) as kvdb:
+            max_items: int=0):
+    with Kvdb(dir=dir, buffer_size=-1) as kvdb:
+        num_items = 0
         for values in iter(task_queue.get, None):
             accessions = sorted({acc for val in values for acc in val})
             for i, acc_1 in enumerate(accessions):
@@ -48,8 +49,11 @@ def compare(task_queue: Queue, done_queue: Queue, dir: Optional[str]=None,
                         comparisons[acc_2] += 1
                     except KeyError:
                         comparisons[acc_2] = 1
+                        num_items += 1
 
                 kvdb[acc_1] = (count, comparisons)
+                if max_items and num_items >= max_items:
+                    kvdb.sync()
 
     done_queue.put(kvdb)
 
@@ -273,10 +277,12 @@ def compare_descriptions(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Kv
 
 
 def compare_terms(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[Kvdb, int]:
-    buffer_size = kwargs.get("buffer_size", 0)
     dir = kwargs.get("dir")
+    max_items = kwargs.get("max_items", 0)
     processes = kwargs.get("processes", 1)
-    pool = init_pool(processes, compare, (task_queue, done_queue, dir, buffer_size))
+    task_queue = Queue(maxsize=1)
+    done_queue = Queue()
+    pool = init_pool(processes, compare, (task_queue, done_queue, dir, max_items))
     i = 0
     for go_id, values in merge_kvdbs(kvdbs, remove=False):
         task_queue.put(values)
