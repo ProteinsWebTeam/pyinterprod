@@ -26,34 +26,46 @@ def compare(keys: List[str], task_queue: Queue, done_queue: Queue, dir: Optional
                 organizer.add(acc_1, acc_2)
 
         organizer.flush()
-    organizer.merge()
-    done_queue.put((signatures, organizer))
+    size = organizer.merge(fn=count_accessions)
+    done_queue.put((signatures, organizer, size))
+
+
+def count_accessions(values: List[str]) -> List[Tuple[str, int]]:
+    counts = {}
+    for acc in values:
+        if acc in counts:
+            counts[acc] += 1
+        else:
+            counts[acc] = 1
+    return list(counts.items())
 
 
 def collect_counts(pool: List[Process], queue: Queue, dir: Optional[str]=None) -> Kvdb:
+    logger.debug("\tgatering counts")
     signatures = {}
     organizers = []
-    logger.debug("\tgathering results")
+    size = 0
     for _ in pool:
-        counts, organizer = queue.get()
+        counts, organizer, _size = queue.get()
         organizers.append(organizer)
+        size += _size
         for acc, cnt in counts.items():
             if acc in signatures:
                 signatures[acc] += cnt
             else:
-                signatures[acc]  = cnt
+                signatures[acc] = cnt
     for p in pool:
         p.join()
 
-    logger.debug("\tstoring counts")
+    logger.debug("\tdisk space: {} MB".format(size/1024**2))
     with Kvdb(dir=dir) as kvdb:
-        for acc_1, accessions in merge_organizers(organizers):
+        for acc_1, cmp in merge_organizers(organizers):
             comparisons = {}
-            for acc_2 in accessions:
+            for acc_2, cnt in cmp:
                 if acc_2 in comparisons:
-                    comparisons[acc_2] += 1
+                    comparisons[acc_2] += cnt
                 else:
-                    comparisons[acc_2] = 1
+                    comparisons[acc_2] = cnt
 
             kvdb[acc_1] = (signatures[acc_1], comparisons)
 
@@ -66,53 +78,63 @@ def collect_counts(pool: List[Process], queue: Queue, dir: Optional[str]=None) -
 def compare2(keys: List[str], ranks: List[str], task_queue: Queue, done_queue: Queue, dir: Optional[str]=None):
     organizer = Organizer(keys, dir=dir)
     signatures = {}
-    indices = {rank: i for i, rank in enumerate(ranks)}
-    for ranks, values in iter(task_queue.get, None):
-        ranks = [indices[rank] for rank in ranks]
+    for ranks_to_incr, values in iter(task_queue.get, None):
+        incr = [1 if r in ranks_to_incr else 0 for r in ranks]
         accessions = sorted({acc for val in values for acc in val})
         for i, acc_1 in enumerate(accessions):
-            if acc_1 not in signatures:
-                signatures[acc_1] = [0] * len(indices)
-
-            for x in ranks:
-                signatures[acc_1][x] += 1
+            if acc_1 in signatures:
+                for x, c in enumerate(incr):
+                    signatures[acc_1][x] += c
+            else:
+                signatures[acc_1] = incr
 
             for acc_2 in accessions[i:]:
-                organizer.add(acc_1, (acc_2, ranks))
+                organizer.add(acc_1, (acc_2, incr))
 
         organizer.flush()
-    organizer.merge()
-    done_queue.put((signatures, organizer))
+    size = organizer.merge(fn=count_accessions_per_rank)
+    done_queue.put((signatures, organizer, size))
+
+
+def count_accessions_per_rank(values: List[Tuple[str, list]]) -> List[Tuple[str, list]]:
+    counts = {}
+    for acc, incr in values:
+        if acc in counts:
+            for i, c in enumerate(incr):
+                counts[acc][i] += c
+        else:
+            counts[acc] = incr
+    return list(counts.items())
 
 
 def collect_counts2(pool: List[Process], queue: Queue, dir: Optional[str]=None) -> Kvdb:
+    ogger.debug("\tgatering counts")
     signatures = {}
     organizers = []
-    num_items = None
-    logger.debug("\tgathering results")
+    size = 0
     for _ in pool:
-        counts, organizer = queue.get()
+        counts, organizer, _size = queue.get()
         organizers.append(organizer)
-        for acc, val in counts.items():
+        size += _size
+        for acc, incr in counts.items():
             if acc in signatures:
-                for i, v in enumerate(val):
-                    signatures[acc][i] += v
+                for i, c in enumerate(incr):
+                    signatures[acc][i] += c
             else:
-                signatures[acc] = val
-                num_items = len(val)  # we need to know the number of ranks
+                signatures[acc] = incr
     for p in pool:
         p.join()
 
-    logger.debug("\tstoring counts")
+    logger.debug("\tdisk space: {} MB".format(size/1024**2))
     with Kvdb(dir=dir) as kvdb:
-        for acc_1, items in merge_organizers(organizers):
+        for acc_1, cmp in merge_organizers(organizers):
             comparisons = {}
-            for acc_2, indices in items:
-                if acc_2 not in comparisons:
-                    comparisons[acc_2] = [0] * num_items
-
-                for x in indices:
-                    comparisons[acc_2][x] += 1
+            for acc_2, incr in cmp:
+                if acc_2 in comparisons:
+                    for i, c in enumerate(incr):
+                        comparisons[acc_2][i] += c
+                else:
+                    comparisons[acc_2] = incr
 
             kvdb[acc_1] = (signatures[acc_1], comparisons)
 

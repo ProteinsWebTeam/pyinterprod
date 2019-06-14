@@ -8,7 +8,7 @@ import pickle
 import sqlite3
 from multiprocessing import Pool
 from tempfile import mkdtemp, mkstemp
-from typing import Any, Dict, Generator, Iterable, List, Optional, Tuple, Union
+from typing import *
 
 
 MIN_OVERLAP = 0.5   # at least 50% of overlap
@@ -114,19 +114,19 @@ class Organizer(object):
 
         self.buffer = {}
 
-    def merge(self, processes: int=1) -> int:
+    def merge(self, processes: int=1, fn: Optional[Callable]=None) -> int:
         size_before = self.size
         if processes > 1:
             with Pool(processes-1) as pool:
-                pool.map(self._merge, self.buckets)
+                pool.map(self._merge, self.buckets, fn)
         else:
             for bucket in self.buckets:
-                self._merge(bucket)
+                self._merge(bucket, fn)
 
         return max(size_before, self.size)
 
     @staticmethod
-    def _merge(path: str):
+    def _merge(path: str, fn: Optional[Callable]=None):
         data = {}
         if os.path.isfile(path):
             with gzip.open(path, "rb") as fh:
@@ -144,7 +144,10 @@ class Organizer(object):
 
             with gzip.open(path, "wb", COMPRESS_LVL) as fh:
                 for key in sorted(data):
-                    pickle.dump((key, data[key]), fh)
+                    if fn:
+                        pickle.dump((key, fn(data[key])), fh)
+                    else:
+                        pickle.dump((key, data[key]), fh)
 
     def remove(self):
         for bucket in self.buckets:
