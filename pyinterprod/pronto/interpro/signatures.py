@@ -196,9 +196,9 @@ def compare_descriptions(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tu
 def feed_processes(processes: int, fn: Callable, kvdbs: List[Kvdb], done_queue: Queue):
     task_queue = Queue(maxsize=1)
 
-    # Init consumers
+    # Init consumers; -2: -1 (parent proc) + -1 (this proc)
     pool = []
-    for _ in range(max(1, size-2)):  # -2: -1 (parent proc) + -1 (this proc)
+    for _ in range(max(1, processes-2)):
         p = Process(target=fn, args=(task_queue, done_queue))
         p.start()
         pool.append(p)
@@ -259,7 +259,7 @@ def compare_terms(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[Kvd
         for i, (acc_1, counts) in enumerate(organizer):
             kvdb[acc_1] = (signatures[acc_1], dict(counts))
             if not (i+1) % 1000:
-                logger.debug("{:>15}".format(i+1)) 
+                logger.debug("{:>15}".format(i+1))
 
     organizer.remove()
     return kvdb, size + kvdb.size
