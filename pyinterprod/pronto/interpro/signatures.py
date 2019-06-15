@@ -73,7 +73,7 @@ def sum_counts(values: List[Tuple[int, Dict[str, int]]]) -> Tuple[int, Dict[str,
     return count, comparisons
 
 
-def compare_terms(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[Kvdb, int]:
+def _compare_simple(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[Kvdb, int]:
     bucket_size = kwargs.get("bucket_size", 1000)
     dir = kwargs.get("dir")
     max_items = kwargs.get("max_items", 1000000)
@@ -109,7 +109,7 @@ def compare_terms(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[Kvd
                 task_queue.put((signatures, comparisons))
                 signatures = {}
                 comparisons = {}
-                logger.debug("{:>12}\tenqueued {} items".format(cnt, num_items))
+                logger.debug("{:<10}{:>15}: enqueued {} items ({} / {})".format(key, cnt, num_items, i, len(accessions)))
                 num_items = 0
 
         cnt += 1
@@ -133,15 +133,12 @@ def compare_terms(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[Kvd
     return kvdb, size + kvdb.size
 
 
-def count_accessions(values: List[List[str]]) -> List[Tuple[str, int]]:
-    counts = {}
-    for accessions in values:
-        for acc in accessions:
-            try:
-                counts[acc] += 1
-            except KeyError:
-                counts[acc] = 1
-    return list(counts.items())
+def compare_terms(*args, **kwargs) -> Tuple[Kvdb, int]:
+    return _compare_simple(*args, **kwargs)
+
+
+def compare_descriptions(*args, **kwargs) -> Tuple[Kvdb, int]:
+    return _compare_simple(*args, **kwargs)
 
 
 def collect_counts(pool: List[Process], queue: Queue,
@@ -257,25 +254,6 @@ def get_lineages(user: str, dsn: str) -> Dict[str, List[str]]:
     cur.close()
     con.close()
     return taxa
-
-
-def compare_descriptions(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[Kvdb, int]:
-    dir = kwargs.get("dir")
-    max_items = kwargs.get("max_items", 0)
-    processes = kwargs.get("processes", 1)
-
-    task_queue = Queue(maxsize=1)
-    done_queue = Queue()
-    pool = init_pool(processes, compare, (task_queue, done_queue, dir, max_items))
-    i = 0
-    for desc_id, values in merge_kvdbs(kvdbs, remove=False):
-        task_queue.put(values)
-        i += 1
-        if not i % 10000:
-            logger.debug("{:>15}".format(i))
-    for _ in pool:
-        task_queue.put(None)
-    return collect_counts(pool, done_queue, dir=dir)
 
 
 def feed_processes(processes: int, fn: Callable, kvdbs: List[Kvdb], done_queue: Queue):
