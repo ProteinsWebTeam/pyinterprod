@@ -27,41 +27,10 @@ def collect(keys: List[str], task_queue: Queue, done_queue: Queue, dir: Optional
     organizer = Organizer(keys, dir=dir)
     for signatures, comparisons in iter(task_queue.get, None):
         for acc, cnt in signatures.items():
-            organizer.add(acc, (cnt, comparisons[acc]))
-
+            organizer[acc] = (cnt, comparisons[acc])
         organizer.flush()
-        logger.debug("{}: flushed".format(os.getpid()))
-    done_queue.put(organizer)
-
-
-def compare(task_queue: Queue, done_queue: Queue, max_items: int):
-    signatures = {}
-    comparisons = {}
-    num_items = 0
-    for accessions in iter(task_queue.get, None):
-        for i, acc_1 in enumerate(accessions):
-            if acc_1 in signatures:
-                signatures[acc_1] += 1
-                cmp = comparisons[acc_1]
-            else:
-                signatures[acc_1] = 1
-                cmp = comparisons[acc_1] = {}
-
-            for acc_2 in accessions[i:]:
-                if acc_2 in cmp:
-                    cmp[acc_2] += 1
-                else:
-                    cmp[acc_2] = 1
-                    num_items += 1
-
-            if num_items >= max_items:
-                done_queue.put((signatures, comparisons))
-                signatures = {}
-                comparisons = {}
-                logger.debug("{}: {} items".format(os.getpid(), num_items))
-                num_items = 0
-
-    done_queue.put((signatures, comparisons))
+    size = organizer.merge(fn=sum_counts)
+    done_queue.put((organizer, size))
 
 
 def init_pool(size: int, fn: Callable, args: Tuple) -> List[Process]:
@@ -106,29 +75,50 @@ def sum_counts(values: List[Tuple[int, Dict[str, int]]]) -> Tuple[int, Dict[str,
 
 def compare_terms(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[Kvdb, int]:
     bucket_size = kwargs.get("bucket_size", 1000)
-    buffer_size = kwargs.get("buffer_size", 0)
     dir = kwargs.get("dir")
+    max_items = kwargs.get("max_items", 1000000)
     processes = kwargs.get("processes", 1)
 
     task_queue = Queue(maxsize=1)
     done_queue = Queue(maxsize=1)
-    pool1 = init_pool(processes-4, compare, (task_queue, done_queue, buffer_size))
-
     keys = chunk_accessions(user, dsn, bucket_size)
-    pool2 = init_pool(3, collect, (keys, done_queue, task_queue, dir))
+    pool = init_pool(processes-1, collect, (keys, task_queue, done_queue, dir))
 
     cnt = 0
+    num_items = 0
+    signatures = {}
+    comparisons = {}
     for key, values in merge_kvdbs(kvdbs, remove=False):
-        task_queue.put(sorted({acc for val in values for acc in val}))
-        cnt += 1
-        if not cnt % 1000:
-            logger.debug("{:>15}".format(cnt))
+        accessions = sorted({acc for val in values for acc in val})
+        for i, acc_1 in enumerate(accessions):
+            if acc_1 in signatures:
+                signatures[acc_1] += 1
+                cmp = comparisons[acc_1]
+            else:
+                signatures[acc_1] = 1
+                cmp = comparisons[acc_1] = {}
 
-    close_pool(pool1, task_queue)
-    organizers = close_pool(pool2, done_queue, task_queue)
+            for acc_2 in accessions[i:]:
+                if acc_2 in cmp:
+                    cmp[acc_2] += 1
+                else:
+                    cmp[acc_2] = 1
+                    num_items += 1
+
+            if num_items >= max_items:
+                task_queue.put((signatures, comparisons))
+                signatures = {}
+                comparisons = {}
+                logger.debug("{:>12}\tenqueued {} items".format(cnt, num_items))
+                num_items = 0
+
+        cnt += 1
+    task_queue.put((signatures, comparisons))
+    organizers = []
     size = 0
-    for o in organizers:
-        size += o.merge(processes, fn=sum_counts)
+    for o, s in close_pool(pool, task_queue, done_queue):
+        organizers.append(o)
+        size += s
 
     logger.debug("\tdisk space: {} MB".format(size/1024**2))
     with Kvdb(dir=dir) as kvdb:
