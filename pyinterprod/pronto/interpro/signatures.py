@@ -201,21 +201,47 @@ def compare_descriptions(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tu
 
 
 def compare_terms(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[Kvdb, int]:
+    bucket_size = kwargs.get("bucket_size", 100)
+    buffer_size = kwargs.get("buffer_size", 0)
     dir = kwargs.get("dir")
-    max_items = kwargs.get("max_items", 0)
     processes = kwargs.get("processes", 1)
-    task_queue = Queue(maxsize=1)
-    done_queue = Queue()
-    pool = init_pool(processes, compare, (task_queue, done_queue, dir, max_items))
-    i = 0
+
+    keys = chunk_accessions(user, dsn, bucket_size)
+    organizer = Organizer(keys, dir=dir, buffer_size=buffer_size)
+    signatures = {}
+    cnt = 0
     for go_id, values in merge_kvdbs(kvdbs, remove=False):
-        task_queue.put(values)
-        i += 1
-        if not i % 1000:
-            logger.debug("{:>15}".format(i))
-    for _ in pool:
-        task_queue.put(None)
-    return collect_counts(pool, done_queue, dir=dir)
+        accessions = sorted({acc for val in values for acc in val})
+        for i, acc_1 in enumerate(accessions):
+            if acc_1 in signatures:
+                signatures[acc_1] += 1
+            else:
+                signatures[acc_1] = 1
+
+            for acc_2 in accessions[i:]:
+                organizer.add(acc_1, acc_2)
+
+        cnt += 1
+        if not cnt % 1000:
+            logger.debug("{:>15}".format(cnt))
+
+    size = organizer.merge(processes=processes, fn=count_accessions)
+    logger.debug("\tdisk space: {:.0f} MB".format(size/1024**2))
+    with Kvdb(dir=dir) as kvdb:
+        for i, (acc_1, counts) in enumerate(organizer):
+            comparisons = {}
+            for acc_2, cnt in counts:
+                try:
+                    comparisons[acc_2] += 1
+                except KeyError:
+                    comparisons[acc_2] = 1
+
+            kvdb[acc_1] = (signatures[acc_1], comparisons)
+            if not (i+1) % 1000:
+                logger.debug("{:>15}".format(i+1))
+
+    organizer.remove()
+    return kvdb, size + kvdb.size
 
 
 def compare_taxa(user: str, dsn: str, kvdbs: List[Kvdb], ranks: List[str], **kwargs) -> Kvdb:
