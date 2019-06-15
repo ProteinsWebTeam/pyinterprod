@@ -553,16 +553,6 @@ def ask_to_snapshot(user: str, dsn: str):
             name += " (" + version + ")"
         updates.append((name, analysis_id))
 
-    cur.execute(
-        """
-        UPDATE INTERPRO.IPRSCAN2DBCODE
-        SET PREV_ID = IPRSCAN_SIG_LIB_REL_ID
-        """
-    )
-    con.commit()
-    cur.close()
-    con.close()
-
     content = """\
 INTERPRO.XREF_SUMMARY and INTERPRO.XREF_CONDENSED are ready.
 
@@ -602,12 +592,25 @@ Best regards,
 The InterPro Production Team
 """
 
-    send_mail(
-        #to_addrs=["interpro-team@ebi.ac.uk"],
-        to_addrs=["mblum@ebi.ac.uk"],
-        subject="Protein update {}: please snapshot IPPRO".format(release),
-        content=content
-    )
+    try:
+        send_mail(
+            #to_addrs=["interpro-team@ebi.ac.uk"],
+            to_addrs=["mblum@ebi.ac.uk"],
+            subject="Protein update {}: please snapshot IPPRO".format(release),
+            content=content
+        )
+
+        # Update PREV_ID only if mail sent
+        cur.execute(
+            """
+            UPDATE INTERPRO.IPRSCAN2DBCODE
+            SET PREV_ID = IPRSCAN_SIG_LIB_REL_ID
+            """
+        )
+        con.commit()
+    finally:
+        cur.close()
+        con.close()
 
 
 def report_integration_changes(user: str, dsn: str):
