@@ -23,13 +23,13 @@ def chunk_accessions(user: str, dsn: str, bucket_size: int) -> List[str]:
     return [keys[i] for i in range(0, len(keys), bucket_size)]
 
 
-def collect(keys: List[str], task_queue: Queue, done_queue: Queue, dir: Optional[str]):
+def collect(keys: List[str], dir: Optional[str], task_queue: Queue, fn: Callable, done_queue: Queue):
     organizer = Organizer(keys, dir=dir)
     for signatures, comparisons in iter(task_queue.get, None):
         for acc, cnt in signatures.items():
             organizer[acc] = (cnt, comparisons.pop(acc))
         organizer.flush()
-    size = organizer.merge(fn=sum_counts)
+    size = organizer.merge(fn=fn)
     done_queue.put((organizer, size))
 
 
@@ -73,6 +73,26 @@ def sum_counts(values: List[Tuple[int, Dict[str, int]]]) -> Tuple[int, Dict[str,
     return count, comparisons
 
 
+def sum_ranks(values: List[Tuple[List[int], Dict[str, List[int]]]]) -> Tuple[List[int], Dict[str, List[int]]]:
+    counts = None
+    comparisons = {}
+    for cnts, cmp in values:
+        if counts is None:
+            counts = cnts
+        else:
+            for i, c in enumerate(cnts):
+                counts[i] += c
+
+        for acc, cnts2 in cmp.items():
+            if acc in comparisons:
+                for i, c in enumerate(cnts2):
+                    comparisons[acc][i] += c
+            else:
+                comparisons[acc] = cnts2
+
+    return counts, comparisons
+
+
 def _compare_simple(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[Kvdb, int]:
     bucket_size = kwargs.get("bucket_size", 1000)
     dir = kwargs.get("dir")
@@ -82,7 +102,7 @@ def _compare_simple(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[K
     task_queue = Queue(maxsize=1)
     done_queue = Queue(maxsize=1)
     keys = chunk_accessions(user, dsn, bucket_size)
-    pool = init_pool(processes-1, collect, (keys, task_queue, done_queue, dir))
+    pool = init_pool(processes-1, collect, (keys, dir, task_queue, sum_counts, done_queue))
 
     cnt = 0
     num_items = 0
@@ -141,104 +161,6 @@ def compare_descriptions(*args, **kwargs) -> Tuple[Kvdb, int]:
     return _compare_simple(*args, **kwargs)
 
 
-def collect_counts(pool: List[Process], queue: Queue,
-                   dir: Optional[str]=None) -> Tuple[Kvdb, int]:
-    kvdbs = []
-    for _ in pool:
-        kvdbs.append(queue.get())
-    for p in pool:
-        p.join()
-
-    size = sum([kvdb.size for kvdb in kvdbs])
-    with Kvdb(dir=dir) as kvdb:
-        for acc_1, items in merge_kvdbs(kvdbs, remove=True):
-            count = 0
-            comparisons = {}
-            for cnt, cmps in items:
-                count += cnt
-                for acc_2, cnt in cmps.items():
-                    try:
-                        comparisons[acc_2] += cnt
-                    except KeyError:
-                        comparisons[acc_2] = cnt
-
-            kvdb[acc_1] = (count, comparisons)
-
-    size += kvdb.size
-    return kvdb, size
-
-
-def compare2(keys: List[str], ranks: List[str], task_queue: Queue,
-             done_queue: Queue, dir: Optional[str]=None, buffer_size: int=0):
-    organizer = Organizer(keys, dir=dir, buffer_size=buffer_size)
-    signatures = {}
-    for ranks_to_incr, values in iter(task_queue.get, None):
-        incr = [1 if r in ranks_to_incr else 0 for r in ranks]
-        accessions = sorted({acc for val in values for acc in val})
-        for i, acc_1 in enumerate(accessions):
-            if acc_1 in signatures:
-                for x, c in enumerate(incr):
-                    signatures[acc_1][x] += c
-            else:
-                signatures[acc_1] = incr
-
-            for acc_2 in accessions[i:]:
-                organizer.add(acc_1, (acc_2, incr))
-
-    size = organizer.merge(fn=count_accessions_per_rank)
-    done_queue.put((signatures, organizer, size))
-
-
-def count_accessions_per_rank(values: List[Tuple[str, list]]) -> List[Tuple[str, list]]:
-    counts = {}
-    for acc, incr in values:
-        if acc in counts:
-            for i, c in enumerate(incr):
-                counts[acc][i] += c
-        else:
-            counts[acc] = incr
-    return list(counts.items())
-
-
-def collect_counts2(pool: List[Process], queue: Queue,
-                    dir: Optional[str]=None) -> Tuple[Kvdb, int]:
-    logger.debug("\tgathering")
-    signatures = {}
-    organizers = []
-    size = 0
-    for _ in pool:
-        counts, organizer, _size = queue.get()
-        organizers.append(organizer)
-        size += _size
-        for acc, incr in counts.items():
-            if acc in signatures:
-                for i, c in enumerate(incr):
-                    signatures[acc][i] += c
-            else:
-                signatures[acc] = incr
-    for p in pool:
-        p.join()
-
-    logger.debug("\tdisk space: {} MB".format(size/1024**2))
-    with Kvdb(dir=dir) as kvdb:
-        for acc_1, cmp in merge_organizers(organizers, remove=True):
-            comparisons = {}
-            for acc_2, incr in cmp:
-                if acc_2 in comparisons:
-                    for i, c in enumerate(incr):
-                        comparisons[acc_2][i] += c
-                else:
-                    comparisons[acc_2] = incr
-
-            kvdb[acc_1] = (signatures[acc_1], comparisons)
-
-    size += kvdb.size
-    return kvdb, size
-
-
-
-
-
 def get_lineages(user: str, dsn: str) -> Dict[str, List[str]]:
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
@@ -256,66 +178,74 @@ def get_lineages(user: str, dsn: str) -> Dict[str, List[str]]:
     return taxa
 
 
-def feed_processes(processes: int, fn: Callable, kvdbs: List[Kvdb], done_queue: Queue):
-    task_queue = Queue(maxsize=1)
-
-    # Init consumers; -2: -1 (parent proc) + -1 (this proc)
-    pool = []
-    for _ in range(max(1, processes-2)):
-        p = Process(target=fn, args=(task_queue, done_queue))
-        p.start()
-        pool.append(p)
-
-    # Submit tasks to pool of workers
-    cnt = 0
-    for key, values in merge_kvdbs(kvdbs, remove=False):
-        task_queue.put(values)
-        accessions = sorted({acc for val in values for acc in val})
-        cnt += 1
-        if not cnt % 1000:
-            logger.debug("{:>15}".format(cnt))
-
-    # Indicate to workers that that no more data will be sent
-    for _ in pool:
-        queue.put(None)
-
-    # Join workers
-    for p in pool:
-        p.join()
-
-    # Release workers
-    for p in pool:
-        p.close()
-
-    # Indicate to parent process that no more data will be sent
-    done_queue.put(None)
-
-
-def compare_taxa(user: str, dsn: str, kvdbs: List[Kvdb], ranks: List[str], **kwargs) -> Kvdb:
-    bucket_size = kwargs.get("bucket_size", 100)
-    buffer_size = kwargs.get("buffer_size", 0)
+def compare_taxa(user: str, dsn: str, kvdbs: List[Kvdb], ranks: List[str], **kwargs) -> Tuple[Kvdb, int]:
+    bucket_size = kwargs.get("bucket_size", 1000)
     dir = kwargs.get("dir")
+    max_items = kwargs.get("max_items", 1000000)
     processes = kwargs.get("processes", 1)
 
-    keys = chunk_accessions(user, dsn, bucket_size)
     task_queue = Queue(maxsize=1)
-    done_queue = Queue()
-    pool = init_pool(processes, compare2, (keys, ranks, task_queue, done_queue, dir, buffer_size))
+    done_queue = Queue(maxsize=1)
+    keys = chunk_accessions(user, dsn, bucket_size)
+    pool = init_pool(processes-1, collect, (keys, dir, task_queue, sum_ranks, done_queue))
+
     taxa = get_lineages(user, dsn)
-    i = 0
-    for tax_id, values in merge_kvdbs(kvdbs, remove=False):
+
+    cnt = 0
+    num_items = 0
+    signatures = {}
+    comparisons = {}
+    for key, values in merge_kvdbs(kvdbs, remove=False):
         try:
-            ranks = taxa[tax_id]
+            _ranks = taxa[key]
         except KeyError:
-            pass  # ETAXI is incomplete
-        else:
-            task_queue.put((ranks, values))
+            continue  # ETAXI is incomplete
+
+        accessions = sorted({acc for val in values for acc in val})
+        values = [1 if r in _ranks else 0 for r in ranks]
+        for i, acc_1 in enumerate(accessions):
+            if acc_1 in signatures:
+                for x, v in enumerate(values):
+                    signatures[acc_1][x] += v
+                cmp = comparisons[acc_1]
+            else:
+                signatures[acc_1] = values
+                cmp = comparisons[acc_1] = {}
+
+            for acc_2 in accessions[i:]:
+                if acc_2 in cmp:
+                    for x, v in enumerate(values):
+                        cmp[acc_2][x] += v
+                else:
+                    cmp[acc_2] = values
+                    num_items += 1
+
+            if num_items >= max_items:
+                task_queue.put((signatures, comparisons))
+                signatures = {}
+                comparisons = {}
+                logger.debug("{:<10}{:>15}: enqueued {} items ({} / {})".format(key, cnt, num_items, i, len(accessions)))
+                num_items = 0
+
+        cnt += 1
+    task_queue.put((signatures, comparisons))
+    organizers = []
+    size = 0
+    for o, s in close_pool(pool, task_queue, done_queue):
+        organizers.append(o)
+        size += s
+
+    logger.debug("\tdisk space: {} MB".format(size/1024**2))
+    with Kvdb(dir=dir) as kvdb:
+        i = 0
+        for acc, items in merge_organizers(organizers, remove=True):
+            kvdb[acc_1] = sum_ranks(items)
+
             i += 1
-            if not i % 1000000:
+            if not i % 1000:
                 logger.debug("{:>15}".format(i))
-    for _ in pool:
-        task_queue.put(None)
-    return collect_counts2(ranks, pool, done_queue, dir=dir)
+
+    return kvdb, size + kvdb.size
 
 
 def merge_comparisons(user: str, dsn: str, kvdbs: tuple, comparators: list,
