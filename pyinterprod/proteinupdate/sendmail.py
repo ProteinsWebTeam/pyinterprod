@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
-import os
 import mimetypes
 from email.message import EmailMessage
+from getpass import getuser
 from smtplib import SMTP
 from typing import Optional
 
@@ -19,7 +19,7 @@ def send_mail(to_addrs: list, subject: str, content: str,
     msg = EmailMessage()
     msg.set_content(content)
 
-    msg["Sender"] = os.getlogin() + _EBI_EMAIL
+    msg["Sender"] = getuser() + _EBI_EMAIL
     msg["To"] = set(to_addrs)
     if cc_addrs:
         msg["Cc"] = ','.join(set(cc_addrs))
