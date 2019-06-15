@@ -227,42 +227,41 @@ def feed_processes(processes: int, fn: Callable, kvdbs: List[Kvdb], done_queue: 
     done_queue.put(None)
 
 
-def compare_terms(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[Kvdb, int]:
-    bucket_size = kwargs.get("bucket_size", 100)
-    dir = kwargs.get("dir")
-    processes = kwargs.get("processes", 1)
-
+def compare_terms(kvdbs: List[Kvdb], dir: Optional[str]=None,
+                  processes: int=1) -> Tuple[Kvdb, int]:
     done_queue = Queue(maxsize=1)
     p = Process(target=feed_processes, args=(processes, compare, kvdbs, done_queue))
     p.start()
 
-    keys = chunk_accessions(user, dsn, bucket_size)
-    organizer = Organizer(keys, dir=dir)
     signatures = {}
+    comparisons = {}
     for items in iter(done_queue.get, None):
         for acc_1, accessions in items:
             try:
                 signatures[acc_1] += 1
             except KeyError:
                 signatures[acc_1] = 1
-            finally:
-                organizer.add(acc_1, accessions)
+                comparisons[acc_1] = {}
 
-        organizer.flush()
+            for acc_2 in accessions:
+                try:
+                    comparisons[acc_1][acc_2] += 1
+                except KeyError:
+                    comparisons[acc_1][acc_2] = 1
 
     p.join()
     p.close()
 
-    size = organizer.merge(processes, fn=count_accessions)
-    logger.debug("\tdisk space: {:.0f} MB".format(size/1024**2))
     with Kvdb(dir=dir) as kvdb:
-        for i, (acc_1, counts) in enumerate(organizer):
-            kvdb[acc_1] = (signatures[acc_1], dict(counts))
-            if not (i+1) % 1000:
-                logger.debug("{:>15}".format(i+1))
+        i = 0
+        for acc_1, cnt in signatures.items():
+            kvdb[acc_1] = (cnt, comparisons[acc_1])
 
-    organizer.remove()
-    return kvdb, size + kvdb.size
+            i += 1
+            if not i % 1000:
+                logger.debug("{:>15}".format(i))
+
+    return kvdb
 
 
 def compare_taxa(user: str, dsn: str, kvdbs: List[Kvdb], ranks: List[str], **kwargs) -> Kvdb:
