@@ -27,7 +27,7 @@ def collect(keys: List[str], task_queue: Queue, done_queue: Queue, dir: Optional
     organizer = Organizer(keys, dir=dir)
     for signatures, comparisons in iter(task_queue.get, None):
         for acc, cnt in signatures.items():
-            organizer[acc] = (cnt, comparisons[acc])
+            organizer[acc] = (cnt, comparisons.pop(acc))
         organizer.flush()
     size = organizer.merge(fn=sum_counts)
     done_queue.put((organizer, size))
