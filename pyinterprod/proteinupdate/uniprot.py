@@ -591,7 +591,7 @@ The max UPI we processed up to in this update is {}.
 We have updated the following databases since the previous protein update:
 """
         for db in updates:
-            content += "  - {:<30}{:<15}\n".format(*db)
+            content += "  - {:<30}new analysis ID: {}\n".format(*db)
     else:
         content += """
 There are no changes to the analysis IDs for this protein update.
