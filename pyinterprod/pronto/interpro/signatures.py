@@ -18,19 +18,19 @@ def chunk_accessions(user: str, dsn: str, bucket_size: int) -> List[str]:
     cur = con.cursor()
     cur.execute("SELECT METHOD_AC FROM {}.METHOD".format(owner))
     keys = sorted([row[0] for row in cur])
-    keys = [keys[i] for i in range(0, len(keys), bucket_size)]
     cur.close()
     con.close()
-    return keys
+    return [keys[i] for i in range(0, len(keys), bucket_size)]
 
 
-def collect(keys: List[str], task_queue: Queue, done_queue: Queue, dir: Optional[str], buffer_size: int):
-    organizer = Organizer(keys, dir=dir, buffer_size=buffer_size)
+def collect(keys: List[str], task_queue: Queue, done_queue: Queue, dir: Optional[str]):
+    organizer = Organizer(keys, dir=dir)
     for signatures, comparisons in iter(task_queue.get, None):
         for acc, cnt in signatures.items():
             organizer.add(acc, (cnt, comparisons[acc]))
 
-    organizer.flush()
+        organizer.flush()
+        logger.debug("{}: flushed".format(os.getpid()))
     done_queue.put(organizer)
 
 
@@ -58,6 +58,7 @@ def compare(task_queue: Queue, done_queue: Queue, max_items: int):
                 done_queue.put((signatures, comparisons))
                 signatures = {}
                 comparisons = {}
+                logger.debug("{}: {} items".format(os.getpid(), num_items))
                 num_items = 0
 
     done_queue.put((signatures, comparisons))
@@ -111,10 +112,10 @@ def compare_terms(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[Kvd
 
     task_queue = Queue(maxsize=1)
     done_queue = Queue(maxsize=1)
-    pool1 = init_pool(3, compare, (task_queue, done_queue, buffer_size))
+    pool1 = init_pool(processes-4, compare, (task_queue, done_queue, buffer_size))
 
     keys = chunk_accessions(user, dsn, bucket_size)
-    pool2 = init_pool(processes-4, collect, (keys, done_queue, task_queue, dir, buffer_size))
+    pool2 = init_pool(3, collect, (keys, done_queue, task_queue, dir))
 
     cnt = 0
     for key, values in merge_kvdbs(kvdbs, remove=False):
@@ -140,7 +141,7 @@ def compare_terms(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[Kvd
                 logger.debug("{:>15}".format(i))
 
     return kvdb, size + kvdb.size
-    
+
 
 def count_accessions(values: List[List[str]]) -> List[Tuple[str, int]]:
     counts = {}
