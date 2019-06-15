@@ -11,39 +11,24 @@ from .utils import merge_comparators, merge_kvdbs, merge_organizers, Kvdb, Organ
 from ... import logger, orautils
 
 
-def compare(task_queue: Queue, done_queue: Queue, dir: Optional[str]=None,
-            max_items: int=0):
-    with Kvdb(dir=dir, buffer_size=-1) as kvdb:
-        for values in iter(task_queue.get, None):
-            accessions = sorted({acc for val in values for acc in val})
-            for i, acc_1 in enumerate(accessions):
-                try:
-                    count, comparisons = kvdb[acc_1]
-                except KeyError:
-                    count = 0
-                    comparisons = {}
+def compare(task_queue: Queue, done_queue: Queue):
+    for values in iter(task_queue.get, None):
+        accessions = sorted({acc for val in values for acc in val})
+        output = []
+        for i, acc_1 in enumerate(accessions):
+            output.append((acc_1, accessions[i:]))
 
-                count += 1
-                for acc_2 in accessions[i:]:
-                    try:
-                        comparisons[acc_2] += 1
-                    except KeyError:
-                        comparisons[acc_2] = 1
-
-                kvdb[acc_1] = (count, comparisons)
-                if len(kvdb) == max_items:
-                    kvdb.sync()
-
-    done_queue.put(kvdb)
+        done_queue.put(output)
 
 
-def count_accessions(values: List[str]) -> List[Tuple[str, int]]:
+def count_accessions(values: List[List[str]]) -> List[Tuple[str, int]]:
     counts = {}
-    for acc in values:
-        if acc in counts:
-            counts[acc] += 1
-        else:
-            counts[acc] = 1
+    for accessions in values:
+        for acc in accessions:
+            try:
+                counts[acc] += 1
+            except KeyError:
+                counts[acc] = 1
     return list(counts.items())
 
 
@@ -144,12 +129,20 @@ def collect_counts2(pool: List[Process], queue: Queue,
 
 def init_pool(size: int, func: Callable, args: Tuple) -> List[Process]:
     pool = []
-    for _ in range(max(1, size-1)):
+    for _ in range(max(1, size)):
         p = Process(target=func, args=args)
         p.start()
         pool.append(p)
 
     return pool
+
+
+def close_pool(pool: List[Process], queue: Queue):
+    for _ in pool:
+        queue.put(None)
+
+    for p in pool:
+        p.join()
 
 
 def chunk_accessions(user: str, dsn: str, bucket_size: int) -> List[str]:
@@ -200,45 +193,73 @@ def compare_descriptions(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tu
     return collect_counts(pool, done_queue, dir=dir)
 
 
-def compare_terms(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[Kvdb, int]:
-    bucket_size = kwargs.get("bucket_size", 100)
-    buffer_size = kwargs.get("buffer_size", 0)
-    dir = kwargs.get("dir")
-    processes = kwargs.get("processes", 1)
+def feed_processes(processes: int, fn: Callable, kvdbs: List[Kvdb], done_queue: Queue):
+    task_queue = Queue(maxsize=1)
 
-    keys = chunk_accessions(user, dsn, bucket_size)
-    organizer = Organizer(keys, dir=dir, buffer_size=buffer_size)
-    signatures = {}
+    # Init consumers
+    pool = []
+    for _ in range(max(1, size-2)):  # -2: -1 (parent proc) + -1 (this proc)
+        p = Process(target=fn, args=(task_queue, done_queue))
+        p.start()
+        pool.append(p)
+
+    # Submit tasks to pool of workers
     cnt = 0
-    for go_id, values in merge_kvdbs(kvdbs, remove=False):
-        accessions = sorted({acc for val in values for acc in val})
-        for i, acc_1 in enumerate(accessions):
-            if acc_1 in signatures:
-                signatures[acc_1] += 1
-            else:
-                signatures[acc_1] = 1
-
-            for acc_2 in accessions[i:]:
-                organizer.add(acc_1, acc_2)
-
+    for key, values in merge_kvdbs(kvdbs, remove=False):
+        task_queue.put(values)
         cnt += 1
         if not cnt % 1000:
             logger.debug("{:>15}".format(cnt))
 
-    size = organizer.merge(processes=processes, fn=count_accessions)
+    # Indicate to workers that that no more data will be sent
+    for _ in pool:
+        queue.put(None)
+
+    # Join workers
+    for p in pool:
+        p.join()
+
+    # Release workers
+    for p in pool:
+        p.close()
+
+    # Indicate to parent process that no more data will be sent
+    done_queue.put(None)
+
+
+def compare_terms(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[Kvdb, int]:
+    bucket_size = kwargs.get("bucket_size", 100)
+    dir = kwargs.get("dir")
+    processes = kwargs.get("processes", 1)
+
+    done_queue = Queue(maxsize=1)
+    p = Process(target=feed_processes, args=(processes, compare, kvdbs, done_queue))
+    p.start()
+
+    keys = chunk_accessions(user, dsn, bucket_size)
+    organizer = Organizer(keys, dir=dir)
+    signatures = {}
+    for items in iter(done_queue.get, None):
+        for acc_1, accessions in items:
+            try:
+                signatures[acc_1] += 1
+            except KeyError:
+                signatures[acc_1] = 1
+            finally:
+                organizer.add(acc_1, accessions)
+
+        organizer.flush()
+
+    p.join()
+    p.close()
+
+    size = organizer.merge(processes, fn=count_accessions)
     logger.debug("\tdisk space: {:.0f} MB".format(size/1024**2))
     with Kvdb(dir=dir) as kvdb:
         for i, (acc_1, counts) in enumerate(organizer):
-            comparisons = {}
-            for acc_2, cnt in counts:
-                try:
-                    comparisons[acc_2] += 1
-                except KeyError:
-                    comparisons[acc_2] = 1
-
-            kvdb[acc_1] = (signatures[acc_1], comparisons)
+            kvdb[acc_1] = (signatures[acc_1], dict(counts))
             if not (i+1) % 1000:
-                logger.debug("{:>15}".format(i+1))
+                logger.debug("{:>15}".format(i+1)) 
 
     organizer.remove()
     return kvdb, size + kvdb.size
