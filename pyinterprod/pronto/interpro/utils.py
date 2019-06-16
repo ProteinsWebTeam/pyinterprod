@@ -281,10 +281,14 @@ class MatchComparator(object):
 
 
 class Kvdb(object):
-    def __init__(self, dir: Optional[str]=None, buffer_size: int=0):
-        fd, self.filepath = mkstemp(dir=dir)
-        os.close(fd)
-        os.remove(self.filepath)
+    def __init__(self, database: Optional[str]=None, dir: Optional[str]=None,
+                 buffer_size: int=0):
+        if database:
+            self.filepath = database
+        else:
+            fd, self.filepath = mkstemp(dir=dir)
+            os.close(fd)
+            os.remove(self.filepath)
         self.con = self.cur = None
         self._ensure_open()
         self.cur.execute(
