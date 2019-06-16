@@ -136,6 +136,7 @@ def _compare_simple(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[K
     task_queue.put((signatures, comparisons))
     organizers = []
     size = 0
+    logger.debug("all items enqueued")
     for o, s in close_pool(pool, task_queue, done_queue):
         organizers.append(o)
         size += s
@@ -231,6 +232,7 @@ def compare_taxa(user: str, dsn: str, kvdbs: List[Kvdb], ranks: List[str], **kwa
     task_queue.put((signatures, comparisons))
     organizers = []
     size = 0
+    logger.debug("all items enqueued")
     for o, s in close_pool(pool, task_queue, done_queue):
         organizers.append(o)
         size += s
