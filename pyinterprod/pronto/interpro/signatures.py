@@ -59,7 +59,7 @@ def close_pool(pool: List[Process], inqueue: Queue, outqueue: Optional[Queue]=No
     return result
 
 
-def sum_counts(values: List[Tuple[int, Dict[str, int]]]) -> Tuple[int, Dict[str, int]]:
+def sum_counts(values: List[Tuple[int, Dict[str, int]]]):
     count = 0
     comparisons = {}
     for cnt, cmp in values:
@@ -70,7 +70,7 @@ def sum_counts(values: List[Tuple[int, Dict[str, int]]]) -> Tuple[int, Dict[str,
             else:
                 comparisons[acc] = cnt2
 
-    return count, comparisons
+    return [count, comparisons]
 
 
 def sum_ranks(values: List[Tuple[List[int], Dict[str, List[int]]]]) -> Tuple[List[int], Dict[str, List[int]]]:
@@ -141,11 +141,11 @@ def _compare_simple(user: str, dsn: str, kvdbs: List[Kvdb], **kwargs) -> Tuple[K
         organizers.append(o)
         size += s
 
-    logger.debug("\tdisk space: {} MB".format(size/1024**2))
+    logger.debug("\tdisk space: {:.0f} MB".format(size/1024**2))
     with Kvdb(dir=dir) as kvdb:
         i = 0
         for acc, items in merge_organizers(organizers, remove=True):
-            kvdb[acc_1] = sum_counts(items)
+            kvdb[acc] = sum_counts(items)
 
             i += 1
             if not i % 1000:
@@ -237,7 +237,7 @@ def compare_taxa(user: str, dsn: str, kvdbs: List[Kvdb], ranks: List[str], **kwa
         organizers.append(o)
         size += s
 
-    logger.debug("\tdisk space: {} MB".format(size/1024**2))
+    logger.debug("\tdisk space: {:.0f} MB".format(size/1024**2))
     with Kvdb(dir=dir) as kvdb:
         i = 0
         for acc, items in merge_organizers(organizers, remove=True):
