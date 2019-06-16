@@ -293,7 +293,7 @@ class Kvdb(object):
         self._ensure_open()
         self.cur.execute(
             """
-            CREATE TABLE data (
+            CREATE TABLE IF NOT EXISTS data (
                 id TEXT PRIMARY KEY NOT NULL,
                 val TEXT NOT NULL
             )
@@ -382,6 +382,18 @@ class Kvdb(object):
         )
         self.con.commit()
         self.buffer = {}
+
+    def range(self, low: str, high: Optional[str]=None):
+        if high:
+            sql = "SELECT id, val FROM data WHERE id BETWEEN ? AND ? ORDER BY id"
+            params = (low, high)
+        else:
+            sql = "SELECT id, val FROM data WHERE id >= ? ORDER BY id"
+            params = (low,)
+
+        with sqlite3.connect(self.filepath) as con:
+            for row in con.execute(sql, params):
+                yield row[0], pickle.loads(row[1])
 
     def close(self):
         if self.con is not None:
