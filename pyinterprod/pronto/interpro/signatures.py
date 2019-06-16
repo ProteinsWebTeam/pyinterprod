@@ -54,7 +54,7 @@ def close_pool(pool: List[Process], inqueue: Queue, outqueue: Optional[Queue]=No
 
     for p in pool:
         p.join()
-        p.close()
+        # p.close()  # Python >= 3.7
 
     return result
 
