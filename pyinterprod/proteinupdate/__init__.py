@@ -131,11 +131,18 @@ def main():
             requires=["import-matches"]
         ),
         Task(
+            name="report-unintegrated",
+            fn=uniprot.report_integration_changes,
+            args=(db_users["interpro"], db_dsn),
+            scheduler=dict(queue=queue, mem=2000),
+            requires=["update-matches"]
+        ),
+        Task(
             name="xref-summary",
             fn=uniprot.build_xref_summary,
             args=(db_users["interpro"], db_dsn),
             scheduler=dict(queue=queue, mem=500),
-            requires=["update-matches"]
+            requires=["report-unintegrated"]
         ),
         Task(
             name="xref-condensed",
