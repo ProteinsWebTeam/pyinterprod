@@ -29,26 +29,12 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue,
             proteins2go[acc].add(go_id)
         else:
             proteins2go[acc] = {go_id}
-
-    cur.execute(
-        """
-        SELECT DESC_ID
-        FROM {0}.DESC_VALUE
-        WHERE TEXT LIKE 'Predicted protein%'
-          OR TEXT LIKE 'Uncharacterized protein%'
-        """.format(owner)
-    )
-    excluded_descr = {row[0] for row in cur}
     cur.close()
 
     names = utils.Organizer(keys, dir=tmpdir)
     taxa = utils.Organizer(keys, dir=tmpdir)
     terms = utils.Organizer(keys, dir=tmpdir)
     comparator = utils.MatchComparator(dir=tmpdir)
-    # unlimited buffer (auto-sync disabled)
-    n_kvdb = utils.Kvdb(dir=tmpdir, buffer_size=-1)
-    ta_kvdb = utils.Kvdb(dir=tmpdir, buffer_size=-1)
-    te_kvdb = utils.Kvdb(dir=tmpdir, buffer_size=-1)
     table = orautils.TablePopulator(
         con=con,
         query="INSERT /*+ APPEND */ "
@@ -62,26 +48,6 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue,
             protein_terms = proteins2go.get(acc, [])
 
             signatures = comparator.update(matches)
-            ssignatures = set(signatures)
-
-            if desc_id not in excluded_descr:
-                key = str(desc_id)
-                if key in n_kvdb:
-                    n_kvdb[key] |= ssignatures
-                else:
-                    n_kvdb[key] = ssignatures
-
-            key = str(tax_id)
-            if key in ta_kvdb:
-                ta_kvdb[key] |= ssignatures
-            else:
-                ta_kvdb[key] = ssignatures
-
-            for go_id in protein_terms:
-                if go_id in te_kvdb:
-                    te_kvdb[go_id] |= ssignatures
-                else:
-                    te_kvdb[go_id] = ssignatures
 
             # Update organizers and populate table
             for signature_acc in signatures:
@@ -99,9 +65,6 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue,
         names.flush()
         taxa.flush()
         terms.flush()
-        n_kvdb.sync()
-        ta_kvdb.sync()
-        te_kvdb.sync()
 
     table.close()
     con.close()
@@ -111,12 +74,8 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue,
     organizers = (names, taxa, terms)
     for o in organizers:
         size += o.merge()
-    kvdbs = (n_kvdb, te_kvdb, ta_kvdb)
-    for k in kvdbs:
-        k.close()  # Important! We need to close the connection!
-        size += k.size
 
-    done_queue.put((comparator, *organizers, *kvdbs, size))
+    done_queue.put((comparator, *organizers, size))
 
 
 def hash_protein(matches: List[tuple]) -> str:
