@@ -439,7 +439,7 @@ def merge_kvdbs(iterable: Iterable[Kvdb], remove: bool=False):
 def merge_organizers(iterable: Iterable[Organizer], remove: bool=False):
     _key = None
     items = []
-    for key, values in heapq.merge(*iterable):
+    for key, values in heapq.merge(*iterable, key=lambda x: x[0]):
         if key != _key:
             if _key is not None:
                 yield _key, items
