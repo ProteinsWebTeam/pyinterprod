@@ -514,34 +514,40 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     with open(os.path.join(tmpdir, "comparators"), "wb") as fh:
         pickle.dump(comparators, fh)
 
+    t = Thread(target=_finalize_method2protein, args=(user, dsn))
+    t.start()
+
     queue = Queue()
-    pool = [
-        Process(target=_load_description_counts,
-                args=(user, dsn, names, tmpdir, queue)),
-        Process(target=_load_taxonomy_counts,
-                args=(user, dsn, taxa, tmpdir, queue)),
-        Process(target=_load_term_counts,
-                args=(user, dsn, terms, tmpdir, queue)),
-        Thread(target=_finalize_method2protein, args=(user, dsn))
-    ]
-    for p in pool:
+    pool = {
+        "desc": Process(target=_load_description_counts,
+                        args=(user, dsn, names, tmpdir, queue)),
+        "taxa": Process(target=_load_taxonomy_counts,
+                        args=(user, dsn, taxa, tmpdir, queue)),
+        "term": Process(target=_load_term_counts,
+                        args=(user, dsn, terms, tmpdir, queue))
+    }
+    for p in pool.values():
         p.start()
 
+    processes -= len(pool)
     de_kvdb = ta_kvdb = te_kvdb = None
     for _ in range(3):
-        _type, database = queue.get()
-        logger.debug("compare: {}".format(_type))
-        with open(os.path.join(tmpdir, _type), "wb") as fh:
+        key, database = queue.get()
+        with open(os.path.join(tmpdir, key), "wb") as fh:
             pickle.dump(database, fh)
-        # if _type == "desc":
-        #     de_kvdb = signatures.compare_descriptions(database, processes-3, tmpdir)
-        # elif _type == "taxa":
-        #     ta_kvdb = signatures.compare_taxa(database, processes-3, tmpdir)
-        # else:
-        #     te_kvdb = signatures.compare_terms(database, processes-3, tmpdir)
 
-    for p in pool:
+        p = pool.pop(key)
         p.join()
+        processes += 1
+
+        if key == "desc":
+            de_kvdb = signatures.compare_descriptions(database, processes, tmpdir)
+        elif key == "taxa":
+            ta_kvdb = signatures.compare_taxa(database, processes, tmpdir)
+        else:
+            te_kvdb = signatures.compare_terms(database, processes, tmpdir)
+
+    t.join()
 
 
 def _finalize_method2protein(user: str, dsn: str):
