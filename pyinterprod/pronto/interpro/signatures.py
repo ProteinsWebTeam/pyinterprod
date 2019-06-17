@@ -2,7 +2,7 @@
 
 import json
 from multiprocessing import Process, Queue
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 from .utils import merge_comparators, merge_kvdbs, Kvdb
 from ... import logger
@@ -42,7 +42,7 @@ def _process(database: str, dir: Optional[str], task_queue: Queue, done_queue: Q
     done_queue.put(dst)
 
 
-def _compare(database: str, processes: int, dir: Optional[str], fn: Callable) -> Kvdb:
+def _compare(database: str, processes: int, dir: Optional[str], fn: Callable) -> Tuple[Kvdb, int]:
     task_queue = Queue(maxsize=1)
     done_queue = Queue()
     pool = []
@@ -51,17 +51,22 @@ def _compare(database: str, processes: int, dir: Optional[str], fn: Callable) ->
         p.start()
         pool.append(p)
 
+    cnt = 0
     with Kvdb(database) as kvdb:
         for acc_1, values_1 in kvdb:
             task_queue.put((acc_1, values_1))
+            cnt += 1
+            if not cnt % 1000:
+                logger.debug("{:>15}".format(cnt))
 
-        size = kvdb.size
-        #kvdb.remove()
+        size_old = kvdb.size
+        kvdb.remove()
 
     for _ in pool:
         task_queue.put(None)
 
     kvdbs = []
+    size = 0
     for _ in pool:
         kvdb = done_queue.get()
         kvdbs.append(kvdb)
@@ -74,18 +79,20 @@ def _compare(database: str, processes: int, dir: Optional[str], fn: Callable) ->
         for key, values in merge_kvdbs(kvdbs, remove=False):
             kvdb[key], = values  # one single item
 
-    return kvdb
+        size_new = kvdb.size
+
+    return kvdb, size + max(size_old, size_new)
 
 
-def compare_descriptions(database: str, processes: int, dir: Optional[str]) -> Kvdb:
+def compare_descriptions(database: str, processes: int, dir: Optional[str]) -> Tuple[Kvdb, int]:
     return _compare(database, processes, dir, _process)
 
 
-def compare_taxa(database: str, processes: int, dir: Optional[str]) -> Kvdb:
+def compare_taxa(database: str, processes: int, dir: Optional[str]) -> Tuple[Kvdb, int]:
     return _compare(database, processes, dir, _process2)
 
 
-def compare_terms(database: str, processes: int, dir: Optional[str]) -> Kvdb:
+def compare_terms(database: str, processes: int, dir: Optional[str]) -> Tuple[Kvdb, int]:
     return _compare(database, processes, dir, _process)
 
 
