@@ -527,7 +527,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     for p in pool:
         p.start()
 
-    de_kvdb = ta_kvdb = te_kvdb
+    de_kvdb = ta_kvdb = te_kvdb = None
     for _ in range(3):
         _type, database = queue.get()
         logger.debug("compare: {}".format(_type))
