@@ -8,8 +8,9 @@ from .utils import merge_comparators, merge_kvdbs, Kvdb
 from ... import logger
 
 
-def _process2(database: str, dir: Optional[str], task_queue: Queue, done_queue: Queue):
-    with Kvdb(database) as src, Kvdb(dir=dir) as dst:
+def _process2(database: str, task_queue: Queue, done_queue: Queue,
+              dir: Optional[str]=None, buffer_size: int=0):
+    with Kvdb(database) as src, Kvdb(dir=dir, buffer_size=buffer_size) as dst:
         for acc_1, values_1 in iter(task_queue.get, None):
             comparisons = {}
             counts = {k: len(values) for k, values in values_1.items()}
@@ -28,8 +29,9 @@ def _process2(database: str, dir: Optional[str], task_queue: Queue, done_queue: 
     done_queue.put(dst.filepath)
 
 
-def _process(database: str, dir: Optional[str], task_queue: Queue, done_queue: Queue):
-    with Kvdb(database) as src, Kvdb(dir=dir) as dst:
+def _process(database: str, task_queue: Queue, done_queue: Queue,
+             dir: Optional[str]=None, buffer_size: int=0):
+    with Kvdb(database) as src, Kvdb(dir=dir, buffer_size=buffer_size) as dst:
         for acc_1, values_1 in iter(task_queue.get, None):
             comparisons = {}
             it = src.range(acc_1)
@@ -42,12 +44,14 @@ def _process(database: str, dir: Optional[str], task_queue: Queue, done_queue: Q
     done_queue.put(dst)
 
 
-def _compare(database: str, processes: int, dir: Optional[str], fn: Callable) -> Tuple[Kvdb, int]:
+def _compare(fn: Callable, database: str, processes: int, **kwargs) -> Tuple[Kvdb, int]:
     task_queue = Queue(maxsize=1)
     done_queue = Queue()
     pool = []
     for _ in range(max(1, processes-1)):
-        p = Process(target=fn, args=(database, dir, task_queue, done_queue))
+        p = Process(target=fn,
+                    args=(database, task_queue, done_queue),
+                    kwargs=kwargs)
         p.start()
         pool.append(p)
 
@@ -75,7 +79,7 @@ def _compare(database: str, processes: int, dir: Optional[str], fn: Callable) ->
     for p in pool:
         p.join()
 
-    with Kvdb(dir=dir) as kvdb:
+    with Kvdb(database) as kvdb:
         for key, values in merge_kvdbs(kvdbs, remove=False):
             kvdb[key], = values  # one single item
 
@@ -84,16 +88,16 @@ def _compare(database: str, processes: int, dir: Optional[str], fn: Callable) ->
     return kvdb, size + max(size_old, size_new)
 
 
-def compare_descriptions(database: str, processes: int, dir: Optional[str]) -> Tuple[Kvdb, int]:
-    return _compare(database, processes, dir, _process)
+def compare_descriptions(*args, **kwargs) -> Tuple[Kvdb, int]:
+    return _compare(_process, *args, **kwargs)
 
 
-def compare_taxa(database: str, processes: int, dir: Optional[str]) -> Tuple[Kvdb, int]:
-    return _compare(database, processes, dir, _process2)
+def compare_taxa(*args, **kwargs) -> Tuple[Kvdb, int]:
+    return _compare(_process2, *args, **kwargs)
 
 
-def compare_terms(database: str, processes: int, dir: Optional[str]) -> Tuple[Kvdb, int]:
-    return _compare(database, processes, dir, _process)
+def compare_terms(*args, **kwargs) -> Tuple[Kvdb, int]:
+    return _compare(_process, *args, **kwargs)
 
 
 def merge_comparisons(user: str, dsn: str, kvdbs: tuple, comparators: list,
