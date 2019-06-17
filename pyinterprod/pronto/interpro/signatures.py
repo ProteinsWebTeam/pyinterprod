@@ -60,11 +60,11 @@ def _compare(fn: Callable, database: str, processes: int, **kwargs) -> Tuple[Kvd
         for acc_1, values_1 in kvdb:
             task_queue.put((acc_1, values_1))
             cnt += 1
-            if not cnt % 1000:
+            if not cnt % 10000:
                 logger.debug("{:>15}".format(cnt))
 
         size_old = kvdb.size
-        kvdb.remove()
+        # kvdb.remove()
 
     for _ in pool:
         task_queue.put(None)
@@ -79,7 +79,7 @@ def _compare(fn: Callable, database: str, processes: int, **kwargs) -> Tuple[Kvd
     for p in pool:
         p.join()
 
-    with Kvdb(database) as kvdb:
+    with Kvdb(dir=kwargs.get("dir")) as kvdb:
         for key, values in merge_kvdbs(kvdbs, remove=False):
             kvdb[key], = values  # one single item
 
