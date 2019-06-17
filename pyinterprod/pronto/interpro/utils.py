@@ -300,7 +300,7 @@ class Kvdb(object):
             """
         )
         self.buffer = {}
-        # < 0: unlimited, 0: disabled, > 0: normal (auto-scyn)
+        # < 0: unlimited, 0: disabled, > 0: normal (auto-sync)
         self.buffer_size = buffer_size
 
     def __enter__(self):
