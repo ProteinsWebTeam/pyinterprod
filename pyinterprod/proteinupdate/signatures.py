@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import cx_Oracle
 
 from ..orautils import drop_table, make_connect_string
