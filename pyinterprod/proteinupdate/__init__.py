@@ -172,7 +172,7 @@ def main():
             scheduler=dict(queue=queue, mem=500)
         ),
         Task(
-            name="signatures-descriptions",
+            name="signatures-swiss",
             fn=signatures.update_method2descriptions,
             args=(db_users["interpro"], db_dsn),
             scheduler=dict(queue=queue, mem=500)
@@ -184,7 +184,7 @@ def main():
             kwargs=dict(tmpdir="/scratch", processes=16),
             scheduler=dict(queue=queue, cpu=16, mem=32000, scratch=32000),
             requires=["update-matches", "update-feature-matches", "taxonomy",
-                      "signatures-descriptions"]
+                      "signatures-swiss"]
         )
     ]
 
