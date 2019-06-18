@@ -540,12 +540,12 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         p.join()
         processes += 1
 
-        if key == "desc":
-            de_kvdb = signatures.compare_descriptions(database, processes, tmpdir)
-        elif key == "taxa":
-            ta_kvdb = signatures.compare_taxa(database, processes, tmpdir)
-        else:
-            te_kvdb = signatures.compare_terms(database, processes, tmpdir)
+        # if key == "desc":
+        #     de_kvdb = signatures.compare_descriptions(database, processes, tmpdir)
+        # elif key == "taxa":
+        #     ta_kvdb = signatures.compare_taxa(database, processes, tmpdir)
+        # else:
+        #     te_kvdb = signatures.compare_terms(database, processes, tmpdir)
 
     t.join()
 
