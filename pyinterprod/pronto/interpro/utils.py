@@ -100,7 +100,7 @@ class Organizer(object):
         size_before = self.size
         if processes > 1:
             with Pool(processes-1) as pool:
-                pool.map(self._merge, self.buckets, fn)
+                pool.starmap(self._merge, [(b, fn) for b in self.buckets])
         else:
             for bucket in self.buckets:
                 self._merge(bucket, fn)
