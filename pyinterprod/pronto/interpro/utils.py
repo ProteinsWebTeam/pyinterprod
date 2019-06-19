@@ -470,3 +470,46 @@ def merge_organizers(iterable: Iterable[Organizer], remove: bool=False):
     if remove:
         for organizer in iterable:
             organizer.remove()
+
+
+class PersistentBuffer(object):
+    def __init__(self, dir: Optional[str]=None):
+        fd, self.filename = mkstemp(dir=dir)
+        os.close(fd)
+        os.remove(self.filename)
+        self.num_chunks = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def __iter__(self):
+        with gzip.open(self.filename, "rb") as fh:
+            while True:
+                try:
+                    yield pickle.load(fh)
+                except EOFError:
+                    break
+
+    def add(self, obj: Any):
+        with gzip.open(self.filename, "ab", COMPRESS_LVL) as fh:
+            pickle.dump(obj, fh)
+        self.num_chunks += 1
+
+    def __len__(self) -> int:
+        return self.num_chunks
+
+    @property
+    def size(self) -> int:
+        try:
+            return os.path.getsize(self.filename)
+        except FileNotFoundError:
+            return 0
+
+    def remove(self):
+        try:
+            os.remove(self.filename)
+        except FileNotFoundError:
+            pass
