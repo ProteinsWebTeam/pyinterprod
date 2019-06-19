@@ -4,8 +4,8 @@ import json
 from multiprocessing import Process, Queue
 from typing import Callable, List, Optional, Tuple
 
-from .utils import merge_comparators, merge_kvdbs, Kvdb
 from ... import logger
+from .utils import merge_comparators, merge_kvdbs, Kvdb
 
 
 def _process2(database: str, task_queue: Queue, done_queue: Queue,
