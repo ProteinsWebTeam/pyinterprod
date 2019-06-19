@@ -3,16 +3,15 @@
 import json
 import os
 import pickle
-from concurrent.futures import as_completed, ProcessPoolExecutor
 from multiprocessing import Process, Queue
 from threading import Thread
 from typing import Optional, Tuple
 
 import cx_Oracle
 
-from ... import logger, orautils
 from . import proteins, signatures
 from .utils import merge_comparators, merge_kvdbs, merge_organizers, Kvdb
+from ... import logger, orautils
 
 
 RANKS = ["superkingdom", "kingdom", "phylum", "class", "order",
@@ -518,30 +517,35 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     t = Thread(target=_finalize_method2protein, args=(user, dsn))
     t.start()
 
-    with ProcessPoolExecutor(max_workers=processes) as e:
-        fs = {}
-        f = e.submit(_load_description_counts, user, dsn, names)
-        fs[f] = "METHOD_DESC"
-        f = e.submit(_load_taxonomy_counts, user, dsn, taxa)
-        fs[f] = "METHOD_TAXA"
-        f = e.submit(_load_term_counts, user, dsn, terms)
-        fs[f] = "METHOD_TERM"
+    queue = Queue()
+    pool = {
+        "desc": Process(target=_load_description_counts,
+                        args=(user, dsn, names, tmpdir, queue)),
+        "taxa": Process(target=_load_taxonomy_counts,
+                        args=(user, dsn, taxa, tmpdir, queue)),
+        "term": Process(target=_load_term_counts,
+                        args=(user, dsn, terms, tmpdir, queue))
+    }
+    for p in pool.values():
+        p.start()
 
-        processes -= len(fs)
-        for f in as_completed(fs):
-            processes += 1
-            table = fs[f]
-            exc = f.exception()
-            if exc is not None:
-                logger.error("{} raised while creating {}".format(exc, table))
-                continue
+    processes -= len(pool)
+    de_kvdb = ta_kvdb = te_kvdb = None
+    for _ in range(3):
+        key, database = queue.get()
+        with open(os.path.join(tmpdir, key), "wb") as fh:
+            pickle.dump(database, fh)
 
-            if table == "METHOD_DESC":
-                signatures.compare_descriptions(user, dsn, processes, tmpdir, max_items=10000000, chunk_size=100)
-            elif table == "METHOD_TAXA":
-                signatures.compare_taxa(user, dsn, processes, tmpdir, max_items=10000000, chunk_size=100)
-            else:
-                signatures.compare_terms(user, dsn, processes, tmpdir, max_items=10000000, chunk_size=100)
+        p = pool.pop(key)
+        p.join()
+        processes += 1
+
+        if key == "desc":
+            de_kvdb = signatures.compare_descriptions(database, processes, tmpdir)
+        elif key == "taxa":
+            ta_kvdb = signatures.compare_taxa(database, processes, tmpdir)
+        else:
+            te_kvdb = signatures.compare_terms(database, processes, tmpdir)
 
     t.join()
 
@@ -685,7 +689,8 @@ def _load_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple, proc
     con.close()
 
 
-def _load_description_counts(user: str, dsn: str, organizers: list):
+def _load_description_counts(user: str, dsn: str, organizers: list,
+                             tmpdir: Optional[str], queue: Queue):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -718,24 +723,29 @@ def _load_description_counts(user: str, dsn: str, organizers: list):
                                           "VALUES (:1, :2, :3, :4)".format(owner),
                                     autocommit=True)
 
-    for acc, descriptions in merge_organizers(organizers, remove=True):
-        counts = {}
-        for descid, dbcode in descriptions:
-            if descid in counts:
-                dbcodes = counts[descid]
-            else:
-                dbcodes = counts[descid] = {'S': 0, 'T': 0}
+    with Kvdb(dir=tmpdir) as kvdb:
+        for acc, descriptions in merge_organizers(organizers, remove=True):
+            counts = {}
+            _descriptions = set()
+            for descid, dbcode in descriptions:
+                if descid in counts:
+                    dbcodes = counts[descid]
+                else:
+                    dbcodes = counts[descid] = {'S': 0, 'T': 0}
 
-            dbcodes[dbcode] += 1
+                dbcodes[dbcode] += 1
 
-        descriptions = set()
-        for descid, dbcodes in counts.items():
-            table.insert((acc, descid, dbcodes['S'], dbcodes['T']))
+            descriptions = set()
+            for descid, dbcodes in counts.items():
+                table.insert((acc, descid, dbcodes['S'], dbcodes['T']))
 
-            if descid not in excluded_descr:
-                descriptions.add(descid)
+                if descid not in excluded_descr:
+                    descriptions.add(descid)
+
+            kvdb[acc] = descriptions
 
     table.close()
+    queue.put(("desc", kvdb.filepath))
 
     cur = con.cursor()
     orautils.grant(cur, owner, "METHOD_DESC", "SELECT", "INTERPRO_SELECT")
@@ -751,7 +761,8 @@ def _load_description_counts(user: str, dsn: str, organizers: list):
     logger.debug("METHOD_DESC ready")
 
 
-def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
+def _load_taxonomy_counts(user: str, dsn: str, organizers: list,
+                          tmpdir: Optional[str], queue: Queue):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -788,28 +799,32 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
                                           "VALUES (:1, :2, :3, :4)".format(owner),
                                     autocommit=True)
 
-    for acc, tax_ids in merge_organizers(organizers, remove=True):
-        counts = {}
-        for tax_id in tax_ids:
-            try:
-                ranks = taxa[tax_id]
-            except KeyError:
-                continue  # should never happend (or ETAXI is incomplete)
+    with Kvdb(dir=tmpdir) as kvdb:
+        for acc, tax_ids in merge_organizers(organizers, remove=True):
+            counts = {}
+            for tax_id in tax_ids:
+                try:
+                    ranks = taxa[tax_id]
+                except KeyError:
+                    continue  # should never happend (or ETAXI is incomplete)
 
-            for rank, rank_tax_id in ranks.items():
-                if rank in counts:
-                    if rank_tax_id in counts[rank]:
-                        counts[rank][rank_tax_id] += 1
+                for rank, rank_tax_id in ranks.items():
+                    if rank in counts:
+                        if rank_tax_id in counts[rank]:
+                            counts[rank][rank_tax_id] += 1
+                        else:
+                            counts[rank][rank_tax_id] = 1
                     else:
-                        counts[rank][rank_tax_id] = 1
-                else:
-                    counts[rank] = {rank_tax_id: 1}
+                        counts[rank] = {rank_tax_id: 1}
 
-        for rank in counts:
-            for tax_id, count in counts[rank].items():
-                table.insert((acc, rank, tax_id, count))
+            for rank in counts:
+                for tax_id, count in counts[rank].items():
+                    table.insert((acc, rank, tax_id, count))
+
+            kvdb[acc] = {rank: set(counts[rank]) for rank in counts}
 
     table.close()
+    queue.put(("taxa", kvdb.filepath))
 
     cur = con.cursor()
     orautils.grant(cur, owner, "METHOD_TAXA", "SELECT", "INTERPRO_SELECT")
@@ -825,7 +840,8 @@ def _load_taxonomy_counts(user: str, dsn: str, organizers: list):
     logger.debug("METHOD_TAXA ready")
 
 
-def _load_term_counts(user: str, dsn: str, organizers: list):
+def _load_term_counts(user: str, dsn: str, organizers: list,
+                      tmpdir: Optional[str], queue: Queue):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -848,18 +864,22 @@ def _load_term_counts(user: str, dsn: str, organizers: list):
                                           "VALUES (:1, :2, :3)".format(owner),
                                     autocommit=True)
 
-    for acc, terms in merge_organizers(organizers, remove=True):
-        counts = {}
-        for go_id in terms:
-            if go_id in counts:
-                counts[go_id] += 1
-            else:
-                counts[go_id] = 1
+    with Kvdb(dir=tmpdir) as kvdb:
+        for acc, terms in merge_organizers(organizers, remove=True):
+            counts = {}
+            for go_id in terms:
+                if go_id in counts:
+                    counts[go_id] += 1
+                else:
+                    counts[go_id] = 1
 
-        for go_id, count in counts.items():
-            table.insert((acc, go_id, count))
+            for go_id, count in counts.items():
+                table.insert((acc, go_id, count))
+
+            kvdb[acc] = set(terms)
 
     table.close()
+    queue.put(("term", kvdb.filepath))
 
     cur = con.cursor()
     orautils.grant(cur, owner, "METHOD_TERM", "SELECT", "INTERPRO_SELECT")
