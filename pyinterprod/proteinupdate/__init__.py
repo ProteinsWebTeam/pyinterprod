@@ -8,8 +8,8 @@ def main():
 
     from mundone import Task, Workflow
 
-    from . import (interproscan, matches, proteins, signatures,
-                   taxonomy, uniparc, uniprot)
+    from . import (interproscan, matches, misc, proteins, signatures,
+                   uniparc, uniprot)
     from .. import __version__, pronto
 
     parser = argparse.ArgumentParser(description="InterPro protein update")
@@ -166,8 +166,15 @@ def main():
             requires=["xref-summary"]
         ),
         Task(
+            name="match-counts",
+            fn=misc.refresh_mviews,
+            args=(db_users["interpro"], db_dsn),
+            scheduler=dict(queue=queue, mem=500),
+            requires=["update-matches"]
+        ),
+        Task(
             name="taxonomy",
-            fn=taxonomy.update_taxonomy,
+            fn=misc.refresh_taxonomy,
             args=(db_users["interpro"], db_dsn),
             scheduler=dict(queue=queue, mem=500)
         ),
