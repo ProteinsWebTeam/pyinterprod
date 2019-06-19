@@ -120,7 +120,7 @@ def main():
             args=(db_users["interpro"], db_dsn),
             kwargs=dict(drop_indices=True),
             scheduler=dict(queue=queue, mem=500),
-            requires=["import-sites", "proteins2scan"]
+            requires=["import-sites", "update-matches"]
         ),
         Task(
             name="aa-iprscan",
