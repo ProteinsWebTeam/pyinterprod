@@ -149,7 +149,7 @@ def cmp_descriptions(user: str, dsn: str, processes: int=1,
 
 def cmp_taxa(user: str, dsn: str, processes: int=1,
              dir: Optional[str]=None, max_items: int=10000000,
-             chunk_size: int=100):
+             chunk_size: int=10):
     query = """
         SELECT TAX_ID, METHOD_AC
         FROM {}.METHOD_TAXA
@@ -160,7 +160,7 @@ def cmp_taxa(user: str, dsn: str, processes: int=1,
 
 def cmp_terms(user: str, dsn: str, processes: int=1,
               dir: Optional[str]=None, max_items: int=10000000,
-              chunk_size: int=100):
+              chunk_size: int=10):
     query = """
         SELECT GO_ID, METHOD_AC
         FROM {}.METHOD_TERM
