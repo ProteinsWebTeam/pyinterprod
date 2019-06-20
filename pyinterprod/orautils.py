@@ -416,15 +416,32 @@ class TablePopulator(object):
         self.buffer_size = buffer_size
         self.autocommit = autocommit
         self.records = []
+        self.rowcount = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
     def __del__(self):
         self.close()
 
-    def insert(self, record: tuple):
+    def _execute(self, record: tuple):
         self.records.append(record)
+        self.rowcount += 1
 
         if len(self.records) == self.buffer_size:
             self.flush()
+
+    def insert(self, record: tuple):
+        self._execute(record)
+
+    def update(self, record: tuple):
+        self._execute(record)
+
+    def delete(self, record: tuple):
+        self._execute(record)
 
     def flush(self):
         if not self.records:
@@ -441,3 +458,8 @@ class TablePopulator(object):
             self.flush()
             self.cur.close()
             self.cur = None
+
+    def open(self):
+        self.close()
+        self.cur = self.con.cursor()
+        self.rowcount = 0

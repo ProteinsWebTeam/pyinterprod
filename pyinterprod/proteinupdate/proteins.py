@@ -5,12 +5,43 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from tempfile import mkstemp
-from typing import Generator, Optional, Tuple
+from typing import Generator, Iterable, Optional, Tuple
 
 import cx_Oracle
 
 from . import sprot
 from .. import logger, orautils
+
+
+def load(user: str, dsn: str, swissprot_path: str, trembl_path: str,
+         dir: Optional[str]=None):
+
+    logger.info("loading proteins")
+    with ProteinDatabase(dir=dir) as db:
+        count = sprot.load(swissprot_path, db.path, "protein_new")
+        logger.info("New Swiss-Prot: {} proteins".format(count))
+
+        count = sprot.load(trembl_path, db.path, "protein_new")
+        logger.info("New TrEMBL: {} proteins".format(count))
+
+        logger.info("disk space used: {:.0f} MB".format(db.size/1024**2))
+
+        con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+        _insert_all(con, db.iter_new())
+
+    # Update annotations
+    logger.info("{} annotations updated".format(_update_annotations(con)))
+
+    # Update sequences (CRC64 hashes)
+    logger.info("{} sequences updated".format(_update_sequences(con)))
+
+    # Track deleted proteins
+    logger.info("{} proteins to delete".format(_track_deleted(con)))
+
+    # Insert new proteins
+    logger.info("{} new proteins".format(_insert_new(con)))
+    con.commit()
+    con.close()
 
 
 def insert_new(user: str, dsn: str, swissprot_path: str, trembl_path: str,
@@ -43,6 +74,194 @@ def insert_new(user: str, dsn: str, swissprot_path: str, trembl_path: str,
         logger.info("{} proteins to delete".format(count))
 
         con.close()
+
+
+def _insert_all(con: cx_Oracle.Connection, iterable: Iterable) -> int:
+    cur = con.cursor()
+    orautils.drop_table(cur, "INTERPRO", "PROTEIN_STG", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.PROTEIN_STG (
+          PROTEIN_AC VARCHAR2(15) NOT NULL,
+          NAME VARCHAR2(16) NOT NULL,
+          DBCODE CHAR(1) NOT NULL,
+          CRC64 VARCHAR2(16) NOT NULL,
+          LEN NUMBER(5) NOT NULL,
+          FRAGMENT CHAR(1) NOT NULL,
+          TAX_ID NUMBER(15) NOT NULL
+        ) NOLOGGING
+        """
+    )
+    cur.close()
+
+    query = """
+      INSERT /*+ APPEND */ INTO INTERPRO.PROTEIN_STG 
+      VALUES(:1, :2, :3, :4, :5, :6, :7)
+    """
+    table = orautils.TablePopulator(con, query, autocommit=True)
+
+    for ac, name, is_rev, crc64, length, is_frag, taxid in iterable:
+        table.insert((ac, name, 'Y' if is_rev else 'N', crc64, length,
+                      'Y' if is_frag else 'N', taxid))
+
+    table.close()
+
+    cur = con.cursor()
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX UI_PROTEIN_STG
+        ON INTERPRO.PROTEIN_STG (PROTEIN_AC) NOLOGGING
+        """
+    )
+    cur.close()
+
+    return table.rowcount
+
+
+def _update_annotations(con: cx_Oracle.Connection) -> int:
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT 
+          PS.PROTEIN_AC, PS.NAME, PS.DBCODE, PS.LEN, 
+          PS.FRAGMENT, PS.TAX_ID
+        FROM INTERPRO.PROTEIN_STG PS
+        INNER JOIN INTERPRO.PROTEIN P
+          ON PS.PROTEIN_AC = P.PROTEIN_AC
+        WHERE PS.CRC64 = P.CRC64
+        AND (
+          PS.NAME != P.NAME
+          OR PS.DBCODE != P.DBCODE
+          OR PS.LEN != P.LEN
+          OR PS.FRAGMENT != P.FRAGMENT
+          OR PS.TAX_ID != P.TAX_ID
+        )
+        """
+    )
+    query = """
+        UPDATE INTERPRO.PROTEIN
+        SET 
+          NAME = :2, DBCODE = :3,  LEN = :4, TIMESTAMP = SYSDATE,
+          USERSTAMP = USER, FRAGMENT = :5, TAX_ID = :6
+        WHERE PROTEIN_AC = :1
+    """
+    table = orautils.TablePopulator(con, query)
+    for row in cur:
+        table.update(row)
+    table.close()
+    cur.close()
+    return table.rowcount
+
+
+def _update_sequences(con: cx_Oracle.Connection) -> int:
+    cur = con.cursor()
+    orautils.drop_table(cur, "INTERPRO", "PROTEIN_CHANGES", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.PROTEIN_CHANGES
+        (PROTEIN_AC VARCHAR2(15) PRIMARY KEY NOT NULL)
+        """
+    )
+    cur.execute(
+        """
+        SELECT 
+          PS.PROTEIN_AC, PS.NAME, PS.DBCODE, PS.CRC64, PS.LEN, 
+          PS.FRAGMENT, PS.TAX_ID
+        FROM INTERPRO.PROTEIN_STG PS
+        INNER JOIN INTERPRO.PROTEIN P
+          ON PS.PROTEIN_AC = P.PROTEIN_AC AND PS.CRC64 != P.CRC64
+        """
+    )
+
+    query = """
+        INSERT /*+ APPEND */ INTO INTERPRO.PROTEIN_CHANGES
+        VALUES (:1)
+    """
+    table1 = orautils.TablePopulator(con, query, autocommit=True)
+    query = """
+        UPDATE INTERPRO.PROTEIN
+        SET 
+          NAME = :2, DBCODE = :3, CRC64 = :4,  LEN = :5, 
+          TIMESTAMP = SYSDATE, USERSTAMP = USER, FRAGMENT = :6, 
+          TAX_ID = :7
+        WHERE PROTEIN_AC = :1
+    """
+    table2 = orautils.TablePopulator(con, query)
+
+    for row in cur:
+        table1.insert((row[0],))
+        table2.update(row)
+
+    table1.close()
+    table2.close()
+    cur.close()
+    return table1.rowcount
+
+
+def _track_deleted(con) -> int:
+    cur = con.cursor()
+    orautils.drop_table(cur, "INTERPRO", "PROTEIN_TO_DELETE", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.PROTEIN_TO_DELETE
+        (ID NUMBER NOT NULL, PROTEIN_AC VARCHAR2(15) NOT NULL) NOLOGGING
+        """
+    )
+
+    query = "INSERT INTO INTERPRO.PROTEIN_TO_DELETE VALUES (:1, :2)"
+    table = orautils.TablePopulator(con, query)
+
+    cur.execute(
+        """
+        SELECT PROTEIN_AC FROM INTERPRO.PROTEIN
+        MINUS 
+        SELECT PROTEIN_AC FROM INTERPRO.PROTEIN_STG
+        """
+    )
+    for i, (protein_ac,) in enumerate(cur):
+        table.insert((i+1, protein_ac))
+
+    table.close()
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX UI_PROTEIN_TO_DELETE
+        ON INTERPRO.PROTEIN_TO_DELETE (ID) NOLOGGING
+        """
+    )
+    cur.close()
+    return table.rowcount
+
+
+def _insert_new(con: cx_Oracle.Connection) -> int:
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT 
+          PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT, TAX_ID
+        FROM INTERPRO.PROTEIN_STG
+        WHERE PROTEIN_AC NOT IN (SELECT PROTEIN_AC FROM INTERPRO.PROTEIN)
+        """
+    )
+
+    query = """
+        INSERT /*+ APPEND */ INTO INTERPRO.PROTEIN_CHANGES
+        VALUES (:1)
+    """
+    table1 = orautils.TablePopulator(con, query, autocommit=True)
+    query = """
+        INSERT INTO INTERPRO.PROTEIN
+        VALUES (:1, :2, :3, :4, :5, TIMESTAMP, USERSTAMP, :6, 'N', :7)
+    """
+    table2 = orautils.TablePopulator(con, query)
+
+    for row in cur:
+        table1.insert((row[0],))
+        table2.insert(row)
+
+    table1.close()
+    table2.close()
+    cur.close()
+    return table1.rowcount
 
 
 def update_proteins(user: str, dsn: str, version: str, date: str):
