@@ -282,16 +282,16 @@ class MatchComparator(object):
 
 class Kvdb(object):
     def __init__(self, database: Optional[str]=None, dir: Optional[str]=None,
-                 buffer_size: int=0):
+                 writeback: bool=False):
         if database:
             self.filepath = database
         else:
             fd, self.filepath = mkstemp(dir=dir)
             os.close(fd)
             os.remove(self.filepath)
-        self.con = self.cur = None
-        self._ensure_open()
-        self.cur.execute(
+
+        self.con = sqlite3.connect(self.filepath)
+        self.con.execute(
             """
             CREATE TABLE IF NOT EXISTS data (
                 id TEXT PRIMARY KEY NOT NULL,
@@ -299,9 +299,8 @@ class Kvdb(object):
             )
             """
         )
-        self.buffer = {}
-        # < 0: unlimited, 0: disabled, > 0: normal (auto-sync)
-        self.buffer_size = buffer_size
+        self.cache = {}
+        self.writeback = writeback
 
     def __enter__(self):
         return self
@@ -313,94 +312,54 @@ class Kvdb(object):
         self.close()
 
     def __iter__(self):
+        self.close()
         with sqlite3.connect(self.filepath) as con:
             for row in con.execute("SELECT id, val FROM data ORDER BY id"):
                 yield row[0], pickle.loads(row[1])
 
-    def __contains__(self, key: str) -> bool:
-        found, value = self._getitem(key)
-        return found
-
     def __setitem__(self, key: str, value: Any):
-        if self.buffer_size:
-            self.buffer[key] = value
-            if len(self.buffer) == self.buffer_size:
-                self.sync()
+        if self.writeback:
+            self.cache[key] = value
         else:
-            self._ensure_open()
-            self.cur.execute(
+            self.con.execute(
                 "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
                 (key, pickle.dumps(value))
             )
-            self.con.commit()
 
     def __getitem__(self, key: str) -> Any:
-        found, value = self._getitem(key)
-        if found:
-            return value
-        raise KeyError(key)
+        try:
+            value = self.cache[key]
+        except KeyError:
+            row = self.con.execute(
+                "SELECT val FROM data WHERE id=?", (key,)
+            ).fetchone()
+            if row:
+                value = pickle.loads(row[0])
+                if self.writeback:
+                    self.cache[key] = value
+            else:
+                raise KeyError(key)
 
-    def __len__(self) -> int:
-        if self.buffer_size:
-            return len(self.buffer)
-        else:
-            self._ensure_open()
-            self.cur.execute("SELECT count(*) FROM data")
-            return cur.fetchone()[0]
-
-    def _ensure_open(self):
-        if not self.con:
-            self.con = sqlite3.connect(self.filepath)
-            self.cur = self.con.cursor()
-
-    def _getitem(self, key: str):
-        if key in self.buffer:
-            return True, self.buffer[key]
-
-        self._ensure_open()
-        self.cur.execute("SELECT val FROM data WHERE id=?", (key,))
-        row = self.cur.fetchone()
-        if row:
-            value = pickle.loads(row[0])
-            if self.buffer_size:
-                self.buffer[key] = value
-            return True, value
-        return False, None
+        return value
 
     @property
     def size(self) -> int:
         return os.path.getsize(self.filepath)
 
     def sync(self):
-        if not self.buffer:
-            return
-
-        self._ensure_open()
-        self.cur.executemany(
-            "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
-            ((k, pickle.dumps(v)) for k, v in self.buffer.items())
-        )
-        self.con.commit()
-        self.buffer = {}
-
-    def range(self, low: str, high: Optional[str]=None):
-        if high:
-            sql = "SELECT id, val FROM data WHERE id BETWEEN ? AND ? ORDER BY id"
-            params = (low, high)
-        else:
-            sql = "SELECT id, val FROM data WHERE id >= ? ORDER BY id"
-            params = (low,)
-
-        with sqlite3.connect(self.filepath) as con:
-            for row in con.execute(sql, params):
-                yield row[0], pickle.loads(row[1])
+        if self.cache:
+            self.con.executemany(
+                "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
+                ((k, pickle.dumps(v)) for k, v in self.cache.items())
+            )
+            self.cache = {}
 
     def close(self):
         if self.con is not None:
             self.sync()
-            self.cur.close()
+            self.con.commit()
             self.con.close()
-            self.con = self.cur = None
+            self.con = None
 
     def remove(self):
         self.close()
