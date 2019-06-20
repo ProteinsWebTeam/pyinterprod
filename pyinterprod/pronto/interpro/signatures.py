@@ -93,7 +93,7 @@ def compare(user: str, dsn: str, query: str, processes: int,
                 counts[acc] = cnt
 
         buffers.append(buffer)
-        logger.debug("collected: {}/{} ({} chunks)".format(i+1, len(pool), len(buffer)))
+        logger.debug("collected: {}/{}".format(i+1, len(pool)))
 
     for p in pool:
         p.join()
@@ -141,7 +141,12 @@ def cmp_descriptions(user: str, dsn: str, processes: int=1,
                      chunk_size: int=10):
     query = """
         SELECT DESC_ID, METHOD_AC
-        FROM {}.METHOD_DESC
+        FROM {0}.METHOD_DESC
+        WHERE DESC_ID NOT IN (
+          SELECT DESC_ID
+          FROM {0}.DESC_VALUE
+          WHERE TEXT IN ('Uncharacterized protein', 'Predicted protein')
+        )
         ORDER BY DESC_ID, METHOD_AC
     """.format(user.split('/')[0])
     return compare(user, dsn, query, processes, dir, max_items, chunk_size)
