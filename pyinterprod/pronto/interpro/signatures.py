@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 
-import json
 from multiprocessing import Process, Queue
-from typing import Callable, List, Optional, Tuple
+from typing import Optional, Tuple
+
+import cx_Oracle
 
 from ... import logger
-from .utils import Kvdb, PersistentBuffer
+from .utils import Kvdb, Organizer, PersistentBuffer
 
 
 def process(dir: Optional[str], task_queue: Queue, max_items: int,
@@ -44,7 +45,7 @@ def process(dir: Optional[str], task_queue: Queue, max_items: int,
 
 
 def compare(user: str, dsn: str, query: str, processes: int,
-            dir: Optional[str], max_items: int, chunk_size: int):
+            dir: Optional[str], max_items: int, chunk_size: int) -> Tuple[Kvdb, int]:
     pool = []
     task_queue = Queue(maxsize=max(1, processes-1))
     done_queue = Queue()
@@ -100,18 +101,13 @@ def compare(user: str, dsn: str, query: str, processes: int,
     logger.debug("aggregating")
     keys = sorted(counts.keys())
     keys = [keys[i] for i in range(0, len(keys), chunk_size)]
-    organizer = utils.Organizer(keys, dir=dir)
+    organizer = Organizer(keys, dir=dir)
     size = 0
-    num_items = 0
     for i, buffer in enumerate(buffers):
         for comparisons in buffer:
             for acc, cmps in comparisons.items():
                 organizer.add(acc, cmps)
-                num_items += len(cmps)
-
-                if num_items >= max_items * processes:
-                    organizer.flush()
-                    num_items = 0
+            organizer.flush()
 
         size += buffer.size
         buffer.remove()
@@ -120,25 +116,57 @@ def compare(user: str, dsn: str, query: str, processes: int,
     logger.debug("merging")
     size += organizer.merge(processes, fn=sum_counts)
 
-    logger.debug("total: {:.0f} MB".format(size/1024**2))
+    with Kvdb(dir=dir) as kvdb:
+        for acc, (cmps,) in organizer:
+            kvdb[acc] = cmps
+
+    organizer.remove()
+    return kvdb, size
+
+
+def sum_counts(values):
+    counts = {}
+    for cmps in values:
+        for acc, cnt in cmps.items():
+            if acc in counts:
+                counts[acc] += cnt
+            else:
+                counts[acc] = cnt
+
+    return [counts]
 
 
 def cmp_descriptions(user: str, dsn: str, processes: int=1,
                      dir: Optional[str]=None, max_items: int=10000000,
-                     chunk_size: int=100):
-    return _compare(_process, *args, **kwargs)
+                     chunk_size: int=10):
+    query = """
+        SELECT DESC_ID, METHOD_AC
+        FROM {}.METHOD_DESC
+        ORDER BY DESC_ID, METHOD_AC
+    """.format(user.split('/')[0])
+    return compare(user, dsn, query, processes, dir, max_items, chunk_size)
 
 
 def cmp_taxa(user: str, dsn: str, processes: int=1,
              dir: Optional[str]=None, max_items: int=10000000,
              chunk_size: int=100):
-    return _compare(_process2, *args, **kwargs)
+    query = """
+        SELECT TAX_ID, METHOD_AC
+        FROM {}.METHOD_TAXA
+        ORDER BY TAX_ID, METHOD_AC
+    """.format(user.split('/')[0])
+    return compare(user, dsn, query, processes, dir, max_items, chunk_size)
 
 
 def cmp_terms(user: str, dsn: str, processes: int=1,
               dir: Optional[str]=None, max_items: int=10000000,
               chunk_size: int=100):
-    return _compare(_process, *args, **kwargs)
+    query = """
+        SELECT GO_ID, METHOD_AC
+        FROM {}.METHOD_TERM
+        ORDER BY GO_ID, METHOD_AC
+    """.format(user.split('/')[0])
+    return compare(user, dsn, query, processes, dir, max_items, chunk_size)
 
 
 # def merge_comparisons(user: str, dsn: str, kvdbs: tuple, comparators: list,
