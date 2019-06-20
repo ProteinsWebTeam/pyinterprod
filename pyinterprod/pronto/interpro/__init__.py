@@ -3,6 +3,7 @@
 import json
 import os
 import pickle
+from concurrent.futures import as_completed, ProcessPoolExecutor
 from multiprocessing import Process, Queue
 from threading import Thread
 from typing import Optional, Tuple
@@ -516,38 +517,37 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     t = Thread(target=_finalize_method2protein, args=(user, dsn))
     t.start()
+    
+    with ProcessPoolExecutor(max_workers=processes) as executor:
+        fs = {}
+        f = executor.submit(_create_method_desc(user, dsn, names))
+        fs[f] = "METHOD_DESC"
+        f = executor.submit(_create_method_taxa, user, dsn, taxa)
+        fs[f] = "METHOD_TAXA"
+        f = executor.submit(_create_method_term, user, dsn, terms)
+        fs[f] = "METHOD_TERM"
 
-    queue = Queue()
-    pool = {
-        "desc": Process(target=_load_description_counts,
-                        args=(user, dsn, names, tmpdir, queue)),
-        "taxa": Process(target=_load_taxonomy_counts,
-                        args=(user, dsn, taxa, tmpdir, queue)),
-        "term": Process(target=_load_term_counts,
-                        args=(user, dsn, terms, tmpdir, queue))
-    }
-    for p in pool.values():
-        p.start()
+        processes -= len(fs)
+        
+        for f in as_completed(fs):
+            table = fs[f]
+            exc = f.exception()
+            if exc is None:
+                processes += 1
+                logger.debug("{}: ready".format(table))
+                if table == "METHOD_DESC":
+                    fn = signatures.cmp_descriptions
+                elif table == "METHOD_TAXA":
+                    fn = signatures.cmp_taxa
+                else:
+                    fn = signatures.cmp_terms
 
-    processes -= len(pool)
-    de_kvdb = ta_kvdb = te_kvdb = None
-    for _ in range(3):
-        key, database = queue.get()
-        with open(os.path.join(tmpdir, key), "wb") as fh:
-            pickle.dump(database, fh)
-
-        p = pool.pop(key)
-        p.join()
-        processes += 1
-
-        if key == "desc":
-            de_kvdb = signatures.compare_descriptions(database, processes, tmpdir)
-        elif key == "taxa":
-            ta_kvdb = signatures.compare_taxa(database, processes, tmpdir)
-        else:
-            te_kvdb = signatures.compare_terms(database, processes, tmpdir)
+                #kvdb, size = fn(user, dsn, processes=processes, dir=tmpdir)
+            else:
+                logger.error("{}: {} raised".format(table, exc))
 
     t.join()
+    logger.debug("METHOD2PROTEIN: ready")
 
 
 def _finalize_method2protein(user: str, dsn: str):
@@ -586,7 +586,192 @@ def _finalize_method2protein(user: str, dsn: str):
     )
     cur.close()
     con.close()
-    logger.debug("METHOD2PROTEIN ready")
+
+
+def _create_method_desc(user: str, dsn: str, organizers: list):
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    orautils.drop_table(cur, owner, "METHOD_DESC", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE {}.METHOD_DESC
+        (
+            METHOD_AC VARCHAR2(25) NOT NULL,
+            DESC_ID NUMBER(10) NOT NULL,
+            REVIEWED_COUNT NUMBER(10) NOT NULL,
+            UNREVIEWED_COUNT NUMBER(10) NOT NULL
+        ) NOLOGGING
+        """.format(owner)
+    )
+    cur.execute(
+        """
+        SELECT DESC_ID
+        FROM {0}.DESC_VALUE
+        WHERE TEXT LIKE 'Predicted protein%'
+          OR TEXT LIKE 'Uncharacterized protein%'
+        """.format(owner)
+    )
+    excluded_descr = {row[0] for row in cur}
+    cur.close()
+
+    table = orautils.TablePopulator(con,
+                                    query="INSERT /*+ APPEND */ "
+                                          "INTO {}.METHOD_DESC "
+                                          "VALUES (:1, :2, :3, :4)".format(owner),
+                                    autocommit=True)
+
+    for acc, descriptions in merge_organizers(organizers, remove=True):
+        counts = {}
+        for descid, dbcode in descriptions:
+            if descid in counts:
+                dbcodes = counts[descid]
+            else:
+                dbcodes = counts[descid] = {'S': 0, 'T': 0}
+
+            dbcodes[dbcode] += 1
+
+        descriptions = set()
+        for descid, dbcodes in counts.items():
+            table.insert((acc, descid, dbcodes['S'], dbcodes['T']))
+
+            if descid not in excluded_descr:
+                descriptions.add(descid)
+
+    table.close()
+
+    cur = con.cursor()
+    orautils.grant(cur, owner, "METHOD_DESC", "SELECT", "INTERPRO_SELECT")
+    orautils.gather_stats(cur, owner, "METHOD_DESC")
+    cur.execute(
+        """
+        CREATE INDEX I_METHOD_DESC
+        ON {}.METHOD_DESC (METHOD_AC) NOLOGGING
+        """.format(owner)
+    )
+    cur.close()
+    con.close()
+
+
+def _create_method_taxa(user: str, dsn: str, organizers: list):
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    orautils.drop_table(cur, owner, "METHOD_TAXA", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE {}.METHOD_TAXA
+        (
+            METHOD_AC VARCHAR2(25) NOT NULL,
+            RANK VARCHAR2(50) NOT NULL,
+            TAX_ID NUMBER(10) NOT NULL,
+            PROTEIN_COUNT NUMBER(10) NOT NULL
+        ) NOLOGGING
+        """.format(owner)
+    )
+
+    taxa = {}
+    cur.execute(
+        """
+        SELECT TAX_ID, RANK, RANK_TAX_ID
+        FROM {}.LINEAGE
+        """.format(owner)
+    )
+    for tax_id, rank, rank_tax_id in cur:
+        if tax_id in taxa:
+            taxa[tax_id][rank] = rank_tax_id
+        else:
+            taxa[tax_id] = {rank: rank_tax_id}
+    cur.close()
+
+    table = orautils.TablePopulator(con,
+                                    query="INSERT /*+ APPEND */ "
+                                          "INTO {}.METHOD_TAXA "
+                                          "VALUES (:1, :2, :3, :4)".format(owner),
+                                    autocommit=True)
+
+    for acc, tax_ids in merge_organizers(organizers, remove=True):
+        counts = {}
+        for tax_id in tax_ids:
+            try:
+                ranks = taxa[tax_id]
+            except KeyError:
+                continue  # should never happend (or ETAXI is incomplete)
+
+            for rank, rank_tax_id in ranks.items():
+                if rank in counts:
+                    if rank_tax_id in counts[rank]:
+                        counts[rank][rank_tax_id] += 1
+                    else:
+                        counts[rank][rank_tax_id] = 1
+                else:
+                    counts[rank] = {rank_tax_id: 1}
+
+        for rank in counts:
+            for tax_id, count in counts[rank].items():
+                table.insert((acc, rank, tax_id, count))
+
+    table.close()
+
+    cur = con.cursor()
+    orautils.grant(cur, owner, "METHOD_TAXA", "SELECT", "INTERPRO_SELECT")
+    orautils.gather_stats(cur, owner, "METHOD_TAXA")
+    cur.execute(
+        """
+        CREATE INDEX I_METHOD_TAXA
+        ON {}.METHOD_TAXA (METHOD_AC, RANK) NOLOGGING
+        """.format(owner)
+    )
+    cur.close()
+    con.close()
+
+
+def _create_method_term(user: str, dsn: str, organizers: list):
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    orautils.drop_table(cur, owner, "METHOD_TERM", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE {}.METHOD_TERM
+        (
+            METHOD_AC VARCHAR2(25) NOT NULL,
+            GO_ID VARCHAR2(10) NOT NULL,
+            PROTEIN_COUNT NUMBER(10) NOT NULL
+        ) NOLOGGING
+        """.format(owner)
+    )
+    cur.close()
+
+    table = orautils.TablePopulator(con,
+                                    query="INSERT /*+ APPEND */ "
+                                          "INTO {}.METHOD_TERM "
+                                          "VALUES (:1, :2, :3)".format(owner),
+                                    autocommit=True)
+    for acc, terms in merge_organizers(organizers, remove=True):
+        counts = {}
+        for go_id in terms:
+            if go_id in counts:
+                counts[go_id] += 1
+            else:
+                counts[go_id] = 1
+
+        for go_id, count in counts.items():
+            table.insert((acc, go_id, count))
+
+    table.close()
+
+    cur = con.cursor()
+    orautils.grant(cur, owner, "METHOD_TERM", "SELECT", "INTERPRO_SELECT")
+    orautils.gather_stats(cur, owner, "METHOD_TERM")
+    cur.execute(
+        """
+        CREATE INDEX I_METHOD_TERM
+        ON {}.METHOD_TERM (METHOD_AC) NOLOGGING
+        """.format(owner)
+    )
+    cur.close()
+    con.close()
 
 
 def _load_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple, processes: int=1):
@@ -687,212 +872,6 @@ def _load_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple, proc
     logger.debug("METHOD_COMPARISON ready")
     cur.close()
     con.close()
-
-
-def _load_description_counts(user: str, dsn: str, organizers: list,
-                             tmpdir: Optional[str], queue: Queue):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    orautils.drop_table(cur, owner, "METHOD_DESC", purge=True)
-    cur.execute(
-        """
-        CREATE TABLE {}.METHOD_DESC
-        (
-            METHOD_AC VARCHAR2(25) NOT NULL,
-            DESC_ID NUMBER(10) NOT NULL,
-            REVIEWED_COUNT NUMBER(10) NOT NULL,
-            UNREVIEWED_COUNT NUMBER(10) NOT NULL
-        ) NOLOGGING
-        """.format(owner)
-    )
-    cur.execute(
-        """
-        SELECT DESC_ID
-        FROM {0}.DESC_VALUE
-        WHERE TEXT LIKE 'Predicted protein%'
-          OR TEXT LIKE 'Uncharacterized protein%'
-        """.format(owner)
-    )
-    excluded_descr = {row[0] for row in cur}
-    cur.close()
-
-    table = orautils.TablePopulator(con,
-                                    query="INSERT /*+ APPEND */ "
-                                          "INTO {}.METHOD_DESC "
-                                          "VALUES (:1, :2, :3, :4)".format(owner),
-                                    autocommit=True)
-
-    with Kvdb(dir=tmpdir) as kvdb:
-        for acc, descriptions in merge_organizers(organizers, remove=True):
-            counts = {}
-            _descriptions = set()
-            for descid, dbcode in descriptions:
-                if descid in counts:
-                    dbcodes = counts[descid]
-                else:
-                    dbcodes = counts[descid] = {'S': 0, 'T': 0}
-
-                dbcodes[dbcode] += 1
-
-            descriptions = set()
-            for descid, dbcodes in counts.items():
-                table.insert((acc, descid, dbcodes['S'], dbcodes['T']))
-
-                if descid not in excluded_descr:
-                    descriptions.add(descid)
-
-            kvdb[acc] = descriptions
-
-    table.close()
-    queue.put(("desc", kvdb.filepath))
-
-    cur = con.cursor()
-    orautils.grant(cur, owner, "METHOD_DESC", "SELECT", "INTERPRO_SELECT")
-    orautils.gather_stats(cur, owner, "METHOD_DESC")
-    cur.execute(
-        """
-        CREATE INDEX I_METHOD_DESC
-        ON {}.METHOD_DESC (METHOD_AC) NOLOGGING
-        """.format(owner)
-    )
-    cur.close()
-    con.close()
-    logger.debug("METHOD_DESC ready")
-
-
-def _load_taxonomy_counts(user: str, dsn: str, organizers: list,
-                          tmpdir: Optional[str], queue: Queue):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    orautils.drop_table(cur, owner, "METHOD_TAXA", purge=True)
-    cur.execute(
-        """
-        CREATE TABLE {}.METHOD_TAXA
-        (
-            METHOD_AC VARCHAR2(25) NOT NULL,
-            RANK VARCHAR2(50) NOT NULL,
-            TAX_ID NUMBER(10) NOT NULL,
-            PROTEIN_COUNT NUMBER(10) NOT NULL
-        ) NOLOGGING
-        """.format(owner)
-    )
-
-    taxa = {}
-    cur.execute(
-        """
-        SELECT TAX_ID, RANK, RANK_TAX_ID
-        FROM {}.LINEAGE
-        """.format(owner)
-    )
-    for tax_id, rank, rank_tax_id in cur:
-        if tax_id in taxa:
-            taxa[tax_id][rank] = rank_tax_id
-        else:
-            taxa[tax_id] = {rank: rank_tax_id}
-    cur.close()
-
-    table = orautils.TablePopulator(con,
-                                    query="INSERT /*+ APPEND */ "
-                                          "INTO {}.METHOD_TAXA "
-                                          "VALUES (:1, :2, :3, :4)".format(owner),
-                                    autocommit=True)
-
-    with Kvdb(dir=tmpdir) as kvdb:
-        for acc, tax_ids in merge_organizers(organizers, remove=True):
-            counts = {}
-            for tax_id in tax_ids:
-                try:
-                    ranks = taxa[tax_id]
-                except KeyError:
-                    continue  # should never happend (or ETAXI is incomplete)
-
-                for rank, rank_tax_id in ranks.items():
-                    if rank in counts:
-                        if rank_tax_id in counts[rank]:
-                            counts[rank][rank_tax_id] += 1
-                        else:
-                            counts[rank][rank_tax_id] = 1
-                    else:
-                        counts[rank] = {rank_tax_id: 1}
-
-            for rank in counts:
-                for tax_id, count in counts[rank].items():
-                    table.insert((acc, rank, tax_id, count))
-
-            kvdb[acc] = {rank: set(counts[rank]) for rank in counts}
-
-    table.close()
-    queue.put(("taxa", kvdb.filepath))
-
-    cur = con.cursor()
-    orautils.grant(cur, owner, "METHOD_TAXA", "SELECT", "INTERPRO_SELECT")
-    orautils.gather_stats(cur, owner, "METHOD_TAXA")
-    cur.execute(
-        """
-        CREATE INDEX I_METHOD_TAXA
-        ON {}.METHOD_TAXA (METHOD_AC, RANK) NOLOGGING
-        """.format(owner)
-    )
-    cur.close()
-    con.close()
-    logger.debug("METHOD_TAXA ready")
-
-
-def _load_term_counts(user: str, dsn: str, organizers: list,
-                      tmpdir: Optional[str], queue: Queue):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    orautils.drop_table(cur, owner, "METHOD_TERM", purge=True)
-    cur.execute(
-        """
-        CREATE TABLE {}.METHOD_TERM
-        (
-            METHOD_AC VARCHAR2(25) NOT NULL,
-            GO_ID VARCHAR2(10) NOT NULL,
-            PROTEIN_COUNT NUMBER(10) NOT NULL
-        ) NOLOGGING
-        """.format(owner)
-    )
-    cur.close()
-
-    table = orautils.TablePopulator(con,
-                                    query="INSERT /*+ APPEND */ "
-                                          "INTO {}.METHOD_TERM "
-                                          "VALUES (:1, :2, :3)".format(owner),
-                                    autocommit=True)
-
-    with Kvdb(dir=tmpdir) as kvdb:
-        for acc, terms in merge_organizers(organizers, remove=True):
-            counts = {}
-            for go_id in terms:
-                if go_id in counts:
-                    counts[go_id] += 1
-                else:
-                    counts[go_id] = 1
-
-            for go_id, count in counts.items():
-                table.insert((acc, go_id, count))
-
-            kvdb[acc] = set(terms)
-
-    table.close()
-    queue.put(("term", kvdb.filepath))
-
-    cur = con.cursor()
-    orautils.grant(cur, owner, "METHOD_TERM", "SELECT", "INTERPRO_SELECT")
-    orautils.gather_stats(cur, owner, "METHOD_TERM")
-    cur.execute(
-        """
-        CREATE INDEX I_METHOD_TERM
-        ON {}.METHOD_TERM (METHOD_AC) NOLOGGING
-        """.format(owner)
-    )
-    cur.close()
-    con.close()
-    logger.debug("METHOD_TERM ready")
 
 
 def copy_schema(user_src: str, user_dst: str, dsn: str):
