@@ -54,7 +54,6 @@ def compare(cur: cx_Oracle.Cursor, processes: int,
         p.start()
         pool.append(p)
 
-    logger.debug("starting")
     _key = None
     accessions = []
     i = 0
