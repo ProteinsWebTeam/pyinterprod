@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import cx_Oracle
 
@@ -100,6 +100,18 @@ def toggle_constraint(cur: cx_Oracle.Cursor, owner: str, table: str,
         return True
 
 
+def get_grants(cur: cx_Oracle.Cursor, owner: str, table: str) -> List[Tuple[str, str]]:
+    cur.execute(
+        """
+        SELECT PRIVILEGE, GRANTEE
+        FROM DBA_TAB_PRIVS
+        WHERE OWNER = UPPER(:1)
+        AND TABLE_NAME = :2
+        """, (owner, table)
+    )
+    return cur.fetchall()
+
+
 def get_partitioning_key(cur: cx_Oracle.Cursor, owner: str, table: str) -> str:
     cur.execute(
         """
@@ -118,20 +130,38 @@ def get_partitioning_key(cur: cx_Oracle.Cursor, owner: str, table: str) -> str:
     return columns[0]
 
 
-def get_partitions(cur: cx_Oracle.Cursor, owner: str,
-                   table: str) -> List[dict]:
+def get_partitions(cur: cx_Oracle.Cursor, owner: str, table: str) -> List[dict]:
     cur.execute(
         """
-        SELECT PARTITION_NAME, HIGH_VALUE
-        FROM ALL_TAB_PARTITIONS
-        WHERE TABLE_OWNER = :1
-        AND TABLE_NAME = :2
-        ORDER BY PARTITION_POSITION
+        SELECT 
+          K.COLUMN_NAME, K.COLUMN_POSITION, P.PARTITION_NAME, P.HIGH_VALUE
+        FROM ALL_PART_KEY_COLUMNS K
+        INNER JOIN ALL_TAB_PARTITIONS P
+          ON K.OWNER  = P.TABLE_OWNER
+          AND K.NAME = P.TABLE_NAME 
+        WHERE K.OWNER = :1
+        AND K.NAME = :2
+        ORDER BY P.PARTITION_POSITION
         """,
         (owner, table)
     )
-    cols = ("name", "value")
-    return [dict(zip(cols, row)) for row in cur]
+    columns = {}
+    for col_name, col_pos, part_name, part_val in cur:
+        if col_name in columns:
+            c = columns[col_name]
+        else:
+            c = columns[col_name] = {
+                "name": col_name,
+                "position": col_pos,
+                "partitions": []
+            }
+
+        c["partitions"].append({
+            "name": part_name,
+            "value": part_val
+        })
+
+    return sorted(columns.values(), key=lambda c: c["position"])
 
 
 def drop_index(cur: cx_Oracle.Cursor, owner: str, name: str):
