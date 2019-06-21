@@ -875,8 +875,22 @@ def _load_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple, proc
 
 
 def copy_schema(user_src: str, user_dst: str, dsn: str):
-    _enable_schema(user_src, dsn)
-    orautils.clear_schema(user_dst, dsn)
+    #_enable_schema(user_src, dsn)
+
+    tables = []
+    con = cx_Oracle.connect(orautils.make_connect_string(user_src, dsn))
+    cur = con.cursor()
+    owner = user_src.split('/')[0]
+    for t in orautils.get_tables(cur, owner):
+        tables.append({
+            "name": t,
+            "grants": orautils.get_grants(cur, owner, t),
+            "constraints": orautils.get_constraints(cur, owner, t),
+            "indexes": orautils.get_indices(cur, owner, t),
+            "partitions": orautils.get_partitions(cur, owner, t)
+        })
+
+    #orautils.clear_schema(user_dst, dsn)
 
 
 def _enable_schema(user: str, dsn: str):
