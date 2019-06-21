@@ -264,12 +264,12 @@ def _insert_new(con: cx_Oracle.Connection) -> int:
     return table1.rowcount
 
 
-def update_proteins(user: str, dsn: str, version: str, date: str):
-    delete_obsolete(user, dsn, truncate=True)
-    update_database_info(user, dsn, version, date)
+def update(user: str, dsn: str, version: str, date: str):
+    _delete_obsolete(user, dsn, truncate=True)
+    _update_database_info(user, dsn, version, date)
 
 
-def delete_obsolete(user: str, dsn: str, truncate: bool=False):
+def _delete_obsolete(user: str, dsn: str, truncate: bool=False):
     url = orautils.make_connect_string(user, dsn)
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -383,7 +383,7 @@ def delete_obsolete(user: str, dsn: str, truncate: bool=False):
     logger.info("complete")
 
 
-def update_database_info(user: str, dsn: str, version: str, date: str):
+def _update_database_info(user: str, dsn: str, version: str, date: str):
     date = datetime.strptime(date, "%d-%b-%Y")
     url = orautils.make_connect_string(user, dsn)
 
