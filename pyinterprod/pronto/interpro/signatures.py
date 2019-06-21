@@ -44,7 +44,7 @@ def process(dir: Optional[str], task_queue: Queue, max_items: int,
     done_queue.put((counts, buffer))
 
 
-def compare(user: str, dsn: str, query: str, processes: int,
+def compare(cur: cx_Oracle.Cursor, processes: int,
             dir: Optional[str], max_items: int, chunk_size: int) -> Tuple[Kvdb, int]:
     pool = []
     task_queue = Queue(maxsize=max(1, processes-1))
@@ -55,9 +55,6 @@ def compare(user: str, dsn: str, query: str, processes: int,
         pool.append(p)
 
     logger.debug("starting")
-    con = cx_Oracle.connect(user + '@' + dsn)
-    cur = con.cursor()
-    cur.execute(query)
     _key = None
     accessions = []
     i = 0
@@ -75,8 +72,6 @@ def compare(user: str, dsn: str, query: str, processes: int,
     task_queue.put(accessions)
     accessions = []
     logger.debug("{:>12,}".format(i))
-    cur.close()
-    con.close()
 
     for _ in pool:
         task_queue.put(None)
@@ -138,40 +133,80 @@ def sum_counts(values):
 
 def cmp_descriptions(user: str, dsn: str, processes: int=1,
                      dir: Optional[str]=None, max_items: int=10000000,
-                     chunk_size: int=10):
-    query = """
-        SELECT DESC_ID, METHOD_AC
-        FROM {0}.METHOD_DESC
-        WHERE DESC_ID NOT IN (
-          SELECT DESC_ID
-          FROM {0}.DESC_VALUE
-          WHERE TEXT IN ('Uncharacterized protein', 'Predicted protein')
-        )
-        ORDER BY DESC_ID, METHOD_AC
-    """.format(user.split('/')[0])
-    return compare(user, dsn, query, processes, dir, max_items, chunk_size)
+                     chunk_size: int=10) -> Tuple[Kvdb, int]:
+    con = cx_Oracle.connect(user + '@' + dsn)
+    cur = con.cursor()
+    cur.execute(
+        """
+            SELECT DESC_ID, METHOD_AC
+            FROM {0}.METHOD_DESC
+            WHERE DESC_ID NOT IN (
+              SELECT DESC_ID
+              FROM {0}.DESC_VALUE
+              WHERE TEXT IN ('Uncharacterized protein', 'Predicted protein')
+            )
+            ORDER BY DESC_ID, METHOD_AC
+        """.format(user.split('/')[0])
+    )
+    obj = compare(cur, processes, dir, max_items, chunk_size)
+    cur.close()
+    con.close()
+    return obj
 
 
 def cmp_taxa(user: str, dsn: str, processes: int=1,
              dir: Optional[str]=None, max_items: int=10000000,
-             chunk_size: int=10):
-    query = """
-        SELECT TAX_ID, METHOD_AC
-        FROM {}.METHOD_TAXA
-        ORDER BY TAX_ID, METHOD_AC
-    """.format(user.split('/')[0])
-    return compare(user, dsn, query, processes, dir, max_items, chunk_size)
+             chunk_size: int=10, rank: Optional[str]=None) -> Tuple[Kvdb, int]:
+    con = cx_Oracle.connect(user + '@' + dsn)
+    cur = con.cursor()
+    if rank:
+        cur.execute(
+            """
+                SELECT TAX_ID, METHOD_AC
+                FROM {}.METHOD_TAXA
+                WHERE RANK = :1
+                ORDER BY TAX_ID, METHOD_AC
+            """.format(user.split('/')[0]),
+            (rank,)
+        )
+    else:
+        cur.execute(
+            """
+                SELECT TAX_ID, METHOD_AC
+                FROM {}.METHOD_TAXA
+                ORDER BY TAX_ID, METHOD_AC
+            """.format(user.split('/')[0])
+        )
+    obj = compare(cur, processes, dir, max_items, chunk_size)
+    cur.close()
+    con.close()
+    return obj
 
 
 def cmp_terms(user: str, dsn: str, processes: int=1,
               dir: Optional[str]=None, max_items: int=10000000,
-              chunk_size: int=10):
-    query = """
+              chunk_size: int=10) -> Tuple[Kvdb, int]:
+    con = cx_Oracle.connect(user + '@' + dsn)
+    cur = con.cursor()
+    cur.execute(
+        """
         SELECT GO_ID, METHOD_AC
-        FROM {}.METHOD_TERM
+        FROM {0}.METHOD_TERM
+        WHERE GO_ID NOT IN (
+          SELECT GO_ID
+          FROM {0}.TERM
+          WHERE NAME IN (
+            'protein binding', 'molecular_function', 'biological_process', 
+            'cellular_component'
+          )
+        )
         ORDER BY GO_ID, METHOD_AC
-    """.format(user.split('/')[0])
-    return compare(user, dsn, query, processes, dir, max_items, chunk_size)
+        """.format(user.split('/')[0])
+    )
+    obj = compare(cur, processes, dir, max_items, chunk_size)
+    cur.close()
+    con.close()
+    return obj
 
 
 # def merge_comparisons(user: str, dsn: str, kvdbs: tuple, comparators: list,
