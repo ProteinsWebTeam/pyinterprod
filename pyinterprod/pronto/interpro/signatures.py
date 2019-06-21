@@ -95,12 +95,18 @@ def compare(cur: cx_Oracle.Cursor, processes: int,
     keys = sorted(counts.keys())
     keys = [keys[i] for i in range(0, len(keys), chunk_size)]
     organizer = Organizer(keys, dir=dir)
+    num_items = 0
+    max_items *= len(buffers)
     size = 0
     for buffer in buffers:
         for comparisons in buffer:
             for acc, cmps in comparisons.items():
                 organizer.add(acc, cmps)
-            organizer.flush()
+                num_items += len(cmps)
+
+                if num_items >= max_items:
+                    organizer.flush()
+                    num_items = 0
 
         size += buffer.size
         buffer.remove()
