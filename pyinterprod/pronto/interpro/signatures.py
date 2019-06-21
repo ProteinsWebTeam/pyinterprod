@@ -96,7 +96,7 @@ def compare(cur: cx_Oracle.Cursor, processes: int,
     keys = [keys[i] for i in range(0, len(keys), chunk_size)]
     organizer = Organizer(keys, dir=dir)
     size = 0
-    for i, buffer in enumerate(buffers):
+    for buffer in buffers:
         for comparisons in buffer:
             for acc, cmps in comparisons.items():
                 organizer.add(acc, cmps)
