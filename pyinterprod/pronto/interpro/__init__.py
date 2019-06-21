@@ -520,7 +520,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     
     with ProcessPoolExecutor(max_workers=processes) as executor:
         fs = {}
-        f = executor.submit(_create_method_desc(user, dsn, names))
+        f = executor.submit(_create_method_desc, user, dsn, names)
         fs[f] = "METHOD_DESC"
         f = executor.submit(_create_method_taxa, user, dsn, taxa)
         fs[f] = "METHOD_TAXA"
@@ -544,7 +544,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
                 #kvdb, size = fn(user, dsn, processes=processes, dir=tmpdir)
             else:
-                logger.error("{}: {} raised".format(table, exc))
+                logger.error("{}: exception raised ({})".format(table, exc))
 
     t.join()
     logger.debug("METHOD2PROTEIN: ready")
