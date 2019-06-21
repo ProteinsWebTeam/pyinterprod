@@ -72,13 +72,13 @@ def compare(cur: cx_Oracle.Cursor, processes: int,
     accessions = []
     logger.debug("{:>12,}".format(i))
 
-    for _ in pool:
+    for p in pool:
         task_queue.put(None)
 
     logger.debug("collecting")
     counts = {}
     buffers = []
-    for i, p in enumerate(pool):
+    for p in pool:
         _counts, buffer = done_queue.get()
         for acc, cnt in _counts.items():
             try:
@@ -87,12 +87,11 @@ def compare(cur: cx_Oracle.Cursor, processes: int,
                 counts[acc] = cnt
 
         buffers.append(buffer)
-        logger.debug("collected: {}/{}".format(i+1, len(pool)))
 
     for p in pool:
         p.join()
 
-    logger.debug("aggregating")
+    logger.debug("organizing")
     keys = sorted(counts.keys())
     keys = [keys[i] for i in range(0, len(keys), chunk_size)]
     organizer = Organizer(keys, dir=dir)
@@ -105,7 +104,6 @@ def compare(cur: cx_Oracle.Cursor, processes: int,
 
         size += buffer.size
         buffer.remove()
-        logger.debug("merged: {}/{}".format(i+1, len(buffers)))
 
     logger.debug("merging")
     size += organizer.merge(processes, fn=sum_counts)
