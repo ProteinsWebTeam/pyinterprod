@@ -3,9 +3,8 @@
 import json
 import os
 import pickle
-from concurrent.futures import as_completed, ProcessPoolExecutor
+from concurrent.futures import as_completed, ProcessPoolExecutor, ThreadPoolExecutor
 from multiprocessing import Process, Queue
-from threading import Thread
 from typing import Optional, Tuple
 
 import cx_Oracle
@@ -515,20 +514,19 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     with open(os.path.join(tmpdir, "comparators"), "wb") as fh:
         pickle.dump(comparators, fh)
 
-    t = Thread(target=_finalize_method2protein, args=(user, dsn))
-    t.start()
-    
-    with ProcessPoolExecutor(max_workers=processes) as executor:
+    with ProcessPoolExecutor(processes) as pe, ThreadPoolExecutor() as te:
         fs = {}
-        f = executor.submit(_create_method_desc, user, dsn, names)
+        f = te.submit(_finalize_method2protein, user, dsn)
+        fs[f] = "METHOD2PROTEIN"
+        f = pe.submit(_create_method_desc, user, dsn, names)
         fs[f] = "METHOD_DESC"
-        f = executor.submit(_create_method_taxa, user, dsn, taxa)
+        f = pe.submit(_create_method_taxa, user, dsn, taxa)
         fs[f] = "METHOD_TAXA"
-        f = executor.submit(_create_method_term, user, dsn, terms)
+        f = pe.submit(_create_method_term, user, dsn, terms)
         fs[f] = "METHOD_TERM"
 
         processes -= len(fs)
-        
+        num_errors = 0
         for f in as_completed(fs):
             table = fs[f]
             exc = f.exception()
@@ -544,10 +542,11 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
                 #kvdb, size = fn(user, dsn, processes=processes, dir=tmpdir)
             else:
+                num_errors += 1
                 logger.error("{}: exception raised ({})".format(table, exc))
 
-    t.join()
-    logger.debug("METHOD2PROTEIN: ready")
+    if num_errors:
+        raise RuntimeError("one or more tables could not be created")
 
 
 def _finalize_method2protein(user: str, dsn: str):
