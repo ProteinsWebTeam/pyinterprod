@@ -27,7 +27,7 @@ def load(user: str, dsn: str, swissprot_path: str, trembl_path: str,
         logger.info("disk space used: {:.0f} MB".format(db.size/1024**2))
 
         con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-        _insert_all(con, db.iter_new())
+        _insert_all(con, db)
 
     # Update annotations
     logger.info("{} annotations updated".format(_update_annotations(con)))
@@ -76,7 +76,7 @@ def insert_new(user: str, dsn: str, swissprot_path: str, trembl_path: str,
         con.close()
 
 
-def _insert_all(con: cx_Oracle.Connection, iterable: Iterable) -> int:
+def _insert_all(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
     cur = con.cursor()
     orautils.drop_table(cur, "INTERPRO", "PROTEIN_STG", purge=True)
     cur.execute(
@@ -95,14 +95,22 @@ def _insert_all(con: cx_Oracle.Connection, iterable: Iterable) -> int:
     cur.close()
 
     query = """
-      INSERT /*+ APPEND */ INTO INTERPRO.PROTEIN_STG 
+      INSERT /*+ APPEND */ INTO INTERPRO.PROTEIN_STG
       VALUES(:1, :2, :3, :4, :5, :6, :7)
     """
     table = orautils.TablePopulator(con, query, autocommit=True)
 
-    for ac, name, is_rev, crc64, length, is_frag, taxid in iterable:
-        table.insert((ac, name, 'Y' if is_rev else 'N', crc64, length,
-                      'Y' if is_frag else 'N', taxid))
+    for ac, name, is_rev, crc64, length, is_frag, taxid in db.iter_new():
+        try:
+            table.insert((ac, name, 'Y' if is_rev else 'N', crc64, length,
+                        'Y' if is_frag else 'N', taxid))
+        except Exception as e:
+            for rec in table.records:
+                print(rec)
+            print(ac, name, is_rev, crc64, length, is_frag, taxid)
+            print(db.path)
+            db.temporary = False
+            raise e
 
     table.close()
 
@@ -122,8 +130,8 @@ def _update_annotations(con: cx_Oracle.Connection) -> int:
     cur = con.cursor()
     cur.execute(
         """
-        SELECT 
-          PS.PROTEIN_AC, PS.NAME, PS.DBCODE, PS.LEN, 
+        SELECT
+          PS.PROTEIN_AC, PS.NAME, PS.DBCODE, PS.LEN,
           PS.FRAGMENT, PS.TAX_ID
         FROM INTERPRO.PROTEIN_STG PS
         INNER JOIN INTERPRO.PROTEIN P
@@ -140,7 +148,7 @@ def _update_annotations(con: cx_Oracle.Connection) -> int:
     )
     query = """
         UPDATE INTERPRO.PROTEIN
-        SET 
+        SET
           NAME = :2, DBCODE = :3,  LEN = :4, TIMESTAMP = SYSDATE,
           USERSTAMP = USER, FRAGMENT = :5, TAX_ID = :6
         WHERE PROTEIN_AC = :1
@@ -164,8 +172,8 @@ def _update_sequences(con: cx_Oracle.Connection) -> int:
     )
     cur.execute(
         """
-        SELECT 
-          PS.PROTEIN_AC, PS.NAME, PS.DBCODE, PS.CRC64, PS.LEN, 
+        SELECT
+          PS.PROTEIN_AC, PS.NAME, PS.DBCODE, PS.CRC64, PS.LEN,
           PS.FRAGMENT, PS.TAX_ID
         FROM INTERPRO.PROTEIN_STG PS
         INNER JOIN INTERPRO.PROTEIN P
@@ -180,9 +188,9 @@ def _update_sequences(con: cx_Oracle.Connection) -> int:
     table1 = orautils.TablePopulator(con, query, autocommit=True)
     query = """
         UPDATE INTERPRO.PROTEIN
-        SET 
-          NAME = :2, DBCODE = :3, CRC64 = :4,  LEN = :5, 
-          TIMESTAMP = SYSDATE, USERSTAMP = USER, FRAGMENT = :6, 
+        SET
+          NAME = :2, DBCODE = :3, CRC64 = :4,  LEN = :5,
+          TIMESTAMP = SYSDATE, USERSTAMP = USER, FRAGMENT = :6,
           TAX_ID = :7
         WHERE PROTEIN_AC = :1
     """
@@ -214,7 +222,7 @@ def _track_deleted(con) -> int:
     cur.execute(
         """
         SELECT PROTEIN_AC FROM INTERPRO.PROTEIN
-        MINUS 
+        MINUS
         SELECT PROTEIN_AC FROM INTERPRO.PROTEIN_STG
         """
     )
@@ -236,7 +244,7 @@ def _insert_new(con: cx_Oracle.Connection) -> int:
     cur = con.cursor()
     cur.execute(
         """
-        SELECT 
+        SELECT
           PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT, TAX_ID
         FROM INTERPRO.PROTEIN_STG
         WHERE PROTEIN_AC NOT IN (SELECT PROTEIN_AC FROM INTERPRO.PROTEIN)
