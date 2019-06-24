@@ -282,7 +282,7 @@ def _insert_all(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
 
     for ac, name, is_rev, crc64, length, is_frag, taxid in db.iter_new():
         try:
-            table.insert((ac, name, 'Y' if is_rev else 'N', crc64, length,
+            table.insert((ac, name, 'S' if is_rev else 'T', crc64, length,
                         'Y' if is_frag else 'N', taxid))
         except Exception as e:
             for rec in table.records:
@@ -311,8 +311,7 @@ def _update_annotations(con: cx_Oracle.Connection) -> int:
     cur.execute(
         """
         SELECT
-          PS.PROTEIN_AC, PS.NAME, PS.DBCODE, PS.LEN,
-          PS.FRAGMENT, PS.TAX_ID
+          PS.NAME, PS.DBCODE, PS.LEN, PS.FRAGMENT, PS.TAX_ID, PS.PROTEIN_AC
         FROM INTERPRO.PROTEIN_STG PS
         INNER JOIN INTERPRO.PROTEIN P
           ON PS.PROTEIN_AC = P.PROTEIN_AC
@@ -329,9 +328,9 @@ def _update_annotations(con: cx_Oracle.Connection) -> int:
     query = """
         UPDATE INTERPRO.PROTEIN
         SET
-          NAME = :2, DBCODE = :3,  LEN = :4, TIMESTAMP = SYSDATE,
-          USERSTAMP = USER, FRAGMENT = :5, TAX_ID = :6
-        WHERE PROTEIN_AC = :1
+          NAME = :1, DBCODE = :2,  LEN = :3, TIMESTAMP = SYSDATE,
+          USERSTAMP = USER, FRAGMENT = :4, TAX_ID = :5
+        WHERE PROTEIN_AC = :6
     """
     table = orautils.TablePopulator(con, query)
     for row in cur:
@@ -353,8 +352,8 @@ def _update_sequences(con: cx_Oracle.Connection) -> int:
     cur.execute(
         """
         SELECT
-          PS.PROTEIN_AC, PS.NAME, PS.DBCODE, PS.CRC64, PS.LEN,
-          PS.FRAGMENT, PS.TAX_ID
+          PS.NAME, PS.DBCODE, PS.CRC64, PS.LEN,
+          PS.FRAGMENT, PS.TAX_ID, PS.PROTEIN_AC
         FROM INTERPRO.PROTEIN_STG PS
         INNER JOIN INTERPRO.PROTEIN P
           ON PS.PROTEIN_AC = P.PROTEIN_AC AND PS.CRC64 != P.CRC64
@@ -369,15 +368,15 @@ def _update_sequences(con: cx_Oracle.Connection) -> int:
     query = """
         UPDATE INTERPRO.PROTEIN
         SET
-          NAME = :2, DBCODE = :3, CRC64 = :4,  LEN = :5,
-          TIMESTAMP = SYSDATE, USERSTAMP = USER, FRAGMENT = :6,
-          TAX_ID = :7
-        WHERE PROTEIN_AC = :1
+          NAME = :1, DBCODE = :2, CRC64 = :3,  LEN = :4,
+          TIMESTAMP = SYSDATE, USERSTAMP = USER, FRAGMENT = :5,
+          TAX_ID = :6
+        WHERE PROTEIN_AC = :7
     """
     table2 = orautils.TablePopulator(con, query)
 
     for row in cur:
-        table1.insert((row[0],))
+        table1.insert((row[6],))
         table2.update(row)
 
     table1.close()
