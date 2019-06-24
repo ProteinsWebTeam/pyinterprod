@@ -52,7 +52,7 @@ def main():
                 config["flat_files"]["trembl"]
             ),
             kwargs=dict(dir="/scratch"),
-            scheduler=dict(queue=queue, mem=8000, scratch=30000)
+            scheduler=dict(queue=queue, mem=500, scratch=16000)
         ),
         Task(
             name="update-proteins",
