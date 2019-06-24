@@ -13,6 +13,186 @@ from . import sprot
 from .. import logger, orautils
 
 
+class ProteinDatabase(object):
+    def __init__(self, path: Optional[str] = None, dir: Optional[str] = None):
+        if path:
+            self.path = path
+            self.temporary = False
+        else:
+            try:
+                os.makedirs(dir, exist_ok=True)
+            except TypeError:
+                # dir is None
+                pass
+
+            fd, self.path = mkstemp(dir=dir)
+            os.close(fd)
+            os.remove(self.path)
+            self.temporary = True
+
+        self._create_table("protein_old")
+        self._create_table("protein_new")
+
+    def __del__(self):
+        if self.temporary:
+            self.drop()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.temporary:
+            self.drop()
+
+    @property
+    def size(self) -> int:
+        return os.path.getsize(self.path)
+
+    def drop(self):
+        try:
+            os.remove(self.path)
+        except FileNotFoundError:
+            pass
+
+    def _create_table(self, table_name: str):
+        with sqlite3.connect(self.path) as con:
+            con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS {} (
+                  accession TEXT NOT NULL PRIMARY KEY,
+                  identifier TEXT NOT NULL,
+                  is_reviewed INTEGER NOT NULL,
+                  crc64 TEXT NOT NULL,
+                  length INTEGER NOT NULL,
+                  is_fragment INTEGER NOT NULL,
+                  taxon_id INTEGER NOT NULL
+                )
+                """.format(table_name)
+            )
+
+    def _insert(self, src: Generator, table_name: str, max_items: int) -> int:
+        query = """
+            INSERT INTO {}
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """.format(table_name)
+
+        with sqlite3.connect(self.path) as con:
+            count = 0
+            items = []
+
+            for protein in src:
+                items.append(protein)
+                count += 1
+
+                if len(items) == max_items:
+                    con.executemany(query, items)
+                    items = []
+
+            if items:
+                con.executemany(query, items)
+            con.commit()
+
+        return count
+
+    def insert_new(self, src: Generator, max_items: int=10000) -> int:
+        return self._insert(src, "protein_new", max_items)
+
+    def insert_old(self, src: Generator, max_items: int=10000) -> int:
+        return self._insert(src, "protein_old", max_items)
+
+    def _iter(self, table_name: str) -> Generator[Tuple, None, None]:
+        with sqlite3.connect(self.path) as con:
+            for row in con.execute("SELECT * FROM {}".format(table_name)):
+                yield row
+
+    def iter_new(self) -> Generator[Tuple, None, None]:
+        return self._iter("protein_new")
+
+    def iter_old(self) -> Generator[Tuple, None, None]:
+        return self._iter("protein_old")
+
+    def get_deleted(self) -> Generator[str, None, None]:
+        with sqlite3.connect(self.path) as con:
+            cur = con.execute(
+                """
+                SELECT accession
+                FROM protein_old
+                EXCEPT
+                SELECT accession
+                FROM protein_new
+                """
+            )
+
+            for row in cur:
+                yield row[0]
+
+    def get_new(self) -> Generator[str, None, None]:
+        with sqlite3.connect(self.path) as con:
+            cur = con.execute(
+                """
+                SELECT
+                  accession,
+                  identifier,
+                  is_reviewed,
+                  crc64,
+                  length,
+                  is_fragment,
+                  taxon_id
+                FROM protein_new
+                WHERE accession NOT IN (
+                  SELECT accession
+                  FROM protein_old
+                )
+                """
+            )
+
+            for row in cur:
+                yield row
+
+    def get_annotation_changes(self) -> Generator[Tuple, None, None]:
+        with sqlite3.connect(self.path) as con:
+            cur = con.execute(
+                """
+                SELECT
+                  accession, p1.identifier, p1.is_reviewed, p1.crc64,
+                  p1.length, p1.is_fragment, p1.taxon_id
+                FROM protein_new AS p1
+                INNER JOIN protein_old AS p2
+                  USING (accession)
+                WHERE p1.crc64 = p2.crc64
+                AND (
+                     p1.identifier != p2.identifier
+                  OR p1.is_reviewed != p2.is_reviewed
+                  OR p1.crc64 != p2.crc64
+                  OR p1.length != p2.length
+                  OR p1.is_fragment != p2.is_fragment
+                  OR p1.taxon_id != p2.taxon_id
+                )
+
+                """
+            )
+
+            for row in cur:
+                yield row
+
+    def get_sequence_changes(self) -> Generator[Tuple, None, None]:
+        with sqlite3.connect(self.path) as con:
+            cur = con.execute(
+                """
+                SELECT
+                  accession, p1.identifier, p1.is_reviewed, p1.crc64,
+                  p1.length, p1.is_fragment, p1.taxon_id
+                FROM protein_new AS p1
+                INNER JOIN protein_old AS p2
+                  USING (accession)
+                WHERE p1.crc64 != p2.crc64
+                """
+            )
+
+            for row in cur:
+                yield row
+
+
 def load(user: str, dsn: str, swissprot_path: str, trembl_path: str,
          dir: Optional[str]=None):
 
@@ -486,186 +666,6 @@ def check_crc64(user: str, dsn: str):
         raise RuntimeError("{} CRC64 mismatches".format(num_errors))
     else:
         logger.info("no CRC64 mismatches")
-
-
-class ProteinDatabase(object):
-    def __init__(self, path: Optional[str] = None, dir: Optional[str] = None):
-        if path:
-            self.path = path
-            self.temporary = False
-        else:
-            try:
-                os.makedirs(dir, exist_ok=True)
-            except TypeError:
-                # dir is None
-                pass
-
-            fd, self.path = mkstemp(dir=dir)
-            os.close(fd)
-            os.remove(self.path)
-            self.temporary = True
-
-        self._create_table("protein_old")
-        self._create_table("protein_new")
-
-    def __del__(self):
-        if self.temporary:
-            self.drop()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.temporary:
-            self.drop()
-
-    @property
-    def size(self) -> int:
-        return os.path.getsize(self.path)
-
-    def drop(self):
-        try:
-            os.remove(self.path)
-        except FileNotFoundError:
-            pass
-
-    def _create_table(self, table_name: str):
-        with sqlite3.connect(self.path) as con:
-            con.execute(
-                """
-                CREATE TABLE IF NOT EXISTS {} (
-                  accession TEXT NOT NULL PRIMARY KEY,
-                  identifier TEXT NOT NULL,
-                  is_reviewed INTEGER NOT NULL,
-                  crc64 TEXT NOT NULL,
-                  length INTEGER NOT NULL,
-                  is_fragment INTEGER NOT NULL,
-                  taxon_id INTEGER NOT NULL
-                )
-                """.format(table_name)
-            )
-
-    def _insert(self, src: Generator, table_name: str, max_items: int) -> int:
-        query = """
-            INSERT INTO {}
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """.format(table_name)
-
-        with sqlite3.connect(self.path) as con:
-            count = 0
-            items = []
-
-            for protein in src:
-                items.append(protein)
-                count += 1
-
-                if len(items) == max_items:
-                    con.executemany(query, items)
-                    items = []
-
-            if items:
-                con.executemany(query, items)
-            con.commit()
-
-        return count
-
-    def insert_new(self, src: Generator, max_items: int=10000) -> int:
-        return self._insert(src, "protein_new", max_items)
-
-    def insert_old(self, src: Generator, max_items: int=10000) -> int:
-        return self._insert(src, "protein_old", max_items)
-
-    def _iter(self, table_name: str) -> Generator[Tuple, None, None]:
-        with sqlite3.connect(self.path) as con:
-            for row in con.execute("SELECT * FROM {}".format(table_name)):
-                yield row
-
-    def iter_new(self) -> Generator[Tuple, None, None]:
-        return self._iter("protein_new")
-
-    def iter_old(self) -> Generator[Tuple, None, None]:
-        return self._iter("protein_old")
-
-    def get_deleted(self) -> Generator[str, None, None]:
-        with sqlite3.connect(self.path) as con:
-            cur = con.execute(
-                """
-                SELECT accession
-                FROM protein_old
-                EXCEPT
-                SELECT accession
-                FROM protein_new
-                """
-            )
-
-            for row in cur:
-                yield row[0]
-
-    def get_new(self) -> Generator[str, None, None]:
-        with sqlite3.connect(self.path) as con:
-            cur = con.execute(
-                """
-                SELECT
-                  accession,
-                  identifier,
-                  is_reviewed,
-                  crc64,
-                  length,
-                  is_fragment,
-                  taxon_id
-                FROM protein_new
-                WHERE accession NOT IN (
-                  SELECT accession
-                  FROM protein_old
-                )
-                """
-            )
-
-            for row in cur:
-                yield row
-
-    def get_annotation_changes(self) -> Generator[Tuple, None, None]:
-        with sqlite3.connect(self.path) as con:
-            cur = con.execute(
-                """
-                SELECT
-                  accession, p1.identifier, p1.is_reviewed, p1.crc64,
-                  p1.length, p1.is_fragment, p1.taxon_id
-                FROM protein_new AS p1
-                INNER JOIN protein_old AS p2
-                  USING (accession)
-                WHERE p1.crc64 = p2.crc64
-                AND (
-                     p1.identifier != p2.identifier
-                  OR p1.is_reviewed != p2.is_reviewed
-                  OR p1.crc64 != p2.crc64
-                  OR p1.length != p2.length
-                  OR p1.is_fragment != p2.is_fragment
-                  OR p1.taxon_id != p2.taxon_id
-                )
-
-                """
-            )
-
-            for row in cur:
-                yield row
-
-    def get_sequence_changes(self) -> Generator[Tuple, None, None]:
-        with sqlite3.connect(self.path) as con:
-            cur = con.execute(
-                """
-                SELECT
-                  accession, p1.identifier, p1.is_reviewed, p1.crc64,
-                  p1.length, p1.is_fragment, p1.taxon_id
-                FROM protein_new AS p1
-                INNER JOIN protein_old AS p2
-                  USING (accession)
-                WHERE p1.crc64 != p2.crc64
-                """
-            )
-
-            for row in cur:
-                yield row
 
 
 def _get_proteins(url: str) -> Generator:
