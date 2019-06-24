@@ -429,7 +429,7 @@ def _insert_new(con: cx_Oracle.Connection) -> int:
     table1 = orautils.TablePopulator(con, query, autocommit=True)
     query = """
         INSERT INTO INTERPRO.PROTEIN
-        VALUES (:1, :2, :3, :4, :5, TIMESTAMP, USERSTAMP, :6, 'N', :7)
+        VALUES (:1, :2, :3, :4, :5, SYSDATE, USER, :6, 'N', :7)
     """
     table2 = orautils.TablePopulator(con, query)
 
