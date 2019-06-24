@@ -281,16 +281,8 @@ def _insert_all(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
     table = orautils.TablePopulator(con, query, autocommit=True)
 
     for ac, name, is_rev, crc64, length, is_frag, taxid in db.iter_new():
-        try:
-            table.insert((ac, name, 'S' if is_rev else 'T', crc64, length,
-                        'Y' if is_frag else 'N', taxid))
-        except Exception as e:
-            for rec in table.records:
-                print(rec)
-            print(ac, name, is_rev, crc64, length, is_frag, taxid)
-            print(db.path)
-            db.temporary = False
-            raise e
+        table.insert((ac, name, 'S' if is_rev else 'T', crc64, length,
+                     'Y' if is_frag else 'N', taxid))
 
     table.close()
 
