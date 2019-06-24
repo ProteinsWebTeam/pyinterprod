@@ -95,20 +95,14 @@ def compare(cur: cx_Oracle.Cursor, processes: int,
     keys = sorted(counts.keys())
     keys = [keys[i] for i in range(0, len(keys), chunk_size)]
     organizer = Organizer(keys, dir=dir)
-    num_items = 0
-    max_items *= len(buffers)
     size = 0
     for buffer in buffers:
+        size += buffer.size
         for comparisons in buffer:
             for acc, cmps in comparisons.items():
                 organizer.add(acc, cmps)
-                num_items += len(cmps)
 
-                if num_items >= max_items:
-                    organizer.flush()
-                    num_items = 0
-
-        size += buffer.size
+            organizer.flush()
         buffer.remove()
 
     logger.debug("merging")
@@ -199,7 +193,7 @@ def cmp_terms(user: str, dsn: str, processes: int=1,
           SELECT GO_ID
           FROM {0}.TERM
           WHERE NAME IN (
-            'protein binding', 'molecular_function', 'biological_process', 
+            'protein binding', 'molecular_function', 'biological_process',
             'cellular_component'
           )
         )
