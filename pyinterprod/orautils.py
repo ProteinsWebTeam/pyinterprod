@@ -112,56 +112,32 @@ def get_grants(cur: cx_Oracle.Cursor, owner: str, table: str) -> List[Tuple[str,
     return cur.fetchall()
 
 
-def get_partitioning_key(cur: cx_Oracle.Cursor, owner: str, table: str) -> str:
-    cur.execute(
-        """
-        SELECT COLUMN_NAME
-        FROM ALL_PART_KEY_COLUMNS
-        WHERE OWNER = :1
-        AND NAME = :2
-        """,
-        (owner, table)
-    )
-    columns = [row[0] for row in cur]
-
-    if len(columns) > 1:
-        raise ValueError("Multi-column partitioning keys are not supported")
-
-    return columns[0]
-
-
 def get_partitions(cur: cx_Oracle.Cursor, owner: str, table: str) -> List[dict]:
     cur.execute(
         """
         SELECT 
-          K.COLUMN_NAME, K.COLUMN_POSITION, P.PARTITION_NAME, P.HIGH_VALUE
-        FROM ALL_PART_KEY_COLUMNS K
-        INNER JOIN ALL_TAB_PARTITIONS P
-          ON K.OWNER  = P.TABLE_OWNER
-          AND K.NAME = P.TABLE_NAME 
-        WHERE K.OWNER = :1
-        AND K.NAME = :2
-        ORDER BY P.PARTITION_POSITION
+          P.PARTITION_NAME, P.PARTITION_POSITION, P.HIGH_VALUE, 
+          K.COLUMN_NAME, K.COLUMN_POSITION
+        FROM ALL_TAB_PARTITIONS P
+        INNER JOIN ALL_PART_KEY_COLUMNS K
+          ON P.TABLE_OWNER = K.OWNER AND P.TABLE_NAME = K.NAME
+        WHERE P.TABLE_OWNER = UPPER(:1) AND P.TABLE_NAME = :2
         """,
         (owner, table)
     )
-    columns = {}
-    for col_name, col_pos, part_name, part_val in cur:
-        if col_name in columns:
-            c = columns[col_name]
-        else:
-            c = columns[col_name] = {
-                "name": col_name,
-                "position": col_pos,
-                "partitions": []
-            }
+    partitions = {}
+    for part_name, part_pos, part_val, col_name, col_pos in cur:
+        if col_pos > 1:
+            raise ValueError("Multi-column partitioning keys not supported")
 
-        c["partitions"].append({
+        partitions[part_name] = {
             "name": part_name,
-            "value": part_val
-        })
+            "position": part_pos,
+            "value": part_val,
+            "column": col_name
+        }
 
-    return sorted(columns.values(), key=lambda c: c["position"])
+    return sorted(partitions.values(), key=lambda c: c["position"])
 
 
 def drop_index(cur: cx_Oracle.Cursor, owner: str, name: str):
