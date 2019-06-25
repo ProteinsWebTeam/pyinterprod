@@ -222,29 +222,6 @@ def exchange_partition(cur: cx_Oracle.Cursor, owner: str, src: str, dst: str,
     gather_stats(cur, owner, dst, partition)
 
 
-def create_db_link(cur: cx_Oracle.Cursor, link: str, user: str, passwd: str,
-                   dsn: str):
-    try:
-        cur.execute("DROP PUBLIC DATABASE LINK {}".format(link))
-    except cx_Oracle.DatabaseError as e:
-        if e.args[0].code == 2024:
-            """
-            ORA-02024: database link not found
-            that's fine, we're about to create the link
-            """
-            pass
-        else:
-            raise e
-
-    cur.execute(
-        """
-        CREATE PUBLIC DATABASE LINK {}
-        CONNECT TO {} IDENTIFIED BY {}
-        USING '{}'
-        """.format(link, user, passwd, dsn)
-    )
-
-
 def get_constraints(cur: cx_Oracle.Cursor, owner: str, table: str) -> List[dict]:
     cur.execute(
         """
@@ -378,22 +355,6 @@ def rebuild_indices(cur: cx_Oracle.Cursor, owner: str, table: str):
 
 def make_connect_string(user: str, dsn: str) -> str:
     return user + '@' + dsn
-
-
-def create_db_links(user: str, dsn: str, links: Dict[str, str]):
-    con = cx_Oracle.connect(make_connect_string(user, dsn))
-    cur = con.cursor()
-    for link_name, link_url in links.items():
-        link = parse_url(link_url)
-        create_db_link(cur,
-                       link=link_name,
-                       user=link["username"],
-                       passwd=link["password"],
-                       dsn="{host}:{port}/{service}".format(**link)
-                       )
-
-    cur.close()
-    con.close()
 
 
 def refresh_mview(url: str, name: str):
