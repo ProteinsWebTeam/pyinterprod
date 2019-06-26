@@ -83,9 +83,14 @@ def load_matches(user: str, dsn: str):
     For some signature matches, the HMM model accession
         is the signature accession itself: in such cases, use NULL
     """
+    table = orautils.TablePopulator(
+        con=con,
+        query="INSERT /*+ APPEND */ INTO {}.MATCH "
+              "VALUES(:1, :2, :3, :4, :5, :6, :7)",
+        autocommit=True
+    )
     cur.execute(
         """
-        INSERT /*+ APPEND */ INTO {}.MATCH
         SELECT
           PROTEIN_AC, METHOD_AC, DBCODE,
           CASE
@@ -97,14 +102,21 @@ def load_matches(user: str, dsn: str):
         FROM INTERPRO.MATCH
         UNION ALL
         SELECT
-          PROTEIN_AC, METHOD_AC, DBCODE,
-          NULL,
-          POS_FROM, POS_TO, NULL
+          PROTEIN_AC, METHOD_AC, DBCODE, NULL, POS_FROM, POS_TO, NULL
         FROM INTERPRO.FEATURE_MATCH
         WHERE DBCODE = 'g'
         """.format(owner)
     )
-    con.commit()
+
+    signatures = {}
+    for row in cur:
+        try:
+            signatures[row[1]] += 1
+        except KeyError:
+            signatures[row[1]] = 1
+        finally:
+            table.insert(row)
+    table.close()
 
     orautils.gather_stats(cur, owner, "MATCH")
     orautils.grant(cur, owner, "MATCH", "SELECT", "INTERPRO_SELECT")
@@ -128,19 +140,18 @@ def load_matches(user: str, dsn: str):
         """.format(owner)
     )
 
-    cur.execute(
-        """
-        SELECT M.METHOD_AC, COUNT(DISTINCT M.PROTEIN_AC)
-        FROM INTERPRO.PROTEIN P
-        INNER JOIN {}.MATCH M
-          ON P.PROTEIN_AC = M.PROTEIN_AC
-        WHERE P.FRAGMENT = 'N'
-        GROUP BY M.METHOD_AC
-        """.format(owner)
-    )
-    signatures = cur.fetchall()
+    # cur.execute(
+    #     """
+    #     SELECT M.METHOD_AC, COUNT(DISTINCT M.PROTEIN_AC)
+    #     FROM INTERPRO.PROTEIN P
+    #     INNER JOIN {}.MATCH M
+    #       ON P.PROTEIN_AC = M.PROTEIN_AC
+    #     GROUP BY M.METHOD_AC
+    #     """.format(owner)
+    # )
+    # signatures = cur.fetchall()
 
-    for acc, num_proteins in signatures:
+    for acc, num_proteins in signatures.items():
         cur.execute(
             """
             UPDATE {0}.METHOD
