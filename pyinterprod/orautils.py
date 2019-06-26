@@ -16,7 +16,7 @@ def clear_schema(user: str, dsn: str):
     cur = con.cursor()
     owner = user.split('/')[0]
     for table in get_tables(cur, owner):
-        drop_table(cur, owner, table)
+        drop_table(cur, owner, table, purge=True)
     cur.close()
     con.close()
 
