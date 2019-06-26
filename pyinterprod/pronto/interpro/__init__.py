@@ -86,7 +86,7 @@ def load_matches(user: str, dsn: str):
     table = orautils.TablePopulator(
         con=con,
         query="INSERT /*+ APPEND */ INTO {}.MATCH "
-              "VALUES(:1, :2, :3, :4, :5, :6, :7)",
+              "VALUES(:1, :2, :3, :4, :5, :6, :7)".format(owner),
         autocommit=True
     )
     cur.execute(
