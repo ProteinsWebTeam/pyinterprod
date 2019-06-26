@@ -441,15 +441,29 @@ def find_protein_to_refresh(user: str, dsn: str):
     cur = con.cursor()
     orautils.drop_table(cur, "INTERPRO", "PROTEIN_TO_SCAN")
 
+    # # Assume CRC64 have been checked and that no mismatches were found
+    # cur.execute(
+    #     """
+    #     CREATE TABLE INTERPRO.PROTEIN_TO_SCAN NOLOGGING
+    #     AS
+    #     SELECT P.NEW_PROTEIN_AC AS PROTEIN_AC, X.UPI
+    #     FROM INTERPRO.PROTEIN_CHANGES P
+    #     INNER JOIN UNIPARC.XREF X
+    #       ON P.NEW_PROTEIN_AC = X.AC
+    #     WHERE X.DBID IN (2, 3)
+    #     AND X.DELETED = 'N'
+    #     """
+    # )
+
     # Assume CRC64 have been checked and that no mismatches were found
     cur.execute(
         """
         CREATE TABLE INTERPRO.PROTEIN_TO_SCAN NOLOGGING
         AS
-        SELECT P.NEW_PROTEIN_AC AS PROTEIN_AC, X.UPI
+        SELECT P.PROTEIN_AC, X.UPI
         FROM INTERPRO.PROTEIN_CHANGES P
         INNER JOIN UNIPARC.XREF X
-          ON P.NEW_PROTEIN_AC = X.AC
+          ON P.PROTEIN_AC = X.AC
         WHERE X.DBID IN (2, 3)
         AND X.DELETED = 'N'
         """
