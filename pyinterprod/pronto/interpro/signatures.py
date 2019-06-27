@@ -206,6 +206,140 @@ def cmp_terms(user: str, dsn: str, processes: int=1,
     return obj
 
 
+def compare_new(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Kvdb:
+    logger.debug("compare")
+    pool = []
+    task_queue = Queue(maxsize=1)
+    done_queue = Queue()
+    for _ in range(max(1, processes - 1)):
+        p = Process(target=process, args=(kvdb, task_queue, done_queue, dir))
+        p.start()
+        pool.append(p)
+
+    i = 0
+    for acc_1, taxids_1 in kvdb:
+        task_queue.put((acc_1, taxids_1))
+        i += 1
+        logger.debug(f"{acc_1:<40}{i:>15}")
+
+    for _ in pool:
+        task_queue.put(None)
+
+    buffers = [done_queue.get() for _ in pool]
+
+    for p in pool:
+        p.join()
+
+    logger.debug("merge")
+    with Kvdb(dir=dir) as kvdb:
+        for buffer in buffers:
+            for acc, cnt, cmp in buffer:
+                kvdb[acc] = (cnt, cmp)
+            buffer.remove()
+
+    logger.debug("done")
+    return kvdb
+
+
+def export_signatures(cur: cx_Oracle.Cursor, dir: Optional[str]) -> Kvdb:
+    logger.debug("export")
+    with Kvdb(dir=dir) as kvdb:
+        values = set()
+        _acc = None
+        for acc, val in cur:
+            if acc != _acc:
+                if _acc:
+                    kvdb[_acc] = values
+
+                _acc = acc
+                values = set()
+
+            values.add(val)
+
+            if _acc:
+                kvdb[_acc] = values
+
+    return kvdb
+
+
+def cmp_descriptions_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None) -> Kvdb:
+    con = cx_Oracle.connect(user + '@' + dsn)
+    cur = con.cursor()
+    cur.execute(
+        """
+            SELECT METHOD_AC, DESC_ID
+            FROM {0}.METHOD_DESC
+            WHERE DESC_ID NOT IN (
+              SELECT DESC_ID
+              FROM {0}.DESC_VALUE
+              WHERE TEXT IN ('Uncharacterized protein', 'Predicted protein')
+            )
+            ORDER BY METHOD_AC
+        """.format(user.split('/')[0])
+    )
+    kvdb_tmp = export_signatures(cur, dir)
+    cur.close()
+    con.close()
+    kvdb = compare_new(kvdb_tmp, processes, dir)
+    kvdb_tmp.remove()
+    return kvdb
+
+
+def cmp_taxa_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None, rank: Optional[str]=None) -> Kvdb:
+    con = cx_Oracle.connect(user + '@' + dsn)
+    cur = con.cursor()
+    if rank:
+        cur.execute(
+            """
+                SELECT METHOD_AC, TAX_ID
+                FROM {}.METHOD_TAXA
+                WHERE RANK = :1
+                ORDER BY METHOD_AC
+            """.format(user.split('/')[0]),
+            (rank,)
+        )
+    else:
+        cur.execute(
+            """
+                SELECT METHOD_AC, TAX_ID
+                FROM {}.METHOD_TAXA
+                ORDER BY METHOD_AC
+            """.format(user.split('/')[0])
+        )
+    kvdb_tmp = export_signatures(cur, dir)
+    cur.close()
+    con.close()
+    kvdb = compare_new(kvdb_tmp, processes, dir)
+    kvdb_tmp.remove()
+    return kvdb
+
+
+def cmp_terms_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None) -> Kvdb:
+    con = cx_Oracle.connect(user + '@' + dsn)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT METHOD_AC, GO_ID
+        FROM {0}.METHOD_TERM
+        WHERE GO_ID NOT IN (
+          SELECT GO_ID
+          FROM {0}.TERM
+          WHERE NAME IN (
+            'protein binding', 'molecular_function', 'biological_process',
+            'cellular_component'
+          )
+        )
+        ORDER BY METHOD_AC
+        """.format(user.split('/')[0])
+    )
+    kvdb_tmp = export_signatures(cur, dir)
+    cur.close()
+    con.close()
+    kvdb = compare_new(kvdb_tmp, processes, dir)
+    kvdb_tmp.remove()
+    return kvdb
+
+
 # def merge_comparisons(user: str, dsn: str, kvdbs: tuple, comparators: list,
 #                       ranks: List[str], **kwargs):
 #     logger.debug("collecting descriptions")
