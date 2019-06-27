@@ -643,56 +643,58 @@ def report_integration_changes(user: str, dsn: str):
     cur.close()
     con.close()
 
-    lost_entries = {}
-    lost_signatures = {}
+    changes = {}
     for s_acc, e_acc in previous_signatures.items():
-        if s_acc not in current_signatures:
-            lost_signatures[s_acc] = "deleted"
-        elif e_acc == current_signatures[s_acc]:
-            # Still in the same entry
-            if not current_entries[e_acc]:
-                lost_signatures[s_acc] = "entry unchecked"
-        elif current_signatures[s_acc]:
-            ne_acc = current_signatures[s_acc]
-            if current_entries[ne_acc]:
-                lost_signatures[s_acc] = ("moved from {} "
-                                          "to {}".format(e_acc, ne_acc))
+        if s_acc in current_signatures:
+            # Signature still exists
+            ne_acc = current_signatures.pop(s_acc)
+            if ne_acc:
+                # Signature still integrated
+                if e_acc != ne_acc:
+                    # In another entry
+                    if current_entries[ne_acc]:
+                        # The other entry is checked
+                        changes[s_acc] = ("moved", e_acc, ne_acc)
+                    else:
+                        # The other entry is unchecked
+                        changes[s_acc] = ("moved to unchecked", e_acc, ne_acc)
+                elif current_entries[e_acc]:
+                    pass  # No changes
+                else:
+                    # In the same (now unchecked) entry
+                    changes[s_acc] = ("entry unchecked", e_acc, '')
             else:
-                lost_signatures[
-                    s_acc] = ("moved from {} "
-                              "to unchecked entry ({})".format(e_acc, ne_acc))
+                # Signature unintegrated
+                changes[s_acc] = ("unintegrated", e_acc, '')
         else:
-            lost_signatures[s_acc] = "unintegrated"
+            # Signature does not exist any more (member database update)
+            changes[s_acc] = ("deleted", e_acc, '')
 
-        if e_acc not in current_entries:
-            lost_entries[e_acc] = "deleted"
-        elif not current_entries[e_acc]:
-            lost_entries[e_acc] = "unchecked"
+    for s_acc, ne_acc in current_signatures.items():
+        if ne_acc and current_entries[ne_acc]:
+            changes[s_acc] = ("integrated", '', ne_acc)
 
     content = """\
-Dear UniProt team,
+    Dear UniProt team,
 
-Please find below the list of recently unintegrated signatures.
+    Please find below the list of recent integration changes.
 
-Signatures
-----------
-"""
+    """
+    content += "{:<30}{:<30}{:<20}{:<20}\n".format("Signature", "Comment",
+                                                   "Previous entry",
+                                                   "Current entry")
+    content += '-' * 100 + '\n'
 
-    for acc in sorted(lost_signatures):
-        content += "  - {:<40}{}\n".format(acc, lost_signatures[acc])
+    for acc in sorted(changes, key=lambda k: k.lower()):
+        content += "{:<30}{:<30}{:<20}{:<20}\n".format(acc, *changes[acc])
 
-    content += """
-Entries
--------
-"""
-    for acc in sorted(lost_entries):
-        content += "  - {:<40}{}\n".format(acc, lost_entries[acc])
+    content += "\nBest regards,\nThe InterPro Production Team\n"
 
     send_mail(
         to_addrs=["mblum@ebi.ac.uk"],
-        #to_addrs=["aa_dev@ebi.ac.uk"],
-        #cc_addrs=["unirule@ebi.ac.uk"],
-        #bcc_addrs=["interpro-team@ebi.ac.uk"],
+        # to_addrs=["aa_dev@ebi.ac.uk"],
+        # cc_addrs=["unirule@ebi.ac.uk"],
+        # bcc_addrs=["interpro-team@ebi.ac.uk"],
         subject="Protein update {}: integration changes".format(release),
         content=content
     )
