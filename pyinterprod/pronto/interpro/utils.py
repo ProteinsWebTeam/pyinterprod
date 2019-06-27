@@ -346,6 +346,19 @@ class Kvdb(object):
     def size(self) -> int:
         return os.path.getsize(self.filepath)
 
+    def range(self, low: str, high: Optional[str]=None):
+        self.close()
+        with sqlite3.connect(self.filepath) as con:
+            if high:
+                sql = "SELECT id, val FROM data WHERE id BETWEEN ? AND ? ORDER BY id"
+                params = (low, high)
+            else:
+                sql = "SELECT id, val FROM data WHERE id >= ? ORDER BY id"
+                params = (low,)
+
+            for row in con.execute(sql, params):
+                yield row[0], pickle.loads(row[1])
+
     def sync(self):
         if self.cache:
             self.con.executemany(
@@ -355,11 +368,13 @@ class Kvdb(object):
             self.cache = {}
 
     def close(self):
-        if self.con is not None:
-            self.sync()
-            self.con.commit()
-            self.con.close()
-            self.con = None
+        if self.con is None:
+            return
+
+        self.sync()
+        self.con.commit()
+        self.con.close()
+        self.con = None
 
     def remove(self):
         self.close()
