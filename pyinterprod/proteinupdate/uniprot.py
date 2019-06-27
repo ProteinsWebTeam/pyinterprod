@@ -675,11 +675,11 @@ def report_integration_changes(user: str, dsn: str):
             changes[s_acc] = ("integrated", '', ne_acc)
 
     content = """\
-    Dear UniProt team,
+Dear UniProt team,
 
-    Please find below the list of recent integration changes.
+Please find below the list of recent integration changes.
 
-    """
+"""
     content += "{:<30}{:<30}{:<20}{:<20}\n".format("Signature", "Comment",
                                                    "Previous entry",
                                                    "Current entry")
