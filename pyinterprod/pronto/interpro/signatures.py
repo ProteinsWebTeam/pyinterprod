@@ -206,13 +206,28 @@ def cmp_terms(user: str, dsn: str, processes: int=1,
     return obj
 
 
+def process_new(kvdb: Kvdb, task_queue: Queue, done_queue: Queue,
+                dir: Optional[str]):
+    with PersistentBuffer(dir=dir) as buffer:
+        for acc_1, values_1 in iter(task_queue.get, None):
+            counts = {}
+            gen = kvdb.range(acc_1)
+            next(gen)
+            for acc_2, values_2 in gen:
+                counts[acc_2] = len(values_1 & values_2)
+
+            buffer.add((acc_1, len(values_1), counts))
+
+    done_queue.put(buffer)
+
+
 def compare_new(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Tuple[Kvdb, int]:
     logger.debug("compare")
     pool = []
     task_queue = Queue(maxsize=1)
     done_queue = Queue()
     for _ in range(max(1, processes - 1)):
-        p = Process(target=process, args=(kvdb, task_queue, done_queue, dir))
+        p = Process(target=process_new, args=(kvdb, task_queue, done_queue, dir))
         p.start()
         pool.append(p)
 
