@@ -525,7 +525,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     with open(os.path.join(tmpdir, "comparators"), "wb") as fh:
         pickle.dump(comparators, fh)
 
-    with ProcessPoolExecutor(processes) as pe, ThreadPoolExecutor() as te:
+    with ProcessPoolExecutor(max_workers=3) as pe, ThreadPoolExecutor() as te:
         fs = {}
         f = te.submit(_finalize_method2protein, user, dsn)
         fs[f] = "METHOD2PROTEIN"
@@ -536,7 +536,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         f = pe.submit(_create_method_term, user, dsn, terms)
         fs[f] = "METHOD_TERM"
 
-        processes -= len(fs)
+        processes -= 3
         num_errors = 0
         for f in as_completed(fs):
             table = fs[f]
