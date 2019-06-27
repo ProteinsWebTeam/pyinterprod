@@ -82,9 +82,12 @@ def _run(pool: ThreadPoolExecutor, steps: dict, done: set, failed: set):
     running = {}
     pending = {}
     for n, s in steps.items():
-        if s["requires"]:
-            pending[n] = s
+        for rn in s["requires"]:
+            if rn in steps:
+                pending[n] = s
+                break
         else:
+            # no requirement scheduled to run
             running[n] = s
 
     fs = {_submit(pool, n, s): n for n, s in running.items()}
