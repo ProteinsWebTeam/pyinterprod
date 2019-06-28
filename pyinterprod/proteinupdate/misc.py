@@ -28,7 +28,7 @@ any of the following actions:
     - delete an Interpro entry (unless it does not have any signature).
     
 InterPro entries may be created (but do NOT integrate any entry), \
-or modified (name, short name, abstracts, GO terms, etc.).
+modified (name, short name, abstracts, GO terms, etc.), or checked/unchecked.
 
 An email notification will automatically be sent at the end of the update.
 
