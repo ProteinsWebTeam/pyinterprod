@@ -71,7 +71,6 @@ def load_matches(user: str, dsn: str):
             PROTEIN_AC VARCHAR2(15) NOT NULL,
             METHOD_AC VARCHAR2(25) NOT NULL,
             DBCODE CHAR(1) NOT NULL,
-            MODEL_AC VARCHAR2(25),
             POS_FROM NUMBER(5) NOT NULL,
             POS_TO NUMBER(5) NOT NULL,
             FRAGMENTS VARCHAR2(200) DEFAULT NULL
@@ -87,23 +86,17 @@ def load_matches(user: str, dsn: str):
     table = orautils.TablePopulator(
         con=con,
         query="INSERT /*+ APPEND */ INTO {}.MATCH "
-              "VALUES(:1, :2, :3, :4, :5, :6, :7)".format(owner),
+              "VALUES(:1, :2, :3, :4, :5, :6)".format(owner),
         autocommit=True
     )
     cur.execute(
         """
         SELECT
-          PROTEIN_AC, METHOD_AC, DBCODE,
-          CASE
-            WHEN MODEL_AC IS NOT NULL AND MODEL_AC != METHOD_AC
-            THEN MODEL_AC
-            ELSE NULL
-          END AS MODEL_AC,
-          POS_FROM, POS_TO, FRAGMENTS
+          PROTEIN_AC, METHOD_AC, DBCODE, POS_FROM, POS_TO, FRAGMENTS
         FROM INTERPRO.MATCH
         UNION ALL
         SELECT
-          PROTEIN_AC, METHOD_AC, DBCODE, NULL, POS_FROM, POS_TO, NULL
+          PROTEIN_AC, METHOD_AC, DBCODE, POS_FROM, POS_TO, NULL
         FROM INTERPRO.FEATURE_MATCH
         WHERE DBCODE = 'g'
         """.format(owner)
