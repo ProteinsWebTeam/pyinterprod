@@ -256,7 +256,7 @@ def compare_new(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Tuple[Kvdb, i
 
         size += kvdb.size
 
-    return kvdb, kvdb
+    return kvdb, size
 
 
 def export_signatures(cur: cx_Oracle.Cursor, dir: Optional[str]) -> Kvdb:
