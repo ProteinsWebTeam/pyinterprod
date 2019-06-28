@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from multiprocessing import Process, Queue
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import cx_Oracle
 
@@ -221,7 +221,7 @@ def process_new(kvdb: Kvdb, task_queue: Queue, done_queue: Queue,
     done_queue.put(buffer)
 
 
-def compare_new(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Tuple[Kvdb, int]:
+def compare_new(kvdb: Kvdb, processes: int, dir: Optional[str]):
     logger.debug("compare")
     pool = []
     task_queue = Queue(maxsize=1)
@@ -248,17 +248,7 @@ def compare_new(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Tuple[Kvdb, i
     for p in pool:
         p.join()
 
-    size = kvdb.size
-    with Kvdb(dir=dir) as kvdb:
-        for buffer in buffers:
-            size += buffer.size
-            for acc, cnt, cmp in buffer:
-                kvdb[acc] = (cnt, cmp)
-            buffer.remove()
-
-        size += kvdb.size
-
-    return kvdb, size
+    return buffers
 
 
 def export_signatures(cur: cx_Oracle.Cursor, dir: Optional[str]) -> Kvdb:
@@ -282,7 +272,7 @@ def export_signatures(cur: cx_Oracle.Cursor, dir: Optional[str]) -> Kvdb:
     return kvdb
 
 
-def cmp_descriptions_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None) -> Tuple[Kvdb, int]:
+def cmp_descriptions_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None):
     con = cx_Oracle.connect(user + '@' + dsn)
     cur = con.cursor()
     cur.execute(
@@ -300,12 +290,13 @@ def cmp_descriptions_new(user: str, dsn: str, processes: int=1, dir: Optional[st
     kvdb_tmp = export_signatures(cur, dir)
     cur.close()
     con.close()
-    kvdb, size = compare_new(kvdb_tmp, processes, dir)
+    buffers = compare_new(kvdb_tmp, processes, dir)
+    size = kvdb_tmp.size
     kvdb_tmp.remove()
-    return kvdb, size
+    return buffers, size
 
 
-def cmp_taxa_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None, rank: Optional[str]=None) -> Tuple[Kvdb, int]:
+def cmp_taxa_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None, rank: Optional[str]=None):
     con = cx_Oracle.connect(user + '@' + dsn)
     cur = con.cursor()
     if rank:
@@ -329,12 +320,13 @@ def cmp_taxa_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None,
     kvdb_tmp = export_signatures(cur, dir)
     cur.close()
     con.close()
-    kvdb, size = compare_new(kvdb_tmp, processes, dir)
+    buffers = compare_new(kvdb_tmp, processes, dir)
+    size = kvdb_tmp.size
     kvdb_tmp.remove()
-    return kvdb, size
+    return buffers, size
 
 
-def cmp_terms_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None) -> Tuple[Kvdb, int]:
+def cmp_terms_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None):
     con = cx_Oracle.connect(user + '@' + dsn)
     cur = con.cursor()
     cur.execute(
@@ -355,9 +347,10 @@ def cmp_terms_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None
     kvdb_tmp = export_signatures(cur, dir)
     cur.close()
     con.close()
-    kvdb, size = compare_new(kvdb_tmp, processes, dir)
+    buffers = compare_new(kvdb_tmp, processes, dir)
+    size = kvdb_tmp.size
     kvdb_tmp.remove()
-    return kvdb, size
+    return buffers, size
 
 
 # def merge_comparisons(user: str, dsn: str, kvdbs: tuple, comparators: list,
