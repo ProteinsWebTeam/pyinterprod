@@ -186,7 +186,7 @@ def load_signatures(user: str, dsn: str):
             FULL_SEQ_COUNT NUMBER DEFAULT 0 NOT NULL,
             RESIDUE_COUNT NUMBER DEFAULT 0 NOT NULL,
             DESC_COUNT NUMBER DEFAULT 0 NOT NULL,
-            RANK_COUNT VARCHAR2(250) DEFAULT '{}' NOT NULL,
+            RANK_COUNT VARCHAR2(250) DEFAULT '{{}}' NOT NULL,
             TERM_COUNT NUMBER DEFAULT 0 NOT NULL
         ) NOLOGGING
         """.format(owner)
