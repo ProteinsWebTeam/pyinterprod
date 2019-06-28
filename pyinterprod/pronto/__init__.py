@@ -17,14 +17,8 @@ def _default_steps() -> list:
 
 def _get_steps() -> dict:
     from . import goa, interpro, uniprot
-    from .. import orautils
 
     return {
-        "clear": {
-            "func": orautils.clear_schema,
-            "skip": True,
-            "pre": True
-        },
         "annotations": {
             "func": goa.load_annotations
         },
@@ -61,80 +55,11 @@ def _get_steps() -> dict:
         "signature2protein": {
             "func": interpro.load_signature2protein,
             "requires": ("descriptions", "signatures", "taxa", "terms")
-        },
-        "predictions": {
-            "func": interpro.load_predictions,
-            "requires": ("signature2protein",)
-        },
-        "copy": {
-            "func": interpro.copy_schema,
-            "post": True
         }
     }
 
 
-def _submit(pool, name, step):
-    logger.info("{:<20}running".format(name))
-    return pool.submit(step["func"], *step["args"])
-
-
-def _run(pool: ThreadPoolExecutor, steps: dict, done: set, failed: set):
-    running = {}
-    pending = {}
-    for n, s in steps.items():
-        for rn in s["requires"]:
-            if rn in steps:
-                pending[n] = s
-                break
-        else:
-            # no requirement scheduled to run
-            running[n] = s
-
-    fs = {_submit(pool, n, s): n for n, s in running.items()}
-
-    while fs or pending:
-        for f in as_completed(fs):
-            n = fs[f]
-            try:
-                f.result()
-            except Exception as exc:
-                logger.error("{:<19}failed ({})".format(n, exc))
-                failed.add(n)
-            else:
-                logger.info("{:<20}done".format(n))
-                done.add(n)
-
-            del running[n]
-
-            # Look if any pending step can be submitted/cancelled
-            num_submitted = 0
-            for o in pending.keys():
-                s = pending[o]
-                tmp = []
-                for r in s["requires"]:
-                    if r in failed:
-                        del pending[o]  # cancel step (one dependency failed)
-                        break
-                    elif r not in done:
-                        tmp.append(r)
-                else:
-                    # No dependency failed
-                    s["requires"] = tmp
-                    if not tmp:
-                        # All dependencies completed
-                        del pending[o]
-                        running[o] = s
-                        f = _submit(pool, o, s)
-                        fs[f] = o
-                        num_submitted += 1
-
-            if num_submitted:
-                break
-
-        fs = {f: n for f, n in fs.items() if n in running}
-
-
-def run(dsn: str, main_user: str, alt_user: str=None, **kwargs):
+def run(dsn: str, main_user: str, **kwargs):
     level = kwargs.get("level", logging.INFO)
     processes = kwargs.get("processes", 1)
     steps = kwargs.get("steps", _get_steps())
@@ -142,40 +67,80 @@ def run(dsn: str, main_user: str, alt_user: str=None, **kwargs):
 
     logger.setLevel(level)
 
-    for n, s in steps.items():
-        if n == "copy":
-            s["args"] = (main_user, alt_user, dsn)
-        elif n == "signature2protein":
-            s["args"] = (main_user, dsn, processes, tmpdir)
+    for name, step in steps.items():
+        if name == "signature2protein":
+            step["args"] = (main_user, dsn, processes, tmpdir)
         else:
-            s["args"] = (main_user, dsn)
+            step["args"] = (main_user, dsn)
 
-    pre = {}
-    post = {}
-    others = {}
-    for n, s in steps.items():
-        s["requires"] = list(s.get("requires", []))
-        if s.get("pre"):
-            pre[n] = s
-        elif s.get("post"):
-            post[n] = s
-        else:
-            others[n] = s
+    for step in steps.values():
+        step["requires"] = list(step.get("requires", []))
 
     with ThreadPoolExecutor(max_workers=processes) as executor:
+        pending = {}
+        running = {}
+        for name, step in steps.items():
+            for req_name in step["requires"]:
+                if req_name in steps:
+                    pending[name] = step
+                    break
+            else:
+                # no requirement scheduled to run
+                running[name] = step
+
+        fs = {}
+        for name, step in running.items():
+            logger.info("{:<20}running".format(name))
+            f = executor.submit(step["func"], *step["args"])
+            fs[f] = name
+
         done = set()
         failed = set()
-        _run(executor, pre, done, failed)
-        if failed:
-            raise RuntimeError("one or more step failed")
+        while fs or pending:
+            for f in as_completed(fs):
+                name = fs[f]
+                try:
+                    f.result()
+                except Exception as exc:
+                    logger.error("{:<19}failed ({})".format(name, exc))
+                    failed.add(name)
+                else:
+                    logger.info("{:<20}done".format(name))
+                    done.add(name)
 
-        _run(executor, others, done, failed)
-        if failed:
-            raise RuntimeError("one or more step failed")
+                del running[name]
 
-        _run(executor, post, done, failed)
-        if failed:
-            raise RuntimeError("one or more step failed")
+                # Look if any pending step can be submitted/cancelled
+                num_submitted = 0
+                for pend_name in pending.keys():
+                    pend_step = pending[pend_name]
+                    tmp = []
+                    for req_name in pend_step["requires"]:
+                        if req_name in failed:
+                            # cancel step (one dependency failed)
+                            del pending[pend_name]
+                            break
+                        elif req_name not in done:
+                            tmp.append(req_name)
+                    else:
+                        # No dependency failed
+                        # Update list of dependencies still to run
+                        pend_name["requires"] = tmp
+                        if not tmp:
+                            logger.info("{:<20}running".format(pend_name))
+                            del pending[pend_name]
+                            running[pend_name] = pend_step
+                            f = executor.submit(pend_step["func"], *pend_step["args"])
+                            fs[f] = pend_name
+                            num_submitted += 1
+
+                if num_submitted:
+                    break
+
+            fs = {f: n for f, n in fs.items() if n in running}
+
+    if failed:
+        raise RuntimeError("one or more step failed")
 
 
 def main():
