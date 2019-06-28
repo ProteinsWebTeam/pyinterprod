@@ -1,11 +1,68 @@
 # -*- coding: utf-8 -*-
 
+import time
+from datetime import datetime, timedelta
+
 import cx_Oracle
 
 from .. import logger, orautils
+from .sendmail import send_mail
+
+
+def _refresh_mviews(user: str, dsn: str, notice=3600):
+    date = datetime.now() + timedelta(seconds=notice)
+    send_mail(
+        to_addrs=["mblum@ebi.ac.uk"],
+        # to_addrs=["interpro-team@ebi.ac.uk"],
+        subject="MV update scheduled",
+        content="""\
+Dear curators,
+
+Legacy materialized views will start being updated \
+on {0:%a %d %b %Y} at {0:%H:%M}. 
+
+You may continue to use Pronto but please do not perform \
+any of the following actions:
+    - integrate a member database signature;
+    - unintegrate a member database signature;
+    - delete an Interpro entry (unless it does not have any signature).
+    
+InterPro entries may be created (but do NOT integrate any entry), \
+or modified (name, short name, abstracts, GO terms, etc.).
+
+An email notification will automatically be sent at the end of the update.
+
+The InterPro Production Team
+""".format(date)
+    )
+
+    time.sleep(notice)
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    # Ensure that legacy tables are dropped
+    orautils.drop_table(cur, "INTERPRO", "MATCH_STATS")
+    orautils.drop_table(cur, "INTERPRO", "MATCH_STATS_OLD")
+    #cur.callproc('INTERPRO.REFRESH_MATCH_COUNTS.REFRESH')
+    cur.close()
+    con.close()
+
+    send_mail(
+        to_addrs=["mblum@ebi.ac.uk"],
+        # to_addrs=["interpro-team@ebi.ac.uk"],
+        subject="MV update complete",
+        content="""\
+Dear curators,
+
+Legacy materialized views are now updated. \
+You may resume integrating or unintegrating signatures. Have fun!
+
+The InterPro Production Team
+""".format(date)
+    )
 
 
 def refresh_mviews(user: str, dsn: str):
+    return _refresh_mviews(user, dsn)
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
