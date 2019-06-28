@@ -454,16 +454,16 @@ class PersistentBuffer(object):
         self.num_chunks = 0
 
     def __del__(self):
-        self.fh.close()
+        self.close()
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.fh.close()
+        self.close()
 
     def __iter__(self):
-        self.fh.close()
+        self.close()
         with gzip.open(self.filename, "rb") as fh:
             for _ in range(self.num_chunks):
                 yield pickle.load(fh)
@@ -487,3 +487,9 @@ class PersistentBuffer(object):
             os.remove(self.filename)
         except FileNotFoundError:
             pass
+
+    def close(self):
+        if self.fh is None:
+            return
+        self.fh.close()
+        self.fh = None
