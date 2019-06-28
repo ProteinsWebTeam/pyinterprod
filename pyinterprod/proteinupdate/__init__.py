@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 
 
-def main():
-    import argparse
-    import json
-    import sys
+import argparse
+import json
+import sys
+from logging import DEBUG
 
+
+def main():
     from mundone import Task, Workflow
 
     from . import (interproscan, matches, misc, proteins, signatures,
@@ -187,8 +189,8 @@ def main():
         Task(
             name="pronto",
             fn=pronto.run,
-            args=(db_dsn, db_users["pronto_main"], db_users["pronto_alt"]),
-            kwargs=dict(tmpdir="/scratch", processes=16),
+            args=(db_dsn, db_users["pronto_main"]),
+            kwargs=dict(level=DEBUG, processes=16, tmpdir="/scratch"),
             scheduler=dict(queue=queue, cpu=16, mem=32000, scratch=32000),
             requires=["update-matches", "update-feature-matches", "taxonomy",
                       "signatures-descriptions"]
