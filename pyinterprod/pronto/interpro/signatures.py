@@ -235,7 +235,10 @@ def compare_new(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Tuple[Kvdb, i
     for acc_1, taxids_1 in kvdb:
         task_queue.put((acc_1, taxids_1))
         i += 1
-        logger.debug(f"{acc_1:<40}{i:>15}")
+        if not i % 1000:
+            logger.debug(f"{i:>15}")
+
+    logger.debug(f"{i:>15}")
 
     for _ in pool:
         task_queue.put(None)
@@ -245,7 +248,6 @@ def compare_new(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Tuple[Kvdb, i
     for p in pool:
         p.join()
 
-    logger.debug("merge")
     size = kvdb.size
     with Kvdb(dir=dir) as kvdb:
         for buffer in buffers:
