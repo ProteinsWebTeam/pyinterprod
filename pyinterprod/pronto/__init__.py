@@ -59,7 +59,7 @@ def _get_steps() -> dict:
     }
 
 
-def run(dsn: str, main_user: str, **kwargs):
+def run(user: str, dsn: str, **kwargs):
     level = kwargs.get("level", logging.INFO)
     processes = kwargs.get("processes", 1)
     steps = kwargs.get("steps", _get_steps())
@@ -69,9 +69,9 @@ def run(dsn: str, main_user: str, **kwargs):
 
     for name, step in steps.items():
         if name == "signature2protein":
-            step["args"] = (main_user, dsn, processes, tmpdir)
+            step["args"] = (user, dsn, processes, tmpdir)
         else:
-            step["args"] = (main_user, dsn)
+            step["args"] = (user, dsn)
 
     for step in steps.values():
         step["requires"] = list(step.get("requires", []))
@@ -112,7 +112,7 @@ def run(dsn: str, main_user: str, **kwargs):
 
                 # Look if any pending step can be submitted/cancelled
                 num_submitted = 0
-                for pend_name in pending.keys():
+                for pend_name in list(pending.keys()):
                     pend_step = pending[pend_name]
                     tmp = []
                     for req_name in pend_step["requires"]:
@@ -172,9 +172,8 @@ def main():
     except Exception as e:
         parser.error(e)
 
-    run(dsn=config["databases"]["interpro"]["dsn"],
-        main_user=config["databases"]["interpro"]["users"]["pronto_main"],
-        alt_user=config["databases"]["interpro"]["users"]["pronto_alt"],
+    run(config["databases"]["interpro"]["users"]["pronto_main"],
+        config["databases"]["interpro"]["dsn"],
         steps={k: v for k, v in _get_steps().items() if k in args.steps},
         tmpdir=args.tmp,
         processes=args.processes,
