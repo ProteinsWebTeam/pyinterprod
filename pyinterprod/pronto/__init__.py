@@ -125,7 +125,7 @@ def run(user: str, dsn: str, **kwargs):
                     else:
                         # No dependency failed
                         # Update list of dependencies still to run
-                        pend_name["requires"] = tmp
+                        pend_step["requires"] = tmp
                         if not tmp:
                             logger.info("{:<20}running".format(pend_name))
                             del pending[pend_name]
