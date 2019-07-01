@@ -1,12 +1,19 @@
 {
-    "database": {
-        "dsn": "",
-        "users": {
-            "interpro": "",
-            "iprscan": "",
-            "uniparc": "",
-            "pronto_main": "",
-            "pronto_alt": ""
+    "databases": {
+        "interpro": {
+            "dsn": "",
+            "users": {
+                "interpro": "",
+                "iprscan": "",
+                "uniparc": "",
+                "pronto_main": "",
+                "pronto_alt": ""
+            }
+        },
+        "others": {
+            "ISPRO": "",
+            "UAREAD": "",
+            "UAPRO": ""
         }
     },
     "flat_files": {
