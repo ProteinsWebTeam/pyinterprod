@@ -266,8 +266,8 @@ def export_signatures(cur: cx_Oracle.Cursor, dir: Optional[str]) -> Kvdb:
 
             values.add(val)
 
-            if _acc:
-                kvdb[_acc] = values
+        if _acc:
+            kvdb[_acc] = values
 
     return kvdb
 
