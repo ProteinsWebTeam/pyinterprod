@@ -238,9 +238,9 @@ def compare_new(kvdb: Kvdb, processes: int, dir: Optional[str]):
         task_queue.put((acc_1, taxids_1))
         i += 1
         j += (s - i)
-        logger.debug(f"{acc_1:<30}{i:>9,}/{s:,}   {j:>15,}/{n:,}")
+        logger.debug(f"{acc_1:<30}{i:>9}/{s:}   {j/n*100:>10.2f}")
 
-    logger.debug(f"{acc_1:<30}{i:>9,}/{s:,}   {j:>15,}/{n:,}")
+    logger.debug(f"{acc_1:<30}{i:>9}/{s:}   {j/n*100:>10.2f}")
 
     for _ in pool:
         task_queue.put(None)
