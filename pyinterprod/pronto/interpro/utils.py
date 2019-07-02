@@ -331,6 +331,15 @@ class Kvdb(object):
             for row in con.execute("SELECT id, val FROM data ORDER BY id"):
                 yield row[0], pickle.loads(row[1])
 
+    def __len__(self) -> int:
+        self.close()
+        with sqlite3.connect(self.filepath) as con:
+            cur = con.cursor()
+            cur.execute("SELECT COUNT(*) FROM data")
+            n = cur.fetchone()[0]
+            cur.close()
+        return n
+
     def __setitem__(self, key: str, value: Any):
         if self.writeback:
             self.cache[key] = value
