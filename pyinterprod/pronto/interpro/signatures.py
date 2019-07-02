@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import math
 from multiprocessing import Process, Queue
 from typing import List, Optional, Tuple
 
@@ -231,16 +232,18 @@ def compare_new(kvdb: Kvdb, processes: int, dir: Optional[str]):
         p.start()
         pool.append(p)
 
-    i = j = 0
-    s = len(kvdb)
-    n = (pow(s, 2) - s) // 2
-    for acc_1, taxids_1 in kvdb:
+    s = len(kvdb)               # matrix of shape (s, s)
+    n = (pow(s, 2) - s) // 2    # number of items (half-matrix - diagonal)
+    c = pc = _pc = 0            # c: number of items done, pc/_pc: percent
+    for i, (acc_1, taxids_1) in enumerate(kvdb):
         task_queue.put((acc_1, taxids_1))
-        i += 1
-        j += (s - i)
-        logger.debug(f"{acc_1:<30}{i:>9}/{s:}   {j/n*100:>10.2f}")
+        c += s - (i + 1)
+        pc = math.floor(c*100/n*10) / 10
+        if pc > _pc:
+            logger.debug(f"{i+1:>9}/{s:}{pc:>10}%")
+            _pc = pc
 
-    logger.debug(f"{acc_1:<30}{i:>9}/{s:}   {j/n*100:>10.2f}")
+    logger.debug(f"{i+1:>9}/{s:}{pc:>10}%")
 
     for _ in pool:
         task_queue.put(None)
