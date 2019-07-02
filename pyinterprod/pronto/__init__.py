@@ -46,6 +46,10 @@ def _get_steps() -> dict:
         "signatures": {
             "func": interpro.load_signatures
         },
+        "signatures2": {
+            "func": interpro.update_signatures,
+            "requires": ("signatures", "matches")
+        },
         "taxa": {
             "func": interpro.load_taxa
         },

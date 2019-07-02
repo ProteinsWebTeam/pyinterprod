@@ -66,31 +66,8 @@ def load_matches(user: str, dsn: str):
     orautils.drop_table(cur, owner, "MATCH", purge=True)
     cur.execute(
         """
-        CREATE TABLE {}.MATCH
-        (
-            PROTEIN_AC VARCHAR2(15) NOT NULL,
-            METHOD_AC VARCHAR2(25) NOT NULL,
-            DBCODE CHAR(1) NOT NULL,
-            POS_FROM NUMBER(5) NOT NULL,
-            POS_TO NUMBER(5) NOT NULL,
-            FRAGMENTS VARCHAR2(200) DEFAULT NULL
-        ) NOLOGGING
-        """.format(owner)
-    )
-
-    """
-    Insert directly signature matches and MobiDB-lite matches
-    For some signature matches, the HMM model accession
-        is the signature accession itself: in such cases, use NULL
-    """
-    table = orautils.TablePopulator(
-        con=con,
-        query="INSERT /*+ APPEND */ INTO {}.MATCH "
-              "VALUES(:1, :2, :3, :4, :5, :6)".format(owner),
-        autocommit=True
-    )
-    cur.execute(
-        """
+        CREATE TABLE {}.MATCH NOLOGGING
+        AS
         SELECT
           PROTEIN_AC, METHOD_AC, DBCODE, POS_FROM, POS_TO, FRAGMENTS
         FROM INTERPRO.MATCH
@@ -101,17 +78,6 @@ def load_matches(user: str, dsn: str):
         WHERE DBCODE = 'g'
         """.format(owner)
     )
-
-    signatures = {}
-    for row in cur:
-        try:
-            signatures[row[1]] += 1
-        except KeyError:
-            signatures[row[1]] = 1
-        finally:
-            table.insert(row)
-    table.close()
-
     orautils.gather_stats(cur, owner, "MATCH")
     orautils.grant(cur, owner, "MATCH", "SELECT", "INTERPRO_SELECT")
 
@@ -133,6 +99,8 @@ def load_matches(user: str, dsn: str):
         ON {}.MATCH (DBCODE) NOLOGGING
         """.format(owner)
     )
+    cur.close()
+    con.close()
 
     # cur.execute(
     #     """
@@ -145,14 +113,31 @@ def load_matches(user: str, dsn: str):
     # )
     # signatures = cur.fetchall()
 
-    for acc, num_proteins in signatures.items():
-        cur.execute(
-            """
-            UPDATE {0}.METHOD
-            SET PROTEIN_COUNT = :1
-            WHERE METHOD_AC = :2
-            """.format(owner), (num_proteins, acc)
-        )
+    # for acc, num_proteins in signatures.items():
+    #     cur.execute(
+    #         """
+    #         UPDATE {0}.METHOD
+    #         SET PROTEIN_COUNT = :1
+    #         WHERE METHOD_AC = :2
+    #         """.format(owner), (num_proteins, acc)
+    #     )
+
+def update_signatures(user: str, dsn: str):
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    cur.execute(
+        """
+        MERGE INTO {0}.METHOD ME
+        USING (
+            SELECT METHOD_AC, COUNT(DISTINCT PROTEIN_AC) PROTEIN_COUNT
+            FROM {0}.MATCH
+            GROUP BY METHOD_AC
+        ) MA
+        ON (ME.METHOD_AC = MA.METHOD_AC)
+        WHEN MATCHED THEN UPDATE SET ME.PROTEIN_COUNT = MA.PROTEIN_COUNT
+        """.format(owner)
+    )
     con.commit()
     cur.close()
     con.close()
