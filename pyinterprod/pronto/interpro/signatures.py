@@ -289,12 +289,12 @@ def cmp_descriptions_new(user: str, dsn: str, processes: int=1, dir: Optional[st
             ORDER BY METHOD_AC
         """.format(user.split('/')[0])
     )
-    kvdb_tmp = export_signatures(cur, dir)
+    kvdb = export_signatures(cur, dir)
     cur.close()
     con.close()
-    buffers = compare_new(kvdb_tmp, processes, dir)
-    size = kvdb_tmp.size
-    kvdb_tmp.remove()
+    buffers = compare_new(kvdb, processes, dir)
+    size = kvdb.size
+    kvdb.remove()
     return buffers, size
 
 
@@ -319,12 +319,12 @@ def cmp_taxa_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None,
                 ORDER BY METHOD_AC
             """.format(user.split('/')[0])
         )
-    kvdb_tmp = export_signatures(cur, dir)
+    kvdb = export_signatures(cur, dir)
     cur.close()
     con.close()
-    buffers = compare_new(kvdb_tmp, processes, dir)
-    size = kvdb_tmp.size
-    kvdb_tmp.remove()
+    buffers = compare_new(kvdb, processes, dir)
+    size = kvdb.size
+    kvdb.remove()
     return buffers, size
 
 
@@ -346,12 +346,12 @@ def cmp_terms_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None
         ORDER BY METHOD_AC
         """.format(user.split('/')[0])
     )
-    kvdb_tmp = export_signatures(cur, dir)
+    kvdb = export_signatures(cur, dir)
     cur.close()
     con.close()
-    buffers = compare_new(kvdb_tmp, processes, dir)
-    size = kvdb_tmp.size
-    kvdb_tmp.remove()
+    buffers = compare_new(kvdb, processes, dir)
+    size = kvdb.size
+    kvdb.remove()
     return buffers, size
 
 
