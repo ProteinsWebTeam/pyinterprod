@@ -226,7 +226,7 @@ def compare_new(kvdb: Kvdb, processes: int, dir: Optional[str]):
     pool = []
     task_queue = Queue(maxsize=1)
     done_queue = Queue()
-    for _ in range(max(1, processes - 1)):
+    for _ in range(max(1, processes-1)):
         p = Process(target=process_new, args=(kvdb, task_queue, done_queue, dir))
         p.start()
         pool.append(p)
@@ -253,7 +253,7 @@ def compare_new(kvdb: Kvdb, processes: int, dir: Optional[str]):
 
 def export_signatures(cur: cx_Oracle.Cursor, dir: Optional[str]) -> Kvdb:
     logger.debug("export")
-    with Kvdb(dir=dir) as kvdb:
+    with Kvdb(dir=dir, insertonly=True) as kvdb:
         values = set()
         _acc = None
         for acc, val in cur:
