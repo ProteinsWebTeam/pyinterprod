@@ -380,7 +380,7 @@ class Kvdb(object):
         )
         self.cache = {}
 
-    def index():
+    def index(self):
         if self.insertonly:
             self.con.execute("CREATE UNIQUE INDEX idx_data ON data (id)")
 
