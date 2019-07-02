@@ -282,7 +282,7 @@ class MatchComparator(object):
 
 class Kvdb(object):
     def __init__(self, database: Optional[str]=None, dir: Optional[str]=None,
-                 writeback: bool=False):
+                 writeback: bool=False, insertonly: bool=False):
         if database:
             self.filepath = database
         else:
@@ -290,17 +290,31 @@ class Kvdb(object):
             os.close(fd)
             os.remove(self.filepath)
 
-        self.con = sqlite3.connect(self.filepath)
-        self.con.execute(
-            """
-            CREATE TABLE IF NOT EXISTS data (
-                id TEXT PRIMARY KEY NOT NULL,
-                val TEXT NOT NULL
-            )
-            """
-        )
-        self.cache = {}
         self.writeback = writeback
+        self.insertonly = insertonly
+        self.cache = {}
+
+        self.con = sqlite3.connect(self.filepath)
+        if self.insertonly:
+            self.con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS data (
+                    id TEXT NOT NULL,
+                    val TEXT NOT NULL
+                )
+                """
+            )
+            self.stmt = "INSERT INTO data (id, val) VALUES (?, ?)"
+        else:
+            self.con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS data (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    val TEXT NOT NULL
+                )
+                """
+            )
+            self.stmt = "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)"
 
     def __enter__(self):
         return self
@@ -321,10 +335,7 @@ class Kvdb(object):
         if self.writeback:
             self.cache[key] = value
         else:
-            self.con.execute(
-                "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
-                (key, pickle.dumps(value))
-            )
+            self.con.execute(self.stmt, (key, pickle.dumps(value)))
 
     def __getitem__(self, key: str) -> Any:
         try:
@@ -360,12 +371,18 @@ class Kvdb(object):
                 yield row[0], pickle.loads(row[1])
 
     def sync(self):
-        if self.cache:
-            self.con.executemany(
-                "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
-                ((k, pickle.dumps(v)) for k, v in self.cache.items())
-            )
-            self.cache = {}
+        if not self.cache:
+            return
+
+        self.con.executemany(
+            self.stmt,
+            ((k, pickle.dumps(v)) for k, v in self.cache.items())
+        )
+        self.cache = {}
+
+    def index():
+        if self.insertonly:
+            self.con.execute("CREATE UNIQUE INDEX idx_data ON data (id)")
 
     def close(self):
         if self.con is None:
@@ -373,6 +390,7 @@ class Kvdb(object):
 
         self.sync()
         self.con.commit()
+        self.index()
         self.con.close()
         self.con = None
 
