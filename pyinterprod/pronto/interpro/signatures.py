@@ -2,7 +2,7 @@
 
 import math
 from multiprocessing import Process, Queue
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import cx_Oracle
 
@@ -301,27 +301,17 @@ def cmp_descriptions_new(user: str, dsn: str, processes: int=1, dir: Optional[st
     return buffers, size
 
 
-def cmp_taxa_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None, rank: Optional[str]=None):
+def cmp_taxa_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None):
     con = cx_Oracle.connect(user + '@' + dsn)
     cur = con.cursor()
-    if rank:
-        cur.execute(
-            """
-                SELECT METHOD_AC, TAX_ID
-                FROM {}.METHOD_TAXA
-                WHERE RANK = :1
-                ORDER BY METHOD_AC
-            """.format(user.split('/')[0]),
-            (rank,)
-        )
-    else:
-        cur.execute(
-            """
-                SELECT METHOD_AC, TAX_ID
-                FROM {}.METHOD_TAXA
-                ORDER BY METHOD_AC
-            """.format(user.split('/')[0])
-        )
+    cur.execute(
+        """
+        SELECT METHOD_AC, TAX_ID
+        FROM {}.METHOD_TAXA
+        WHERE RANK IN ('superkingdom','kingdom','class','family','species')
+        ORDER BY METHOD_AC
+        """.format(user.split('/')[0])
+    )
     kvdb = export_signatures(cur, dir)
     cur.close()
     con.close()
