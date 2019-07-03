@@ -560,7 +560,7 @@ def _load_comparators(user: str, dsn: str, comparators: list):
         query="""
                 MERGE INTO {}.METHOD_SIMILARITY
                 USING DUAL ON (METHOD_AC1 = :ac1 AND METHOD_AC2 = :ac2)
-                WHEN MATCHED THEN UPDATE SET 
+                WHEN MATCHED THEN UPDATE SET
                   TERM_INDEX=:idx, TERM_CONT1=:ct1, TERM_CONT2=:ct2
                 WHEN NOT MATCHED THEN INSERT (
                   METHOD_AC1, METHOD_AC2, TERM_INDEX, TERM_CONT1, TERM_CONT2
@@ -847,3 +847,76 @@ def _enable_schema(user: str, dsn: str):
     con.commit()
     cur.close()
     con.close()
+
+
+def report_description_changes(user: str, dsn: str, dst: str):
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+
+    cur.execute("SELECT ENTRY_AC, CHECKED FROM INTERPRO.ENTRY")
+    entries = dict(cur.fetchall())
+
+    cur.execute(
+        """
+        SELECT DISTINCT EM.ENTRY_AC, M.TEXT
+        FROM INTERPRO.ENTRY2METHOD EM
+        INNER JOIN INTERPRO.METHOD2SWISS_DE M
+          ON EM.METHOD_AC = M.METHOD_AC
+        WHERE EM.ENTRY_AC IN (
+          SELECT ENTRY_AC FROM INTERPRO.ENTRY WHERE ENTRY_TYPE='F'
+        )
+        """
+    )
+    then = {}
+    for acc, text in cur:
+        if acc in then:
+            then.add(text)
+        else:
+            then = {text}
+
+    cur.execute(
+        """
+        SELECT DISTINCT EM.ENTRY_AC, M.TEXT
+        SELECT  M.METHOD_AC, D.TEXT
+        FROM {0}.METHOD2PROTEIN PARTITION(M2P_SWISSP) M
+        INNER JOIN {0}.DESC_VALUE D
+          ON M.DESC_ID = D.DESC_ID
+        INNER JOIN INTERPRO.ENTRY2METHOD EM
+          ON M.METHOD_AC = EM.METHOD_AC
+       WHERE EM.ENTRY_AC IN (
+         SELECT ENTRY_AC FROM INTERPRO.ENTRY WHERE ENTRY_TYPE='F'
+       )
+        """
+    )
+    now = {}
+    for acc, text in cur:
+        if acc in now:
+            now.add(text)
+        else:
+            now = {text}
+
+    cur.close()
+    con.close()
+
+    changes = {}
+    for acc, descs_then in then.items():
+        try:
+            descs_now = now.pop(acc)
+        except KeyError:
+            # Lost all descriptions
+            changes[acc] = ([], descs_then)
+        else:
+            changes[acc] = (descs_then-descs_now, descs_now-descs_then)
+
+    for acc, descs_now in now.items():
+        changes[acc] = (descs_now, []])
+
+    with open(dst, "wt") as fh:
+        fh.write("Accession\tChecked\t# Lost\t# Gained\tLost\tGained\n")
+        for acc in sorted(changes):
+            lost, gained = changes[acc]
+            fh.write("{}\t{}\t{}\t{}\t{}\t{}\n".format(
+                acc, entries[acc], len(lost), len(gained), " | ".join(lost),
+                " | ".join(gained)
+            ))
