@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import cx_Oracle
 
@@ -394,20 +394,20 @@ class TablePopulator(object):
     def __del__(self):
         self.close()
 
-    def _execute(self, record: tuple):
+    def _execute(self, record: Union[dict, tuple]):
         self.records.append(record)
         self.rowcount += 1
 
         if len(self.records) == self.buffer_size:
             self.flush()
 
-    def insert(self, record: tuple):
+    def insert(self, record: Union[dict, tuple]):
         self._execute(record)
 
-    def update(self, record: tuple):
+    def update(self, record: Union[dict, tuple]):
         self._execute(record)
 
-    def delete(self, record: tuple):
+    def delete(self, record: Union[dict, tuple]):
         self._execute(record)
 
     def flush(self):
