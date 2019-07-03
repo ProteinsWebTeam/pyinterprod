@@ -176,8 +176,8 @@ def main():
     except Exception as e:
         parser.error(e)
 
-    run(config["databases"]["interpro"]["users"]["pronto_main"],
-        config["databases"]["interpro"]["dsn"],
+    run(config["database"]["users"]["pronto_main"],
+        config["databases"]["dsn"],
         steps={k: v for k, v in _get_steps().items() if k in args.steps},
         tmpdir=args.tmp,
         processes=args.processes,
