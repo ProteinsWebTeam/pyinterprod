@@ -209,6 +209,7 @@ def cmp_terms(user: str, dsn: str, processes: int=1,
 
 def process_new(kvdb: Kvdb, task_queue: Queue, done_queue: Queue,
                 dir: Optional[str]):
+    signatures = {}
     with PersistentBuffer(dir=dir) as buffer:
         for acc_1, values_1 in iter(task_queue.get, None):
             counts = {}
@@ -217,9 +218,10 @@ def process_new(kvdb: Kvdb, task_queue: Queue, done_queue: Queue,
             for acc_2, values_2 in gen:
                 counts[acc_2] = len(values_1 & values_2)
 
-            buffer.add((acc_1, len(values_1), counts))
+            buffer.add((acc_1, counts))
+            signatures[acc_1] = len(values_1)
 
-    done_queue.put(buffer)
+    done_queue.put((signatures, buffer))
 
 
 def compare_new(kvdb: Kvdb, processes: int, dir: Optional[str]):
@@ -248,12 +250,17 @@ def compare_new(kvdb: Kvdb, processes: int, dir: Optional[str]):
     for _ in pool:
         task_queue.put(None)
 
-    buffers = [done_queue.get() for _ in pool]
+    buffers = []
+    signatures = {}
+    for _ in pool:
+        _signatures, buffer = done_queue.get()
+        signatures.update(_signatures)
+        buffers.append(buffer)
 
     for p in pool:
         p.join()
 
-    return buffers
+    return signatures, buffers
 
 
 def export_signatures(cur: cx_Oracle.Cursor, dir: Optional[str]) -> Kvdb:
@@ -295,10 +302,10 @@ def cmp_descriptions_new(user: str, dsn: str, processes: int=1, dir: Optional[st
     kvdb = export_signatures(cur, dir)
     cur.close()
     con.close()
-    buffers = compare_new(kvdb, processes, dir)
-    size = kvdb.size
+    signatures, buffers = compare_new(kvdb, processes, dir)
+    size = kvdb.size + sum([b.size for b in buffers])
     kvdb.remove()
-    return buffers, size
+    return signatures, buffers, size
 
 
 def cmp_taxa_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None):
@@ -315,10 +322,10 @@ def cmp_taxa_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None)
     kvdb = export_signatures(cur, dir)
     cur.close()
     con.close()
-    buffers = compare_new(kvdb, processes, dir)
-    size = kvdb.size
+    signatures, buffers = compare_new(kvdb, processes, dir)
+    size = kvdb.size + sum([b.size for b in buffers])
     kvdb.remove()
-    return buffers, size
+    return signatures, buffers, size
 
 
 def cmp_terms_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None):
@@ -342,10 +349,10 @@ def cmp_terms_new(user: str, dsn: str, processes: int=1, dir: Optional[str]=None
     kvdb = export_signatures(cur, dir)
     cur.close()
     con.close()
-    buffers = compare_new(kvdb, processes, dir)
-    size = kvdb.size
+    signatures, buffers = compare_new(kvdb, processes, dir)
+    size = kvdb.size + sum([b.size for b in buffers])
     kvdb.remove()
-    return buffers, size
+    return signatures, buffers, size
 
 
 # def merge_comparisons(user: str, dsn: str, kvdbs: tuple, comparators: list,
