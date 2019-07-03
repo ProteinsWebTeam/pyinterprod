@@ -4,7 +4,6 @@
 import argparse
 import json
 import sys
-from logging import DEBUG
 
 
 def main():
@@ -190,7 +189,7 @@ def main():
             name="pronto",
             fn=pronto.run,
             args=(db_users["pronto_main"], db_dsn),
-            kwargs=dict(level=DEBUG, processes=16, tmpdir="/scratch"),
+            kwargs=dict(processes=16, tmpdir="/scratch"),
             scheduler=dict(queue=queue, cpu=16, mem=32000, scratch=32000),
             requires=["update-matches", "update-feature-matches", "taxonomy",
                       "signatures-descriptions"]
