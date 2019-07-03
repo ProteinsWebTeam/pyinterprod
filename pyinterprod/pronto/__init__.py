@@ -177,7 +177,7 @@ def main():
         parser.error(e)
 
     run(config["database"]["users"]["pronto_main"],
-        config["databases"]["dsn"],
+        config["database"]["dsn"],
         steps={k: v for k, v in _get_steps().items() if k in args.steps},
         tmpdir=args.tmp,
         processes=args.processes,
