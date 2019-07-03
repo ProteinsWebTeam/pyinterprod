@@ -11,7 +11,7 @@ from typing import Optional, Tuple
 import cx_Oracle
 
 from . import proteins, signatures
-from .utils import merge_comparators, merge_kvdbs, merge_organizers, Kvdb
+from .utils import merge_comparators, merge_organizers
 from ... import logger, orautils
 
 
@@ -102,25 +102,6 @@ def load_matches(user: str, dsn: str):
     cur.close()
     con.close()
 
-    # cur.execute(
-    #     """
-    #     SELECT M.METHOD_AC, COUNT(DISTINCT M.PROTEIN_AC)
-    #     FROM INTERPRO.PROTEIN P
-    #     INNER JOIN {}.MATCH M
-    #       ON P.PROTEIN_AC = M.PROTEIN_AC
-    #     GROUP BY M.METHOD_AC
-    #     """.format(owner)
-    # )
-    # signatures = cur.fetchall()
-
-    # for acc, num_proteins in signatures.items():
-    #     cur.execute(
-    #         """
-    #         UPDATE {0}.METHOD
-    #         SET PROTEIN_COUNT = :1
-    #         WHERE METHOD_AC = :2
-    #         """.format(owner), (num_proteins, acc)
-    #     )
 
 def update_signatures(user: str, dsn: str):
     owner = user.split('/')[0]
@@ -501,9 +482,6 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     logger.info("disk usage: {:.0f} MB".format(size/1024**2))
 
-    with open(os.path.join(tmpdir, "comparators"), "wb") as fh:
-        pickle.dump(comparators, fh)
-
     with ProcessPoolExecutor(max_workers=3) as pe, ThreadPoolExecutor() as te:
         fs = {}
         f = te.submit(_finalize_method2protein, user, dsn)
@@ -514,6 +492,8 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         fs[f] = "METHOD_TAXA"
         f = pe.submit(_create_method_term, user, dsn, terms)
         fs[f] = "METHOD_TERM"
+
+        _load_comparators(user, dsn, comparators)
 
         processes -= 3
         num_errors = 0
@@ -530,13 +510,90 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
                 else:
                     fn = signatures.cmp_terms
 
-                #kvdb, size = fn(user, dsn, processes=processes, dir=tmpdir)
+                # counts, buffers, size = fn(user, dsn, processes=processes, dir=tmpdir)
             else:
                 num_errors += 1
                 logger.error("{}: exception raised ({})".format(table, exc))
 
     if num_errors:
         raise RuntimeError("one or more tables could not be created")
+
+
+def _load_comparators(user: str, dsn: str, comparators: list):
+    counts, comparisons = merge_comparators(comparators, remove=True)
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    orautils.drop_table(cur, owner, "METHOD_SIMILARITY")
+    cur.execute(
+        """
+        CREATE TABLE {}.METHOD_SIMILARITY
+        (
+            METHOD_AC1 VARCHAR2(25) NOT NULL,
+            METHOD_AC2 VARCHAR2(25) NOT NULL,
+            DESC_INDEX BINARY_DOUBLE DEFAULT NULL,
+            DESC_CONT1 BINARY_DOUBLE DEFAULT NULL,
+            DESC_CONT2 BINARY_DOUBLE DEFAULT NULL,
+            TAXA_INDEX BINARY_DOUBLE DEFAULT NULL,
+            TAXA_CONT1 BINARY_DOUBLE DEFAULT NULL,
+            TAXA_CONT2 BINARY_DOUBLE DEFAULT NULL,
+            TERM_INDEX BINARY_DOUBLE DEFAULT NULL,
+            TERM_CONT1 BINARY_DOUBLE DEFAULT NULL,
+            TERM_CONT2 BINARY_DOUBLE DEFAULT NULL,
+            COLL_INDEX BINARY_DOUBLE DEFAULT NULL,
+            COLL_CONT1 BINARY_DOUBLE DEFAULT NULL,
+            COLL_CONT2 BINARY_DOUBLE DEFAULT NULL,
+            POVR_INDEX BINARY_DOUBLE DEFAULT NULL,
+            POVR_CONT1 BINARY_DOUBLE DEFAULT NULL,
+            POVR_CONT2 BINARY_DOUBLE DEFAULT NULL,
+            ROVR_INDEX BINARY_DOUBLE DEFAULT NULL,
+            ROVR_CONT1 BINARY_DOUBLE DEFAULT NULL,
+            ROVR_CONT2 BINARY_DOUBLE DEFAULT NULL,
+            CONSTRAINT PK_METHOD_SIMILARITY PRIMARY KEY (METHOD_AC1, METHOD_AC2)
+        ) NOLOGGING
+        """.format(owner)
+    )
+    cur.close()
+
+    table = orautils.TablePopulator(
+        con=con,
+        query="""
+                MERGE INTO {}.METHOD_SIMILARITY
+                USING DUAL ON (METHOD_AC1 = :ac1 AND METHOD_AC2 = :ac2)
+                WHEN MATCHED THEN UPDATE SET 
+                  TERM_INDEX=:idx, TERM_CONT1=:ct1, TERM_CONT2=:ct2
+                WHEN NOT MATCHED THEN INSERT (
+                  METHOD_AC1, METHOD_AC2, TERM_INDEX, TERM_CONT1, TERM_CONT2
+                ) VALUES (:ac1, :ac2, :idx, :ct1, :ct2)
+            """.format(owner)
+    )
+    for acc1, (n_prot1, n_res1) in counts.items():
+        for acc2 in comparisons[acc1]:
+            n_prot2, n_res2 = counts[acc2]
+            n_col, n_prot_over, n_res_over = comparisons[acc1][acc2]
+            table.insert({
+                "ac1": acc1,
+                "ac2": acc2,
+                # Collocation
+                "cidx": n_col / (n_prot1 + n_prot2 - n_col),
+                "cct1": n_col / n_prot1,
+                "cct2": n_col / n_prot2,
+                # Protein overlap
+                "pidx": n_prot_over / (n_prot1 + n_prot2 - n_prot_over),
+                "pct1": n_prot_over / n_prot1,
+                "pct2": n_prot_over / n_prot2,
+                # Residue overlap
+                "ridx": n_res_over / (n_res1 + n_res2 - n_res_over),
+                "rct1": n_res_over / n_res1,
+                "rct2": n_res_over / n_res2,
+            })
+
+    table.close()
+    con.commit()
+    con.close()
+
+    # orautils.grant(cur, owner, "METHOD_SIMILARITY", "SELECT", "INTERPRO_SELECT")
+    # orautils.gather_stats(cur, owner, "METHOD2PROTEIN")
 
 
 def _finalize_method2protein(user: str, dsn: str):
@@ -763,106 +820,6 @@ def _create_method_term(user: str, dsn: str, organizers: list):
     con.close()
 
 
-def _load_comparisons(user: str, dsn: str, comparators: list, kvdbs: tuple, processes: int=1):
-    # m_signatures, m_comparisons = merge_comparators(comparators)
-
-    pool = []
-    task_queue = Queue(maxsize=1)
-    done_queue = Queue()
-    for _ in range(max(1, processes-1)):
-        p = Process(target=signatures.agg_kvdb, args=(task_queue, done_queue))
-        p.start()
-        pool.append(p)
-
-    # kvdbs: descriptions, taxa, terms
-    for desc_id, values in merge_kvdbs(kvdbs[0]):
-        task_queue.put(values)
-
-
-
-
-    return
-
-
-
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    query = """
-        UPDATE {}.METHOD
-        SET
-          FULL_SEQ_COUNT = :1,
-          RESIDUE_COUNT = :2,
-          DESC_COUNT = :3,
-          RANK_COUNT = :4,
-          TERM_COUNT = :5
-        WHERE METHOD_AC = :6
-    """.format(owner)
-    table = orautils.TablePopulator(con, query=query)
-    for acc, (n_seq, n_res) in m_signatures.items():
-        n_descr = d_signatures.get(acc, 0)
-        if acc in ta_signatures:
-            ranks = dict(zip(RANKS, ta_signatures[acc]))
-        else:
-            ranks = {}
-        n_terms = te_signatures.get(acc, 0)
-        table.insert((n_seq, n_res, n_descr, json.dumps(ranks), n_terms, acc))
-    table.close()
-    con.commit()
-
-    orautils.drop_table(cur, owner, "METHOD_COMPARISON", purge=True)
-    cur.execute(
-        """
-        CREATE TABLE {}.METHOD_COMPARISON
-        (
-            METHOD_AC1 VARCHAR2(25) NOT NULL,
-            METHOD_AC2 VARCHAR2(25) NOT NULL,
-            COLLOCATION NUMBER NOT NULL,
-            PROTEIN_OVERLAP NUMBER NOT NULL,
-            RESIDUE_OVERLAP NUMBER NOT NULL,
-            DESC_COUNT NUMBER NOT NULL,
-            RANK_COUNT VARCHAR2(250) NOT NULL,
-            TERM_COUNT NUMBER NOT NULL
-        ) NOLOGGING
-        """.format(owner)
-    )
-    query = """
-        INSERT /*+ APPEND */ INTO {}.METHOD_COMPARISON
-        VALUES (:1, :2, :3, :4, :5, :6, :7, :8)
-    """.format(owner)
-    table = orautils.TablePopulator(con, query=query, autocommit=True)
-    for acc_1 in m_comparisons:
-        d = d_comparisons.get(acc_1, {})
-        ta = ta_comparisons.get(acc_1, {})
-        te = te_comparisons.get(acc_1, {})
-        for acc_2, m_counts in m_comparisons[acc_1].items():
-            d_count = d.get(acc_2, 0)
-            if acc_2 in ta:
-                ranks = dict(zip(RANKS, ta[acc_2]))
-            else:
-                ranks = {}
-            te_count = te.get(acc_2, 0)
-            table.insert((acc_1, acc_2, *m_counts, d_count, json.dumps(ranks), te_count))
-    table.close()
-    orautils.gather_stats(cur, owner, "METHOD_COMPARISON")
-    orautils.grant(cur, owner, "METHOD_COMPARISON", "SELECT", "INTERPRO_SELECT")
-    cur.execute(
-        """
-        CREATE INDEX I_METHOD_COMPARISON$AC1
-        ON {}.METHOD_COMPARISON (METHOD_AC1) NOLOGGING
-        """.format(owner)
-    )
-    cur.execute(
-        """
-        CREATE INDEX I_METHOD_COMPARISON$AC2
-        ON {}.METHOD_COMPARISON (METHOD_AC2) NOLOGGING
-        """.format(owner)
-    )
-    logger.debug("METHOD_COMPARISON ready")
-    cur.close()
-    con.close()
-
-
 def copy_schema(user_src: str, user_dst: str, dsn: str):
     #_enable_schema(user_src, dsn)
 
@@ -888,72 +845,5 @@ def _enable_schema(user: str, dsn: str):
     cur = con.cursor()
     cur.execute("UPDATE {}.CV_DATABASE SET IS_READY = 'Y'".format(owner))
     con.commit()
-    cur.close()
-    con.close()
-
-
-def _calc_sim(set_1: int, set_2: int, intersection: int) -> Tuple[float, float, float]:
-    union = set_1 + set_2 - intersection
-    return (
-        intersection / union,
-        intersection / set_1 if set_1 else 0,
-        intersection / set_2 if set_2 else 0
-    )
-
-
-def load_predictions(user: str, dsn: str):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT
-          METHOD_AC, FULL_SEQ_COUNT, RESIDUE_COUNT, DESC_COUNT, RANK_COUNT,
-          TERM_COUNT
-        FROM {}.METHOD
-        """.format(owner)
-    )
-    signatures = {}
-    for row in cur:
-        signatures[row[0]] = {
-            "seq": row[1],
-            "res": row[2],
-            "desc": row[3],
-            "ranks": json.loads(row[4]),
-            "term": row[5],
-        }
-
-    for row in cur.execute("SELECT * FROM {}.METHOD_COMPARISON".format(owner)):
-        acc_1 = row[0]
-        acc_2 = row[1]
-        s1 = signatures[acc_1]
-        s2 = signatures[acc_2]
-
-        seq_cf, seq_ct1, seq_ct2 = _calc_sim(s1["seq"], s2["seq"], row[3])
-        res_cf, res_ct1, res_ct2 = _calc_sim(s1["res"], s2["res"], row[4])
-        desc_cf, desc_ct1, desc_ct2 = _calc_sim(s1["desc"], s2["desc"], row[5])
-        term_cf, term_ct1, term_ct2 = _calc_sim(s1["term"], s2["term"], row[7])
-        rank_cf = rank_ct1 = rank_ct2 = 0
-
-        ranks = {}
-        for k, v in json.loads(row[6]).items():
-            i = RANKS.index(k)
-            w = RANK_WEIGHTS[i]
-            cf, ct1, ct2 = _calc_sim(s1["ranks"][k], s2["ranks"][k], v)
-            ranks[k] = (cf, ct1, ct2)
-            rank_cf += cf * w
-            rank_ct1 += ct1 * w
-            rank_ct2 += ct2 * w
-
-
-        # print(acc_1, acc_2)
-        # print(seq_cf, seq_ct1, seq_ct2)
-        # print(res_cf, res_ct1, res_ct2)
-        # print(desc_cf, desc_ct1, desc_ct2)
-        # print(term_cf, term_ct1, term_ct2)
-        # print(ranks)
-        # print( rank_cf, rank_ct1, rank_ct2)
-        # print("----------")
-
     cur.close()
     con.close()
