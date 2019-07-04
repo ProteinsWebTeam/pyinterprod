@@ -911,7 +911,8 @@ def report_description_changes(user: str, dsn: str, dst: str):
     for acc, descs_now in now.items():
         changes[acc] = (descs_now, [])
 
-    with open(dst, "wt") as fh:
+    dst_tmp = dst + ".tmp"
+    with open(dst_tmp", "wt") as fh:
         fh.write("Accession\tChecked\t# Lost\t# Gained\tLost\tGained\n")
         for acc in sorted(changes):
             lost, gained = changes[acc]
@@ -919,3 +920,10 @@ def report_description_changes(user: str, dsn: str, dst: str):
                 acc, entries[acc], len(lost), len(gained), " | ".join(lost),
                 " | ".join(gained)
             ))
+
+    try:
+        os.remove(dst)
+    except FileNotFoundError:
+        pass
+    finally:
+        os.rename(dst_tmp, dst)
