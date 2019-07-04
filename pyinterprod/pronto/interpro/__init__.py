@@ -909,7 +909,7 @@ def report_description_changes(user: str, dsn: str, dst: str):
             changes[acc] = (descs_then-descs_now, descs_now-descs_then)
 
     for acc, descs_now in now.items():
-        changes[acc] = (descs_now, []])
+        changes[acc] = (descs_now, [])
 
     with open(dst, "wt") as fh:
         fh.write("Accession\tChecked\t# Lost\t# Gained\tLost\tGained\n")
