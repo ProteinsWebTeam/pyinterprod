@@ -2,10 +2,10 @@
 
 import os
 import time
-import zipfile
 from datetime import datetime, timedelta
 from typing import List
 from tempfile import mkdtemp
+from zipfile import ZipFile, ZIP_DEFLATED
 
 import cx_Oracle
 
@@ -268,7 +268,7 @@ def report_to_curators(user: str, dsn: str, files: List[str]):
     dirname = mkdtemp()
     filename = os.path.join(dirname, f"protein_update_{release}.zip")
 
-    with zipfile.ZipFile(filename, 'w') as fh:
+    with ZipFile(filename, 'w', compression=ZIP_DEFLATED) as fh:
         for path in files:
             fh.write(path, arcname=os.path.basename(path))
 
