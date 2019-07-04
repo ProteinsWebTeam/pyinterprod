@@ -9,7 +9,7 @@ from .. import logger, orautils
 from .sendmail import send_mail
 
 
-def _refresh_mviews(user: str, dsn: str, notice=3600):
+def _refresh_mviews(user: str, dsn: str, notice: int=3600):
     date = datetime.now() + timedelta(seconds=notice)
     send_mail(
         to_addrs=["mblum@ebi.ac.uk"],
@@ -19,14 +19,14 @@ def _refresh_mviews(user: str, dsn: str, notice=3600):
 Dear curators,
 
 Legacy materialized views will start being updated \
-on {0:%a %d %b %Y} at {0:%H:%M}. 
+on {0:%a %d %b %Y} at {0:%H:%M}.
 
 You may continue to use Pronto but please do not perform \
 any of the following actions:
     - integrate a member database signature;
     - unintegrate a member database signature;
     - delete an Interpro entry (unless it does not have any signature).
-    
+
 InterPro entries may be created (but do NOT integrate any entry), \
 modified (name, short name, abstracts, GO terms, etc.), or checked/unchecked.
 
@@ -42,7 +42,7 @@ The InterPro Production Team
     # Ensure that legacy tables are dropped
     orautils.drop_table(cur, "INTERPRO", "MATCH_STATS")
     orautils.drop_table(cur, "INTERPRO", "MATCH_STATS_OLD")
-    #cur.callproc('INTERPRO.REFRESH_MATCH_COUNTS.REFRESH')
+    cur.callproc("INTERPRO.REFRESH_MATCH_COUNTS.REFRESH")
     cur.close()
     con.close()
 
