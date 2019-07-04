@@ -875,13 +875,13 @@ def report_description_changes(user: str, dsn: str, dst: str):
     then = {}
     for acc, text in cur:
         if acc in then:
-            then.add(text)
+            then[acc].add(text)
         else:
-            then = {text}
+            then[acc] = {text}
 
     cur.execute(
         """
-        SELECT DISTINCT EM.ENTRY_AC, M.TEXT
+        SELECT DISTINCT EM.ENTRY_AC, D.TEXT
         FROM {0}.METHOD2PROTEIN PARTITION(M2P_SWISSP) M
         INNER JOIN {0}.DESC_VALUE D
           ON M.DESC_ID = D.DESC_ID
@@ -895,9 +895,9 @@ def report_description_changes(user: str, dsn: str, dst: str):
     now = {}
     for acc, text in cur:
         if acc in now:
-            now.add(text)
+            now[acc].add(text)
         else:
-            now = {text}
+            now[acc] = {text}
 
     cur.close()
     con.close()
