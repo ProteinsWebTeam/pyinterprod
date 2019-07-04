@@ -173,6 +173,9 @@ def main():
                         help="temporary directory", default=gettempdir())
     parser.add_argument("-p", "--processes", type=int, default=1,
                         help="number of processes (default: 1)")
+    parser.add_argument("-o", "--output", default="swiss_de_families.tsv",
+                        help="output report for curators "
+                             "(default: swiss_de_families.tsv)")
     parser.add_argument("--verbose", action="store_const",
                         const=logging.DEBUG, default=logging.INFO,
                         help="display additional logging messages")
@@ -192,9 +195,10 @@ def main():
         parser.error(e)
 
     run(config["database"]["users"]["pronto_main"],
-        config["database"]["users"]["pronto_alt"]
+        config["database"]["users"]["pronto_alt"],
         config["database"]["dsn"],
         steps={k: v for k, v in _get_steps().items() if k in args.steps},
         tmpdir=args.tmp,
         processes=args.processes,
-        level=args.verbose)
+        level=args.verbose,
+        report=args.output)
