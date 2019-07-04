@@ -882,7 +882,6 @@ def report_description_changes(user: str, dsn: str, dst: str):
     cur.execute(
         """
         SELECT DISTINCT EM.ENTRY_AC, M.TEXT
-        SELECT  M.METHOD_AC, D.TEXT
         FROM {0}.METHOD2PROTEIN PARTITION(M2P_SWISSP) M
         INNER JOIN {0}.DESC_VALUE D
           ON M.DESC_ID = D.DESC_ID
