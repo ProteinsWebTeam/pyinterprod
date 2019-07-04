@@ -115,8 +115,8 @@ def get_grants(cur: cx_Oracle.Cursor, owner: str, table: str) -> List[Tuple[str,
 def get_partitions(cur: cx_Oracle.Cursor, owner: str, table: str) -> List[dict]:
     cur.execute(
         """
-        SELECT 
-          P.PARTITION_NAME, P.PARTITION_POSITION, P.HIGH_VALUE, 
+        SELECT
+          P.PARTITION_NAME, P.PARTITION_POSITION, P.HIGH_VALUE,
           K.COLUMN_NAME, K.COLUMN_POSITION
         FROM ALL_TAB_PARTITIONS P
         INNER JOIN ALL_PART_KEY_COLUMNS K
@@ -234,7 +234,7 @@ def get_constraints(cur: cx_Oracle.Cursor, owner: str, table: str) -> List[dict]
             ON C.OWNER = CC.OWNER
             AND C.CONSTRAINT_NAME = CC.CONSTRAINT_NAME
             AND C.TABLE_NAME = CC.TABLE_NAME
-        WHERE C.OWNER = :1
+        WHERE C.OWNER = UPPER(:1)
         AND C.TABLE_NAME = :2
         ORDER BY C.CONSTRAINT_NAME, CC.POSITION
         """, (owner, table)
@@ -278,7 +278,7 @@ def get_indices(cur: cx_Oracle.Cursor, owner: str, table: str) -> List[dict]:
           ON I.OWNER = IC.INDEX_OWNER
           AND I.INDEX_NAME = IC.INDEX_NAME
           AND I.TABLE_NAME = IC.TABLE_NAME
-        WHERE I.TABLE_OWNER = :1
+        WHERE I.TABLE_OWNER = UPPER(:1)
         AND I.TABLE_NAME = :2
         ORDER BY I.INDEX_NAME, IC.COLUMN_POSITION
         """, (owner, table)
