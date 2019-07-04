@@ -59,11 +59,18 @@ def _get_steps() -> dict:
         "signature2protein": {
             "func": interpro.load_signature2protein,
             "requires": ("descriptions", "signatures", "taxa", "terms")
+        },
+        "report": {
+            "func": interpro.report_description_changes,
+            "requires": ("annotations", "comments", "databases", "enzymes",
+                         "proteins", "publications", "signatures2",
+                         "signature2protein")
         }
     }
 
 
 def run(user: str, dsn: str, **kwargs):
+    report_dst = kwargs.get("report", "families_swiss_descriptions.tsv")
     level = kwargs.get("level", logging.INFO)
     processes = kwargs.get("processes", 1)
     steps = kwargs.get("steps", _get_steps())
@@ -74,6 +81,8 @@ def run(user: str, dsn: str, **kwargs):
     for name, step in steps.items():
         if name == "signature2protein":
             step["args"] = (user, dsn, processes, tmpdir)
+        elif name == "report":
+            step["args"] = (user, dsn, report_dst)
         else:
             step["args"] = (user, dsn)
 
