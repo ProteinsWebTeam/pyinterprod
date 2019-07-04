@@ -890,7 +890,7 @@ def report_description_changes(user: str, dsn: str, dst: str):
        WHERE EM.ENTRY_AC IN (
          SELECT ENTRY_AC FROM INTERPRO.ENTRY WHERE ENTRY_TYPE='F'
        )
-        """
+       """.format(owner)
     )
     now = {}
     for acc, text in cur:
