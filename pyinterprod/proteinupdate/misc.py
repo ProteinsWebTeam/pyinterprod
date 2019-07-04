@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 
+import os
 import time
+import zipfile
 from datetime import datetime, timedelta
 from typing import List
+from tempfile import mkdtemp
 
 import cx_Oracle
 
@@ -262,16 +265,26 @@ def report_to_curators(user: str, dsn: str, files: List[str]):
     cur.close()
     con.close()
 
+    dirname = mkdtemp()
+    filename = os.path.join(dirname, f"protein_update_{release}.zip")
+
+    with zipfile.ZipFile(filename, 'w') as fh:
+        for path in files:
+            fh.write(path, arcname=os.path.basename(path))
+
     send_mail(
         to_addrs=["interpro-team@ebi.ac.uk"],
-        subject="Protein update report: UniProt {}".format(release),
+        subject=f"Protein update report: UniProt {release}",
         content="""\
 Dear curators,
 
-Pronto has been rereshed. Please find attached the report files \
-for this month's protein update.
+Pronto has been rereshed. Please find attached a ZIP archive containing \
+the report files for this month's protein update.
 
 The InterPro Production Team
 """,
-        attachments=files
+        attachments=[filename]
     )
+
+    os.remove(filename)
+    os.rmdir(dirname)
