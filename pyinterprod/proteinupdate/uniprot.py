@@ -437,8 +437,7 @@ def export_databases(user: str, dsn: str, dst: str):
         os.chmod(path, 0o775)
 
     send_mail(
-        to_addrs=["mblum@ebi.ac.uk"],
-        #to_addrs=["uniprot-database@ebi.ac.uk"],
+        to_addrs=["uniprot-database@ebi.ac.uk"],
         subject="InterPro XREF files are ready",
         content="""\
 Dear UniProt team,
@@ -593,8 +592,7 @@ The InterPro Production Team
 
     try:
         send_mail(
-            #to_addrs=["interpro-team@ebi.ac.uk"],
-            to_addrs=["mblum@ebi.ac.uk"],
+            to_addrs=["interpro-team@ebi.ac.uk"],
             subject="Protein update {}: please snapshot IPPRO".format(release),
             content=content
         )
@@ -691,10 +689,9 @@ Please find below the list of recent integration changes.
     content += "\nBest regards,\nThe InterPro Production Team\n"
 
     send_mail(
-        to_addrs=["mblum@ebi.ac.uk"],
-        # to_addrs=["aa_dev@ebi.ac.uk"],
-        # cc_addrs=["unirule@ebi.ac.uk"],
-        # bcc_addrs=["interpro-team@ebi.ac.uk"],
+        to_addrs=["aa_dev@ebi.ac.uk"],
+        cc_addrs=["unirule@ebi.ac.uk"],
+        bcc_addrs=["interpro-team@ebi.ac.uk"],
         subject="Protein update {}: integration changes".format(release),
         content=content
     )

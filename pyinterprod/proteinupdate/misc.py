@@ -12,8 +12,7 @@ from .sendmail import send_mail
 def _refresh_mviews(user: str, dsn: str, notice: int=3600):
     date = datetime.now() + timedelta(seconds=notice)
     send_mail(
-        to_addrs=["mblum@ebi.ac.uk"],
-        # to_addrs=["interpro-team@ebi.ac.uk"],
+        to_addrs=["interpro-team@ebi.ac.uk"],
         subject="MV update scheduled",
         content="""\
 Dear curators,
@@ -47,8 +46,7 @@ The InterPro Production Team
     con.close()
 
     send_mail(
-        to_addrs=["mblum@ebi.ac.uk"],
-        # to_addrs=["interpro-team@ebi.ac.uk"],
+        to_addrs=["interpro-team@ebi.ac.uk"],
         subject="MV update complete",
         content="""\
 Dear curators,
