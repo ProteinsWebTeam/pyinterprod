@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import mimetypes
+import os
 from email.message import EmailMessage
 from getpass import getuser
 from smtplib import SMTP
@@ -20,7 +21,7 @@ def send_mail(to_addrs: list, subject: str, content: str,
     to_addrs = ["mblum@ebi.ac.uk"]
     cc_addrs = None
     bcc_addrs = None
-    
+
     msg = EmailMessage()
     msg.set_content(content)
 
@@ -45,7 +46,8 @@ def send_mail(to_addrs: list, subject: str, content: str,
 
             with open(path, "rb") as fh:
                 msg.add_attachment(fh.read(), maintype=maintype,
-                                   subtype=subtype, filename=path)
+                                   subtype=subtype,
+                                   filename=os.path.basename(path))
 
     with SMTP(_EBI_EMAIL_SERVER, port=_EBI_EMAIL_PORT) as s:
         s.send_message(msg)
