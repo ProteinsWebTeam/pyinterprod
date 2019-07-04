@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 import sys
 
 
@@ -41,6 +42,7 @@ def main():
     db_info = config["database"]
     db_dsn = db_info["dsn"]
     db_users = db_info["users"]
+    export_dirs = config["export"]
     queue = config["workflow"]["lsf-queue"]
 
     tasks = [
@@ -52,7 +54,7 @@ def main():
                 config["flat_files"]["swissprot"],
                 config["flat_files"]["trembl"]
             ),
-            kwargs=dict(dir="/scratch"),
+            kwargs=dict(dir="/scratch/"),
             scheduler=dict(queue=queue, mem=500, scratch=16000)
         ),
         Task(
@@ -102,7 +104,7 @@ def main():
         Task(
             name="update-matches",
             fn=matches.update_matches,
-            args=(db_users["interpro"], db_dsn, config["export"]["matches"]),
+            args=(db_users["interpro"], db_dsn, export_dirs["matches"]),
             kwargs=dict(drop_indices=True),
             scheduler=dict(queue=queue, mem=500),
             requires=["import-matches", "proteins2scan"]
@@ -162,7 +164,7 @@ def main():
         Task(
             name="dump-xrefs",
             fn=uniprot.export_databases,
-            args=(db_users["interpro"], db_dsn, config["export"]["xrefs"]),
+            args=(db_users["interpro"], db_dsn, export_dirs["xrefs"]),
             scheduler=dict(queue=queue, mem=500),
             requires=["xref-summary"]
         ),
@@ -188,11 +190,25 @@ def main():
         Task(
             name="pronto",
             fn=pronto.run,
-            args=(db_users["pronto_main"], db_dsn),
-            kwargs=dict(processes=16, tmpdir="/scratch"),
+            args=(db_users["pronto_main"], db_users["pronto_alt"], db_dsn),
+            kwargs=dict(
+                processes=16,
+                report=os.path.join(export_dirs["matches"], "swiss_de_families.tsv"),
+                tmpdir="/scratch/"
+            ),
             scheduler=dict(queue=queue, cpu=16, mem=32000, scratch=32000),
             requires=["update-matches", "update-feature-matches", "taxonomy",
                       "signatures-descriptions"]
+        ),
+        Task(
+            name="report-curators",
+            fn=misc.report_to_curators,
+            args=(db_users["interpro"], db_dsn, [
+                os.path.join(export_dirs["matches"], "entries_changes.tsv"),
+                os.path.join(export_dirs["matches"], "swiss_de_families.tsv")
+            ]),
+            scheduler=dict(queue=queue, mem=500),
+            requires=["pronto"]
         )
     ]
 

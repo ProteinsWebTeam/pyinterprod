@@ -849,6 +849,11 @@ def _enable_schema(user: str, dsn: str):
 
 
 def report_description_changes(user: str, dsn: str, dst: str):
+    try:
+        os.remove(dst)
+    except FileNotFoundError:
+        pass
+
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -921,9 +926,4 @@ def report_description_changes(user: str, dsn: str, dst: str):
                 " | ".join(gained)
             ))
 
-    try:
-        os.remove(dst)
-    except FileNotFoundError:
-        pass
-    finally:
-        os.rename(dst_tmp, dst)
+    os.rename(dst_tmp, dst)

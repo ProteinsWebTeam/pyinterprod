@@ -60,17 +60,21 @@ def _get_steps() -> dict:
             "func": interpro.load_signature2protein,
             "requires": ("descriptions", "signatures", "taxa", "terms")
         },
-        "report": {
-            "func": interpro.report_description_changes,
+        "copy": {
+            "func": interpro.copy_schema,
             "requires": ("annotations", "comments", "databases", "enzymes",
                          "proteins", "publications", "signatures2",
                          "signature2protein")
+        },
+        "report": {
+            "func": interpro.report_description_changes,
+            "requires": ("copy",)
         }
     }
 
 
-def run(user: str, dsn: str, **kwargs):
-    report_dst = kwargs.get("report", "families_swiss_descriptions.tsv")
+def run(user1: str, user2: str, dsn: str, **kwargs):
+    report_dst = kwargs.get("report", "swiss_de_families.tsv")
     level = kwargs.get("level", logging.INFO)
     processes = kwargs.get("processes", 1)
     steps = kwargs.get("steps", _get_steps())
@@ -80,11 +84,13 @@ def run(user: str, dsn: str, **kwargs):
 
     for name, step in steps.items():
         if name == "signature2protein":
-            step["args"] = (user, dsn, processes, tmpdir)
+            step["args"] = (user1, dsn, processes, tmpdir)
+        elif name == "copy":
+            step["args"] = (user1, user2, dsn)
         elif name == "report":
-            step["args"] = (user, dsn, report_dst)
+            step["args"] = (user1, dsn, report_dst)
         else:
-            step["args"] = (user, dsn)
+            step["args"] = (user1, dsn)
 
     for step in steps.values():
         step["requires"] = list(step.get("requires", []))
@@ -186,6 +192,7 @@ def main():
         parser.error(e)
 
     run(config["database"]["users"]["pronto_main"],
+        config["database"]["users"]["pronto_alt"]
         config["database"]["dsn"],
         steps={k: v for k, v in _get_steps().items() if k in args.steps},
         tmpdir=args.tmp,

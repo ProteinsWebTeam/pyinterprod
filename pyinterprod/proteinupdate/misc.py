@@ -2,6 +2,7 @@
 
 import time
 from datetime import datetime, timedelta
+from typing import List
 
 import cx_Oracle
 
@@ -251,3 +252,26 @@ def refresh_taxonomy(user: str, dsn: str):
     cur.close()
     con.close()
     logger.info("complete")
+
+
+def report_to_curators(user: str, dsn: str, files: List[str]):
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
+    release = cur.fetchone()[0]
+    cur.close()
+    con.close()
+
+    send_mail(
+        to_addrs=["interpro-team@ebi.ac.uk"],
+        subject="Protein update report: UniProt {}".format(release),
+        content="""\
+Dear curators,
+
+Pronto has been rereshed. Please find attached the report files \
+for this month's protein update.
+
+The InterPro Production Team
+""",
+        attachments=files
+    )
