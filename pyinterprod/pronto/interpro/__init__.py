@@ -558,35 +558,34 @@ def _load_comparators(user: str, dsn: str, comparators: list):
     table = orautils.TablePopulator(
         con=con,
         query="""
-                MERGE INTO {}.METHOD_SIMILARITY
-                USING DUAL ON (METHOD_AC1 = :ac1 AND METHOD_AC2 = :ac2)
-                WHEN MATCHED THEN UPDATE SET
-                  TERM_INDEX=:idx, TERM_CONT1=:ct1, TERM_CONT2=:ct2
-                WHEN NOT MATCHED THEN INSERT (
-                  METHOD_AC1, METHOD_AC2, TERM_INDEX, TERM_CONT1, TERM_CONT2
-                ) VALUES (:ac1, :ac2, :idx, :ct1, :ct2)
-            """.format(owner)
+                INSERT /*+ APPEND */ INTO {}.METHOD_SIMILARITY (
+                  METHOD_AC1, METHOD_AC2, COLL_INDEX, COLL_CONT1, COLL_CONT2,
+                  POVR_INDEX, POVR_CONT1, POVR_CONT2,
+                  ROVR_INDEX, ROVR_CONT1, ROVR_CONT2
+                )
+                VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11)
+            """.format(owner),
+        autocommit=True
     )
     for acc1, (n_prot1, n_res1) in counts.items():
         for acc2 in comparisons[acc1]:
             n_prot2, n_res2 = counts[acc2]
             n_col, n_prot_over, n_res_over = comparisons[acc1][acc2]
-            table.insert({
-                "ac1": acc1,
-                "ac2": acc2,
+            table.insert((
+                acc1, acc2,
                 # Collocation
-                "cidx": n_col / (n_prot1 + n_prot2 - n_col),
-                "cct1": n_col / n_prot1,
-                "cct2": n_col / n_prot2,
+                n_col / (n_prot1 + n_prot2 - n_col),
+                n_col / n_prot1,
+                n_col / n_prot2,
                 # Protein overlap
-                "pidx": n_prot_over / (n_prot1 + n_prot2 - n_prot_over),
-                "pct1": n_prot_over / n_prot1,
-                "pct2": n_prot_over / n_prot2,
+                n_prot_over / (n_prot1 + n_prot2 - n_prot_over),
+                n_prot_over / n_prot1,
+                n_prot_over / n_prot2,
                 # Residue overlap
-                "ridx": n_res_over / (n_res1 + n_res2 - n_res_over),
-                "rct1": n_res_over / n_res1,
-                "rct2": n_res_over / n_res2,
-            })
+                n_res_over / (n_res1 + n_res2 - n_res_over),
+                n_res_over / n_res1,
+                n_res_over / n_res2,
+            ))
 
     table.close()
     con.commit()
