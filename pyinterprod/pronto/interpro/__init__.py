@@ -917,7 +917,7 @@ def report_description_changes(user: str, dsn: str, dst: str):
         changes[acc] = (descs_now, [])
 
     dst_tmp = dst + ".tmp"
-    with open(dst_tmp", "wt") as fh:
+    with open(dst_tmp, "wt") as fh:
         fh.write("Accession\tChecked\t# Lost\t# Gained\tLost\tGained\n")
         for acc in sorted(changes):
             lost, gained = changes[acc]
