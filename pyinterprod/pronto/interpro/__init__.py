@@ -493,7 +493,9 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         f = pe.submit(_create_method_term, user, dsn, terms)
         fs[f] = "METHOD_TERM"
 
-        _load_comparators(user, dsn, comparators)
+        with open(os.path.join(tmpdir, "comparators.p"), "wb") as fh:
+            pickle.dumps(comparators, fh)
+        #_load_comparators(user, dsn, comparators)
 
         processes -= 3
         num_errors = 0
