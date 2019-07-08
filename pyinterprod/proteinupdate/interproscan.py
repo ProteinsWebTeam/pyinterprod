@@ -177,15 +177,15 @@ def _get_max_persisted_job(cur: cx_Oracle.Cursor, analysis_id: int,
         SELECT SUM(CNT)
         FROM (
             SELECT COUNT(*) AS CNT 
-            FROM IPRSCAN.IPM_RUNNING_JOBS 
+            FROM IPRSCAN.IPM_RUNNING_JOBS@ISPRO 
             WHERE ANALYSIS_ID = :analysisid
             UNION ALL
             SELECT COUNT(*) AS CNT 
-            FROM IPRSCAN.IPM_COMPLETED_JOBS 
+            FROM IPRSCAN.IPM_COMPLETED_JOBS@ISPRO
             WHERE ANALYSIS_ID = :analysisid AND PERSISTED < :persisted
             UNION ALL
             SELECT COUNT(*) AS CNT 
-            FROM IPRSCAN.IPM_PERSISTED_JOBS 
+            FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
             WHERE ANALYSIS_ID = :analysisid AND PERSISTED < :persisted
         )
         """,
