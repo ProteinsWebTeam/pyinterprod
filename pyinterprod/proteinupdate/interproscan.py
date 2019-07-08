@@ -67,14 +67,14 @@ def import_matches(user: str, dsn: str, **kwargs):
                     f = executor.submit(_import_member_db, url, "IPRSCAN", table,
                                         "MV_IPRSCAN", partition, _id, fn)
                     fs[f] = full_name
-                    logger.debug(f"\t{fs[f]} is running")
+                    logger.info(f"\t{fs[f]} is running")
 
             if signalp_actions:
                 f = executor.submit(_import_signalp, url, "IPRSCAN",
                                     "ipm_signalp_match", "MV_IPRSCAN",
                                     signalp_actions)
                 fs[f] = "SIGNALP"
-                logger.debug(f"\t{fs[f]} is running")
+                logger.info(f"\t{fs[f]} is running")
 
             for f in fs:
                 name = fs[f]
@@ -83,10 +83,10 @@ def import_matches(user: str, dsn: str, **kwargs):
                 elif f.done():
                     done.add(name)
                     if exc is None:
-                        logger.debug(f"\t{name} is ready")
+                        logger.info(f"\t{name} is ready")
                     else:
                         exc_name = exc.__class__.__name__
-                        logger.debug(f"\t{name} failed ({exc_name}: {exc})")
+                        logger.error(f"\t{name} failed ({exc_name}: {exc})")
                         num_errors += 1
 
             if len(done) == len(analyses):
