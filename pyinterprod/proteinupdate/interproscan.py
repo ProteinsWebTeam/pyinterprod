@@ -172,37 +172,32 @@ def import_sites(user: str, dsn: str, **kwargs):
 
 def _get_max_persisted_job(cur: cx_Oracle.Cursor, analysis_id: int,
                            persisted: int=1) -> Optional[str]:
+    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
+    max_upi_read = cur.fetchone()[0]
     cur.execute(
         """
         SELECT SUM(CNT)
         FROM (
-            SELECT COUNT(*) AS CNT 
-            FROM IPRSCAN.IPM_RUNNING_JOBS@ISPRO 
+            SELECT COUNT(*) AS CNT
+            FROM IPRSCAN.IPM_RUNNING_JOBS@ISPRO
             WHERE ANALYSIS_ID = :analysisid
+              AND JOB_START <= :maxupi
             UNION ALL
-            SELECT COUNT(*) AS CNT 
+            SELECT COUNT(*) AS CNT
             FROM IPRSCAN.IPM_COMPLETED_JOBS@ISPRO
-            WHERE ANALYSIS_ID = :analysisid AND PERSISTED < :persisted
+            WHERE ANALYSIS_ID = :analysisid
+              AND JOB_START <= :maxupi AND PERSISTED < :persisted
             UNION ALL
-            SELECT COUNT(*) AS CNT 
+            SELECT COUNT(*) AS CNT
             FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
-            WHERE ANALYSIS_ID = :analysisid AND PERSISTED < :persisted
+            WHERE ANALYSIS_ID = :analysisid
+              AND JOB_START <= :maxupi AND PERSISTED < :persisted
         )
         """,
-        dict(analysisid=analysis_id, persisted=persisted)
+        dict(analysisid=analysis_id, persisted=persisted, maxupi=max_upi_read)
     )
     if cur.fetchone()[0]:
         return None
-
-    # cur.execute(
-    #     """
-    #     SELECT COUNT(*)
-    #     FROM IPRSCAN.IPM_RUNNING_JOBS@ISPRO
-    #     WHERE ANALYSIS_ID = :1
-    #     """, (analysis_id,)
-    # )
-    # if cur.fetchone()[0]:
-    #     return None
 
     cur.execute(
         """
@@ -213,74 +208,6 @@ def _get_max_persisted_job(cur: cx_Oracle.Cursor, analysis_id: int,
     )
     row = cur.fetchone()
     return row[0] if row else None
-
-    # upis = []
-    # cur.execute(
-    #     """
-    #     SELECT MAX(HWM_SUBMITTED)
-    #     FROM IPRSCAN.HWM@ISPRO
-    #     WHERE ANALYSIS_ID = :1
-    #     """, (analysis_id,)
-    # )
-    # row = cur.fetchone()
-    # if row:
-    #     upis.append(row[0])
-    #
-    # cur.execute(
-    #     """
-    #     SELECT MAX(JOB_END)
-    #     FROM IPRSCAN.IPM_RUNNING_JOBS@ISPRO
-    #     WHERE ANALYSIS_ID = :1
-    #     """, (analysis_id,)
-    # )
-    # row = cur.fetchone()
-    # if row:
-    #     upis.append(row[0])
-    #
-    # cur.execute(
-    #     """
-    #     SELECT MIN(JOB_END)
-    #     FROM (
-    #         SELECT MIN(JOB_END) JOB_END
-    #         FROM IPRSCAN.IPM_COMPLETED_JOBS@ISPRO
-    #         WHERE ANALYSIS_ID = :analysisid
-    #         AND PERSISTED = 0
-    #         UNION ALL
-    #         SELECT MAX(JOB_END) JOB_END
-    #         FROM IPRSCAN.IPM_COMPLETED_JOBS@ISPRO
-    #         WHERE ANALYSIS_ID = :analysisid
-    #         AND PERSISTED = 1
-    #     )
-    #     """, dict(analysisid=analysis_id)
-    # )
-    # row = cur.fetchone()
-    # if row:
-    #     upis.append(row[0])
-    #
-    # cur.execute(
-    #     """
-    #     SELECT MIN(JOB_END)
-    #     FROM (
-    #         SELECT MIN(JOB_END) JOB_END
-    #         FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
-    #         WHERE ANALYSIS_ID = :analysisid
-    #         AND PERSISTED = 0
-    #         UNION ALL
-    #         SELECT MAX(JOB_END) JOB_END
-    #         FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
-    #         WHERE ANALYSIS_ID = :analysisid
-    #         AND PERSISTED = 1
-    #     )
-    #     """, dict(analysisid=analysis_id)
-    # )
-    # row = cur.fetchone()
-    # if row:
-    #     upis.append(row[0])
-    #
-    # try:
-    #     return max([upi for upi in upis if upi is not None])
-    # except ValueError:
-    #     return None
 
 
 def _get_analyses(url: str) -> List[dict]:
