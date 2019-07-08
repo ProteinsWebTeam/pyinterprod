@@ -56,7 +56,7 @@ def import_matches(user: str, dsn: str, **kwargs):
                 full_name = analysis["full_name"]
                 table = analysis["match_table"].lower()
 
-                if not analyses["ready"] or full_name in fs.values():
+                if not analysis["ready"] or full_name in fs.values():
                     continue
                 elif table == "ipm_signalp_match":
                     # SignalP has one source table, but three dbcodes
