@@ -5,7 +5,7 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from tempfile import mkstemp
-from typing import Generator, Iterable, Optional, Tuple
+from typing import Optional
 
 import cx_Oracle
 
