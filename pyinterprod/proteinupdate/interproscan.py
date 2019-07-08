@@ -13,74 +13,87 @@ def import_matches(user: str, dsn: str, **kwargs):
     max_workers = kwargs.pop("max_workers", 0)
 
     url = orautils.make_connect_string(user, dsn)
-    analyses = _check_ispro(url, **kwargs)
+    analyses = _get_analyses(url)
 
     if not isinstance(max_workers, int) or max_workers < 1:
         max_workers = len(analyses)
 
+    functions = {
+        "ipm_cdd_match": (_insert_cdd_matches, "CDD"),
+        "ipm_coils_match": (_insert_coils, "COILS"),
+        "ipm_gene3d_match": (_insert_gene3d, "GENE3D"),
+        "ipm_hamap_match": (_insert_hamap, "HAMAP"),
+        "ipm_mobidblite_match": (_insert_mobidblite, "MOBIDBLITE"),
+        "ipm_panther_match": (_insert_panther, "PANTHER"),
+        "ipm_pfam_match": (_insert_pfam, "PFAM"),
+        "ipm_phobius_match": (_insert_phobius, "PHOBIUS"),
+        "ipm_pirsf_match": (_insert_pirsf, "PIRSF"),
+        "ipm_prints_match": (_insert_prints, "PRINTS"),
+        # "ipm_prodom_match": (_insert_prodom, "PRODOM"),
+        "ipm_prosite_patterns_match": (_insert_prosite_patterns, "PROSITE_PATTERNS"),
+        "ipm_prosite_profiles_match": (_insert_prosite_profiles, "PROSITE_PROFILES"),
+        "ipm_sfld_match": (_insert_sfld_matches, "SFLD"),
+        "ipm_smart_match": (_insert_smart, "SMART"),
+        "ipm_superfamily_match": (_insert_superfamily, "SUPERFAMILY"),
+        "ipm_tigrfam_match": (_insert_tigrfam, "TIGRFAM"),
+        "ipm_tmhmm_match": (_insert_tmhmm, "TMHMM"),
+    }
+    signalp_partitions = {
+        "signalp_euk": "SIGNALP_EUK",
+        "signalp_gram_negative": "SIGNALP_GRAM_NEGATIVE",
+        "signalp_gram_positive": "SIGNALP_GRAM_POSITIVE"
+    }
+
     logger.info("updating MV_IPRSCAN")
+    num_errors = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         fs = {}
-        functions = {
-            "ipm_cdd_match": (_insert_cdd_matches, "CDD"),
-            "ipm_coils_match": (_insert_coils, "COILS"),
-            "ipm_gene3d_match": (_insert_gene3d, "GENE3D"),
-            "ipm_hamap_match": (_insert_hamap, "HAMAP"),
-            "ipm_mobidblite_match": (_insert_mobidblite, "MOBIDBLITE"),
-            "ipm_panther_match": (_insert_panther, "PANTHER"),
-            "ipm_pfam_match": (_insert_pfam, "PFAM"),
-            "ipm_phobius_match": (_insert_phobius, "PHOBIUS"),
-            "ipm_pirsf_match": (_insert_pirsf, "PIRSF"),
-            "ipm_prints_match": (_insert_prints, "PRINTS"),
-            # "ipm_prodom_match": (_insert_prodom, "PRODOM"),
-            "ipm_prosite_patterns_match": (_insert_prosite_patterns, "PROSITE_PATTERNS"),
-            "ipm_prosite_profiles_match": (_insert_prosite_profiles, "PROSITE_PROFILES"),
-            "ipm_sfld_match": (_insert_sfld_matches, "SFLD"),
-            "ipm_smart_match": (_insert_smart, "SMART"),
-            "ipm_superfamily_match": (_insert_superfamily, "SUPERFAMILY"),
-            "ipm_tigrfam_match": (_insert_tigrfam, "TIGRFAM"),
-            "ipm_tmhmm_match": (_insert_tmhmm, "TMHMM"),
-        }
+        done = set()
+        while True:
+            for analysis in analyses:
+                _id = analysis["id"]
+                name = analysis["name"]
+                full_name = analysis["full_name"]
+                table = analysis["match_table"].lower()
 
-        signalp_partitions = {
-            "signalp_euk": "SIGNALP_EUK",
-            "signalp_gram_negative": "SIGNALP_GRAM_NEGATIVE",
-            "signalp_gram_positive": "SIGNALP_GRAM_POSITIVE"
-        }
-        signalp_actions = []
+                if not analyses["ready"] or full_name in fs.values():
+                    continue
+                elif table == "ipm_signalp_match":
+                    # SignalP has one source table, but three dbcodes
+                    partition = signalp_partitions[name]
+                    signalp_actions.append((_id, partition))
+                elif table in functions:
+                    fn, partition = functions[table]
+                    f = executor.submit(_import_member_db, url, "IPRSCAN", table,
+                                        "MV_IPRSCAN", partition, _id, fn)
+                    fs[f] = full_name
+                    logger.debug(f"\t{fs[f]} is running")
 
-        for analysis in analyses:
-            _id = analysis["id"]
-            name = analysis["name"]
-            full_name = analysis["full_name"]
-            table = analysis["match_table"].lower()
+            if signalp_actions:
+                f = executor.submit(_import_signalp, url, "IPRSCAN",
+                                    "ipm_signalp_match", "MV_IPRSCAN",
+                                    signalp_actions)
+                fs[f] = "SIGNALP"
+                logger.debug(f"\t{fs[f]} is running")
 
-            if table == "ipm_signalp_match":
-                # SignalP has one source table, but three dbcodes
-                partition = signalp_partitions[name]
-                signalp_actions.append((_id, partition))
-            elif table in functions:
-                fn, partition = functions[table]
-                f = executor.submit(_import_member_db, url, "IPRSCAN", table,
-                                    "MV_IPRSCAN", partition, _id, fn)
-                fs[f] = full_name
+            for f in fs:
+                name = fs[f]
+                if name in done:
+                    continue
+                elif f.done():
+                    done.add(name)
+                    if exc is None:
+                        logger.debug(f"\t{name} is ready")
+                    else:
+                        exc_name = exc.__class__.__name__
+                        logger.debug(f"\t{name} failed ({exc_name}: {exc})")
+                        num_errors += 1
 
-        if signalp_actions:
-            f = executor.submit(_import_signalp, url, "IPRSCAN",
-                                "ipm_signalp_match", "MV_IPRSCAN",
-                                signalp_actions)
-            fs[f] = "SIGNALP"
+            if len(done) == len(analyses):
+                break
 
-        num_errors = 0
-        for f in as_completed(fs):
-            name = fs[f]
-            exc = f.exception()
-            if exc is None:
-                logger.info("\t{} is ready".format(name))
-            else:
-                exc_name = exc.__class__.__name__
-                logger.error("\t{} failed ({}: {})".format(name, exc_name, exc))
-                num_errors += 1
+            time.sleep(600)
+            analyses = _get_analyses(url)
 
     if num_errors:
         raise RuntimeError("{} analyses failed".format(num_errors))
@@ -213,6 +226,8 @@ def _get_max_persisted_job(cur: cx_Oracle.Cursor, analysis_id: int,
 def _get_analyses(url: str) -> List[dict]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
+    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
+    max_upi_read = cur.fetchone()[0]
     cur.execute(
         """
         SELECT *
@@ -268,51 +283,25 @@ def _get_analyses(url: str) -> List[dict]:
     cur.close()
     con.close()
 
-    return analyses
-
-
-def _check_ispro(url: str, max_attempts: int=1, secs: int=3600,
-                 exclude: Optional[Collection[str]]=None) -> List[dict]:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
-    max_upi_read = cur.fetchone()[0]
-    cur.close()
-    con.close()
-
-    num_attempts = 0
-    while True:
-        analyses = _get_analyses(url)
-        not_ready = 0
-        for e in analyses:
-            if exclude and e["name"] in exclude:
-                status = "ready (excluded)"
-            elif e["upi"] and e["upi"] >= max_upi_read:
-                status = "ready"
-            else:
-                status = "not ready"
-                not_ready += 1
-
-            _site_table = e["site_table"] if e["site_table"] else ""
-            _upi = e["upi"] if e["upi"] else ""
-
-            logger.debug("{id:<5}{full_name:<30}{match_table:<30}"
-                         "{_site_table:<30}{_upi:<20}"
-                         "{status}".format(**e, status=status,
-                                           _site_table=_site_table,
-                                           _upi=_upi))
-
-        num_attempts += 1
-        if not_ready == 0:
-            break
-        elif num_attempts == max_attempts:
-            raise RuntimeError("ISPRO tables not ready "
-                               "after {} attempts".format(num_attempts))
-        else:
-            logger.info("{} analyses not ready".format(not_ready))
-            time.sleep(secs)
+    for e in analyses:
+        e["ready"] = e["upi"] and e["upi"] >= max_upi_read
 
     return analyses
+
+
+def check_ispro(url: str):
+    analyses = _get_analyses(url)
+    for e in analyses:
+        e["status"] = "ready" if e["ready"] else "not ready"
+
+        if not e["site_table"]:
+            e["site_table"] = ""
+
+        if not e["upi"]:
+            e["upi"] = ""
+
+        logger.info("{id:<5}{full_name:<30}{match_table:<30}"
+                    "{site_table:<30}{upi:<20}{status}".format(**e))
 
 
 def _get_max_upi(cur: cx_Oracle.Cursor, owner: str, table: str,
