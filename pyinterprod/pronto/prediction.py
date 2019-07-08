@@ -163,7 +163,7 @@ def export_signatures(cur: cx_Oracle.Cursor, dir: Optional[str]) -> Kvdb:
     return kvdb
 
 
-def _load_comparisons(user: str, dsn: str, column: str, counts: Dict[str: int],
+def _load_comparisons(user: str, dsn: str, column: str, counts: Dict[str, int],
                       buffers: List[PersistentBuffer], remove: bool=True):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
@@ -172,11 +172,11 @@ def _load_comparisons(user: str, dsn: str, column: str, counts: Dict[str: int],
         query="""
                 MERGE INTO {0}.METHOD_SIMILARITY
                 USING DUAL ON (METHOD_AC1 = :ac1 AND METHOD_AC2 = :ac2)
-                WHEN MATCHED THEN 
-                  UPDATE SET TERM_INDEX=:idx, 
-                             TERM_CONT1=:ct1, 
+                WHEN MATCHED THEN
+                  UPDATE SET TERM_INDEX=:idx,
+                             TERM_CONT1=:ct1,
                              TERM_CONT2=:ct2
-                WHEN NOT MATCHED THEN 
+                WHEN NOT MATCHED THEN
                   INSERT (
                     METHOD_AC1, METHOD_AC2, {1}_INDEX, {1}_CONT1, {1}_CONT2
                   ) VALUES (:ac1, :ac2, :idx, :ct1, :ct2)
