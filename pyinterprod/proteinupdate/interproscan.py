@@ -9,9 +9,7 @@ import cx_Oracle
 from .. import logger, orautils
 
 
-def import_matches(user: str, dsn: str, **kwargs):
-    max_workers = kwargs.pop("max_workers", 0)
-
+def import_matches(user: str, dsn: str, max_workers: int=0):
     url = orautils.make_connect_string(user, dsn)
     analyses = _get_analyses(url)
 
@@ -48,6 +46,7 @@ def import_matches(user: str, dsn: str, **kwargs):
     num_errors = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         fs = {}
+        submitted = set()
         done = set()
         while True:
             for analysis in analyses:
@@ -55,8 +54,9 @@ def import_matches(user: str, dsn: str, **kwargs):
                 name = analysis["name"]
                 full_name = analysis["full_name"]
                 table = analysis["match_table"].lower()
+                ready = analysis["ready"]
 
-                if not analysis["ready"] or full_name in fs.values():
+                if not ready or full_name in submitted or num_errors:
                     continue
                 elif table == "ipm_signalp_match":
                     # SignalP has one source table, but three dbcodes
@@ -67,6 +67,7 @@ def import_matches(user: str, dsn: str, **kwargs):
                     f = executor.submit(_import_member_db, url, "IPRSCAN", table,
                                         "MV_IPRSCAN", partition, _id, fn)
                     fs[f] = full_name
+                    submitted.add(full_name)
                     logger.info(f"\t{fs[f]} is running")
 
             if signalp_actions:
@@ -74,22 +75,27 @@ def import_matches(user: str, dsn: str, **kwargs):
                                     "ipm_signalp_match", "MV_IPRSCAN",
                                     signalp_actions)
                 fs[f] = "SIGNALP"
+                submitted.add(fs[f])
                 logger.info(f"\t{fs[f]} is running")
 
+            _fs = {}
             for f in fs:
-                name = fs[f]
-                if name in done:
+                full_name = fs[f]
+                if full_name in done:
                     continue
                 elif f.done():
-                    done.add(name)
+                    done.add(full_name)
                     if exc is None:
-                        logger.info(f"\t{name} is ready")
+                        logger.info(f"\t{full_name} is ready")
                     else:
                         exc_name = exc.__class__.__name__
-                        logger.error(f"\t{name} failed ({exc_name}: {exc})")
+                        logger.error(f"\t{full_name} failed ({exc_name}: {exc})")
                         num_errors += 1
+                else:
+                    _fs[f] = full_name
 
-            if len(done) == len(analyses):
+            fs = _fs
+            if not fs and (num_errors or submitted == done):
                 break
 
             time.sleep(600)
@@ -119,45 +125,66 @@ def import_matches(user: str, dsn: str, **kwargs):
     logger.info("MV_IPRSCAN is ready")
 
 
-def import_sites(user: str, dsn: str, **kwargs):
-    max_workers = kwargs.pop("max_workers", 0)
-
+def import_sites(user: str, dsn: str, max_workers: int=0):
     url = orautils.make_connect_string(user, dsn)
     analyses = _check_ispro(url, **kwargs)
 
     if not isinstance(max_workers, int) or max_workers < 1:
         max_workers = len(analyses)
 
+    partitions = {
+        "ipm_cdd_site": "CDD",
+        "ipm_sfld_site": "SFLD"
+    }
+
     logger.info("updating SITE")
+    num_errors = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         fs = {}
-        partitions = {
-            "ipm_cdd_site": "CDD",
-            "ipm_sfld_site": "SFLD"
-        }
-        for analysis in analyses:
-            _id = analysis["id"]
-            full_name = analysis["full_name"]
-            table = analysis["site_table"]
+        submitted = set()
+        done = set()
+        while True:
+            for analysis in analyses:
+                _id = analysis["id"]
+                name = analysis["name"]
+                full_name = analysis["full_name"]
+                table = analysis["site_table"]
 
-            if not table:
-                continue
+                if not table:
+                    continue
 
-            partition = partitions[table.lower()]
-            f = executor.submit(_import_member_db, url, "IPRSCAN", table,
-                                "SITE", partition, _id, _insert_sites)
-            fs[f] = full_name
+                if not analysis["ready"] or full_name in done:
+                    continue
+                else:
+                    partition = partitions[table.lower()]
+                    f = executor.submit(_import_member_db, url, "IPRSCAN", table,
+                                        "SITE", partition, _id, _insert_sites)
+                    fs[f] = full_name
+                    submitted.add(full_name)
+                    logger.info(f"\t{fs[f]} is running")
 
-        num_errors = 0
-        for f in as_completed(fs):
-            name = fs[f]
-            exc = f.exception()
-            if exc is None:
-                logger.info("\t{} is ready".format(name))
-            else:
-                exc_name = exc.__class__.__name__
-                logger.error("\t{} failed ({}: {})".format(name, exc_name, exc))
-                num_errors += 1
+            _fs = {}
+            for f in fs:
+                full_name = fs[f]
+                if full_name in done:
+                    continue
+                elif f.done():
+                    done.add(full_name)
+                    if exc is None:
+                        logger.info(f"\t{full_name} is ready")
+                    else:
+                        exc_name = exc.__class__.__name__
+                        logger.error(f"\t{full_name} failed ({exc_name}: {exc})")
+                        num_errors += 1
+                else:
+                    _fs[f] = full_name
+
+            fs = _fs
+            if not fs and (num_errors or submitted == done):
+                break
+
+            time.sleep(600)
+            analyses = _get_analyses(url)
 
     if num_errors:
         raise RuntimeError("{} analyses failed".format(num_errors))
