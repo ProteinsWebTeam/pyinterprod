@@ -170,23 +170,45 @@ def import_sites(user: str, dsn: str, **kwargs):
     logger.info("SITE is ready")
 
 
-def _get_max_persisted_job(cur: cx_Oracle.Cursor, analysis_id: int) -> Optional[str]:
+def _get_max_persisted_job(cur: cx_Oracle.Cursor, analysis_id: int,
+                           persisted: int=1) -> Optional[str]:
     cur.execute(
         """
-        SELECT COUNT(*)
-        FROM IPRSCAN.IPM_RUNNING_JOBS@ISPRO
-        WHERE ANALYSIS_ID = :1
-        """, (analysis_id,)
+        SELECT SUM(CNT)
+        FROM (
+            SELECT COUNT(*) AS CNT 
+            FROM IPRSCAN.IPM_RUNNING_JOBS 
+            WHERE ANALYSIS_ID = :analysisid
+            UNION ALL
+            SELECT COUNT(*) AS CNT 
+            FROM IPRSCAN.IPM_COMPLETED_JOBS 
+            WHERE ANALYSIS_ID = :analysisid AND PERSISTED < :persisted
+            UNION ALL
+            SELECT COUNT(*) AS CNT 
+            FROM IPRSCAN.IPM_PERSISTED_JOBS 
+            WHERE ANALYSIS_ID = :analysisid AND PERSISTED < :persisted
+        )
+        """,
+        dict(analysisid=analysis_id, persisted=persisted)
     )
     if cur.fetchone()[0]:
         return None
+
+    # cur.execute(
+    #     """
+    #     SELECT COUNT(*)
+    #     FROM IPRSCAN.IPM_RUNNING_JOBS@ISPRO
+    #     WHERE ANALYSIS_ID = :1
+    #     """, (analysis_id,)
+    # )
+    # if cur.fetchone()[0]:
+    #     return None
 
     cur.execute(
         """
         SELECT MAX(JOB_END)
         FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
         WHERE ANALYSIS_ID = :1
-        AND PERSISTED > 0
         """, (analysis_id, )
     )
     row = cur.fetchone()
@@ -313,7 +335,8 @@ def _get_analyses(url: str) -> List[dict]:
         })
 
     for e in analyses:
-        e["upi"] = _get_max_persisted_job(cur, e["id"])
+        persited = 2 if e["site_table"] else 1
+        e["upi"] = _get_max_persisted_job(cur, e["id"], persited)
 
     cur.close()
     con.close()
