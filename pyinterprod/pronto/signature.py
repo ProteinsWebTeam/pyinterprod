@@ -1,62 +1,16 @@
 #!/usr/bin/env python
 
-import json
 import os
 import pickle
-from concurrent.futures import (as_completed, ProcessPoolExecutor,
-                                ThreadPoolExecutor)
+from concurrent.futures import as_completed, ThreadPoolExecutor
 from multiprocessing import Process, Queue
-from typing import Optional, Tuple
+from typing import Optional
 
 import cx_Oracle
 
-from . import proteins, signatures
-from .utils import merge_comparators, merge_organizers
-from ... import logger, orautils
-
-
-RANKS = ["superkingdom", "kingdom", "phylum", "class", "order",
-         "family", "genus", "species"]
-RANK_WEIGHTS = [0.025, 0.05, 0.075, 0.1, 0.15, 0.175, 0.2, 0.225]
-
-
-def load_databases(user: str, dsn: str):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    orautils.drop_table(cur, owner, "CV_DATABASE", purge=True)
-    cur.execute(
-        """
-        CREATE TABLE {}.CV_DATABASE
-        (
-            DBCODE VARCHAR2(10) NOT NULL,
-            DBNAME VARCHAR2(50) NOT NULL,
-            DBSHORT VARCHAR2(10) NOT NULL,
-            VERSION VARCHAR2(20),
-            FILE_DATE DATE,
-            IS_READY CHAR(1) DEFAULT 'N',
-            CONSTRAINT PK_DATABASE PRIMARY KEY (DBCODE)
-        ) NOLOGGING
-        """.format(owner)
-    )
-
-    cur.execute(
-        """
-        INSERT /*+ APPEND */ INTO {}.CV_DATABASE (
-            DBCODE, DBNAME, DBSHORT, VERSION, FILE_DATE
-        )
-        SELECT DB.DBCODE, DB.DBNAME, DB.DBSHORT, V.VERSION, V.FILE_DATE
-        FROM INTERPRO.CV_DATABASE DB
-        LEFT OUTER JOIN INTERPRO.DB_VERSION V
-          ON DB.DBCODE = V.DBCODE
-        """.format(owner)
-    )
-    con.commit()
-
-    orautils.gather_stats(cur, owner, "CV_DATABASE")
-    orautils.grant(cur, owner, "CV_DATABASE", "SELECT", "INTERPRO_SELECT")
-    cur.close()
-    con.close()
+from .. import logger, orautils
+from . import prediction, protein
+from .utils import merge_organizers
 
 
 def load_matches(user: str, dsn: str):
@@ -99,27 +53,6 @@ def load_matches(user: str, dsn: str):
         ON {}.MATCH (DBCODE) NOLOGGING
         """.format(owner)
     )
-    cur.close()
-    con.close()
-
-
-def update_signatures(user: str, dsn: str):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    cur.execute(
-        """
-        MERGE INTO {0}.METHOD ME
-        USING (
-            SELECT METHOD_AC, COUNT(DISTINCT PROTEIN_AC) PROTEIN_COUNT
-            FROM {0}.MATCH
-            GROUP BY METHOD_AC
-        ) MA
-        ON (ME.METHOD_AC = MA.METHOD_AC)
-        WHEN MATCHED THEN UPDATE SET ME.PROTEIN_COUNT = MA.PROTEIN_COUNT
-        """.format(owner)
-    )
-    con.commit()
     cur.close()
     con.close()
 
@@ -184,135 +117,28 @@ def load_signatures(user: str, dsn: str):
     con.close()
 
 
-def load_taxa(user: str, dsn: str):
+def update_signatures(user: str, dsn: str):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "ETAXI", purge=True)
     cur.execute(
         """
-        CREATE TABLE {}.ETAXI
-        NOLOGGING
-        AS
-        SELECT
-          TAX_ID, PARENT_ID, SCIENTIFIC_NAME, RANK, FULL_NAME
-        FROM INTERPRO.ETAXI
+        MERGE INTO {0}.METHOD ME
+        USING (
+            SELECT METHOD_AC, COUNT(DISTINCT PROTEIN_AC) PROTEIN_COUNT
+            FROM {0}.MATCH
+            GROUP BY METHOD_AC
+        ) MA
+        ON (ME.METHOD_AC = MA.METHOD_AC)
+        WHEN MATCHED THEN UPDATE SET ME.PROTEIN_COUNT = MA.PROTEIN_COUNT
         """.format(owner)
     )
-    orautils.gather_stats(cur, owner, "ETAXI")
-    orautils.grant(cur, owner, "ETAXI", "SELECT", "INTERPRO_SELECT")
-    cur.execute(
-        """
-        ALTER TABLE {}.ETAXI
-        ADD CONSTRAINT PK_ETAXI PRIMARY KEY (TAX_ID)
-        """.format(owner)
-    )
-
-    orautils.drop_table(cur, owner, "LINEAGE", purge=True)
-    cur.execute(
-        """
-        CREATE TABLE {}.LINEAGE
-        (
-            TAX_ID NUMBER(10) NOT NULL,
-            RANK VARCHAR2(50) NOT NULL,
-            RANK_TAX_ID NUMBER(10)
-        ) NOLOGGING
-        """.format(owner)
-    )
-
-    """
-    taxID 131567 (cellular organisms) contains three superkingdoms:
-        * Bacteria (2)
-        * Archaea (2157)
-        * Eukaryota (2759)
-
-    therefore it is not needed (we don't want a meta-superkingdom)
-    """
-    cur.execute(
-        """
-        SELECT TAX_ID, PARENT_ID, RANK
-        FROM {}.ETAXI
-        WHERE TAX_ID != 131567
-        """.format(owner)
-    )
-    taxa = {}
-    for tax_id, parent_id, rank in cur:
-        if parent_id == 1:
-            taxa[tax_id] = ("superkingdom", parent_id)
-        else:
-            taxa[tax_id] = (rank, parent_id)
-
-    table = orautils.TablePopulator(con,
-                                    query="INSERT /*+ APPEND */ "
-                                          "INTO {}.LINEAGE "
-                                          "VALUES (:1, :2, :3)".format(owner),
-                                    autocommit=True)
-    for tax_id in taxa:
-        rank, parent_id = taxa[tax_id]
-        if rank in RANKS:
-            table.insert((tax_id, rank, tax_id))
-
-        while parent_id in taxa:
-            rank_tax_id = parent_id
-            rank, parent_id = taxa[rank_tax_id]
-            if rank in RANKS:
-                table.insert((tax_id, rank, rank_tax_id))
-    table.close()
-
-    orautils.gather_stats(cur, owner, "LINEAGE")
-    orautils.grant(cur, owner, "LINEAGE", "SELECT", "INTERPRO_SELECT")
-    cur.execute(
-        """
-        CREATE INDEX I_LINEAGE
-        ON {}.LINEAGE (TAX_ID, RANK)
-        NOLOGGING
-        """.format(owner)
-    )
-
+    con.commit()
     cur.close()
     con.close()
 
 
-def load_proteins(user: str, dsn: str):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    orautils.drop_table(cur, owner, "PROTEIN", purge=True)
-    cur.execute(
-        """
-        CREATE TABLE {}.PROTEIN
-        NOLOGGING
-        AS
-        SELECT PROTEIN_AC, NAME, DBCODE, LEN, FRAGMENT, TAX_ID
-        FROM INTERPRO.PROTEIN
-        """.format(owner)
-    )
-    orautils.gather_stats(cur, owner, "PROTEIN")
-    orautils.grant(cur, owner, "PROTEIN", "SELECT", "INTERPRO_SELECT")
-    cur.execute(
-        """
-        ALTER TABLE {}.PROTEIN
-        ADD CONSTRAINT PK_PROTEIN PRIMARY KEY (PROTEIN_AC)
-        """.format(owner)
-    )
-    cur.execute(
-        """
-        CREATE INDEX I_PROTEIN$DBCODE
-        ON {}.PROTEIN (DBCODE) NOLOGGING
-        """.format(owner)
-    )
-    cur.execute(
-        """
-        CREATE INDEX I_PROTEIN$NAME
-        ON {}.PROTEIN (NAME) NOLOGGING
-        """.format(owner)
-    )
-
-    cur.close()
-    con.close()
-
-
-def export_matches(user: str, dsn: str, dst: str, buffer_size: int=1000000):
+def _export_matches(user: str, dsn: str, dst: str, buffer_size: int=1000000):
     with open(dst, "wb") as fh:
         buffer = []
         for row in _get_matches(user, dsn):
@@ -371,7 +197,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     done_queue = Queue()
     pool = []
     for _ in range(max(1, processes-1)):
-        p = Process(target=proteins.consume_proteins,
+        p = Process(target=protein.consume_proteins,
                     args=(user, dsn, task_queue, done_queue, tmpdir))
         pool.append(p)
         p.start()
@@ -458,7 +284,6 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         chunk = []
         matches = []
         num_proteins += 1
-    logger.debug("proteins: {:,}".format(num_proteins))
 
     for _ in pool:
         task_queue.put(None)
@@ -480,159 +305,56 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     for p in pool:
         p.join()
 
-    logger.info("disk usage: {:.0f} MB".format(size/1024**2))
+    logger.debug("proteins: {:,}".format(num_proteins))
 
-    with ProcessPoolExecutor(max_workers=3) as pe, ThreadPoolExecutor() as te:
+    with open(os.path.join(tmpdir, "comparators.p"), "wb") as fh:
+        pickle.dump(comparators, fh)
+    # prediction.load_comparators(user, dsn, comparators)
+
+    num_errors = 0
+    with ThreadPoolExecutor() as executor:
         fs = {}
-        f = te.submit(_finalize_method2protein, user, dsn)
+        f = executor.submit(_finalize_method2protein, user, dsn)
         fs[f] = "METHOD2PROTEIN"
-        f = pe.submit(_create_method_desc, user, dsn, names)
+
+        logger.debug("creating METHOD_DESC")
+        _create_method_desc(user, dsn, names)
+        f = executor.submit(_finalize_method_desc, user, dsn)
         fs[f] = "METHOD_DESC"
-        f = pe.submit(_create_method_taxa, user, dsn, taxa)
+
+        logger.debug("creating METHOD_TAXA")
+        _create_method_taxa(user, dsn, taxa)
+        f = executor.submit(_finalize_method_taxa, user, dsn)
         fs[f] = "METHOD_TAXA"
-        f = pe.submit(_create_method_term, user, dsn, terms)
+
+        logger.debug("creating METHOD_TERM")
+        _create_method_term(user, dsn, terms)
+        f = executor.submit(_finalize_method_term, user, dsn)
         fs[f] = "METHOD_TERM"
 
-        with open(os.path.join(tmpdir, "comparators.p"), "wb") as fh:
-            pickle.dump(comparators, fh)
-        #_load_comparators(user, dsn, comparators)
-
-        processes -= 3
-        num_errors = 0
         for f in as_completed(fs):
             table = fs[f]
             exc = f.exception()
             if exc is None:
-                processes += 1
-                logger.debug("{}: ready".format(table))
-                if table == "METHOD_DESC":
-                    fn = signatures.cmp_descriptions
-                elif table == "METHOD_TAXA":
-                    fn = signatures.cmp_taxa
-                else:
-                    fn = signatures.cmp_terms
-
-                # counts, buffers, size = fn(user, dsn, processes=processes, dir=tmpdir)
+                logger.debug(f"{table}: ready")
             else:
+                logger.error(f"{table}: exception raised ({exc})")
                 num_errors += 1
-                logger.error("{}: exception raised ({})".format(table, exc))
 
+            if num_errors or table == "METHOD2PROTEIN":
+                continue
+            elif table == "METHOD_DESC":
+                fn = prediction.cmp_descriptions
+            elif table == "METHOD_TAXA":
+                fn = prediction.cmp_taxa
+            else:
+                fn = prediction.cmp_terms
+
+            size = max(size, fn(user, dsn, processes, tmpdir))
+
+    logger.info("disk usage: {:.0f} MB".format(size / 1024 ** 2))
     if num_errors:
         raise RuntimeError("one or more tables could not be created")
-
-
-def _load_comparators(user: str, dsn: str, comparators: list):
-    counts, comparisons = merge_comparators(comparators, remove=True)
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    orautils.drop_table(cur, owner, "METHOD_SIMILARITY")
-    cur.execute(
-        """
-        CREATE TABLE {}.METHOD_SIMILARITY
-        (
-            METHOD_AC1 VARCHAR2(25) NOT NULL,
-            METHOD_AC2 VARCHAR2(25) NOT NULL,
-            DESC_INDEX BINARY_DOUBLE DEFAULT NULL,
-            DESC_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            DESC_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            TAXA_INDEX BINARY_DOUBLE DEFAULT NULL,
-            TAXA_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            TAXA_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            TERM_INDEX BINARY_DOUBLE DEFAULT NULL,
-            TERM_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            TERM_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            COLL_INDEX BINARY_DOUBLE DEFAULT NULL,
-            COLL_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            COLL_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            POVR_INDEX BINARY_DOUBLE DEFAULT NULL,
-            POVR_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            POVR_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            ROVR_INDEX BINARY_DOUBLE DEFAULT NULL,
-            ROVR_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            ROVR_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            CONSTRAINT PK_METHOD_SIMILARITY PRIMARY KEY (METHOD_AC1, METHOD_AC2)
-        ) NOLOGGING
-        """.format(owner)
-    )
-    cur.close()
-
-    table = orautils.TablePopulator(
-        con=con,
-        query="""
-                INSERT /*+ APPEND */ INTO {}.METHOD_SIMILARITY (
-                  METHOD_AC1, METHOD_AC2, COLL_INDEX, COLL_CONT1, COLL_CONT2,
-                  POVR_INDEX, POVR_CONT1, POVR_CONT2,
-                  ROVR_INDEX, ROVR_CONT1, ROVR_CONT2
-                )
-                VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11)
-            """.format(owner),
-        autocommit=True
-    )
-    for acc1, (n_prot1, n_res1) in counts.items():
-        for acc2 in comparisons[acc1]:
-            n_prot2, n_res2 = counts[acc2]
-            n_col, n_prot_over, n_res_over = comparisons[acc1][acc2]
-            table.insert((
-                acc1, acc2,
-                # Collocation
-                n_col / (n_prot1 + n_prot2 - n_col),
-                n_col / n_prot1,
-                n_col / n_prot2,
-                # Protein overlap
-                n_prot_over / (n_prot1 + n_prot2 - n_prot_over),
-                n_prot_over / n_prot1,
-                n_prot_over / n_prot2,
-                # Residue overlap
-                n_res_over / (n_res1 + n_res2 - n_res_over),
-                n_res_over / n_res1,
-                n_res_over / n_res2,
-            ))
-
-    table.close()
-    con.commit()
-    con.close()
-
-    # orautils.grant(cur, owner, "METHOD_SIMILARITY", "SELECT", "INTERPRO_SELECT")
-    # orautils.gather_stats(cur, owner, "METHOD2PROTEIN")
-
-
-def _finalize_method2protein(user: str, dsn: str):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    orautils.grant(cur, owner, "METHOD2PROTEIN", "SELECT", "INTERPRO_SELECT")
-    orautils.gather_stats(cur, owner, "METHOD2PROTEIN")
-    cur.execute(
-        """
-        CREATE UNIQUE INDEX UI_METHOD2PROTEIN
-        ON {}.METHOD2PROTEIN (METHOD_AC, PROTEIN_AC)
-        NOLOGGING
-        """.format(owner)
-    )
-    cur.execute(
-        """
-        CREATE INDEX I_METHOD2PROTEIN$M
-        ON {}.METHOD2PROTEIN (METHOD_AC)
-        NOLOGGING
-        """.format(owner)
-    )
-    cur.execute(
-        """
-        CREATE INDEX I_METHOD2PROTEIN$P
-        ON {}.METHOD2PROTEIN (PROTEIN_AC)
-        NOLOGGING
-        """.format(owner)
-    )
-    cur.execute(
-        """
-        CREATE INDEX I_METHOD2PROTEIN$T
-        ON {}.METHOD2PROTEIN (TAX_ID)
-        NOLOGGING
-        """.format(owner)
-    )
-    cur.close()
-    con.close()
 
 
 def _create_method_desc(user: str, dsn: str, organizers: list):
@@ -686,7 +408,12 @@ def _create_method_desc(user: str, dsn: str, organizers: list):
                 descriptions.add(descid)
 
     table.close()
+    con.close()
 
+
+def _finalize_method_desc(user: str, dsn: str):
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     orautils.grant(cur, owner, "METHOD_DESC", "SELECT", "INTERPRO_SELECT")
     orautils.gather_stats(cur, owner, "METHOD_DESC")
@@ -759,7 +486,12 @@ def _create_method_taxa(user: str, dsn: str, organizers: list):
                 table.insert((acc, rank, tax_id, count))
 
     table.close()
+    con.close()
 
+
+def _finalize_method_taxa(user: str, dsn: str):
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     orautils.grant(cur, owner, "METHOD_TAXA", "SELECT", "INTERPRO_SELECT")
     orautils.gather_stats(cur, owner, "METHOD_TAXA")
@@ -807,7 +539,12 @@ def _create_method_term(user: str, dsn: str, organizers: list):
             table.insert((acc, go_id, count))
 
     table.close()
+    con.close()
 
+
+def _finalize_method_term(user: str, dsn: str):
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     orautils.grant(cur, owner, "METHOD_TERM", "SELECT", "INTERPRO_SELECT")
     orautils.gather_stats(cur, owner, "METHOD_TERM")
@@ -821,110 +558,41 @@ def _create_method_term(user: str, dsn: str, organizers: list):
     con.close()
 
 
-def copy_schema(user_src: str, user_dst: str, dsn: str):
-    #_enable_schema(user_src, dsn)
-
-    tables = []
-    con = cx_Oracle.connect(orautils.make_connect_string(user_src, dsn))
-    cur = con.cursor()
-    owner = user_src.split('/')[0]
-    for t in orautils.get_tables(cur, owner):
-        tables.append({
-            "name": t,
-            "grants": orautils.get_grants(cur, owner, t),
-            "constraints": orautils.get_constraints(cur, owner, t),
-            "indexes": orautils.get_indices(cur, owner, t),
-            "partitions": orautils.get_partitions(cur, owner, t)
-        })
-
-    #orautils.clear_schema(user_dst, dsn)
-
-
-def _enable_schema(user: str, dsn: str):
+def _finalize_method2protein(user: str, dsn: str):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    cur.execute("UPDATE {}.CV_DATABASE SET IS_READY = 'Y'".format(owner))
-    con.commit()
+    orautils.grant(cur, owner, "METHOD2PROTEIN", "SELECT", "INTERPRO_SELECT")
+    orautils.gather_stats(cur, owner, "METHOD2PROTEIN")
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX UI_METHOD2PROTEIN
+        ON {}.METHOD2PROTEIN (METHOD_AC, PROTEIN_AC)
+        NOLOGGING
+        """.format(owner)
+    )
+    cur.execute(
+        """
+        CREATE INDEX I_METHOD2PROTEIN$M
+        ON {}.METHOD2PROTEIN (METHOD_AC)
+        NOLOGGING
+        """.format(owner)
+    )
+    cur.execute(
+        """
+        CREATE INDEX I_METHOD2PROTEIN$P
+        ON {}.METHOD2PROTEIN (PROTEIN_AC)
+        NOLOGGING
+        """.format(owner)
+    )
+    cur.execute(
+        """
+        CREATE INDEX I_METHOD2PROTEIN$T
+        ON {}.METHOD2PROTEIN (TAX_ID)
+        NOLOGGING
+        """.format(owner)
+    )
     cur.close()
     con.close()
 
 
-def report_description_changes(user: str, dsn: str, dst: str):
-    try:
-        os.remove(dst)
-    except FileNotFoundError:
-        pass
-
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-
-    cur.execute("SELECT ENTRY_AC, CHECKED FROM INTERPRO.ENTRY")
-    entries = dict(cur.fetchall())
-
-    cur.execute(
-        """
-        SELECT DISTINCT EM.ENTRY_AC, M.TEXT
-        FROM INTERPRO.ENTRY2METHOD EM
-        INNER JOIN INTERPRO.METHOD2SWISS_DE M
-          ON EM.METHOD_AC = M.METHOD_AC
-        WHERE EM.ENTRY_AC IN (
-          SELECT ENTRY_AC FROM INTERPRO.ENTRY WHERE ENTRY_TYPE='F'
-        )
-        """
-    )
-    then = {}
-    for acc, text in cur:
-        if acc in then:
-            then[acc].add(text)
-        else:
-            then[acc] = {text}
-
-    cur.execute(
-        """
-        SELECT DISTINCT EM.ENTRY_AC, D.TEXT
-        FROM {0}.METHOD2PROTEIN PARTITION(M2P_SWISSP) M
-        INNER JOIN {0}.DESC_VALUE D
-          ON M.DESC_ID = D.DESC_ID
-        INNER JOIN INTERPRO.ENTRY2METHOD EM
-          ON M.METHOD_AC = EM.METHOD_AC
-       WHERE EM.ENTRY_AC IN (
-         SELECT ENTRY_AC FROM INTERPRO.ENTRY WHERE ENTRY_TYPE='F'
-       )
-       """.format(owner)
-    )
-    now = {}
-    for acc, text in cur:
-        if acc in now:
-            now[acc].add(text)
-        else:
-            now[acc] = {text}
-
-    cur.close()
-    con.close()
-
-    changes = {}
-    for acc, descs_then in then.items():
-        try:
-            descs_now = now.pop(acc)
-        except KeyError:
-            # Lost all descriptions
-            changes[acc] = ([], descs_then)
-        else:
-            changes[acc] = (descs_then-descs_now, descs_now-descs_then)
-
-    for acc, descs_now in now.items():
-        changes[acc] = (descs_now, [])
-
-    dst_tmp = dst + ".tmp"
-    with open(dst_tmp, "wt") as fh:
-        fh.write("Accession\tChecked\t# Lost\t# Gained\tLost\tGained\n")
-        for acc in sorted(changes):
-            lost, gained = changes[acc]
-            fh.write("{}\t{}\t{}\t{}\t{}\t{}\n".format(
-                acc, entries[acc], len(lost), len(gained), " | ".join(lost),
-                " | ".join(gained)
-            ))
-
-    os.rename(dst_tmp, dst)
