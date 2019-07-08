@@ -183,16 +183,6 @@ def _get_max_persisted_job(cur: cx_Oracle.Cursor, analysis_id: int) -> Optional[
 
     cur.execute(
         """
-        SELECT COUNT(*)
-        FROM IPRSCAN.HWM@ISPRO
-        WHERE ANALYSIS_ID = :1
-        """, (analysis_id,)
-    )
-    if cur.fetchone()[0]:
-        return None
-
-    cur.execute(
-        """
         SELECT MAX(JOB_END)
         FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
         WHERE ANALYSIS_ID = :1
