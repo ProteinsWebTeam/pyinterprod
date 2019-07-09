@@ -341,8 +341,8 @@ def check_ispro(url: str, persisted: int=1):
         if not e["upi"]:
             e["upi"] = ""
 
-        logger.info("{id:<5}{full_name:<30}{match_table:<30}"
-                    "{site_table:<30}{upi:<20}{status}".format(**e))
+        print("{id:<5}{full_name:<30}{match_table:<30}"
+              "{site_table:<30}{upi:<20}{status}".format(**e))
 
 
 def _get_max_upi(cur: cx_Oracle.Cursor, owner: str, table: str,
