@@ -48,8 +48,8 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
         fs = {}
         submitted = set()
         done = set()
-        signalp_actions = []
         while True:
+            signalp_actions = []
             for analysis in analyses:
                 _id = analysis["id"]
                 name = analysis["name"]
