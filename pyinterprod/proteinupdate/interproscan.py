@@ -46,7 +46,8 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
     num_errors = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         fs = {}
-        submitted = set()
+        pending = set()
+        running = set()
         done = set()
         while True:
             signalp_actions = []
@@ -57,34 +58,40 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
                 table = analysis["match_table"].lower()
                 ready = analysis["ready"]
 
-                if not ready or full_name in submitted or num_errors:
+                if full_name in running or full_name in done:
+                    continue
+                elif not analysis["ready"]:
+                    pending.add(full_name)
                     continue
                 elif table == "ipm_signalp_match":
                     # SignalP has one source table, but three analyses
                     partition = signalp_partitions[name]
                     signalp_actions.append((_id, partition))
                 elif table in functions:
+                    try:
+                        pending.remove(full_name)
+                    except KeyError:
+                        pass
                     fn, partition = functions[table]
                     f = executor.submit(_import_member_db, url, "IPRSCAN", table,
                                         "MV_IPRSCAN", partition, _id, fn)
                     fs[f] = full_name
-                    submitted.add(full_name)
-                    logger.info(f"\t{fs[f]} is running")
+                    running.add(full_name)
+                    logger.info(f"\t{full_name} is running")
 
             if signalp_actions:
                 f = executor.submit(_import_signalp, url, "IPRSCAN",
                                     "ipm_signalp_match", "MV_IPRSCAN",
                                     signalp_actions)
                 fs[f] = "SIGNALP"
-                submitted.add(fs[f])
-                logger.info(f"\t{fs[f]} is running")
+                running.add("SIGNALP")
+                logger.info("\tSIGNALP is running")
 
             _fs = {}
             for f in fs:
                 full_name = fs[f]
-                if full_name in done:
-                    continue
-                elif f.done():
+                if f.done():
+                    running.remove(full_name)
                     done.add(full_name)
                     if exc is None:
                         logger.info(f"\t{full_name} is ready")
@@ -94,9 +101,9 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
                         num_errors += 1
                 else:
                     _fs[f] = full_name
-
             fs = _fs
-            if not fs and (num_errors or submitted == done):
+
+            if not pending and not running:
                 break
 
             time.sleep(600)
@@ -142,7 +149,8 @@ def import_sites(user: str, dsn: str, max_workers: int=0):
     num_errors = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         fs = {}
-        submitted = set()
+        pending = set()
+        running = set()
         done = set()
         while True:
             for analysis in analyses:
@@ -153,23 +161,29 @@ def import_sites(user: str, dsn: str, max_workers: int=0):
 
                 if not table:
                     continue
-
-                if not analysis["ready"] or full_name in done:
+                elif full_name in running or full_name in done:
+                    continue
+                elif not analysis["ready"]:
+                    pending.add(full_name)
                     continue
                 else:
+                    try:
+                        pending.remove(full_name)
+                    except KeyError:
+                        pass
+
                     partition = partitions[table.lower()]
                     f = executor.submit(_import_member_db, url, "IPRSCAN", table,
                                         "SITE", partition, _id, _insert_sites)
                     fs[f] = full_name
-                    submitted.add(full_name)
+                    running.add(full_name)
                     logger.info(f"\t{fs[f]} is running")
 
             _fs = {}
             for f in fs:
                 full_name = fs[f]
-                if full_name in done:
-                    continue
-                elif f.done():
+                if f.done():
+                    running.remove(full_name)
                     done.add(full_name)
                     if exc is None:
                         logger.info(f"\t{full_name} is ready")
@@ -179,9 +193,9 @@ def import_sites(user: str, dsn: str, max_workers: int=0):
                         num_errors += 1
                 else:
                     _fs[f] = full_name
-
             fs = _fs
-            if not fs and (num_errors or submitted == done):
+
+            if not pending and not running:
                 break
 
             time.sleep(600)
