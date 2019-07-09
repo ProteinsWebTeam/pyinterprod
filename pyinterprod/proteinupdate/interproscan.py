@@ -100,6 +100,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
                 if f.done():
                     running.remove(table)
                     done.add(table)
+                    exc = f.exception()
                     if exc is None:
                         logger.info(f"\t{table2name[table]} is ready")
                     else:
@@ -192,6 +193,7 @@ def import_sites(user: str, dsn: str, max_workers: int=0):
                 if f.done():
                     running.remove(full_name)
                     done.add(full_name)
+                    exc = f.exception()
                     if exc is None:
                         logger.info(f"\t{full_name} is ready")
                     else:
