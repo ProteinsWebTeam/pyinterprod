@@ -14,7 +14,7 @@ def load_comparators(user: str, dsn: str, comparators: Optional[list]=None):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, owner, "METHOD_SIMILARITY")
+    orautils.drop_table(cur, owner, "METHOD_SIMILARITY", purge=True)
     cur.execute(
         """
         CREATE TABLE {}.METHOD_SIMILARITY
