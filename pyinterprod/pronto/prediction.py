@@ -205,7 +205,7 @@ def _load_comparisons(user: str, dsn: str, column: str, counts: Dict[str, int],
                 #       --> larger values indicate more of A lying in B
                 ct1 = i / cnt1
                 ct2 = i / cnt2
-                if any([sim > 0.5 for sim in (idx, ct1, ct2)])
+                if any([sim > 0.5 for sim in (idx, ct1, ct2)]):
                     table.insert({
                         "ac1": acc1,
                         "ac2": acc2,
