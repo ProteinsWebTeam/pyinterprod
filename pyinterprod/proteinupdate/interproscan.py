@@ -330,8 +330,8 @@ def _get_analyses(url: str, persited: int=1) -> List[dict]:
     return analyses
 
 
-def check_ispro(url: str):
-    analyses = _get_analyses(url)
+def check_ispro(url: str, persisted: int=1):
+    analyses = _get_analyses(url, persisted)
     for e in analyses:
         e["status"] = "ready" if e["ready"] else "not ready"
 
