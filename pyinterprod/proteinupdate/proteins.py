@@ -78,15 +78,15 @@ def load(user: str, dsn: str, swissprot_path: str, trembl_path: str,
     logger.info("loading proteins")
     with ProteinDatabase(dir=dir) as db:
         count = sprot.load(swissprot_path, db.path, "protein")
-        logger.info("New Swiss-Prot: {} proteins".format(count))
+        logger.info("Swiss-Prot: {} proteins".format(count))
 
         count = sprot.load(trembl_path, db.path, "protein")
-        logger.info("New TrEMBL: {} proteins".format(count))
+        logger.info("TrEMBL: {} proteins".format(count))
 
         logger.info("disk space used: {:.0f} MB".format(db.size/1024**2))
 
         con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-        _insert_all(con, db)
+        logger.info("{} proteins inserted".format(_insert_all(con, db)))
 
     # Update annotations
     logger.info("{} annotations updated".format(_update_annotations(con)))
