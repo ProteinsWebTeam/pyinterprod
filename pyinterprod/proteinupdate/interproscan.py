@@ -42,6 +42,14 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
         "signalp_gram_positive": "SIGNALP_GRAM_POSITIVE"
     }
 
+    table2name = {}
+    for analysis in analyses:
+        table = analysis["match_table"].lower()
+        if table == "ipm_signalp_match":
+            table2name[table] = "SIGNALP"
+        else:
+            table2name[table] = analysis["full_name"]
+
     logger.info("updating MV_IPRSCAN")
     num_errors = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -54,14 +62,13 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
             for analysis in analyses:
                 _id = analysis["id"]
                 name = analysis["name"]
-                full_name = analysis["full_name"]
                 table = analysis["match_table"].lower()
                 ready = analysis["ready"]
 
-                if full_name in running or full_name in done:
+                if table in running or table in done:
                     continue
                 elif not analysis["ready"]:
-                    pending.add(full_name)
+                    pending.add(table)
                     continue
                 elif table == "ipm_signalp_match":
                     # SignalP has one source table, but three analyses
@@ -69,38 +76,38 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
                     signalp_actions.append((_id, partition))
                 elif table in functions:
                     try:
-                        pending.remove(full_name)
+                        pending.remove(table)
                     except KeyError:
                         pass
                     fn, partition = functions[table]
                     f = executor.submit(_import_member_db, url, "IPRSCAN", table,
                                         "MV_IPRSCAN", partition, _id, fn)
-                    fs[f] = full_name
-                    running.add(full_name)
-                    logger.info(f"\t{full_name} is running")
+                    fs[f] = table
+                    running.add(table)
+                    logger.info(f"\t{table2name[table]} is running")
 
             if signalp_actions:
                 f = executor.submit(_import_signalp, url, "IPRSCAN",
                                     "ipm_signalp_match", "MV_IPRSCAN",
                                     signalp_actions)
-                fs[f] = "SIGNALP"
-                running.add("SIGNALP")
+                fs[f] = "ipm_signalp_match"
+                running.add("ipm_signalp_match")
                 logger.info("\tSIGNALP is running")
 
             _fs = {}
             for f in fs:
-                full_name = fs[f]
+                table = fs[f]
                 if f.done():
-                    running.remove(full_name)
-                    done.add(full_name)
+                    running.remove(table)
+                    done.add(table)
                     if exc is None:
-                        logger.info(f"\t{full_name} is ready")
+                        logger.info(f"\t{table2name[table]} is ready")
                     else:
                         exc_name = exc.__class__.__name__
-                        logger.error(f"\t{full_name} failed ({exc_name}: {exc})")
+                        logger.error(f"\t{table2name[table]} failed ({exc_name}: {exc})")
                         num_errors += 1
                 else:
-                    _fs[f] = full_name
+                    _fs[f] = table
             fs = _fs
 
             if not pending and not running:
