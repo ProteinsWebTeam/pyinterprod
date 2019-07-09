@@ -135,7 +135,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
 
 def import_sites(user: str, dsn: str, max_workers: int=0):
     url = orautils.make_connect_string(user, dsn)
-    analyses = _get_analyses(url)
+    analyses = _get_analyses(url, persited=2)
 
     if not isinstance(max_workers, int) or max_workers < 1:
         max_workers = len(analyses)
@@ -199,7 +199,7 @@ def import_sites(user: str, dsn: str, max_workers: int=0):
                 break
 
             time.sleep(600)
-            analyses = _get_analyses(url)
+            analyses = _get_analyses(url, persited=2)
 
     if num_errors:
         raise RuntimeError("{} analyses failed".format(num_errors))
@@ -265,7 +265,7 @@ def _get_max_persisted_job(cur: cx_Oracle.Cursor, analysis_id: int,
     return row[0] if row else None
 
 
-def _get_analyses(url: str) -> List[dict]:
+def _get_analyses(url: str, persited: int=1) -> List[dict]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
@@ -319,7 +319,6 @@ def _get_analyses(url: str) -> List[dict]:
         })
 
     for e in analyses:
-        persited = 2 if e["site_table"] else 1
         e["upi"] = _get_max_persisted_job(cur, e["id"], persited)
 
     cur.close()
