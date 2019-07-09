@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import math
+import time
 from multiprocessing import Process, Queue
 from typing import Dict, List, Optional, Tuple
 
@@ -119,16 +120,20 @@ def _compare(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Tuple[Dict[str, 
 
     s = len(kvdb)               # matrix of shape (s, s)
     n = (pow(s, 2) - s) // 2    # number of items (half-matrix - diagonal)
-    c = pc = _pc = 0            # c: number of items done, pc/_pc: percent
+    c = 0                       # number of items enqueued
+    p = 0                       # progress (%)
+    ts1 = ts2 = time.time()
     for i, (acc_1, taxids_1) in enumerate(kvdb):
         task_queue.put((acc_1, taxids_1))
         c += s - (i + 1)
-        pc = math.floor(c*100/n*10) / 10
-        if pc > _pc:
-            logger.debug(f"{i+1:>9}/{s:}{pc:>10}%")
-            _pc = pc
+        p = math.floor(c*100/n*10) / 10  # truncate to one decimal
 
-    logger.debug(f"{i+1:>9}/{s:}{pc:>10}%")
+        ts2 = time.time()
+        if ts2 > ts1 + 3600 and p:
+            ts1 = ts2
+            logger.debug(f"{c:>6}%")
+
+    logger.debug(f"{c:>6}%")
 
     for _ in pool:
         task_queue.put(None)
