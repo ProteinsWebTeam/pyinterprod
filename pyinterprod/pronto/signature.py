@@ -594,5 +594,3 @@ def _finalize_method2protein(user: str, dsn: str):
     )
     cur.close()
     con.close()
-
-
