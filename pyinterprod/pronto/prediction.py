@@ -10,8 +10,7 @@ from .. import logger, orautils
 from .utils import merge_comparators, Kvdb, PersistentBuffer
 
 
-def load_comparators(user: str, dsn: str, comparators: list):
-    counts, comparisons = merge_comparators(comparators, remove=True)
+def load_comparators(user: str, dsn: str, comparators: Optional[list]=None):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -46,44 +45,49 @@ def load_comparators(user: str, dsn: str, comparators: list):
     )
     cur.close()
 
-    table = orautils.TablePopulator(
-        con=con,
-        query="""
-                INSERT /*+ APPEND */ INTO {}.METHOD_SIMILARITY (
-                  METHOD_AC1, METHOD_AC2, COLL_INDEX, COLL_CONT1, COLL_CONT2,
-                  POVR_INDEX, POVR_CONT1, POVR_CONT2,
-                  ROVR_INDEX, ROVR_CONT1, ROVR_CONT2
-                )
-                VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11)
-            """.format(owner),
-        autocommit=True
-    )
-    for acc1, (n_prot1, n_res1) in counts.items():
-        for acc2 in comparisons[acc1]:
-            n_prot2, n_res2 = counts[acc2]
-            n_col, n_prot_over, n_res_over = comparisons[acc1][acc2]
-            table.insert((
-                acc1, acc2,
-                # Collocation
-                n_col / (n_prot1 + n_prot2 - n_col),
-                n_col / n_prot1,
-                n_col / n_prot2,
-                # Protein overlap
-                n_prot_over / (n_prot1 + n_prot2 - n_prot_over),
-                n_prot_over / n_prot1,
-                n_prot_over / n_prot2,
-                # Residue overlap
-                n_res_over / (n_res1 + n_res2 - n_res_over),
-                n_res_over / n_res1,
-                n_res_over / n_res2,
-            ))
+    if comparators:
+        counts, comparisons = merge_comparators(comparators, remove=True)
 
-    table.close()
-    con.commit()
-    con.close()
+        table = orautils.TablePopulator(
+            con=con,
+            query="""
+                    INSERT /*+ APPEND */ INTO {}.METHOD_SIMILARITY (
+                      METHOD_AC1, METHOD_AC2, COLL_INDEX, COLL_CONT1, COLL_CONT2,
+                      POVR_INDEX, POVR_CONT1, POVR_CONT2,
+                      ROVR_INDEX, ROVR_CONT1, ROVR_CONT2
+                    )
+                    VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11)
+                """.format(owner),
+            autocommit=True
+        )
+        for acc1, (n_prot1, n_res1) in counts.items():
+            for acc2 in comparisons[acc1]:
+                n_prot2, n_res2 = counts[acc2]
+                n_col, n_prot_over, n_res_over = comparisons[acc1][acc2]
+                table.insert((
+                    acc1, acc2,
+                    # Collocation
+                    n_col / (n_prot1 + n_prot2 - n_col),
+                    n_col / n_prot1,
+                    n_col / n_prot2,
+                    # Protein overlap
+                    n_prot_over / (n_prot1 + n_prot2 - n_prot_over),
+                    n_prot_over / n_prot1,
+                    n_prot_over / n_prot2,
+                    # Residue overlap
+                    n_res_over / (n_res1 + n_res2 - n_res_over),
+                    n_res_over / n_res1,
+                    n_res_over / n_res2,
+                ))
 
+        table.close()
+        con.commit()
+
+    cur = con.cursor()
     orautils.grant(cur, owner, "METHOD_SIMILARITY", "SELECT", "INTERPRO_SELECT")
     orautils.gather_stats(cur, owner, "METHOD2PROTEIN")
+    cur.close()
+    con.close()
 
 
 def _process(kvdb: Kvdb, task_queue: Queue, done_queue: Queue,
