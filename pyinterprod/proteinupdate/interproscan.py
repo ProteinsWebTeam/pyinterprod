@@ -48,6 +48,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
         fs = {}
         submitted = set()
         done = set()
+        signalp_actions = []
         while True:
             for analysis in analyses:
                 _id = analysis["id"]
@@ -59,7 +60,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
                 if not ready or full_name in submitted or num_errors:
                     continue
                 elif table == "ipm_signalp_match":
-                    # SignalP has one source table, but three dbcodes
+                    # SignalP has one source table, but three analyses
                     partition = signalp_partitions[name]
                     signalp_actions.append((_id, partition))
                 elif table in functions:
