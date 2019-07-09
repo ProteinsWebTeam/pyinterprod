@@ -10,6 +10,8 @@ import cx_Oracle
 from .. import logger, orautils
 from .utils import merge_comparators, Kvdb, PersistentBuffer
 
+JACCARD_THRESHOLD = 0.5
+
 
 def load_comparators(user: str, dsn: str, comparators: Optional[list]=None):
     owner = user.split('/')[0]
@@ -197,15 +199,20 @@ def _load_comparisons(user: str, dsn: str, column: str, counts: Dict[str, int],
             cnt1 = counts[acc1]
             for acc2, i in cmps.items():
                 cnt2 = counts[acc2]
-                table.insert({
-                    "ac1": acc1,
-                    "ac2": acc2,
-                    "idx": i / (cnt1 + cnt2 - i),
-                    # J(A, B) = intersection(A, B) / union(A, B)
-                    "ct1": i / cnt1,
-                    # C(A, B) = intersection(A, B) / size(A) --> larger values indicate more of A lying in B
-                    "ct2": i / cnt2
-                })
+                # J(A, B) = intersection(A, B) / union(A, B)
+                idx = i / (cnt1 + cnt2 - i)
+                # C(A, B) = intersection(A, B) / size(A)
+                #       --> larger values indicate more of A lying in B
+                ct1 = i / cnt1
+                ct2 = i / cnt2
+                if any([sim > 0.5 for sim in (idx, ct1, ct2)])
+                    table.insert({
+                        "ac1": acc1,
+                        "ac2": acc2,
+                        "idx": idx,
+                        "ct1": ct1,
+                        "ct2": ct2
+                    })
 
         if remove:
             buffer.remove()
