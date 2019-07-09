@@ -317,6 +317,11 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         f = executor.submit(_finalize_method2protein, user, dsn)
         fs[f] = "METHOD2PROTEIN"
 
+        logger.debug("creating METHOD_TERM")
+        _create_method_term(user, dsn, terms)
+        f = executor.submit(_finalize_method_term, user, dsn)
+        fs[f] = "METHOD_TERM"
+
         logger.debug("creating METHOD_DESC")
         _create_method_desc(user, dsn, names)
         f = executor.submit(_finalize_method_desc, user, dsn)
@@ -326,11 +331,6 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         _create_method_taxa(user, dsn, taxa)
         f = executor.submit(_finalize_method_taxa, user, dsn)
         fs[f] = "METHOD_TAXA"
-
-        logger.debug("creating METHOD_TERM")
-        _create_method_term(user, dsn, terms)
-        f = executor.submit(_finalize_method_term, user, dsn)
-        fs[f] = "METHOD_TERM"
 
         for f in as_completed(fs):
             table = fs[f]
@@ -351,6 +351,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
                 fn = prediction.cmp_terms
 
             size = max(size, fn(user, dsn, processes, tmpdir))
+            logger.debug(f"comparisons from {table} done")
 
     logger.info("disk usage: {:.0f} MB".format(size / 1024 ** 2))
     if num_errors:
