@@ -84,7 +84,6 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
                                         "MV_IPRSCAN", partition, _id, fn)
                     fs[f] = table
                     running.add(table)
-                    logger.info(f"\t{table2name[table]} is running")
 
             if signalp_actions:
                 f = executor.submit(_import_signalp, url, "IPRSCAN",
@@ -92,7 +91,6 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
                                     signalp_actions)
                 fs[f] = "ipm_signalp_match"
                 running.add("ipm_signalp_match")
-                logger.info("\tSIGNALP is running")
 
             _fs = {}
             for f in fs:
@@ -185,7 +183,6 @@ def import_sites(user: str, dsn: str, max_workers: int=0):
                                         "SITE", partition, _id, _insert_sites)
                     fs[f] = full_name
                     running.add(full_name)
-                    logger.info(f"\t{fs[f]} is running")
 
             _fs = {}
             for f in fs:
