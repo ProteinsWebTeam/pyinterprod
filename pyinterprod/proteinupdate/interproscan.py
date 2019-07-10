@@ -479,59 +479,6 @@ def _import_member_db(url: str, owner: str, table_src: str, table_dst: str,
     con.close()
 
 
-def _import_table(url: str, owner: str, name: str):
-    index = "I_" + name
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT MAX(UPI)
-        FROM {}.{}@ISPRO
-        """.format(owner, name)
-    )
-    src_upi = cur.fetchone()[0]
-
-    try:
-        cur.execute(
-            """
-            SELECT MAX(UPI)
-            FROM {}.{}
-            """.format(owner, name)
-        )
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        if error.code == 942:
-            # ORA-00942 (table or view does not exist)
-            dst_upi = None
-        else:
-            raise exc
-    else:
-        dst_upi = cur.fetchone()[0]
-
-    if src_upi != dst_upi:
-        orautils.drop_mview(cur, owner, name)
-        orautils.drop_table(cur, owner, name)
-        orautils.drop_index(cur, owner, index)
-        cur.execute(
-            """
-            CREATE TABLE {0}.{1} NOLOGGING
-            AS
-            SELECT *
-            FROM {0}.{1}@ISPRO
-            """.format(owner, name)
-        )
-        orautils.gather_stats(cur, owner, name)
-        cur.execute(
-            """
-            CREATE INDEX {0}.{1}
-            ON {0}.{2}(ANALYSIS_ID)
-            NOLOGGING
-            """.format(owner, index, name)
-        )
-    cur.close()
-    con.close()
-
-
 def _insert_cdd_matches(cur: cx_Oracle.Cursor, owner: str, table_src: str,
                         table_dst: str, analysis_id: int):
     cur.execute(
