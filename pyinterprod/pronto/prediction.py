@@ -111,7 +111,7 @@ def _process(kvdb: Kvdb, task_queue: Queue, done_queue: Queue,
 
 
 def _compare(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Tuple[Dict[str, int], List[PersistentBuffer]]:
-    logger.debug("compare")
+    logger.debug("comparing")
     pool = []
     task_queue = Queue(maxsize=1)
     done_queue = Queue()
@@ -154,7 +154,7 @@ def _compare(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Tuple[Dict[str, 
 
 
 def export_signatures(cur: cx_Oracle.Cursor, dir: Optional[str]) -> Kvdb:
-    logger.debug("export")
+    logger.debug("exporting")
     with Kvdb(dir=dir, insertonly=True) as kvdb:
         values = set()
         _acc = None
@@ -176,6 +176,7 @@ def export_signatures(cur: cx_Oracle.Cursor, dir: Optional[str]) -> Kvdb:
 
 def _load_comparisons(user: str, dsn: str, column: str, counts: Dict[str, int],
                       buffers: List[PersistentBuffer], remove: bool=True):
+    logger.debug(f"updating METHOD_SIMILARITY ({column})")
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     table = orautils.TablePopulator(
