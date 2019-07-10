@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable, Collection, List, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable, List, Optional, Tuple
 
 import cx_Oracle
 
