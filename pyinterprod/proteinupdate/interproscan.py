@@ -100,7 +100,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
                     done.add(table)
                     exc = f.exception()
                     if exc is None:
-                        logger.info(f"\t{table2name[table]} is ready")
+                        logger.info(f"\t{table2name[table]} imported")
                     else:
                         exc_name = exc.__class__.__name__
                         logger.error(f"\t{table2name[table]} failed ({exc_name}: {exc})")
@@ -192,7 +192,7 @@ def import_sites(user: str, dsn: str, max_workers: int=0):
                     done.add(full_name)
                     exc = f.exception()
                     if exc is None:
-                        logger.info(f"\t{full_name} is ready")
+                        logger.info(f"\t{full_name} imported")
                     else:
                         exc_name = exc.__class__.__name__
                         logger.error(f"\t{full_name} failed ({exc_name}: {exc})")
