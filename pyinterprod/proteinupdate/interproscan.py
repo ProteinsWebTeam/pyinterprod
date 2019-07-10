@@ -132,7 +132,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
         ON IPRSCAN.MV_IPRSCAN (UPI) NOLOGGING
         """
     )
-
+    orautils.gather_stats(cur, "IPRSCAN", "MV_IPRSCAN")
     cur.close()
     con.close()
 
@@ -224,7 +224,7 @@ def import_sites(user: str, dsn: str, max_workers: int=0):
         ON IPRSCAN.SITE (UPI) NOLOGGING
         """
     )
-
+    orautils.gather_stats(cur, "IPRSCAN", "SITE")
     cur.close()
     con.close()
 
@@ -423,7 +423,7 @@ def _import_signalp(url: str, owner: str, table_src: str, table_dst: str,
             (analysis_id,)
         )
         con.commit()
-        orautils.exchange_partition(cur, owner, table_tmp, table_dst, partition)
+        orautils.exchange_partition(cur, owner, table_tmp, table_dst, partition, stats=False)
 
     orautils.drop_table(cur, owner, table_tmp)
     cur.close()
@@ -473,7 +473,7 @@ def _import_member_db(url: str, owner: str, table_src: str, table_dst: str,
     con.commit()  # important to commit here as func() does not
 
     # Exchange partition and drop temporary table
-    orautils.exchange_partition(cur, owner, table_tmp, table_dst, partition)
+    orautils.exchange_partition(cur, owner, table_tmp, table_dst, partition, stats=False)
     orautils.drop_table(cur, owner, table_tmp)
     cur.close()
     con.close()
