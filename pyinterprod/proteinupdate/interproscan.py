@@ -141,7 +141,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
 
 def import_sites(user: str, dsn: str, max_workers: int=0):
     url = orautils.make_connect_string(user, dsn)
-    analyses = _get_analyses(url, persited=2)
+    analyses = _get_analyses(url, persited=1)  # todo: `persisted=2`
 
     if not isinstance(max_workers, int) or max_workers < 1:
         max_workers = len(analyses)
