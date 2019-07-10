@@ -124,7 +124,7 @@ def _compare(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Tuple[Dict[str, 
     n = (pow(s, 2) - s) // 2    # number of items (half-matrix - diagonal)
     c = 0                       # number of items enqueued
     p = 0                       # progress (%)
-    ts1 = ts2 = time.time()
+    ts1 = time.time()
     for i, (acc_1, taxids_1) in enumerate(kvdb):
         task_queue.put((acc_1, taxids_1))
         c += s - (i + 1)
@@ -133,9 +133,9 @@ def _compare(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Tuple[Dict[str, 
         ts2 = time.time()
         if ts2 > ts1 + 3600 and p:
             ts1 = ts2
-            logger.debug(f"{c:>6}%")
+            logger.debug(f"{p:>6}%")
 
-    logger.debug(f"{c:>6}%")
+    logger.debug(f"{p:>6}%")
 
     for _ in pool:
         task_queue.put(None)
