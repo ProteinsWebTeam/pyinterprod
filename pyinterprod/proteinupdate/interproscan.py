@@ -67,7 +67,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
 
                 if table in running or table in done:
                     continue
-                elif not analysis["ready"]:
+                elif not ready:
                     pending.add(table)
                     continue
                 elif table == "ipm_signalp_match":
