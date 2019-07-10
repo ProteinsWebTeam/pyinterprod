@@ -100,10 +100,10 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
                     done.add(table)
                     exc = f.exception()
                     if exc is None:
-                        logger.info(f"\t{table2name[table]} imported")
+                        logger.info(f"  {table2name[table]:<40}imported")
                     else:
                         exc_name = exc.__class__.__name__
-                        logger.error(f"\t{table2name[table]} failed ({exc_name}: {exc})")
+                        logger.error(f"  {table2name[table]:<40}failed ({exc_name}: {exc})")
                         num_errors += 1
                 else:
                     _fs[f] = table
@@ -192,10 +192,10 @@ def import_sites(user: str, dsn: str, max_workers: int=0):
                     done.add(full_name)
                     exc = f.exception()
                     if exc is None:
-                        logger.info(f"\t{full_name} imported")
+                        logger.info(f"  {full_name:<40}imported")
                     else:
                         exc_name = exc.__class__.__name__
-                        logger.error(f"\t{full_name} failed ({exc_name}: {exc})")
+                        logger.error(f"  {full_name:<40}failed ({exc_name}: {exc})")
                         num_errors += 1
                 else:
                     _fs[f] = full_name
