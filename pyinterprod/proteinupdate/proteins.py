@@ -20,68 +20,59 @@ class ProteinDatabase(object):
                  monitor: bool=False):
         if dir is not None:
             os.makedirs(dir, exist_ok=True)
+        self.dir = mkdtemp(dir=dir)
+        os.environ["SQLITE_TMPDIR"] = self.dir
 
         if path:
             self.path = path
-            self.temporary = False
         else:
-            fd, self.path = mkstemp(dir=dir)
+            fd, self.path = mkstemp(dir=self.dir)
             os.close(fd)
             os.remove(self.path)
-            self.temporary = True
+
+        self.milestones = ("out", "stop")
+        self.event = Event()
+        self.thread = Thread(target=self.monitor_size,
+                             args=(self.event, *self.milestones))
+        self.thread.start()
 
         self._create_table("protein")
         self._create_table("protein_old")
-        if monitor:
-            self._milestones = ("out", "stop")
-            self._sqlite_dir = mkdtemp(dir=dir)
-            os.environ["SQLITE_TMPDIR"] = self._sqlite_dir
-            self._event = Event()
-            self._thread = Thread(target=self._monitor_size,
-                                  args=(self._event, *self._milestones))
-            self._thread.start()
-        else:
-            self._sqlite_dir = None
 
     @staticmethod
     def _monitor_size(event: Event, dst: str, sentinel: str):
-        sqlite_tmpdir = os.environ["SQLITE_TMPDIR"]
-        dst = os.path.join(sqlite_tmpdir, dst)
+        tmpdir = os.environ["SQLITE_TMPDIR"]
+        dst = os.path.join(tmpdir, dst)
+        sentinel = os.path.join(tmpdir, sentinel)
         size = 0
-        while True:
-            s = 0
-            for f in os.listdir(sqlite_tmpdir):
-                if f == sentinel:
-                    with open(dst, "wt") as fh:
-                        fh.write(str(size))
-                    return
-
+        while not os.path.isfile(sentinel):
+            _size = 0
+            for f in os.listdir(tmpdir):
                 try:
-                    s += os.path.getsize(os.path.join(sqlite_tmpdir, f))
+                    _size += os.path.getsize(os.path.join(tmpdir, f))
                 except FileNotFoundError:
                     pass
 
-            if s > size:
-                size = s
+            if _size > size:
+                size = _size
 
             if event.is_set():
                 with open(dst, "wt") as fh:
                     fh.write(str(size))
-
                 event.clear()
-
             time.sleep(10)
 
+        with open(dst, "wt") as fh:
+            fh.write(str(size))
+
     def __del__(self):
-        if self.temporary:
-            self.drop()
+        self._clean()
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.temporary:
-            self.drop()
+        self._clean()
 
     def __iter__(self):
         with sqlite3.connect(self.path) as con:
@@ -90,24 +81,26 @@ class ProteinDatabase(object):
 
     @property
     def size(self) -> int:
-        if self._sqlite_dir:
-            self._event.set()
-            self._event.wait()
-            dst, sentinel = self._milestones
-            with open(os.path.join(self._sqlite_dir, dst), "rt") as fh:
-                size = int(fh.read())
-            os.remove(os.path.join(self._sqlite_dir, dst))
-            return size
-        else:
-            return os.path.getsize(self.path)
+        dst, sentinel = self.milestones
+        self.event.set()
+        self.event.wait()
+        with open(os.path.join(self.dir, dst), "rt") as fh:
+            size = int(fh.read())
+        return size
 
     def _clean(self):
-        if self._sqlite_dir:
-            dst, sentinel = self._milestones
-            open(sentinel, "w").close()
+        if not self.dir:
+            return
 
-        if self.temporary:
-            self.drop()
+        dst, sentinel = self.milestones
+        open(os.path.join(self.dir, sentinel), "w").close()
+        self.thread.join()
+
+        for f in os.listdir(self.dir):
+            os.remove(os.path.join(self.dir, f))
+
+        os.rmdir(self.dir)
+        self.dir = None
 
     def _create_table(self, table: str):
         with sqlite3.connect(self.path) as con:
