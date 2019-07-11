@@ -100,6 +100,11 @@ def load(user: str, dsn: str, swissprot_path: str, trembl_path: str,
     # Insert new proteins
     logger.info("{} new proteins".format(_insert_new(con)))
     con.commit()
+
+    # Delete staging table
+    cur = con.cursor()
+    orautils.drop_table(cur, "INTERPRO", "PROTEIN_STG", purge=True)
+    cur.close()
     con.close()
 
 
