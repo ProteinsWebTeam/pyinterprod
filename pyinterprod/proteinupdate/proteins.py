@@ -2,10 +2,12 @@
 
 import os
 import sqlite3
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from tempfile import mkstemp
-from typing import Optional
+from tempfile import mkdtemp, mkstemp
+from threading import Event, Thread
+from typing import Iterable, Optional
 
 import cx_Oracle
 
@@ -14,36 +16,61 @@ from .. import logger, orautils
 
 
 class ProteinDatabase(object):
-    def __init__(self, path: Optional[str] = None, dir: Optional[str] = None):
+    def __init__(self, path: Optional[str] = None, dir: Optional[str] = None,
+                 monitor: bool=False):
+        if dir is not None:
+            os.makedirs(dir, exist_ok=True)
+
         if path:
             self.path = path
             self.temporary = False
         else:
-            try:
-                os.makedirs(dir, exist_ok=True)
-            except TypeError:
-                # dir is None
-                pass
-
             fd, self.path = mkstemp(dir=dir)
             os.close(fd)
             os.remove(self.path)
             self.temporary = True
 
-        with sqlite3.connect(self.path) as con:
-            con.execute(
-                """
-                CREATE TABLE IF NOT EXISTS protein (
-                  accession TEXT NOT NULL PRIMARY KEY,
-                  identifier TEXT NOT NULL,
-                  is_reviewed INTEGER NOT NULL,
-                  crc64 TEXT NOT NULL,
-                  length INTEGER NOT NULL,
-                  is_fragment INTEGER NOT NULL,
-                  taxon_id INTEGER NOT NULL
-                )
-                """
-            )
+        self._create_table("protein")
+        self._create_table("protein_old")
+        if monitor:
+            self._milestones = ("out", "stop")
+            self._sqlite_dir = mkdtemp(dir=dir)
+            os.environ["SQLITE_TMPDIR"] = self._sqlite_dir
+            self._event = Event()
+            self._thread = Thread(target=self._monitor_size,
+                                  args=(self._event, *self._milestones))
+            self._thread.start()
+        else:
+            self._sqlite_dir = None
+
+    @staticmethod
+    def _monitor_size(event: Event, dst: str, sentinel: str):
+        sqlite_tmpdir = os.environ["SQLITE_TMPDIR"]
+        dst = os.path.join(sqlite_tmpdir, dst)
+        size = 0
+        while True:
+            s = 0
+            for f in os.listdir(sqlite_tmpdir):
+                if f == sentinel:
+                    with open(dst, "wt") as fh:
+                        fh.write(str(size))
+                    return
+
+                try:
+                    s += os.path.getsize(os.path.join(sqlite_tmpdir, f))
+                except FileNotFoundError:
+                    pass
+
+            if s > size:
+                size = s
+
+            if event.is_set():
+                with open(dst, "wt") as fh:
+                    fh.write(str(size))
+
+                event.clear()
+
+            time.sleep(10)
 
     def __del__(self):
         if self.temporary:
@@ -63,7 +90,131 @@ class ProteinDatabase(object):
 
     @property
     def size(self) -> int:
-        return os.path.getsize(self.path)
+        if self._sqlite_dir:
+            self._event.set()
+            self._event.wait()
+            dst, sentinel = self._milestones
+            with open(os.path.join(self._sqlite_dir, dst), "rt") as fh:
+                size = int(fh.read())
+            os.remove(os.path.join(self._sqlite_dir, dst))
+            return size
+        else:
+            return os.path.getsize(self.path)
+
+    def _clean(self):
+        if self._sqlite_dir:
+            dst, sentinel = self._milestones
+            open(sentinel, "w").close()
+
+        if self.temporary:
+            self.drop()
+
+    def _create_table(self, table: str):
+        with sqlite3.connect(self.path) as con:
+            con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS {} (
+                  accession TEXT NOT NULL PRIMARY KEY,
+                  identifier TEXT NOT NULL,
+                  is_reviewed INTEGER NOT NULL,
+                  crc64 TEXT NOT NULL,
+                  length INTEGER NOT NULL,
+                  is_fragment INTEGER NOT NULL,
+                  taxon_id INTEGER NOT NULL
+                )
+                """.format(table)
+            )
+
+    def insert(self, table: str, it: Iterable) -> int:
+        with sqlite3.connect(self.path) as con:
+            query = f"INSERT INTO {table} VALUES (?, ?, ?, ?, ?, ?, ?)"
+            with orautils.TablePopulator(con, query) as table:
+                for row in it:
+                    table.insert(row)
+
+            con.commit()
+
+        return table.rowcount
+
+    def get_deleted(self) -> Generator[str, None, None]:
+        with sqlite3.connect(self.path) as con:
+            cur = con.execute(
+                """
+                SELECT accession
+                FROM protein_old
+                EXCEPT
+                SELECT accession
+                FROM protein
+                """
+            )
+
+            for row in cur:
+                yield row[0]
+
+    def get_new(self) -> Generator[str, None, None]:
+        with sqlite3.connect(self.path) as con:
+            cur = con.execute(
+                """
+                SELECT
+                  accession,
+                  identifier,
+                  is_reviewed,
+                  crc64,
+                  length,
+                  is_fragment,
+                  taxon_id
+                FROM protein
+                WHERE accession NOT IN (
+                  SELECT accession
+                  FROM protein_old
+                )
+                """
+            )
+
+            for row in cur:
+                yield row
+
+    def get_annotation_changes(self) -> Generator[Tuple, None, None]:
+        with sqlite3.connect(self.path) as con:
+            cur = con.execute(
+                """
+                SELECT
+                  accession, p1.identifier, p1.is_reviewed, p1.crc64,
+                  p1.length, p1.is_fragment, p1.taxon_id
+                FROM protein AS p1
+                INNER JOIN protein_old AS p2
+                  USING (accession)
+                WHERE p1.crc64 = p2.crc64
+                AND (
+                     p1.identifier != p2.identifier
+                  OR p1.is_reviewed != p2.is_reviewed
+                  OR p1.crc64 != p2.crc64
+                  OR p1.length != p2.length
+                  OR p1.is_fragment != p2.is_fragment
+                  OR p1.taxon_id != p2.taxon_id
+                )
+                """
+            )
+
+            for row in cur:
+                yield row
+
+    def get_sequence_changes(self) -> Generator[Tuple, None, None]:
+        with sqlite3.connect(self.path) as con:
+            cur = con.execute(
+                """
+                SELECT
+                  accession, p1.identifier, p1.is_reviewed, p1.crc64,
+                  p1.length, p1.is_fragment, p1.taxon_id
+                FROM protein AS p1
+                INNER JOIN protein_old AS p2
+                  USING (accession)
+                WHERE p1.crc64 != p2.crc64
+                """
+            )
+
+            for row in cur:
+                yield row
 
     def drop(self):
         try:
