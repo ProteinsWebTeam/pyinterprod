@@ -209,7 +209,7 @@ def truncate_table(cur: cx_Oracle.Cursor, owner: str, table: str,
 
 
 def exchange_partition(cur: cx_Oracle.Cursor, owner: str, src: str, dst: str,
-                       partition: str):
+                       partition: str, stats: bool=True):
     cur.execute(
         """
         ALTER TABLE {0}.{2}
@@ -219,7 +219,8 @@ def exchange_partition(cur: cx_Oracle.Cursor, owner: str, src: str, dst: str,
         WITHOUT VALIDATION
         """.format(owner, src, dst, partition)
     )
-    gather_stats(cur, owner, dst, partition)
+    if stats:
+        gather_stats(cur, owner, dst, partition)
 
 
 def get_constraints(cur: cx_Oracle.Cursor, owner: str, table: str) -> List[dict]:

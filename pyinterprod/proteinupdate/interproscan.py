@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable, Collection, List, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable, List, Optional, Tuple
 
 import cx_Oracle
 
@@ -67,7 +67,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
 
                 if table in running or table in done:
                     continue
-                elif not analysis["ready"]:
+                elif not ready:
                     pending.add(table)
                     continue
                 elif table == "ipm_signalp_match":
@@ -84,7 +84,6 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
                                         "MV_IPRSCAN", partition, _id, fn)
                     fs[f] = table
                     running.add(table)
-                    logger.info(f"\t{table2name[table]} is running")
 
             if signalp_actions:
                 f = executor.submit(_import_signalp, url, "IPRSCAN",
@@ -92,7 +91,6 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
                                     signalp_actions)
                 fs[f] = "ipm_signalp_match"
                 running.add("ipm_signalp_match")
-                logger.info("\tSIGNALP is running")
 
             _fs = {}
             for f in fs:
@@ -102,10 +100,10 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
                     done.add(table)
                     exc = f.exception()
                     if exc is None:
-                        logger.info(f"\t{table2name[table]} is ready")
+                        logger.info(f"  {table2name[table]:<40}imported")
                     else:
                         exc_name = exc.__class__.__name__
-                        logger.error(f"\t{table2name[table]} failed ({exc_name}: {exc})")
+                        logger.error(f"  {table2name[table]:<40}failed ({exc_name}: {exc})")
                         num_errors += 1
                 else:
                     _fs[f] = table
@@ -134,7 +132,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
         ON IPRSCAN.MV_IPRSCAN (UPI) NOLOGGING
         """
     )
-
+    orautils.gather_stats(cur, "IPRSCAN", "MV_IPRSCAN")
     cur.close()
     con.close()
 
@@ -143,7 +141,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
 
 def import_sites(user: str, dsn: str, max_workers: int=0):
     url = orautils.make_connect_string(user, dsn)
-    analyses = _get_analyses(url, persited=2)
+    analyses = _get_analyses(url, persited=1)  # todo: `persisted=2`
 
     if not isinstance(max_workers, int) or max_workers < 1:
         max_workers = len(analyses)
@@ -185,7 +183,6 @@ def import_sites(user: str, dsn: str, max_workers: int=0):
                                         "SITE", partition, _id, _insert_sites)
                     fs[f] = full_name
                     running.add(full_name)
-                    logger.info(f"\t{fs[f]} is running")
 
             _fs = {}
             for f in fs:
@@ -195,10 +192,10 @@ def import_sites(user: str, dsn: str, max_workers: int=0):
                     done.add(full_name)
                     exc = f.exception()
                     if exc is None:
-                        logger.info(f"\t{full_name} is ready")
+                        logger.info(f"  {full_name:<40}imported")
                     else:
                         exc_name = exc.__class__.__name__
-                        logger.error(f"\t{full_name} failed ({exc_name}: {exc})")
+                        logger.error(f"  {full_name:<40}failed ({exc_name}: {exc})")
                         num_errors += 1
                 else:
                     _fs[f] = full_name
@@ -227,7 +224,7 @@ def import_sites(user: str, dsn: str, max_workers: int=0):
         ON IPRSCAN.SITE (UPI) NOLOGGING
         """
     )
-
+    orautils.gather_stats(cur, "IPRSCAN", "SITE")
     cur.close()
     con.close()
 
@@ -378,8 +375,8 @@ def _import_signalp(url: str, owner: str, table_src: str, table_dst: str,
                     actions: List[Tuple[int, str]]):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    dst_upi = _get_max_upi(cur, owner, table_src)
-    if not dst_upi or dst_upi != _get_max_upi(cur, owner, table_src, "ISPRO"):
+    upi = _get_max_upi(cur, owner, table_src)
+    if not upi or upi != _get_max_upi(cur, owner, table_src, "ISPRO"):
         # Not the same UPI: import table
         orautils.drop_mview(cur, owner, table_src)
         orautils.drop_table(cur, owner, table_src)
@@ -426,7 +423,7 @@ def _import_signalp(url: str, owner: str, table_src: str, table_dst: str,
             (analysis_id,)
         )
         con.commit()
-        orautils.exchange_partition(cur, owner, table_tmp, table_dst, partition)
+        orautils.exchange_partition(cur, owner, table_tmp, table_dst, partition, stats=False)
 
     orautils.drop_table(cur, owner, table_tmp)
     cur.close()
@@ -437,8 +434,8 @@ def _import_member_db(url: str, owner: str, table_src: str, table_dst: str,
                       partition: str, analysis_id: int, func: Callable):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    dst_upi = _get_max_upi(cur, owner, table_src)
-    if not dst_upi or dst_upi != _get_max_upi(cur, owner, table_src, "ISPRO"):
+    upi = _get_max_upi(cur, owner, table_src)
+    if not upi or upi != _get_max_upi(cur, owner, table_src, "ISPRO"):
         # Not the same UPI: import table
         orautils.drop_mview(cur, owner, table_src)
         orautils.drop_table(cur, owner, table_src)
@@ -476,61 +473,8 @@ def _import_member_db(url: str, owner: str, table_src: str, table_dst: str,
     con.commit()  # important to commit here as func() does not
 
     # Exchange partition and drop temporary table
-    orautils.exchange_partition(cur, owner, table_tmp, table_dst, partition)
+    orautils.exchange_partition(cur, owner, table_tmp, table_dst, partition, stats=False)
     orautils.drop_table(cur, owner, table_tmp)
-    cur.close()
-    con.close()
-
-
-def _import_table(url: str, owner: str, name: str):
-    index = "I_" + name
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT MAX(UPI)
-        FROM {}.{}@ISPRO
-        """.format(owner, name)
-    )
-    src_upi = cur.fetchone()[0]
-
-    try:
-        cur.execute(
-            """
-            SELECT MAX(UPI)
-            FROM {}.{}
-            """.format(owner, name)
-        )
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        if error.code == 942:
-            # ORA-00942 (table or view does not exist)
-            dst_upi = None
-        else:
-            raise exc
-    else:
-        dst_upi = cur.fetchone()[0]
-
-    if src_upi != dst_upi:
-        orautils.drop_mview(cur, owner, name)
-        orautils.drop_table(cur, owner, name)
-        orautils.drop_index(cur, owner, index)
-        cur.execute(
-            """
-            CREATE TABLE {0}.{1} NOLOGGING
-            AS
-            SELECT *
-            FROM {0}.{1}@ISPRO
-            """.format(owner, name)
-        )
-        orautils.gather_stats(cur, owner, name)
-        cur.execute(
-            """
-            CREATE INDEX {0}.{1}
-            ON {0}.{2}(ANALYSIS_ID)
-            NOLOGGING
-            """.format(owner, index, name)
-        )
     cur.close()
     con.close()
 

@@ -350,8 +350,8 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
             else:
                 fn = prediction.cmp_terms
 
-            size = max(size, fn(user, dsn, processes, tmpdir))
-            logger.debug(f"comparisons from {table} done")
+            # size = max(size, fn(user, dsn, processes, tmpdir))
+            # logger.debug(f"comparisons from {table} done")
 
     logger.info("disk usage: {:.0f} MB".format(size / 1024 ** 2))
     if num_errors:
