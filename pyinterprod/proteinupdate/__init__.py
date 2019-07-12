@@ -104,7 +104,6 @@ def main():
             name="update-matches",
             fn=matches.update_matches,
             args=(db_users["interpro"], db_dsn, export_dirs["matches"]),
-            kwargs=dict(drop_indices=True),
             scheduler=dict(queue=queue, mem=500),
             requires=["import-matches", "proteins2scan"]
         ),
