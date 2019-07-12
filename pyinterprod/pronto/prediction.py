@@ -148,8 +148,6 @@ def _compare(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Tuple[Dict[str, 
             ts1 = ts2
             logger.debug(f"{p:>6}%")
 
-    logger.debug(f"{p:>6}%")
-
     for _ in pool:
         task_queue.put(None)
 
