@@ -25,15 +25,6 @@ def load_comparators(user: str, dsn: str, comparators: Optional[list]=None,
         (
             METHOD_AC1 VARCHAR2(25) NOT NULL,
             METHOD_AC2 VARCHAR2(25) NOT NULL,
-            DESC_INDEX BINARY_DOUBLE DEFAULT NULL,
-            DESC_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            DESC_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            TAXA_INDEX BINARY_DOUBLE DEFAULT NULL,
-            TAXA_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            TAXA_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            TERM_INDEX BINARY_DOUBLE DEFAULT NULL,
-            TERM_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            TERM_CONT2 BINARY_DOUBLE DEFAULT NULL,
             COLL_INDEX BINARY_DOUBLE DEFAULT NULL,
             COLL_CONT1 BINARY_DOUBLE DEFAULT NULL,
             COLL_CONT2 BINARY_DOUBLE DEFAULT NULL,
@@ -43,6 +34,15 @@ def load_comparators(user: str, dsn: str, comparators: Optional[list]=None,
             ROVR_INDEX BINARY_DOUBLE DEFAULT NULL,
             ROVR_CONT1 BINARY_DOUBLE DEFAULT NULL,
             ROVR_CONT2 BINARY_DOUBLE DEFAULT NULL,
+            DESC_INDEX BINARY_DOUBLE DEFAULT NULL,
+            DESC_CONT1 BINARY_DOUBLE DEFAULT NULL,
+            DESC_CONT2 BINARY_DOUBLE DEFAULT NULL,
+            TAXA_INDEX BINARY_DOUBLE DEFAULT NULL,
+            TAXA_CONT1 BINARY_DOUBLE DEFAULT NULL,
+            TAXA_CONT2 BINARY_DOUBLE DEFAULT NULL,
+            TERM_INDEX BINARY_DOUBLE DEFAULT NULL,
+            TERM_CONT1 BINARY_DOUBLE DEFAULT NULL,
+            TERM_CONT2 BINARY_DOUBLE DEFAULT NULL,
             CONSTRAINT PK_METHOD_SIMILARITY PRIMARY KEY (METHOD_AC1, METHOD_AC2)
         ) NOLOGGING
         """.format(owner)
@@ -89,7 +89,19 @@ def load_comparators(user: str, dsn: str, comparators: Optional[list]=None,
 
     cur = con.cursor()
     orautils.grant(cur, owner, "METHOD_SIMILARITY", "SELECT", "INTERPRO_SELECT")
-    orautils.gather_stats(cur, owner, "METHOD2PROTEIN")
+    cur.execute(
+        """
+        CREATE INDEX I_METHOD_SIMILARITY$AC1
+        ON {}.METHOD_DESC (METHOD_AC1) NOLOGGING
+        """.format(owner)
+    )
+    cur.execute(
+        """
+        CREATE INDEX I_METHOD_SIMILARITY$AC2
+        ON {}.METHOD_DESC (METHOD_AC2) NOLOGGING
+        """.format(owner)
+    )
+    orautils.gather_stats(cur, owner, "METHOD_SIMILARITY")
     cur.close()
     con.close()
 
