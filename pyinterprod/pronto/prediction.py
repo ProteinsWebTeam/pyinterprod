@@ -198,9 +198,9 @@ def _load_comparisons(user: str, dsn: str, column: str, counts: Dict[str, int],
                 MERGE INTO {0}.METHOD_SIMILARITY
                 USING DUAL ON (METHOD_AC1 = :ac1 AND METHOD_AC2 = :ac2)
                 WHEN MATCHED THEN
-                  UPDATE SET TERM_INDEX=:idx,
-                             TERM_CONT1=:ct1,
-                             TERM_CONT2=:ct2
+                  UPDATE SET {1}_INDEX=:idx,
+                             {1}_CONT1=:ct1,
+                             {1}_CONT2=:ct2
                 WHEN NOT MATCHED THEN
                   INSERT (
                     METHOD_AC1, METHOD_AC2, {1}_INDEX, {1}_CONT1, {1}_CONT2
