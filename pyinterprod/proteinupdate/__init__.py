@@ -128,7 +128,7 @@ def main():
             fn=uniprot.build_aa_iprscan,
             args=(db_users["iprscan"], db_dsn),
             scheduler=dict(queue=queue, mem=500),
-            requires=["import-matches"]
+            requires=["update-matches"]
         ),
         Task(
             name="report-unintegrated",
