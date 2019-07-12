@@ -13,7 +13,8 @@ from .utils import merge_comparators, Kvdb, PersistentBuffer
 JACCARD_THRESHOLD = 0.5
 
 
-def load_comparators(user: str, dsn: str, comparators: Optional[list]=None):
+def load_comparators(user: str, dsn: str, comparators: Optional[list]=None,
+                     remove: bool=True):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -49,7 +50,7 @@ def load_comparators(user: str, dsn: str, comparators: Optional[list]=None):
     cur.close()
 
     if comparators:
-        counts, comparisons = merge_comparators(comparators, remove=True)
+        counts, comparisons = merge_comparators(comparators, remove=remove)
 
         table = orautils.TablePopulator(
             con=con,
