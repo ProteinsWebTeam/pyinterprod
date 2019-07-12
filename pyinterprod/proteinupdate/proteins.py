@@ -2,11 +2,9 @@
 
 import os
 import sqlite3
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from tempfile import mkdtemp, mkstemp
-from threading import Event, Thread
 from typing import Generator, Iterable, Optional, Tuple
 
 import cx_Oracle
@@ -20,8 +18,8 @@ class ProteinDatabase(object):
         if dir is not None:
             os.makedirs(dir, exist_ok=True)
         self.dir = mkdtemp(dir=dir)
-        os.environ["SQLITE_TMPDIR"] = self.dir
 
+        os.environ["SQLITE_TMPDIR"] = self.dir
         if path:
             self.path = path
         else:
@@ -29,40 +27,8 @@ class ProteinDatabase(object):
             os.close(fd)
             os.remove(self.path)
 
-        self.milestones = ("out", "stop")
-        self.event = Event()
-        self.thread = Thread(target=self._monitor_size,
-                             args=(self.event, *self.milestones))
-        self.thread.start()
-
         self._create_table("protein")
-        self._create_table("protein_old")
-
-    @staticmethod
-    def _monitor_size(event: Event, dst: str, sentinel: str):
-        tmpdir = os.environ["SQLITE_TMPDIR"]
-        dst = os.path.join(tmpdir, dst)
-        sentinel = os.path.join(tmpdir, sentinel)
-        size = 0
-        while not os.path.isfile(sentinel):
-            _size = 0
-            for f in os.listdir(tmpdir):
-                try:
-                    _size += os.path.getsize(os.path.join(tmpdir, f))
-                except FileNotFoundError:
-                    pass
-
-            if _size > size:
-                size = _size
-
-            if event.is_set():
-                with open(dst, "wt") as fh:
-                    fh.write(str(size))
-                event.clear()
-            time.sleep(10)
-
-        with open(dst, "wt") as fh:
-            fh.write(str(size))
+        # self._create_table("protein_old")
 
     def __del__(self):
         self._clean()
@@ -80,20 +46,20 @@ class ProteinDatabase(object):
 
     @property
     def size(self) -> int:
-        dst, sentinel = self.milestones
-        self.event.set()
-        self.event.wait()
-        with open(os.path.join(self.dir, dst), "rt") as fh:
-            size = int(fh.read())
+        size = 0
+        for f in os.listdir(self.dir):
+            try:
+                s = os.path.getsize(os.path.join(self.dir, f))
+            except FileNotFoundError:
+                pass
+            else:
+                size += s
+
         return size
 
     def _clean(self):
         if not self.dir:
             return
-
-        dst, sentinel = self.milestones
-        open(os.path.join(self.dir, sentinel), "w").close()
-        self.thread.join()
 
         for f in os.listdir(self.dir):
             os.remove(os.path.join(self.dir, f))
@@ -117,96 +83,96 @@ class ProteinDatabase(object):
                 """.format(table)
             )
 
-    def insert(self, table: str, it: Iterable) -> int:
-        with sqlite3.connect(self.path) as con:
-            query = f"INSERT INTO {table} VALUES (?, ?, ?, ?, ?, ?, ?)"
-            with orautils.TablePopulator(con, query) as table:
-                for row in it:
-                    table.insert(row)
-
-            con.commit()
-
-        return table.rowcount
-
-    def get_deleted(self) -> Generator[str, None, None]:
-        with sqlite3.connect(self.path) as con:
-            cur = con.execute(
-                """
-                SELECT accession
-                FROM protein_old
-                EXCEPT
-                SELECT accession
-                FROM protein
-                """
-            )
-
-            for row in cur:
-                yield row[0]
-
-    def get_new(self) -> Generator[str, None, None]:
-        with sqlite3.connect(self.path) as con:
-            cur = con.execute(
-                """
-                SELECT
-                  accession,
-                  identifier,
-                  is_reviewed,
-                  crc64,
-                  length,
-                  is_fragment,
-                  taxon_id
-                FROM protein
-                WHERE accession NOT IN (
-                  SELECT accession
-                  FROM protein_old
-                )
-                """
-            )
-
-            for row in cur:
-                yield row
-
-    def get_annotation_changes(self) -> Generator[Tuple, None, None]:
-        with sqlite3.connect(self.path) as con:
-            cur = con.execute(
-                """
-                SELECT
-                  accession, p1.identifier, p1.is_reviewed, p1.crc64,
-                  p1.length, p1.is_fragment, p1.taxon_id
-                FROM protein AS p1
-                INNER JOIN protein_old AS p2
-                  USING (accession)
-                WHERE p1.crc64 = p2.crc64
-                AND (
-                     p1.identifier != p2.identifier
-                  OR p1.is_reviewed != p2.is_reviewed
-                  OR p1.crc64 != p2.crc64
-                  OR p1.length != p2.length
-                  OR p1.is_fragment != p2.is_fragment
-                  OR p1.taxon_id != p2.taxon_id
-                )
-                """
-            )
-
-            for row in cur:
-                yield row
-
-    def get_sequence_changes(self) -> Generator[Tuple, None, None]:
-        with sqlite3.connect(self.path) as con:
-            cur = con.execute(
-                """
-                SELECT
-                  accession, p1.identifier, p1.is_reviewed, p1.crc64,
-                  p1.length, p1.is_fragment, p1.taxon_id
-                FROM protein AS p1
-                INNER JOIN protein_old AS p2
-                  USING (accession)
-                WHERE p1.crc64 != p2.crc64
-                """
-            )
-
-            for row in cur:
-                yield row
+    # def insert_old(self, it: Iterable) -> int:
+    #     with sqlite3.connect(self.path) as con:
+    #         query = "INSERT INTO protein_old VALUES (?, ?, ?, ?, ?, ?, ?)"
+    #         with orautils.TablePopulator(con, query) as table:
+    #             for row in it:
+    #                 table.insert(row)
+    #
+    #         con.commit()
+    #
+    #     return table.rowcount
+    #
+    # def get_deleted(self) -> Generator[str, None, None]:
+    #     with sqlite3.connect(self.path) as con:
+    #         cur = con.execute(
+    #             """
+    #             SELECT accession
+    #             FROM protein_old
+    #             EXCEPT
+    #             SELECT accession
+    #             FROM protein
+    #             """
+    #         )
+    #
+    #         for row in cur:
+    #             yield row[0]
+    #
+    # def get_new(self) -> Generator[str, None, None]:
+    #     with sqlite3.connect(self.path) as con:
+    #         cur = con.execute(
+    #             """
+    #             SELECT
+    #               accession,
+    #               identifier,
+    #               is_reviewed,
+    #               crc64,
+    #               length,
+    #               is_fragment,
+    #               taxon_id
+    #             FROM protein
+    #             WHERE accession NOT IN (
+    #               SELECT accession
+    #               FROM protein_old
+    #             )
+    #             """
+    #         )
+    #
+    #         for row in cur:
+    #             yield row
+    #
+    # def get_annotation_changes(self) -> Generator[Tuple, None, None]:
+    #     with sqlite3.connect(self.path) as con:
+    #         cur = con.execute(
+    #             """
+    #             SELECT
+    #               accession, p1.identifier, p1.is_reviewed, p1.crc64,
+    #               p1.length, p1.is_fragment, p1.taxon_id
+    #             FROM protein AS p1
+    #             INNER JOIN protein_old AS p2
+    #               USING (accession)
+    #             WHERE p1.crc64 = p2.crc64
+    #             AND (
+    #                  p1.identifier != p2.identifier
+    #               OR p1.is_reviewed != p2.is_reviewed
+    #               OR p1.crc64 != p2.crc64
+    #               OR p1.length != p2.length
+    #               OR p1.is_fragment != p2.is_fragment
+    #               OR p1.taxon_id != p2.taxon_id
+    #             )
+    #             """
+    #         )
+    #
+    #         for row in cur:
+    #             yield row
+    #
+    # def get_sequence_changes(self) -> Generator[Tuple, None, None]:
+    #     with sqlite3.connect(self.path) as con:
+    #         cur = con.execute(
+    #             """
+    #             SELECT
+    #               accession, p1.identifier, p1.is_reviewed, p1.crc64,
+    #               p1.length, p1.is_fragment, p1.taxon_id
+    #             FROM protein AS p1
+    #             INNER JOIN protein_old AS p2
+    #               USING (accession)
+    #             WHERE p1.crc64 != p2.crc64
+    #             """
+    #         )
+    #
+    #         for row in cur:
+    #             yield row
 
     def drop(self):
         try:
@@ -217,6 +183,7 @@ class ProteinDatabase(object):
 
 def load(user: str, dsn: str, swissprot_path: str, trembl_path: str,
          dir: Optional[str]=None):
+    url = orautils.make_connect_string(user, dsn)
 
     logger.info("loading proteins")
     with ProteinDatabase(dir=dir) as db:
@@ -228,7 +195,7 @@ def load(user: str, dsn: str, swissprot_path: str, trembl_path: str,
 
         logger.info("disk space used: {:.0f} MB".format(db.size/1024**2))
 
-        con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+        con = cx_Oracle.connect(url)
         logger.info("{} proteins inserted".format(_insert_all(con, db)))
 
     # Update annotations
@@ -247,6 +214,25 @@ def load(user: str, dsn: str, swissprot_path: str, trembl_path: str,
     # Delete staging table
     cur = con.cursor()
     orautils.drop_table(cur, "INTERPRO", "PROTEIN_STG", purge=True)
+    cur.close()
+    con.close()
+
+
+def _get_proteins(url: str) -> Generator[Tuple, None, None]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT
+          PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT, TAX_ID
+        FROM INTERPRO.PROTEIN
+        """
+    )
+
+    for row in cur:
+        yield (row[0],  row[1], 1 if row[2] == 'S' else 0, row[3], row[4],
+               1 if row[5] == 'Y' else 0, row[6])
+
     cur.close()
     con.close()
 
