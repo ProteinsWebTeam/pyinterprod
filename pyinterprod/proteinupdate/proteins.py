@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from tempfile import mkdtemp, mkstemp
 from threading import Event, Thread
-from typing import Generator, Iterable, Optional
+from typing import Generator, Iterable, Optional, Tuple
 
 import cx_Oracle
 
