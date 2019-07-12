@@ -92,13 +92,13 @@ def load_comparators(user: str, dsn: str, comparators: Optional[list]=None,
     cur.execute(
         """
         CREATE INDEX I_METHOD_SIMILARITY$AC1
-        ON {}.METHOD_DESC (METHOD_AC1) NOLOGGING
+        ON {}.METHOD_SIMILARITY (METHOD_AC1) NOLOGGING
         """.format(owner)
     )
     cur.execute(
         """
         CREATE INDEX I_METHOD_SIMILARITY$AC2
-        ON {}.METHOD_DESC (METHOD_AC2) NOLOGGING
+        ON {}.METHOD_SIMILARITY (METHOD_AC2) NOLOGGING
         """.format(owner)
     )
     orautils.gather_stats(cur, owner, "METHOD_SIMILARITY")
