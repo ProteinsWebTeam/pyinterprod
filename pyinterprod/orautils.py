@@ -377,7 +377,7 @@ def refresh_mview(url: str, name: str):
 
 class TablePopulator(object):
     def __init__(self, con: cx_Oracle.Connection, query: str,
-                 buffer_size: int=10000, autocommit: bool=False):
+                 buffer_size: int=100000, autocommit: bool=False):
         self.con = con
         self.cur = con.cursor()
         self.query = query
