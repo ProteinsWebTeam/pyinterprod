@@ -234,7 +234,7 @@ def _load_comparisons(user: str, dsn: str, column: str, counts: Dict[str, int],
             ts2 = time.time()
             if ts2 > ts1 + 3600:
                 ts1 = ts2
-                logger.debug(f"{i:>10}%")
+                logger.debug(f"{i:>10}")
 
         if remove:
             buffer.remove()
