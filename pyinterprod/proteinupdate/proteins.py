@@ -16,8 +16,7 @@ from .. import logger, orautils
 
 
 class ProteinDatabase(object):
-    def __init__(self, path: Optional[str] = None, dir: Optional[str] = None,
-                 monitor: bool=False):
+    def __init__(self, path: Optional[str] = None, dir: Optional[str] = None):
         if dir is not None:
             os.makedirs(dir, exist_ok=True)
         self.dir = mkdtemp(dir=dir)
@@ -32,7 +31,7 @@ class ProteinDatabase(object):
 
         self.milestones = ("out", "stop")
         self.event = Event()
-        self.thread = Thread(target=self.monitor_size,
+        self.thread = Thread(target=self._monitor_size,
                              args=(self.event, *self.milestones))
         self.thread.start()
 
