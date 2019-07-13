@@ -136,7 +136,7 @@ The InterPro Production Team
         cur.execute(
             """
             CREATE INDEX I_MV_ENTRY2PROTEIN_TRUE
-            ON INTERPRO.MV_ENTRY2PROTEIN (ENTRY_AC)
+            ON INTERPRO.MV_ENTRY2PROTEIN_TRUE (ENTRY_AC)
             """
         )
 
