@@ -394,34 +394,38 @@ def _track_deleted(con) -> int:
 
 def _insert_new(con: cx_Oracle.Connection) -> int:
     cur = con.cursor()
+    orautils.drop_table(cur, "INTERPRO", "PROTEIN_NEW", purge=True)
     cur.execute(
         """
-        SELECT
-          PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT, TAX_ID
+        CREATE TABLE INTERPRO.PROTEIN_NEW NOLOGGING
+        AS SELECT *
         FROM INTERPRO.PROTEIN_STG
         WHERE PROTEIN_AC NOT IN (SELECT PROTEIN_AC FROM INTERPRO.PROTEIN)
         """
     )
 
-    query = """
+    cur.execute("SELECT COUNT(*) FROM INTERPRO.PROTEIN_NEW")
+    rowcount = cur.fetchone()[0]
+
+    cur.execute(
+        """
         INSERT /*+ APPEND */ INTO INTERPRO.PROTEIN_CHANGES
-        VALUES (:1)
-    """
-    table1 = orautils.TablePopulator(con, query, autocommit=True)
-    query = """
+        SELECT PROTEIN_AC FROM INTERPRO.PROTEIN_NEW
+        """
+    )
+
+    cur.execute(
+        """
         INSERT INTO INTERPRO.PROTEIN
-        VALUES (:1, :2, :3, :4, :5, SYSDATE, USER, :6, 'N', :7)
-    """
-    table2 = orautils.TablePopulator(con, query)
+        SELECT PROTEIN_AC, NAME, DBCODE, CRC64, LEN, SYSDATE, USER,
+               FRAGMENT, 'N', TAX_ID
+        FROM INTERPRO.PROTEIN_NEW
+        """
+    )
 
-    for row in cur:
-        table1.insert((row[0],))
-        table2.insert(row)
-
-    table1.close()
-    table2.close()
+    orautils.drop_table(cur, "INTERPRO", "PROTEIN_NEW", purge=True)
     cur.close()
-    return table1.rowcount
+    return rowcount
 
 
 def update(user: str, dsn: str, version: str, date: str):
