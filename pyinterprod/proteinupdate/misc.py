@@ -272,7 +272,7 @@ def report_to_curators(user: str, dsn: str, files: List[str]):
         content="""\
 Dear curators,
 
-Pronto has been rereshed. Please find attached a ZIP archive containing \
+Pronto has been refreshed. Please find attached a ZIP archive containing \
 the report files for this month's protein update.
 
 The InterPro Production Team
