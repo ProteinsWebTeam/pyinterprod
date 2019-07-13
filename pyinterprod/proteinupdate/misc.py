@@ -44,14 +44,14 @@ The InterPro Production Team
     cur = con.cursor()
 
     # Ensure that legacy tables are dropped
-    orautils.drop_table(cur, "INTERPRO", "MATCH_STATS")
-    orautils.drop_table(cur, "INTERPRO", "MATCH_STATS_OLD")
+    orautils.drop_table(cur, "INTERPRO", "MATCH_STATS", purge=True)
+    orautils.drop_table(cur, "INTERPRO", "MATCH_STATS_OLD", purge=True)
 
     if plsql:
         cur.callproc("INTERPRO.REFRESH_MATCH_COUNTS.REFRESH")
     else:
         logger.info("creating MV_METHOD2PROTEIN")
-        orautils.drop_table(cur, "INTERPRO", "MV_METHOD2PROTEIN")
+        orautils.drop_table(cur, "INTERPRO", "MV_METHOD2PROTEIN", purge=True)
         cur.execute(
             """
             CREATE TABLE INTERPRO.MV_METHOD2PROTEIN (
@@ -80,7 +80,7 @@ The InterPro Production Team
         )
 
         logger.info("creating MV_METHOD_MATCH")
-        orautils.drop_table(cur, "INTERPRO", "MV_METHOD_MATCH")
+        orautils.drop_table(cur, "INTERPRO", "MV_METHOD_MATCH", purge=True)
         cur.execute(
             """
             CREATE TABLE INTERPRO.MV_METHOD_MATCH (
@@ -109,8 +109,8 @@ The InterPro Production Team
         )
 
         logger.info("creating MV_ENTRY2PROTEIN_TRUE")
-        orautils.drop_table(cur, "INTERPRO", "MV_ENTRY2PROTEIN")
-        orautils.drop_table(cur, "INTERPRO", "MV_ENTRY2PROTEIN_TRUE")
+        orautils.drop_table(cur, "INTERPRO", "MV_ENTRY2PROTEIN", purge=True)
+        orautils.drop_table(cur, "INTERPRO", "MV_ENTRY2PROTEIN_TRUE", purge=True)
         cur.execute(
             """
             CREATE TABLE INTERPRO.MV_ENTRY2PROTEIN_TRUE (
@@ -162,7 +162,7 @@ def refresh_taxonomy(user: str, dsn: str):
     cur = con.cursor()
 
     logger.info("creating TAXONOMY_LOAD")
-    orautils.drop_table(cur, "INTERPRO", "TAXONOMY_LOAD")
+    orautils.drop_table(cur, "INTERPRO", "TAXONOMY_LOAD", purge=True)
     cur.execute(
         """
         CREATE TABLE INTERPRO.TAXONOMY_LOAD
@@ -180,7 +180,7 @@ def refresh_taxonomy(user: str, dsn: str):
     orautils.gather_stats(cur, "INTERPRO", "TAXONOMY_LOAD")
 
     logger.info("creating ETAXI")
-    orautils.drop_table(cur, "INTERPRO", "ETAXI")
+    orautils.drop_table(cur, "INTERPRO", "ETAXI", purge=True)
     cur.execute(
         """
         CREATE TABLE INTERPRO.ETAXI
@@ -243,7 +243,7 @@ def refresh_taxonomy(user: str, dsn: str):
     )
 
     # Dropping temporary table
-    orautils.drop_table(cur, "INTERPRO", "TAXONOMY_LOAD")
+    orautils.drop_table(cur, "INTERPRO", "TAXONOMY_LOAD", purge=True)
 
     orautils.grant(cur, "INTERPRO", "ETAXI", "SELECT", "PUBLIC")
     cur.close()

@@ -379,7 +379,7 @@ def _import_signalp(url: str, owner: str, table_src: str, table_dst: str,
     if not upi or upi != _get_max_upi(cur, owner, table_src, "ISPRO"):
         # Not the same UPI: import table
         orautils.drop_mview(cur, owner, table_src)
-        orautils.drop_table(cur, owner, table_src)
+        orautils.drop_table(cur, owner, table_src, purge=True)
         cur.execute(
             """
             CREATE TABLE {0}.{1} NOLOGGING
@@ -398,7 +398,7 @@ def _import_signalp(url: str, owner: str, table_src: str, table_dst: str,
         )
 
     table_tmp = table_src + "_TMP"
-    orautils.drop_table(cur, owner, table_tmp)
+    orautils.drop_table(cur, owner, table_tmp, purge=True)
     cur.execute(
         """
         CREATE TABLE {0}.{1} NOLOGGING
@@ -425,7 +425,7 @@ def _import_signalp(url: str, owner: str, table_src: str, table_dst: str,
         con.commit()
         orautils.exchange_partition(cur, owner, table_tmp, table_dst, partition, stats=False)
 
-    orautils.drop_table(cur, owner, table_tmp)
+    orautils.drop_table(cur, owner, table_tmp, purge=True)
     cur.close()
     con.close()
 
@@ -438,7 +438,7 @@ def _import_member_db(url: str, owner: str, table_src: str, table_dst: str,
     if not upi or upi != _get_max_upi(cur, owner, table_src, "ISPRO"):
         # Not the same UPI: import table
         orautils.drop_mview(cur, owner, table_src)
-        orautils.drop_table(cur, owner, table_src)
+        orautils.drop_table(cur, owner, table_src, purge=True)
         cur.execute(
             """
             CREATE TABLE {0}.{1} NOLOGGING
@@ -458,7 +458,7 @@ def _import_member_db(url: str, owner: str, table_src: str, table_dst: str,
 
     # Create temporary table for partition exchange
     table_tmp = table_src + "_TMP"
-    orautils.drop_table(cur, owner, table_tmp)
+    orautils.drop_table(cur, owner, table_tmp, purge=True)
     cur.execute(
         """
         CREATE TABLE {0}.{1} NOLOGGING
@@ -474,7 +474,7 @@ def _import_member_db(url: str, owner: str, table_src: str, table_dst: str,
 
     # Exchange partition and drop temporary table
     orautils.exchange_partition(cur, owner, table_tmp, table_dst, partition, stats=False)
-    orautils.drop_table(cur, owner, table_tmp)
+    orautils.drop_table(cur, owner, table_tmp, purge=True)
     cur.close()
     con.close()
 

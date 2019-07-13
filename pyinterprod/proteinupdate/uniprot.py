@@ -117,7 +117,7 @@ def build_xref_condensed(user: str, dsn: str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
-    orautils.drop_table(cur, "INTERPRO", "XREF_CONDENSED")
+    orautils.drop_table(cur, "INTERPRO", "XREF_CONDENSED", purge=True)
     cur.execute(
         """
         CREATE TABLE INTERPRO.XREF_CONDENSED
@@ -243,7 +243,7 @@ def build_xref_summary(user: str, dsn: str):
     logger.info("building XREF_SUMMARY")
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, "INTERPRO", "XREF_SUMMARY")
+    orautils.drop_table(cur, "INTERPRO", "XREF_SUMMARY", purge=True)
     cur.execute(
         """
         CREATE TABLE INTERPRO.XREF_SUMMARY
@@ -466,7 +466,7 @@ def build_aa_iprscan(user: str, dsn: str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     orautils.drop_mview(cur, "IPRSCAN", "AA_IPRSCAN")
-    orautils.drop_table(cur, "IPRSCAN", "AA_IPRSCAN")
+    orautils.drop_table(cur, "IPRSCAN", "AA_IPRSCAN", purge=True)
 
     select_stmt = """
         SELECT

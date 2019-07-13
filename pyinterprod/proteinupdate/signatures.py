@@ -8,7 +8,7 @@ from ..orautils import drop_table, make_connect_string
 def update_method2descriptions(user: str, dsn: str):
     con = cx_Oracle.connect(make_connect_string(user, dsn))
     cur = con.cursor()
-    drop_table(cur, "INTERPRO", "METHOD2SWISS_DE")
+    drop_table(cur, "INTERPRO", "METHOD2SWISS_DE", purge=True)
     cur.execute(
         """
         CREATE TABLE INTERPRO.METHOD2SWISS_DE

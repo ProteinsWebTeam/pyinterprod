@@ -577,7 +577,7 @@ def find_protein_to_refresh(user: str, dsn: str):
     logger.info("PROTEIN_TO_SCAN: refreshing")
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, "INTERPRO", "PROTEIN_TO_SCAN")
+    orautils.drop_table(cur, "INTERPRO", "PROTEIN_TO_SCAN", purge=True)
 
     # # Assume CRC64 have been checked and that no mismatches were found
     # cur.execute(

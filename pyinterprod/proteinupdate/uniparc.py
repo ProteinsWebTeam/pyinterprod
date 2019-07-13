@@ -17,7 +17,7 @@ def update(user: str, dsn: str):
 def _update_database(cur: cx_Oracle.Cursor):
     logger.info("creating UNIPARC.CV_DATABASE")
 
-    orautils.drop_table(cur, "UNIPARC", "CV_DATABASE")
+    orautils.drop_table(cur, "UNIPARC", "CV_DATABASE", purge=True)
     cur.execute(
         """
         CREATE TABLE UNIPARC.CV_DATABASE
@@ -70,7 +70,7 @@ def _update_protein(user: str, dsn: str):
 
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, "UNIPARC", "PROTEIN")
+    orautils.drop_table(cur, "UNIPARC", "PROTEIN", purge=True)
     orautils.drop_mview(cur, "UNIPARC", "PROTEIN")
     cur.execute(
         """
@@ -107,8 +107,8 @@ def _update_xref(cur: cx_Oracle.Cursor):
     logger.info("creating UNIPARC.XREF")
 
     # XREF_OLD: legacy table, just to be sure it does not exist any more
-    orautils.drop_table(cur, "UNIPARC", "XREF")
-    orautils.drop_table(cur, "UNIPARC", "XREF_OLD")
+    orautils.drop_table(cur, "UNIPARC", "XREF", purge=True)
+    orautils.drop_table(cur, "UNIPARC", "XREF_OLD", purge=True)
     cur.execute(
         """
         CREATE TABLE UNIPARC.XREF
