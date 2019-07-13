@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import math
 import time
 from multiprocessing import Process, Queue
 from typing import Dict, List, Optional, Tuple
@@ -11,6 +10,7 @@ from .. import logger, orautils
 from .utils import merge_comparators, Kvdb, PersistentBuffer
 
 JACCARD_THRESHOLD = 0.5
+PROGRESS_SECONDS = 3600
 
 
 def load_comparators(user: str, dsn: str, comparators: Optional[list]=None,
@@ -136,17 +136,14 @@ def _compare(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Tuple[Dict[str, 
     s = len(kvdb)               # matrix of shape (s, s)
     n = (pow(s, 2) - s) // 2    # number of items (half-matrix - diagonal)
     c = 0                       # number of items enqueued
-    p = 0                       # progress (%)
     ts1 = time.time()
     for i, (acc_1, taxids_1) in enumerate(kvdb):
         task_queue.put((acc_1, taxids_1))
         c += s - (i + 1)
-        p = math.floor(c*100/n*10) / 10  # truncate to one decimal
-
         ts2 = time.time()
-        if ts2 > ts1 + 3600 and p:
+        if ts2 > ts1 + PROGRESS_SECONDS:
             ts1 = ts2
-            logger.debug(f"{p:>6}%")
+            logger.debug(f"{c/n*100:>3.0f}%")
 
     for _ in pool:
         task_queue.put(None)
@@ -230,7 +227,7 @@ def _load_comparisons(user: str, dsn: str, column: str, counts: Dict[str, int],
 
             i += 1
             ts2 = time.time()
-            if ts2 > ts1 + 3600:
+            if ts2 > ts1 + PROGRESS_SECONDS:
                 ts1 = ts2
                 logger.debug(f"{i:>10}")
 
