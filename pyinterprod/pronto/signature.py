@@ -307,58 +307,36 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     logger.debug("proteins: {:,}".format(num_proteins))
 
-    with open(os.path.join(tmpdir, "comparators.p"), "wb") as fh:
-        pickle.dump(comparators, fh)
-    # prediction.load_comparators(user, dsn, comparators)
-
-    num_errors = 0
     with ThreadPoolExecutor() as executor:
-        fs = {}
-        f = executor.submit(_finalize_method2protein, user, dsn)
-        fs[f] = "METHOD2PROTEIN"
+        fs = [executor.submit(_finalize_method2protein, user, dsn)]
 
-        logger.debug("creating METHOD_TERM")
+        with open(os.path.join(tmpdir, "comparators.p"), "wb") as fh:
+            pickle.dump(comparators, fh)
+        # prediction.load_comparators(user, dsn, comparators)
+
         _create_method_term(user, dsn, terms)
-        f = executor.submit(_finalize_method_term, user, dsn)
-        fs[f] = "METHOD_TERM"
-
-        logger.debug("creating METHOD_DESC")
         _create_method_desc(user, dsn, names)
-        f = executor.submit(_finalize_method_desc, user, dsn)
-        fs[f] = "METHOD_DESC"
-
-        logger.debug("creating METHOD_TAXA")
         _create_method_taxa(user, dsn, taxa)
-        f = executor.submit(_finalize_method_taxa, user, dsn)
-        fs[f] = "METHOD_TAXA"
+        terms = names = taxa = None
+
+        # prediction.cmp_terms(user, dsn, processes, tmpdir)
+        # prediction.cmp_descriptions(user, dsn, processes, tmpdir)
+        # prediction.cmp_taxa(user, dsn, processes, tmpdir)
 
         for f in as_completed(fs):
-            table = fs[f]
             exc = f.exception()
-            if exc is None:
-                logger.debug(f"{table}: ready")
-            else:
-                logger.error(f"{table}: exception raised ({exc})")
-                num_errors += 1
+            if exc is not None:
+                raise exc
 
-            if num_errors or table == "METHOD2PROTEIN":
-                continue
-            elif table == "METHOD_DESC":
-                fn = prediction.cmp_descriptions
-            elif table == "METHOD_TAXA":
-                fn = prediction.cmp_taxa
-            else:
-                fn = prediction.cmp_terms
+    logger.info("disk usage: {:.0f}MB".format(size/1024**2))
 
-            # size = max(size, fn(user, dsn, processes, tmpdir))
-            # logger.debug(f"comparisons from {table} done")
 
-    logger.info("disk usage: {:.0f} MB".format(size / 1024 ** 2))
     if num_errors:
         raise RuntimeError("one or more tables could not be created")
 
 
 def _create_method_desc(user: str, dsn: str, organizers: list):
+    logger.debug("creating METHOD_DESC")
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -410,6 +388,7 @@ def _create_method_desc(user: str, dsn: str, organizers: list):
 
     table.close()
     con.close()
+    _finalize_method_desc(user, dsn)
 
 
 def _finalize_method_desc(user: str, dsn: str):
@@ -426,9 +405,11 @@ def _finalize_method_desc(user: str, dsn: str):
     )
     cur.close()
     con.close()
+    logger.debug("METHOD_DESC ready")
 
 
 def _create_method_taxa(user: str, dsn: str, organizers: list):
+    logger.debug("creating METHOD_TAXA")
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -488,6 +469,7 @@ def _create_method_taxa(user: str, dsn: str, organizers: list):
 
     table.close()
     con.close()
+    _finalize_method_taxa(user, dsn)
 
 
 def _finalize_method_taxa(user: str, dsn: str):
@@ -504,9 +486,11 @@ def _finalize_method_taxa(user: str, dsn: str):
     )
     cur.close()
     con.close()
+    logger.debug("METHOD_TAXA ready")
 
 
 def _create_method_term(user: str, dsn: str, organizers: list):
+    logger.debug("creating METHOD_TERM")
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -541,6 +525,7 @@ def _create_method_term(user: str, dsn: str, organizers: list):
 
     table.close()
     con.close()
+    _finalize_method_term(user, dsn)
 
 
 def _finalize_method_term(user: str, dsn: str):
@@ -557,6 +542,7 @@ def _finalize_method_term(user: str, dsn: str):
     )
     cur.close()
     con.close()
+    logger.debug("METHOD_TERM ready")
 
 
 def _finalize_method2protein(user: str, dsn: str):
@@ -595,3 +581,4 @@ def _finalize_method2protein(user: str, dsn: str):
     )
     cur.close()
     con.close()
+    logger.debug("METHOD2PROTEIN ready")
