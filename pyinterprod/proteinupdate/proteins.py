@@ -251,7 +251,7 @@ def _export_proteins(url: str, dir: Optional[str]=None) -> Tuple[str, int, int]:
     os.remove(database)
 
     swissp_cnt = trembl_cnt = 0
-    with sqlite3(database) as con1:
+    with sqlite3.connect(database) as con1:
         con1.execute(
             """
             CREATE TABLE protein (
@@ -305,7 +305,7 @@ def _load_flat_files(swissp_src: str, trembl_src: str, dir: Optional[str]=None) 
     os.close(fd)
     os.remove(database)
 
-    with sqlite3(database) as con:
+    with sqlite3.connect(database) as con:
         con.execute(
             """
             CREATE TABLE protein (
