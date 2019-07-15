@@ -324,6 +324,71 @@ def _load_flat_files(swissp_src: str, trembl_src: str, dir: Optional[str]=None) 
     trembl_cnt = sprot.load(trembl_src, database, "protein")
     return database, swissp_cnt, trembl_cnt
 
+
+def _diff_databases(database_old: str, database_new: str):
+    it1 = iter(_iter_proteins(database_old))
+    it2 = iter(_iter_proteins(database_new))
+    row1 = next(it1)
+    row2 = next(it2)
+    deleted = set()
+    added = set()
+    annotation_changed = set()
+    sequence_changed = set()
+    is_alive1 = is_alive2 = True
+    while is_alive1 and is_alive2:
+        acc1 = row1[0]
+        acc2 = row2[0]
+
+        if acc1 == acc2:
+            if row1[3] == row2[3]:
+                # Same CRC64
+                for i in (1, 2, 4, 5, 6):
+                    if row1[i] != row2[i]:
+                        annotation_changed.add(acc1)
+                        break
+            else:
+                # Sequence changed
+                sequence_changed.add(acc1)
+
+            try:
+                row1 = next(it1)
+            except StopIteration:
+                is_alive1 = False
+
+            try:
+                row2 = next(it2)
+            except StopIteration:
+                is_alive2 = False
+        elif acc1 < acc2 and is_alive1:
+            deleted.add(acc1)
+            try:
+                row1 = next(it1)
+            except StopIteration:
+                is_alive1 = False
+        elif acc1 > acc2 and is_alive2:
+            added.add(acc2)
+            try:
+                row2 = next(it2)
+            except StopIteration:
+                is_alive2 = False
+        elif is_alive1:
+            try:
+                row1 = next(it1)
+            except StopIteration:
+                is_alive1 = False
+        elif is_alive2:
+            try:
+                row2 = next(it2)
+            except StopIteration:
+                is_alive2 = False
+
+
+def _iter_proteins(database: str):
+    with sqlite3.connect(database) as con:
+        for row in con.execute("SELECT * FROM protein ORDER BY accession"):
+            yield row
+
+
 def _insert_all(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
     cur = con.cursor()
     orautils.drop_table(cur, "INTERPRO", "PROTEIN_STG", purge=True)
