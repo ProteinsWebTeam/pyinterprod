@@ -220,11 +220,12 @@ def load(user: str, dsn: str, swissprot_path: str, trembl_path: str,
 
 def load2(user: str, dsn: str, swissp_src: str, trembl_src: str,
           dir: Optional[str]=None):
+    url = orautils.make_connect_string(user, dsn)
     database_old = database_new = None
     with futures.ProcessPoolExecutor(max_workers=2) as executor:
         fs = {
             executor.submit(_export_proteins, url, dir): "old",
-            executor.submit(swissp_src, trembl_src, dir): "new"
+            executor.submit(_load_flat_files, swissp_src, trembl_src, dir): "new"
         }
 
         for f in futures.as_completed(fs):
