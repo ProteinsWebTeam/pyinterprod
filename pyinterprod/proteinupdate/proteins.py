@@ -2,7 +2,7 @@
 
 import os
 import sqlite3
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent import futures
 from datetime import datetime
 from tempfile import mkdtemp, mkstemp
 from typing import Generator, Iterable, Optional, Tuple
@@ -218,24 +218,110 @@ def load(user: str, dsn: str, swissprot_path: str, trembl_path: str,
     con.close()
 
 
-def _get_proteins(url: str) -> Generator[Tuple, None, None]:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT
-          PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT, TAX_ID
-        FROM INTERPRO.PROTEIN
-        """
-    )
+def load2(user: str, dsn: str, swissp_src: str, trembl_src: str,
+          dir: Optional[str]=None):
+    database_old = database_new = None
+    with futures.ProcessPoolExecutor(max_workers=2) as executor:
+        fs = {
+            executor.submit(_export_proteins, url, dir): "old",
+            executor.submit(swissp_src, trembl_src, dir): "new"
+        }
 
-    for row in cur:
-        yield (row[0],  row[1], 1 if row[2] == 'S' else 0, row[3], row[4],
-               1 if row[5] == 'Y' else 0, row[6])
+        for f in futures.as_completed(fs):
+            try:
+                database, swissp_cnt, trembl_cnt = f.result()
+            except Exception as exc:
+                logger.debug(f"{fs[f]}: exited ({exc})")
+            else:
+                if fs[f] == "old":
+                    database_old = database
+                else:
+                    database_new = database
 
-    cur.close()
-    con.close()
+                logger.debug(f"{fs[f]} counts: {swissp_cnt} (Swiss-Prot), {trembl_cnt} (TrEMBL)")
 
+    print(database_new)
+    print(database_old)
+
+
+def _export_proteins(url: str, dir: Optional[str]=None) -> Tuple[str, int, int]:
+    fd, database = mkstemp(dir=dir)
+    os.close(fd)
+    os.remove(database)
+
+    swissp_cnt = trembl_cnt = 0
+    with sqlite3(database) as con1:
+        con1.execute(
+            """
+            CREATE TABLE protein (
+              accession TEXT NOT NULL PRIMARY KEY,
+              identifier TEXT NOT NULL,
+              is_reviewed INTEGER NOT NULL,
+              crc64 TEXT NOT NULL,
+              length INTEGER NOT NULL,
+              is_fragment INTEGER NOT NULL,
+              taxon_id INTEGER NOT NULL
+            )
+            """
+        )
+
+        query = "INSERT INTO protein VALUES (?, ?, ?, ?, ?, ?, ?)"
+        with orautils.TablePopulator(con1, query) as table:
+            con2 = cx_Oracle.connect(url)
+            cur2 = con2.cursor()
+            cur2.execute(
+                """
+                SELECT
+                  PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT, TAX_ID
+                FROM INTERPRO.PROTEIN
+                """
+            )
+
+            rows = []
+            for row in cur2:
+                if row[2] == 'S':
+                    swissp_cnt += 1
+                    is_reviewed = 1
+                else:
+                    trembl_cnt += 1
+                    is_reviewed = 0
+
+                table.insert((
+                    row[0], row[1], is_reviewed, row[3], row[4],
+                    1 if row[5] == 'Y' else 0, row[6]
+                ))
+
+            cur2.close()
+            con2.close()
+
+        con1.commit()
+
+    return database, swissp_cnt, trembl_cnt
+
+
+def _load_flat_files(swissp_src: str, trembl_src: str, dir: Optional[str]=None) -> Tuple[str, int, int]:
+    fd, database = mkstemp(dir=dir)
+    os.close(fd)
+    os.remove(database)
+
+    with sqlite3(database) as con:
+        con.execute(
+            """
+            CREATE TABLE protein (
+              accession TEXT NOT NULL PRIMARY KEY,
+              identifier TEXT NOT NULL,
+              is_reviewed INTEGER NOT NULL,
+              crc64 TEXT NOT NULL,
+              length INTEGER NOT NULL,
+              is_fragment INTEGER NOT NULL,
+              taxon_id INTEGER NOT NULL
+            )
+            """
+        )
+
+    swissp_cnt = sprot.load(swissp_src, database, "protein")
+    trembl_cnt = sprot.load(trembl_src, database, "protein")
+    return database, swissp_cnt, trembl_cnt
 
 def _insert_all(con: cx_Oracle.Connection, db: ProteinDatabase) -> int:
     cur = con.cursor()
@@ -486,7 +572,7 @@ def _delete_obsolete(user: str, dsn: str, truncate: bool=False):
         else:
             jobs.append((tn, tc, None))
 
-    with ThreadPoolExecutor(max_workers=len(jobs)) as executor:
+    with futures.ThreadPoolExecutor(max_workers=len(jobs)) as executor:
         fs = {}
 
         for tn, tc, pn in jobs:
@@ -494,7 +580,7 @@ def _delete_obsolete(user: str, dsn: str, truncate: bool=False):
             fs[f] = (tn, tc, pn)
 
         num_errors = 0
-        for f in as_completed(fs):
+        for f in futures.as_completed(fs):
             tn, tc, pn = fs[f]
             name = tn if pn is None else "{} ({})".format(tn, pn)
 
