@@ -331,10 +331,6 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     logger.info("disk usage: {:.0f}MB".format(size/1024**2))
 
 
-    if num_errors:
-        raise RuntimeError("one or more tables could not be created")
-
-
 def _create_method_desc(user: str, dsn: str, organizers: list):
     logger.debug("creating METHOD_DESC")
     owner = user.split('/')[0]
@@ -550,7 +546,9 @@ def _finalize_method2protein(user: str, dsn: str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     orautils.grant(cur, owner, "METHOD2PROTEIN", "SELECT", "INTERPRO_SELECT")
+    logger.debug("METHOD2PROTEIN: gathering statistics")
     orautils.gather_stats(cur, owner, "METHOD2PROTEIN")
+    logger.debug("METHOD2PROTEIN: creating index UI_METHOD2PROTEIN")
     cur.execute(
         """
         CREATE UNIQUE INDEX UI_METHOD2PROTEIN
@@ -558,6 +556,7 @@ def _finalize_method2protein(user: str, dsn: str):
         NOLOGGING
         """.format(owner)
     )
+    logger.debug("METHOD2PROTEIN: creating index UI_METHOD2PROTEIN$M")
     cur.execute(
         """
         CREATE INDEX I_METHOD2PROTEIN$M
@@ -565,6 +564,7 @@ def _finalize_method2protein(user: str, dsn: str):
         NOLOGGING
         """.format(owner)
     )
+    logger.debug("METHOD2PROTEIN: creating index UI_METHOD2PROTEIN$P")
     cur.execute(
         """
         CREATE INDEX I_METHOD2PROTEIN$P
@@ -572,6 +572,7 @@ def _finalize_method2protein(user: str, dsn: str):
         NOLOGGING
         """.format(owner)
     )
+    logger.debug("METHOD2PROTEIN: creating index UI_METHOD2PROTEIN$T")
     cur.execute(
         """
         CREATE INDEX I_METHOD2PROTEIN$T
