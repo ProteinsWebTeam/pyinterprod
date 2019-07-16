@@ -385,7 +385,6 @@ def _diff_databases(url: str, database_old: str, database_new: str):
         INSERT INTO INTERPRO.PROTEIN
         VALUES (:1, :2, :3, :4, :5, SYSDATE, USER, :6, 'N', :7)
     """
-    )
     new_proteins = orautils.TablePopulator(con, query)
 
     # Proteins to scan
