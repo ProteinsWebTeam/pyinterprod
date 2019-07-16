@@ -232,14 +232,14 @@ def load2(user: str, dsn: str, swissp_src: str, trembl_src: str,
             try:
                 database, swissp_cnt, trembl_cnt = f.result()
             except Exception as exc:
-                logger.debug(f"{fs[f]}: exited ({exc})")
+                logger.error(f"{fs[f]}: exited ({exc})")
             else:
                 if fs[f] == "old":
                     database_old = database
                 else:
                     database_new = database
 
-                logger.debug(f"{fs[f]} counts: {swissp_cnt} (Swiss-Prot), {trembl_cnt} (TrEMBL)")
+                logger.info(f"{fs[f]} counts: {swissp_cnt} (Swiss-Prot), {trembl_cnt} (TrEMBL)")
 
     if not database_old or not database_new:
         if database_old:
@@ -249,7 +249,7 @@ def load2(user: str, dsn: str, swissp_src: str, trembl_src: str,
         raise RuntimeError("failed")
 
     size = os.path.getsize(database_old) + os.path.getsize(database_new)
-    logger.info("disk space used: {:.0f}MB".format(db.size/1024**2))
+    logger.info("disk space used: {:.0f}MB".format(size/1024**2))
 
     _diff_databases(url, database_old, database_new)
     os.remove(database_old)
