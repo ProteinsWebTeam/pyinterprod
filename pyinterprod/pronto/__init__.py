@@ -161,7 +161,7 @@ def report_description_changes(user: str, dsn: str, dst: str):
 
     cur.execute(
         """
-        SELECT DISTINCT EM.ENTRY_AC, M.TEXT
+        SELECT DISTINCT EM.ENTRY_AC, M.DESCRIPTION
         FROM INTERPRO.ENTRY2METHOD EM
         INNER JOIN INTERPRO.METHOD2SWISS_DE M
           ON EM.METHOD_AC = M.METHOD_AC
@@ -171,11 +171,11 @@ def report_description_changes(user: str, dsn: str, dst: str):
         """
     )
     then = {}
-    for acc, text in cur:
+    for acc, description in cur:
         if acc in then:
-            then[acc].add(text)
+            then[acc].add(description)
         else:
-            then[acc] = {text}
+            then[acc] = {description}
 
     cur.execute(
         """
@@ -191,11 +191,11 @@ def report_description_changes(user: str, dsn: str, dst: str):
        """.format(owner)
     )
     now = {}
-    for acc, text in cur:
+    for acc, description in cur:
         if acc in now:
-            now[acc].add(text)
+            now[acc].add(description)
         else:
-            now[acc] = {text}
+            now[acc] = {description}
 
     cur.close()
     con.close()
@@ -228,7 +228,6 @@ def report_description_changes(user: str, dsn: str, dst: str):
 
 def copy_schema(user_src: str, user_dst: str, dsn: str):
     owner = user_src.split('/')[0]
-
 
     con = cx_Oracle.connect(orautils.make_connect_string(user_src, dsn))
     cur = con.cursor()
