@@ -438,6 +438,7 @@ def export_databases(user: str, dsn: str, dst: str):
 
     send_mail(
         to_addrs=["uniprot-database@ebi.ac.uk"],
+        cc_addrs=["uniprot-prod@ebi.ac.uk"],
         subject="InterPro XREF files are ready",
         content="""\
 Dear UniProt team,
@@ -447,9 +448,7 @@ The InterPro cross-references files for {} are available in the following direct
 
 Best regards,
 The InterPro Production Team
-        """.format(release, dst),
-        #cc_addrs=["uniprot-prod@ebi.ac.uk"],
-        #bcc_addrs=["interpro-team@ebi.ac.uk"]
+        """.format(release, dst)
     )
 
     logger.info("complete")
