@@ -241,8 +241,19 @@ def load2(user: str, dsn: str, swissp_src: str, trembl_src: str,
 
                 logger.debug(f"{fs[f]} counts: {swissp_cnt} (Swiss-Prot), {trembl_cnt} (TrEMBL)")
 
-    print(database_new)
-    print(database_old)
+    if not database_old or not database_new:
+        if database_old:
+            os.remove(database_old)
+        if database_new:
+            os.remove(database_new)
+        raise RuntimeError("failed")
+
+    size = os.path.getsize(database_old) + os.path.getsize(database_new)
+    logger.info("disk space used: {:.0f}MB".format(db.size/1024**2))
+
+    _diff_databases(url, database_old, database_new)
+    os.remove(database_old)
+    os.remove(database_new)
 
 
 def _export_proteins(url: str, dir: Optional[str]=None) -> Tuple[str, int, int]:
@@ -325,17 +336,79 @@ def _load_flat_files(swissp_src: str, trembl_src: str, dir: Optional[str]=None) 
     return database, swissp_cnt, trembl_cnt
 
 
-def _diff_databases(database_old: str, database_new: str):
+def _diff_databases(url: str, database_old: str, database_new: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    orautils.drop_table(cur, "INTERPRO", "PROTEIN_CHANGES", purge=True)
+    orautils.drop_table(cur, "INTERPRO", "PROTEIN_TO_DELETE", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.PROTEIN_CHANGES
+        (PROTEIN_AC VARCHAR2(15) PRIMARY KEY NOT NULL)
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.PROTEIN_TO_DELETE
+        (ID NUMBER NOT NULL, PROTEIN_AC VARCHAR2(15) NOT NULL) NOLOGGING
+        """
+    )
+    cur.close()
+
+    # Annotation changes
+    query = """
+        UPDATE INTERPRO.PROTEIN
+        SET
+          NAME = :1, DBCODE = :2,  LEN = :3, TIMESTAMP = SYSDATE,
+          USERSTAMP = USER, FRAGMENT = :4, TAX_ID = :5
+        WHERE PROTEIN_AC = :6
+    """
+    ann_changes = orautils.TablePopulator(con, query)
+
+    # Sequence changes
+    query = """
+        UPDATE INTERPRO.PROTEIN
+        SET
+          NAME = :1, DBCODE = :2, CRC64 = :3,  LEN = :4,
+          TIMESTAMP = SYSDATE, USERSTAMP = USER, FRAGMENT = :5,
+          TAX_ID = :6
+        WHERE PROTEIN_AC = :7
+    """
+    seq_changes = orautils.TablePopulator(con, query)
+
+    # Obsolete proteins
+    query = "INSERT INTO INTERPRO.PROTEIN_TO_DELETE VALUES (:1, :2)"
+    del_changes = orautils.TablePopulator(con, query)
+
+    # New proteins
+    query = """
+        INSERT INTO INTERPRO.PROTEIN
+        VALUES (:1, :2, :3, :4, :5, SYSDATE, USER, :6, 'N', :7)
+    """
+    )
+    new_proteins = orautils.TablePopulator(con, query)
+
+    # Proteins to scan
+    query = "INSERT INTO INTERPRO.PROTEIN_CHANGES VALUES (:1)"
+    all_changes = orautils.TablePopulator(con, query)
+
     it1 = iter(_iter_proteins(database_old))
     it2 = iter(_iter_proteins(database_new))
     row1 = next(it1)
     row2 = next(it2)
-    deleted = set()
-    added = set()
-    annotation_changed = set()
-    sequence_changed = set()
     is_alive1 = is_alive2 = True
+
     while is_alive1 and is_alive2:
+        """
+        row:
+            - accession (str)
+            - name (str)
+            - is_reviewed (int: 0/1)
+            - crc64 (str)
+            - length (int)
+            - is_fragment (int: 0/1)
+            - taxon_id (int)
+        """
         acc1 = row1[0]
         acc2 = row2[0]
 
@@ -344,11 +417,27 @@ def _diff_databases(database_old: str, database_new: str):
                 # Same CRC64
                 for i in (1, 2, 4, 5, 6):
                     if row1[i] != row2[i]:
-                        annotation_changed.add(acc1)
+                        ann_changes.update((
+                            row2[1],
+                            'S' if row2[2] else 'T',
+                            row2[4],
+                            'Y' if row2[5] else 'N',
+                            row2[6],
+                            acc2
+                        ))
                         break
             else:
                 # Sequence changed
-                sequence_changed.add(acc1)
+                seq_changes.update((
+                    row2[1],
+                    'S' if row2[2] else 'T',
+                    row2[3],
+                    row2[4],
+                    'Y' if row2[5] else 'N',
+                    row[6],
+                    acc2
+                ))
+                all_changes.insert((acc2,))
 
             try:
                 row1 = next(it1)
@@ -360,13 +449,22 @@ def _diff_databases(database_old: str, database_new: str):
             except StopIteration:
                 is_alive2 = False
         elif acc1 < acc2 and is_alive1:
-            deleted.add(acc1)
+            del_changes.insert((del_changes.rowcount, acc1))
             try:
                 row1 = next(it1)
             except StopIteration:
                 is_alive1 = False
         elif acc1 > acc2 and is_alive2:
-            added.add(acc2)
+            new_proteins.insert((
+                acc2,
+                row2[1],
+                'S' if row2[2] else 'T',
+                row2[3],
+                row2[4],
+                'Y' if row2[5] else 'N',
+                row2[6]
+            ))
+            all_changes.insert((acc2,))
             try:
                 row2 = next(it2)
             except StopIteration:
@@ -381,6 +479,27 @@ def _diff_databases(database_old: str, database_new: str):
                 row2 = next(it2)
             except StopIteration:
                 is_alive2 = False
+
+    ann_changes.close()
+    seq_changes.close()
+    del_changes.close()
+    new_proteins.close()
+    all_changes.close()
+    con.commit()
+    cur = con.cursor()
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX UI_PROTEIN_TO_DELETE
+        ON INTERPRO.PROTEIN_TO_DELETE (ID) NOLOGGING
+        """
+    )
+    cur.close()
+    con.close()
+
+    logger.info(f"annotation changes: {ann_changes.rowcount:>10}")
+    logger.info(f"sequence changes:   {seq_changes.rowcount:>10}")
+    logger.info(f"obsolete proteins:  {del_changes.rowcount:>10}")
+    logger.info(f"new proteins:       {new_proteins.rowcount:>10}")
 
 
 def _iter_proteins(database: str):
