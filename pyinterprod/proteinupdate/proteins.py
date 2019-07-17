@@ -433,7 +433,7 @@ def _diff_databases(url: str, database_old: str, database_new: str):
                     row2[3],
                     row2[4],
                     'Y' if row2[5] else 'N',
-                    row[6],
+                    row2[6],
                     acc2
                 ))
                 all_changes.insert((acc2,))
