@@ -294,7 +294,7 @@ def _get_steps() -> dict:
             "func": signature.load_signature2protein,
             "requires": ("descriptions", "signatures", "taxa", "terms")
         },
-        "finalize-signature2protein": {
+        "index-signature2protein": {
             "func": signature.finalize_method2protein,
             "requires": ("signature2protein",)
         },
@@ -306,7 +306,7 @@ def _get_steps() -> dict:
         },
         "report": {
             "func": report_description_changes,
-            "requires": ("copy",)
+            "requires": ("index-signature2protein",)
         }
     }
 

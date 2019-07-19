@@ -257,7 +257,7 @@ def _load_comparisons(user: str, dsn: str, column: str, buffers: List[Persistent
                     "ct1": ct1,
                     "ct2": ct2
                 })
-                    
+
             i += 1
             ts2 = time.time()
             if ts2 > ts1 + PROGRESS_SECONDS:
@@ -272,8 +272,10 @@ def _load_comparisons(user: str, dsn: str, column: str, buffers: List[Persistent
     con.close()
 
 
-def cmp_descriptions(user: str, dsn: str, processes: int=1,
-                     dir: Optional[str]=None, remove: bool=True):
+def cmp_descriptions(user: str, dsn: str, **kwargs):
+    dir = kwargs.get("dir", None)
+    processes = kwargs.get("processes", 1)
+
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -298,19 +300,26 @@ def cmp_descriptions(user: str, dsn: str, processes: int=1,
     return buffers, size
 
 
-def cmp_taxa(user: str, dsn: str, processes: int=1,
-             dir: Optional[str]=None, remove: bool=True):
+def cmp_taxa(user: str, dsn: str, **kwargs):
+    dir = kwargs.get("dir", None)
+    processes = kwargs.get("processes", 1)
+    ranks = kwargs.get("ranks", None)
+    #ranks = ("superkingdom", "kingdom", "class", "family", "species")
+
     owner = user.split('/')[0]
+    query = f"SELECT METHOD_AC, TAX_ID FROM {owner}.METHOD_TAXA"
+
+    if ranks:
+        params = ', '.join([':' + str(i+1) for i in range(len(ranks))])
+        query += f" WHERE RANK IN ({params})"
+    else:
+        ranks = tuple()
+
+    query += " ORDER BY METHOD_AC"
+
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    cur.execute(
-        """
-        SELECT METHOD_AC, TAX_ID
-        FROM {}.METHOD_TAXA
-        WHERE RANK IN ('superkingdom','kingdom','class','family','species')
-        ORDER BY METHOD_AC
-        """.format(owner)
-    )
+    cur.execute(query, ranks)
     kvdb = _export_signatures(cur, dir)
     cur.close()
     con.close()
@@ -320,8 +329,10 @@ def cmp_taxa(user: str, dsn: str, processes: int=1,
     return buffers, size
 
 
-def cmp_terms(user: str, dsn: str, processes: int=1,
-              dir: Optional[str]=None, remove: bool=True):
+def cmp_terms(user: str, dsn: str, **kwargs):
+    dir = kwargs.get("dir", None)
+    processes = kwargs.get("processes", 1)
+
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
