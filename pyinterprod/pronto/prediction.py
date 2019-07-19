@@ -204,7 +204,7 @@ def _compare(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Tuple[List[Persi
     return buffers2, size
 
 
-def _export_signatures(cur: cx_Oracle.Cursor, dir: Optional[str]) -> Kvdb:
+def _export_signatures(cur: cx_Oracle.Cursor, dir: Optional[str]=None) -> Kvdb:
     logger.debug("exporting")
     with Kvdb(dir=dir, insertonly=True) as kvdb:
         values = set()
@@ -291,13 +291,13 @@ def cmp_descriptions(user: str, dsn: str, **kwargs):
             ORDER BY METHOD_AC
         """.format(owner)
     )
-    kvdb = _export_signatures(cur, dir)
+    kvdb = _export_signatures(cur)
     cur.close()
     con.close()
-    buffers, size = _compare(kvdb, processes, dir)
-    size += kvdb.size
+    buffers, buffers_size = _compare(kvdb, processes, dir)
+    kvdb_size = kvdb.size
     kvdb.remove()
-    return buffers, size
+    return buffers, kvdb_size, buffers_size
 
 
 def cmp_taxa(user: str, dsn: str, **kwargs):
@@ -320,13 +320,13 @@ def cmp_taxa(user: str, dsn: str, **kwargs):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     cur.execute(query, ranks)
-    kvdb = _export_signatures(cur, dir)
+    kvdb = _export_signatures(cur)
     cur.close()
     con.close()
-    buffers, size = _compare(kvdb, processes, dir)
-    size += kvdb.size
+    buffers, buffers_size = _compare(kvdb, processes, dir)
+    kvdb_size = kvdb.size
     kvdb.remove()
-    return buffers, size
+    return buffers, kvdb_size, buffers_size
 
 
 def cmp_terms(user: str, dsn: str, **kwargs):
@@ -351,10 +351,10 @@ def cmp_terms(user: str, dsn: str, **kwargs):
         ORDER BY METHOD_AC
         """.format(owner)
     )
-    kvdb = _export_signatures(cur, dir)
+    kvdb = _export_signatures(cur)
     cur.close()
     con.close()
-    buffers, size = _compare(kvdb, processes, dir)
-    size += kvdb.size
+    buffers, buffers_size = _compare(kvdb, processes, dir)
+    kvdb_size = kvdb.size
     kvdb.remove()
-    return buffers, size
+    return buffers, kvdb_size, buffers_size
