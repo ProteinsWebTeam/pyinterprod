@@ -48,16 +48,14 @@ def main():
     tasks = [
         Task(
             name="load-proteins",
-            # fn=proteins.load,
-            fn=proteins.load2,
+            fn=proteins.load,
             args=(
                 db_users["interpro"], db_dsn,
                 config["flat_files"]["swissprot"],
                 config["flat_files"]["trembl"]
             ),
             kwargs=dict(dir="/scratch/"),
-            #scheduler=dict(queue=queue, mem=500, scratch=16000)
-            scheduler=dict(queue=queue, cpu=2, mem=8000, scratch=40000)
+            scheduler=dict(queue=queue, cpu=2, mem=500, scratch=40000)
         ),
         Task(
             name="update-proteins",
