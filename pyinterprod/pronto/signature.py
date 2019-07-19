@@ -314,7 +314,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     _create_method_term(user, dsn, terms)
     _create_method_desc(user, dsn, names)
     _create_method_taxa(user, dsn, taxa)
-    logger.info(f"disk usage: {size/1024**2:.0f}MB"
+    logger.info(f"disk usage: {size/1024**2:.0f}MB")
 
 
 def _create_method_desc(user: str, dsn: str, organizers: list):
