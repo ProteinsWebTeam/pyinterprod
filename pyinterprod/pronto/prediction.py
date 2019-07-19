@@ -225,8 +225,7 @@ def _export_signatures(cur: cx_Oracle.Cursor, dir: Optional[str]) -> Kvdb:
     return kvdb
 
 
-def _load_comparisons(user: str, dsn: str, column: str, counts: Dict[str, int],
-                      buffers: List[PersistentBuffer], remove: bool=True):
+def _load_comparisons(user: str, dsn: str, column: str, buffers: List[PersistentBuffer], remove: bool=True):
     logger.debug(f"updating METHOD_SIMILARITY ({column})")
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
@@ -250,24 +249,15 @@ def _load_comparisons(user: str, dsn: str, column: str, counts: Dict[str, int],
     i = 0
     for buffer in buffers:
         for acc1, cmps in buffer:
-            cnt1 = counts[acc1]
-            for acc2, intersect in cmps.items():
-                cnt2 = counts[acc2]
-                # J(A, B) = intersection(A, B) / union(A, B)
-                idx = intersect / (cnt1 + cnt2 - intersect)
-                # C(A, B) = intersection(A, B) / size(A)
-                #       --> larger values indicate more of A lying in B
-                ct1 = intersect / cnt1
-                ct2 = intersect / cnt2
-                if any([sim >= JACCARD_THRESHOLD for sim in (idx, ct1, ct2)]):
-                    table.insert({
-                        "ac1": acc1,
-                        "ac2": acc2,
-                        "idx": idx,
-                        "ct1": ct1,
-                        "ct2": ct2
-                    })
-
+            for acc2, (idx, ct1, ct2) in cmps.items():
+                table.insert({
+                    "ac1": acc1,
+                    "ac2": acc2,
+                    "idx": idx,
+                    "ct1": ct1,
+                    "ct2": ct2
+                })
+                    
             i += 1
             ts2 = time.time()
             if ts2 > ts1 + PROGRESS_SECONDS:
