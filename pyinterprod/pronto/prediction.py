@@ -123,7 +123,30 @@ def _process(kvdb: Kvdb, task_queue: Queue, done_queue: Queue,
     done_queue.put((signatures, buffer))
 
 
-def _compare(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Tuple[Dict[str, int], List[PersistentBuffer]]:
+def _calc_similarity(counts: Dict[str, int], src: PersistentBuffer,
+                     queue: Queue, dir: Optional[str]=None):
+    with PersistentBuffer(dir=dir) as dst:
+        for acc1, cmps in src:
+            cnt1 = counts[acc1]
+            val = {}
+            for acc2, intersect in cmps.items():
+                cnt2 = counts[acc2]
+                # J(A, B) = intersection(A, B) / union(A, B)
+                idx = intersect / (cnt1 + cnt2 - intersect)
+                # C(A, B) = intersection(A, B) / size(A)
+                #       --> larger values indicate more of A lying in B
+                ct1 = intersect / cnt1
+                ct2 = intersect / cnt2
+                if any([sim >= JACCARD_THRESHOLD for sim in (idx, ct1, ct2)]):
+                    val[acc2] = (idx, ct1, ct2)
+
+            if val:
+                dst.add((acc1, val))
+
+    queue.put(dst)
+
+
+def _compare(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Tuple[List[PersistentBuffer], int]:
     logger.debug("comparing")
     pool = []
     task_queue = Queue(maxsize=1)
@@ -158,10 +181,30 @@ def _compare(kvdb: Kvdb, processes: int, dir: Optional[str]) -> Tuple[Dict[str, 
     for p in pool:
         p.join()
 
-    return signatures, buffers
+    logger.debug("calculating similarities")
+    pool = []
+    for buffer in buffers:
+        p = Process(target=_calc_similarity,
+                    args=(signatures, buffer, done_queue, dir))
+        p.start()
+        pool.append(p)
+
+    buffers2 = []
+    for _ in pool:
+        buffers2.append(done_queue.get())
+
+    for p in pool:
+        p.join()
+
+    size = 0
+    for buffer in buffers:
+        size += buffer.size
+        buffer.remove()
+
+    return buffers2, size
 
 
-def export_signatures(cur: cx_Oracle.Cursor, dir: Optional[str]) -> Kvdb:
+def _export_signatures(cur: cx_Oracle.Cursor, dir: Optional[str]) -> Kvdb:
     logger.debug("exporting")
     with Kvdb(dir=dir, insertonly=True) as kvdb:
         values = set()
@@ -256,17 +299,13 @@ def cmp_descriptions(user: str, dsn: str, processes: int=1,
             ORDER BY METHOD_AC
         """.format(owner)
     )
-    kvdb = export_signatures(cur, dir)
+    kvdb = _export_signatures(cur, dir)
     cur.close()
     con.close()
-    signatures, buffers = _compare(kvdb, processes, dir)
-    size = kvdb.size + sum([b.size for b in buffers])
+    buffers, size = _compare(kvdb, processes, dir)
+    size += kvdb.size
     kvdb.remove()
-    if remove:
-        _load_comparisons(user, dsn, "DESC", signatures, buffers)
-        return size
-    else:
-        return signatures, buffers, size
+    return buffers, size
 
 
 def cmp_taxa(user: str, dsn: str, processes: int=1,
@@ -282,17 +321,13 @@ def cmp_taxa(user: str, dsn: str, processes: int=1,
         ORDER BY METHOD_AC
         """.format(owner)
     )
-    kvdb = export_signatures(cur, dir)
+    kvdb = _export_signatures(cur, dir)
     cur.close()
     con.close()
-    signatures, buffers = _compare(kvdb, processes, dir)
-    size = kvdb.size + sum([b.size for b in buffers])
+    buffers, size = _compare(kvdb, processes, dir)
+    size += kvdb.size
     kvdb.remove()
-    if remove:
-        _load_comparisons(user, dsn, "TAXA", signatures, buffers)
-        return size
-    else:
-        return signatures, buffers, size
+    return buffers, size
 
 
 def cmp_terms(user: str, dsn: str, processes: int=1,
@@ -315,14 +350,10 @@ def cmp_terms(user: str, dsn: str, processes: int=1,
         ORDER BY METHOD_AC
         """.format(owner)
     )
-    kvdb = export_signatures(cur, dir)
+    kvdb = _export_signatures(cur, dir)
     cur.close()
     con.close()
-    signatures, buffers = _compare(kvdb, processes, dir)
-    size = kvdb.size + sum([b.size for b in buffers])
+    buffers, size = _compare(kvdb, processes, dir)
+    size += kvdb.size
     kvdb.remove()
-    if remove:
-        _load_comparisons(user, dsn, "TERM", signatures, buffers)
-        return size
-    else:
-        return signatures, buffers, size
+    return buffers, size
