@@ -286,13 +286,17 @@ def _get_steps() -> dict:
         "matches": {
             "func": signature.load_matches
         },
-        "signatures2": {
+        "update-signatures": {
             "func": signature.update_signatures,
             "requires": ("signatures", "matches")
         },
         "signature2protein": {
             "func": signature.load_signature2protein,
             "requires": ("descriptions", "signatures", "taxa", "terms")
+        },
+        "finalize-signature2protein": {
+            "func": signature.finalize_method2protein,
+            "requires": ("signature2protein",)
         },
         "copy": {
             "func": copy_schema,

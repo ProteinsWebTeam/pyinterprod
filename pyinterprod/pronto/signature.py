@@ -307,28 +307,14 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     logger.debug("proteins: {:,}".format(num_proteins))
 
-    with ThreadPoolExecutor() as executor:
-        fs = [executor.submit(_finalize_method2protein, user, dsn)]
+    with open(os.path.join(tmpdir, "comparators.p"), "wb") as fh:
+        pickle.dump(comparators, fh)
+    # prediction.load_comparators(user, dsn, comparators)
 
-        with open(os.path.join(tmpdir, "comparators.p"), "wb") as fh:
-            pickle.dump(comparators, fh)
-        # prediction.load_comparators(user, dsn, comparators)
-
-        _create_method_term(user, dsn, terms)
-        _create_method_desc(user, dsn, names)
-        _create_method_taxa(user, dsn, taxa)
-        terms = names = taxa = None
-
-        # prediction.cmp_terms(user, dsn, processes, tmpdir)
-        # prediction.cmp_descriptions(user, dsn, processes, tmpdir)
-        # prediction.cmp_taxa(user, dsn, processes, tmpdir)
-
-        for f in as_completed(fs):
-            exc = f.exception()
-            if exc is not None:
-                raise exc
-
-    logger.info("disk usage: {:.0f}MB".format(size/1024**2))
+    _create_method_term(user, dsn, terms)
+    _create_method_desc(user, dsn, names)
+    _create_method_taxa(user, dsn, taxa)
+    logger.info(f"disk usage: {size/1024**2:.0f}MB"
 
 
 def _create_method_desc(user: str, dsn: str, organizers: list):
@@ -383,13 +369,6 @@ def _create_method_desc(user: str, dsn: str, organizers: list):
                 descriptions.add(descid)
 
     table.close()
-    con.close()
-    _finalize_method_desc(user, dsn)
-
-
-def _finalize_method_desc(user: str, dsn: str):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     orautils.grant(cur, owner, "METHOD_DESC", "SELECT", "INTERPRO_SELECT")
     orautils.gather_stats(cur, owner, "METHOD_DESC")
@@ -464,13 +443,6 @@ def _create_method_taxa(user: str, dsn: str, organizers: list):
                 table.insert((acc, rank, tax_id, count))
 
     table.close()
-    con.close()
-    _finalize_method_taxa(user, dsn)
-
-
-def _finalize_method_taxa(user: str, dsn: str):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     orautils.grant(cur, owner, "METHOD_TAXA", "SELECT", "INTERPRO_SELECT")
     orautils.gather_stats(cur, owner, "METHOD_TAXA")
@@ -520,13 +492,6 @@ def _create_method_term(user: str, dsn: str, organizers: list):
             table.insert((acc, go_id, count))
 
     table.close()
-    con.close()
-    _finalize_method_term(user, dsn)
-
-
-def _finalize_method_term(user: str, dsn: str):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     orautils.grant(cur, owner, "METHOD_TERM", "SELECT", "INTERPRO_SELECT")
     orautils.gather_stats(cur, owner, "METHOD_TERM")
@@ -541,7 +506,7 @@ def _finalize_method_term(user: str, dsn: str):
     logger.debug("METHOD_TERM ready")
 
 
-def _finalize_method2protein(user: str, dsn: str):
+def finalize_method2protein(user: str, dsn: str):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
