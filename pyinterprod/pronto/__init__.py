@@ -252,23 +252,14 @@ def _default_steps() -> list:
 
 def _get_steps() -> dict:
     return {
-        "databases": {
-            "func": load_databases
-        },
-        "taxa": {
-            "func": load_taxa
-        },
         "annotations": {
             "func": go.load_annotations
         },
-        "terms": {
-            "func": go.load_terms
-        },
-        "publications": {
-            "func": go.load_publications
-        },
         "comments": {
             "func": protein.load_comments
+        },
+        "databases": {
+            "func": load_databases
         },
         "descriptions": {
             "func": protein.load_descriptions
@@ -276,37 +267,50 @@ def _get_steps() -> dict:
         "enzymes": {
             "func": protein.load_enzymes
         },
-        "proteins": {
-            "func": protein.load_proteins
-        },
-
-        "signatures": {
-            "func": signature.load_signatures
-        },
         "matches": {
             "func": signature.load_matches
         },
-        "update-signatures": {
+        "proteins": {
+            "func": protein.load_proteins
+        },
+        "publications": {
+            "func": go.load_publications
+        },
+        "signatures": {
+            "func": signature.load_signatures
+        },
+        "terms": {
+            "func": go.load_terms
+        },
+        "taxa": {
+            "func": load_taxa
+        },
+
+        "signatures2": {
             "func": signature.update_signatures,
             "requires": ("signatures", "matches")
         },
-        "signature2protein": {
+        "signatures-proteins": {
             "func": signature.load_signature2protein,
             "requires": ("descriptions", "signatures", "taxa", "terms")
         },
-        "index-signature2protein": {
+
+        "signatures-proteins2": {
             "func": signature.finalize_method2protein,
-            "requires": ("signature2protein",)
+            "requires": ("signatures-proteins2",)
         },
+
         "copy": {
             "func": copy_schema,
-            "requires": ("annotations", "comments", "databases", "enzymes",
-                         "proteins", "publications", "signatures2",
-                         "signature2protein")
+            "requires": ("annotations", "comments", "databases",
+                         "descriptions", "enzymes", "matches", "proteins",
+                         "publications", "signatures", "terms", "taxa",
+                         "signatures2", "signatures-proteins",
+                         "signatures-proteins2")
         },
         "report": {
             "func": report_description_changes,
-            "requires": ("index-signature2protein",)
+            "requires": ("signatures-proteins2",)
         }
     }
 
@@ -347,7 +351,7 @@ def run(user1: str, user2: str, dsn: str, **kwargs):
 
         fs = {}
         for name, step in running.items():
-            logger.info("{:<20}running".format(name))
+            logger.info(f" {name:<30}running")
             f = executor.submit(step["func"], *step["args"])
             fs[f] = name
 
@@ -359,10 +363,10 @@ def run(user1: str, user2: str, dsn: str, **kwargs):
                 try:
                     f.result()
                 except Exception as exc:
-                    logger.error("{:<19}failed ({})".format(name, exc))
+                    logger.error(f"{name:<30}failed ({exc})")
                     failed.add(name)
                 else:
-                    logger.info("{:<20}done".format(name))
+                    logger.info(f" {name:<30}done")
                     done.add(name)
 
                 del running[name]
@@ -384,7 +388,7 @@ def run(user1: str, user2: str, dsn: str, **kwargs):
                         # Update list of dependencies still to run
                         pend_step["requires"] = tmp
                         if not tmp:
-                            logger.info("{:<20}running".format(pend_name))
+                            logger.info(f" {pend_name:<30}running")
                             del pending[pend_name]
                             running[pend_name] = pend_step
                             f = executor.submit(pend_step["func"], *pend_step["args"])
