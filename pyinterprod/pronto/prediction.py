@@ -150,7 +150,7 @@ def load_comparisons(user: str, dsn: str, comparators: list,
             try:
                 acc_desc, cmp_desc = next(it_desc)
             except StopIteration:
-                pass
+                break
 
         if acc_desc != acc1:
             cmp_desc = {}
@@ -159,7 +159,7 @@ def load_comparisons(user: str, dsn: str, comparators: list,
             try:
                 acc_taxa, cmp_taxa = next(it_taxa)
             except StopIteration:
-                pass
+                break
 
         if acc_taxa != acc1:
             cmp_taxa = {}
@@ -168,7 +168,7 @@ def load_comparisons(user: str, dsn: str, comparators: list,
             try:
                 acc_term, cmp_term = next(it_term)
             except StopIteration:
-                pass
+                break
 
         if acc_term != acc1:
             cmp_term = {}
