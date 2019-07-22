@@ -325,7 +325,7 @@ def run(user1: str, user2: str, dsn: str, **kwargs):
     logger.setLevel(level)
 
     for name, step in steps.items():
-        if name == "signature2protein":
+        if name == "signatures-proteins":
             step["args"] = (user1, dsn, processes, tmpdir)
         elif name == "copy":
             step["args"] = (user1, user2, dsn)
