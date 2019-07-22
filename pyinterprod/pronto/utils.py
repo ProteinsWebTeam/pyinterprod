@@ -544,3 +544,7 @@ class PersistentBuffer(object):
             return
         self.fh.close()
         self.fh = None
+
+
+def merge_buffers(iterable: Iterable[PersistentBuffer]):
+    return heapq.merge(*iterable, key=lambda x: x[0])
