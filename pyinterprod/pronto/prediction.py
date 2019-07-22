@@ -144,7 +144,7 @@ def load_comparisons(user: str, dsn: str, comparators: list,
 
     acc_desc = acc_taxa = acc_term = None
     cmp_desc = cmp_taxa = cmp_term = None
-    cnt = 0
+    logger.debug("populating METHOD_SIMILARITY")
     for acc1 in sorted(similarities):
         while acc_desc is None or acc_desc < acc1:
             try:
@@ -179,14 +179,8 @@ def load_comparisons(user: str, dsn: str, comparators: list,
             val_term = cmp_term.get(acc2, (None, None, None))
             table.insert((acc1, acc2) + val + val_desc + val_taxa + val_term)
 
-        cnt += 1
-        if not cnt % 1000:
-            logger.debug(f"loading comparisons: {cnt}/{len(similarities)}")
-
     table.close()
     con.commit()
-
-    logger.debug(f"loading comparisons: {cnt}/{len(similarities)}")
 
     if remove:
         for b in desc_buffers:
@@ -198,6 +192,7 @@ def load_comparisons(user: str, dsn: str, comparators: list,
         for b in term_buffers:
             b.remove()
 
+    logger.debug("indexing/anayzing METHOD_SIMILARITY")
     cur = con.cursor()
     orautils.grant(cur, owner, "METHOD_SIMILARITY", "SELECT", "INTERPRO_SELECT")
     cur.execute(
@@ -215,6 +210,7 @@ def load_comparisons(user: str, dsn: str, comparators: list,
     orautils.gather_stats(cur, owner, "METHOD_SIMILARITY")
     cur.close()
     con.close()
+    logger.debug("METHOD_SIMILARITY is ready")
 
 
 def _process(kvdb: Kvdb, task_queue: Queue, done_queue: Queue,
