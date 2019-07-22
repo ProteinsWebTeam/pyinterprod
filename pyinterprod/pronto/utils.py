@@ -437,7 +437,7 @@ def merge_comparators(comparators: Iterable[MatchComparator],
         similarities[acc_1] = {}
         for acc_2 in comparisons[acc_1]:
             n_col, n_prot_over, n_res_over = comparisons[acc_1][acc_2]
-            n_prot2, n_res2 = signatures[acc_1]
+            n_prot2, n_res2 = signatures[acc_2]
 
             similarities[acc_1][acc_2] = (
                 # Collocation
