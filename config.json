@@ -9,17 +9,18 @@
             "pronto_alt": ""
         }
     },
-    "flat_files": {
-        "swissprot": "",
-        "trembl": ""
-    },
     "release": {
         "version": "",
         "date": ""
     },
-    "export": {
+    "paths": {
+        "flat-files": {
+            "swissprot": "",
+            "trembl": ""
+        },
         "matches": "",
-        "xrefs": ""
+        "xrefs": "",
+        "unirule": ""
     },
     "workflow": {
         "lsf-queue": "",

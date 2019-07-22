@@ -694,3 +694,65 @@ Please find below the list of recent integration changes.
         subject="Protein update {}: integration changes".format(release),
         content=content
     )
+
+
+def import_unirules(user: str, dsn: str, src: str):
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    orautils.drop_table(cur, "INTERPRO", "UNIRULE", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.UNIRULE (
+          ENTRY_AC VARCHAR2(9),
+          METHOD_AC VARCHAR2(25),
+          CONSTRAINT UQ_UNIRULE UNIQUE (ENTRY_AC, METHOD_AC),
+          CONSTRAINT FK_UNIRULE$ENTRY FOREIGN KEY (ENTRY_AC)
+            REFERENCES INTERPRO.ENTRY (ENTRY_AC) ON DELETE CASCADE,
+          CONSTRAINT FK_UNIRULE$METHOD FOREIGN KEY (METHOD_AC)
+            REFERENCES INTERPRO.METHOD (METHOD_AC) ON DELETE CASCADE,
+          CONSTRAINT CK_UNIRULE
+            CHECK ((ENTRY_AC IS NULL AND METHOD_AC IS NOT NULL)
+              OR (ENTRY_AC IS NOT NULL AND METHOD_AC IS NULL))
+        ) NOLOGGING
+        """
+    )
+
+    cur.execute("SELECT ENTRY_AC, CHECKED FROM INTERPRO.ENTRY")
+    entries = dict(cur.fetchall())
+
+    cur.execute(
+        """
+        SELECT M.METHOD_AC, EM.ENTRY_AC
+        FROM INTERPRO.METHOD M
+        LEFT OUTER JOIN INTERPRO.ENTRY2METHOD EM
+          ON M.METHOD_AC = EM.METHOD_AC
+        """
+    )
+    signatures = dict(cur.fetchall())
+    cur.close()
+
+    table = orautils.TablePopulator(
+        con=con,
+        query="INSERT INTO INTERPRO.UNIRULE VALUES (:1, :2)"
+    )
+
+    with open(src, "rt") as fh:
+        for line in fh:
+            db, acc = line.rstrip().split()
+
+            if db == "GDAC":
+                acc = "G3DSA:" + acc
+
+            if acc in entries:
+                table.insert((acc, None))
+            elif acc in signatures:
+                table.insert((None, acc))
+
+    table.close()
+    con.commit()
+
+    cur = con.cursor()
+    orautils.grant(cur, "INTERPRO", "UNIRULE", "SELECT", "INTERPRO_SELECT")
+    orautils.gather_stats(cur, "INTERPRO", "UNIRULE")
+    cur.close()
+    con.close()

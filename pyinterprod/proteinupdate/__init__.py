@@ -42,17 +42,23 @@ def main():
     db_info = config["database"]
     db_dsn = db_info["dsn"]
     db_users = db_info["users"]
-    export_dirs = config["export"]
+    paths = config["paths"]
     queue = config["workflow"]["lsf-queue"]
 
     tasks = [
+        Task(
+            name="unirule",
+            fn=uniprot.import_unirules,
+            args=(db_users["interpro"], db_dsn, paths["unirule"]),
+            scheduler=dict(queue=queue, mem=500)
+        ),
         Task(
             name="load-proteins",
             fn=proteins.load,
             args=(
                 db_users["interpro"], db_dsn,
-                config["flat_files"]["swissprot"],
-                config["flat_files"]["trembl"]
+                paths["flat-files"]["swissprot"],
+                paths["flat-files"]["trembl"]
             ),
             kwargs=dict(dir="/scratch/"),
             scheduler=dict(queue=queue, cpu=2, mem=500, scratch=40000)
@@ -103,7 +109,7 @@ def main():
         Task(
             name="update-matches",
             fn=matches.update_matches,
-            args=(db_users["interpro"], db_dsn, export_dirs["matches"]),
+            args=(db_users["interpro"], db_dsn, paths["matches"]),
             scheduler=dict(queue=queue, mem=500),
             requires=["import-matches", "proteins2scan"]
         ),
@@ -162,7 +168,7 @@ def main():
         Task(
             name="dump-xrefs",
             fn=uniprot.export_databases,
-            args=(db_users["interpro"], db_dsn, export_dirs["xrefs"]),
+            args=(db_users["interpro"], db_dsn, paths["xrefs"]),
             scheduler=dict(queue=queue, mem=500),
             requires=["xref-summary"]
         ),
@@ -193,7 +199,7 @@ def main():
             args=(db_users["pronto_main"], db_users["pronto_alt"], db_dsn),
             kwargs=dict(
                 processes=16,
-                report=os.path.join(export_dirs["matches"], "swiss_de_families.tsv"),
+                report=os.path.join(paths["matches"], "swiss_de_families.tsv"),
                 tmpdir="/scratch/"
             ),
             scheduler=dict(queue=queue, cpu=16, mem=32000, scratch=32000),
@@ -204,8 +210,8 @@ def main():
             name="report-curators",
             fn=misc.report_to_curators,
             args=(db_users["interpro"], db_dsn, [
-                os.path.join(export_dirs["matches"], "entries_changes.tsv"),
-                os.path.join(export_dirs["matches"], "swiss_de_families.tsv")
+                os.path.join(paths["matches"], "entries_changes.tsv"),
+                os.path.join(paths["matches"], "swiss_de_families.tsv")
             ]),
             scheduler=dict(queue=queue, mem=500),
             requires=["pronto"]
