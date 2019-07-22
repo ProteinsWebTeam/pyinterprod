@@ -498,10 +498,10 @@ def merge_organizers(iterable: Iterable[Organizer], remove: bool=False):
 
 
 class PersistentBuffer(object):
-    def __init__(self, dir: Optional[str]=None):
+    def __init__(self, dir: Optional[str]=None, compresslevel: int=COMPRESS_LVL):
         fd, self.filename = mkstemp(dir=dir)
         os.close(fd)
-        self.fh = gzip.open(self.filename, "wb", COMPRESS_LVL)
+        self.fh = gzip.open(self.filename, "wb", compresslevel)
         self.num_chunks = 0
 
     def __del__(self):

@@ -197,7 +197,7 @@ def load_comparisons(user: str, dsn: str, comparators: list,
 def _process(kvdb: Kvdb, task_queue: Queue, done_queue: Queue,
                 dir: Optional[str]):
     signatures = {}
-    with PersistentBuffer(dir=dir) as buffer:
+    with PersistentBuffer(dir=dir, compresslevel=9) as buffer:
         for acc_1, values_1 in iter(task_queue.get, None):
             counts = {}
             gen = kvdb.range(acc_1)
@@ -213,7 +213,7 @@ def _process(kvdb: Kvdb, task_queue: Queue, done_queue: Queue,
 
 def _calc_similarity(counts: Dict[str, int], src: PersistentBuffer,
                      queue: Queue, dir: Optional[str]=None):
-    with PersistentBuffer(dir=dir) as dst:
+    with PersistentBuffer(dir=dir, compresslevel=9) as dst:
         for acc1, cmps in src:
             cnt1 = counts[acc1]
             val = {}
