@@ -375,10 +375,10 @@ def _delete_obsolete(user: str, dsn: str, truncate: bool=False):
             try:
                 f.result()  # returns None
             except Exception as exc:
-                logger.debug("{}: exited ({}: {})".format(name, exc.__class__.__name__, exc))
+                logger.info("{}: exited ({})".format(name, exc))
                 num_errors += 1
             else:
-                logger.debug("{}: done".format(name))
+                logger.info("{}: done".format(name))
 
         if num_errors:
             cur.close()
@@ -452,20 +452,6 @@ def find_protein_to_refresh(user: str, dsn: str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     orautils.drop_table(cur, "INTERPRO", "PROTEIN_TO_SCAN", purge=True)
-
-    # # Assume CRC64 have been checked and that no mismatches were found
-    # cur.execute(
-    #     """
-    #     CREATE TABLE INTERPRO.PROTEIN_TO_SCAN NOLOGGING
-    #     AS
-    #     SELECT P.NEW_PROTEIN_AC AS PROTEIN_AC, X.UPI
-    #     FROM INTERPRO.PROTEIN_CHANGES P
-    #     INNER JOIN UNIPARC.XREF X
-    #       ON P.NEW_PROTEIN_AC = X.AC
-    #     WHERE X.DBID IN (2, 3)
-    #     AND X.DELETED = 'N'
-    #     """
-    # )
 
     # Assume CRC64 have been checked and that no mismatches were found
     cur.execute(
