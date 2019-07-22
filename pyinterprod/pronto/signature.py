@@ -307,10 +307,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     logger.debug("proteins: {:,}".format(num_proteins))
 
-    with open(os.path.join(tmpdir, "comparators.p"), "wb") as fh:
-        pickle.dump(comparators, fh)
-    # prediction.load_comparators(user, dsn, comparators)
-
+    prediction.load_comparators(user, dsn, comparators)
     _create_method_term(user, dsn, terms)
     _create_method_desc(user, dsn, names)
     _create_method_taxa(user, dsn, taxa)

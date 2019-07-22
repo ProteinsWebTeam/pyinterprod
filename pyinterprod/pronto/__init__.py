@@ -11,7 +11,7 @@ from tempfile import gettempdir
 import cx_Oracle
 
 from .. import logger, orautils
-from . import go, protein, signature
+from . import go, prediction, protein, signature
 
 
 def load_databases(user: str, dsn: str):
@@ -297,7 +297,12 @@ def _get_steps() -> dict:
 
         "signatures-proteins2": {
             "func": signature.finalize_method2protein,
-            "requires": ("signatures-proteins2",)
+            "requires": ("signatures-proteins",)
+        },
+
+        "similarities": {
+            "func": prediction.compare,
+            "requires": ("signatures-proteins",)
         },
 
         "copy": {
@@ -325,7 +330,7 @@ def run(user1: str, user2: str, dsn: str, **kwargs):
     logger.setLevel(level)
 
     for name, step in steps.items():
-        if name == "signatures-proteins":
+        if name in ("signatures-proteins", "similarities"):
             step["args"] = (user1, dsn, processes, tmpdir)
         elif name == "copy":
             step["args"] = (user1, user2, dsn)
