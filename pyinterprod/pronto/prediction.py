@@ -50,7 +50,7 @@ def load_comparators(user: str, dsn: str, comparators: Optional[list]=None,
     cur.close()
 
     if comparators:
-        counts, comparisons = merge_comparators(comparators, remove=remove)
+        similarities = merge_comparators(comparators, remove=remove)
 
         table = orautils.TablePopulator(
             con=con,
@@ -64,25 +64,9 @@ def load_comparators(user: str, dsn: str, comparators: Optional[list]=None,
                 """.format(owner),
             autocommit=True
         )
-        for acc1, (n_prot1, n_res1) in counts.items():
-            for acc2 in comparisons[acc1]:
-                n_prot2, n_res2 = counts[acc2]
-                n_col, n_prot_over, n_res_over = comparisons[acc1][acc2]
-                table.insert((
-                    acc1, acc2,
-                    # Collocation
-                    n_col / (n_prot1 + n_prot2 - n_col),
-                    n_col / n_prot1,
-                    n_col / n_prot2,
-                    # Protein overlap
-                    n_prot_over / (n_prot1 + n_prot2 - n_prot_over),
-                    n_prot_over / n_prot1,
-                    n_prot_over / n_prot2,
-                    # Residue overlap
-                    n_res_over / (n_res1 + n_res2 - n_res_over),
-                    n_res_over / n_res1,
-                    n_res_over / n_res2,
-                ))
+        for acc1 in similarities:
+            for acc2, values in similarities[acc1].items():
+                table.insert((acc1, acc2) + values)
 
         table.close()
         con.commit()
