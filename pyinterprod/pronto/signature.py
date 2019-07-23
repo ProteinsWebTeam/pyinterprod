@@ -518,7 +518,7 @@ def finalize_method2protein(user: str, dsn: str):
         NOLOGGING
         """.format(owner)
     )
-    logger.debug("METHOD2PROTEIN: creating index UI_METHOD2PROTEIN$M")
+    logger.debug("METHOD2PROTEIN: creating index I_METHOD2PROTEIN$M")
     cur.execute(
         """
         CREATE INDEX I_METHOD2PROTEIN$M
@@ -526,7 +526,7 @@ def finalize_method2protein(user: str, dsn: str):
         NOLOGGING
         """.format(owner)
     )
-    logger.debug("METHOD2PROTEIN: creating index UI_METHOD2PROTEIN$P")
+    logger.debug("METHOD2PROTEIN: creating index I_METHOD2PROTEIN$P")
     cur.execute(
         """
         CREATE INDEX I_METHOD2PROTEIN$P
@@ -534,7 +534,7 @@ def finalize_method2protein(user: str, dsn: str):
         NOLOGGING
         """.format(owner)
     )
-    logger.debug("METHOD2PROTEIN: creating index UI_METHOD2PROTEIN$T")
+    logger.debug("METHOD2PROTEIN: creating index I_METHOD2PROTEIN$T")
     cur.execute(
         """
         CREATE INDEX I_METHOD2PROTEIN$T
