@@ -446,9 +446,9 @@ def cmp_terms(user: str, dsn: str, **kwargs):
 
 
 def compare(user: str, dsn: str, processes: int=1, dir: Optional[str]=None):
+    cmp_terms(user, dsn, dir=dir, processes=processes)
     cmp_descriptions(user, dsn, dir=dir, processes=processes)
     cmp_taxa(user, dsn, dir=dir, processes=processes)
-    cmp_terms(user, dsn, dir=dir, processes=processes)
 
     logger.debug("indexing/anayzing METHOD_SIMILARITY")
     owner = user.split('/')[0]
