@@ -324,7 +324,7 @@ def _load_comparisons(user: str, dsn: str, column: str,
     table = orautils.TablePopulator(
         con=con,
         query="""
-              UPDATE TABLE {0}.METHOD_SIMILARITY
+              UPDATE {0}.METHOD_SIMILARITY
               SET {1}_INDEX=:idx, {1}_CONT1=:ct1, {1}_CONT2=:ct2
               WHERE METHOD_AC1 = :ac1 AND METHOD_AC2 = :ac2
               """.format(owner, column)
