@@ -366,6 +366,12 @@ class Kvdb(object):
     def size(self) -> int:
         return os.path.getsize(self.filepath)
 
+    def keys(self) -> Iterator[str]:
+        self.close()
+        with sqlite3.connect(self.filepath) as con:
+            for row in con.execute("SELECT id FROM data ORDER BY id"):
+                yield row[0]
+
     def range(self, low: str, high: Optional[str]=None):
         self.close()
         with sqlite3.connect(self.filepath) as con:
