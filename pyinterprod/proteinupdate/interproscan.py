@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, List, Optional, Tuple
@@ -9,7 +10,16 @@ import cx_Oracle
 from .. import logger, orautils
 
 
-def import_matches(user: str, dsn: str, max_workers: int=0):
+def import_matches(user: str, dsn: str, max_workers: int=0,
+                   checkpoint: Optional[str]=None):
+    if checkpoint:
+        open(checkpoint, "w").close()
+        os.chmod(checkpoint, 0o775)
+        while os.path.isfile(checkpoint):
+            time.sleep(600)
+
+        return
+
     url = orautils.make_connect_string(user, dsn)
     analyses = _get_analyses(url)
 
@@ -139,7 +149,15 @@ def import_matches(user: str, dsn: str, max_workers: int=0):
     logger.info("MV_IPRSCAN is ready")
 
 
-def import_sites(user: str, dsn: str, max_workers: int=0):
+def import_sites(user: str, dsn: str, max_workers: int=0,
+                 checkpoint: Optional[str]=None):
+    if checkpoint:
+        open(checkpoint, "w").close()
+        os.chmod(checkpoint, 0o775)
+        while os.path.isfile(checkpoint):
+            time.sleep(600)
+
+        return
     url = orautils.make_connect_string(user, dsn)
     analyses = _get_analyses(url, persited=1)  # todo: `persisted=2`
 

@@ -97,13 +97,14 @@ def main():
             name="import-matches",
             fn=interproscan.import_matches,
             args=(db_users["iprscan"], db_dsn),
-            kwargs=dict(max_workers=8),
+            kwargs=dict(max_workers=8, checkpoint=os.path.join(paths["matches"], "ispro-matches")),
             scheduler=dict(queue=queue, mem=500)
         ),
         Task(
             name="import-sites",
             fn=interproscan.import_sites,
             args=(db_users["iprscan"], db_dsn),
+            kwargs=dict(checkpoint=os.path.join(paths["matches"], "ispro-sites")),
             scheduler=dict(queue=queue, mem=500)
         ),
         Task(
