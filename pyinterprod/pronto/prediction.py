@@ -195,9 +195,9 @@ def load_comparisons(user: str, dsn: str, comparators: list,
 
 
 def _process(kvdb: Kvdb, task_queue: Queue, done_queue: Queue,
-             tmpdir: Optional[str]):
+             outdir: Optional[str]):
     signatures = {}
-    with PersistentBuffer(dir=tmpdir, compresslevel=9) as buffer:
+    with PersistentBuffer(dir=outdir, compresslevel=9) as buffer:
         for acc_1, values_1 in iter(task_queue.get, None):
             counts = {}
             gen = kvdb.range(acc_1)
@@ -212,8 +212,8 @@ def _process(kvdb: Kvdb, task_queue: Queue, done_queue: Queue,
 
 
 def _calc_similarity(counts: Dict[str, int], src: PersistentBuffer,
-                     queue: Queue, tmpdir: Optional[str]=None):
-    with PersistentBuffer(dir=tmpdir, compresslevel=9) as dst:
+                     queue: Queue, outdir: Optional[str]=None):
+    with PersistentBuffer(dir=outdir, compresslevel=9) as dst:
         for acc1, cmps in src:
             cnt1 = counts[acc1]
             val = {}
@@ -295,9 +295,9 @@ def _compare(kvdb: Kvdb, processes: int, tmpdir: Optional[str]) -> List[Persiste
     return buffers2
 
 
-def _export_signatures(cur: cx_Oracle.Cursor, tmpdir: Optional[str]=None) -> Kvdb:
+def _export_signatures(cur: cx_Oracle.Cursor, outdir: Optional[str]=None) -> Kvdb:
     logger.debug("exporting")
-    with Kvdb(dir=tmpdir, insertonly=True) as kvdb:
+    with Kvdb(dir=outdir, insertonly=True) as kvdb:
         values = set()
         _acc = None
         for acc, val in cur:
