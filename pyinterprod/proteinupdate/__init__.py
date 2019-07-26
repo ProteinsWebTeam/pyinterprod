@@ -177,8 +177,6 @@ def main():
             name="match-counts",
             fn=misc.refresh_mviews,
             args=(db_users["interpro"], db_dsn),
-            # TODO: set to `True` after all DB links are OK
-            kwargs=dict(plsql=False),
             scheduler=dict(queue=queue, mem=500),
             requires=["update-matches"]
         ),
