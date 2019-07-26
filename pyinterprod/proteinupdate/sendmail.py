@@ -17,11 +17,6 @@ def send_mail(to_addrs: list, subject: str, content: str,
               cc_addrs: Optional[list]=None,
               bcc_addrs: Optional[list]=None,
               attachments: Optional[list]=None):
-    # TODO: remove after debug
-    to_addrs = ["mblum@ebi.ac.uk"]
-    cc_addrs = None
-    bcc_addrs = None
-
     msg = EmailMessage()
     msg.set_content(content)
 
