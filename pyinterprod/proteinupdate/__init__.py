@@ -60,7 +60,7 @@ def main():
                 paths["flat-files"]["swissprot"],
                 paths["flat-files"]["trembl"]
             ),
-            kwargs=dict(dir="/scratch/"),
+            kwargs=dict(tmpdir="/scratch/"),
             scheduler=dict(queue=queue, cpu=2, mem=500, scratch=40000)
         ),
         Task(
