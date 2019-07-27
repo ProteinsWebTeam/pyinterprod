@@ -414,8 +414,7 @@ class Kvdb(object):
         os.remove(self.filepath)
 
 
-def merge_comparators(comparators: Iterable[MatchComparator],
-                      remove: bool=False) -> Dict[str, Dict[str, tuple]]:
+def merge_comparators(comparators: Iterable[MatchComparator], remove: bool=False):
     signatures = {}
     comparisons = {}
     for c in comparators:
@@ -437,9 +436,11 @@ def merge_comparators(comparators: Iterable[MatchComparator],
         if remove:
             c.remove()
 
+    num_full_sequences = {}
     similarities = {}
     for acc_1 in comparisons:
         n_prot1, n_res1 = signatures[acc_1]
+        num_full_sequences[acc_1] = n_prot1
         similarities[acc_1] = {}
         for acc_2 in comparisons[acc_1]:
             n_col, n_prot_over, n_res_over = comparisons[acc_1][acc_2]
@@ -460,7 +461,7 @@ def merge_comparators(comparators: Iterable[MatchComparator],
                 n_res_over / n_res2
             )
 
-    return similarities
+    return similarities, num_full_sequences
 
 
 def merge_kvdbs(iterable: Iterable[Kvdb], remove: bool=False):

@@ -53,7 +53,7 @@ def load_comparators(user: str, dsn: str, comparators: list,
     )
     cur.close()
 
-    similarities = merge_comparators(comparators, remove=remove)
+    similarities, num_full_sequences = merge_comparators(comparators, remove=remove)
     table = orautils.TablePopulator(
         con=con,
         query="""
@@ -69,7 +69,19 @@ def load_comparators(user: str, dsn: str, comparators: list,
     for acc1 in similarities:
         for acc2, values in similarities[acc1].items():
             table.insert((acc1, acc2) + values)
+    table.close()
 
+    table = orautils.TablePopulator(
+        con=con,
+        query="""
+                UPDATE {}.METHOD
+                SET FULL_SEQ_COUNT = :1
+                WHERE METHOD_AC = :2
+            """.format(owner),
+        autocommit=True
+    )
+    for acc, n in num_full_sequences.items():
+        table.update((n, acc))
     table.close()
     con.commit()
     con.close()

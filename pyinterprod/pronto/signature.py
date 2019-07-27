@@ -99,11 +99,7 @@ def load_signatures(user: str, dsn: str):
             ABSTRACT VARCHAR2(4000),
             ABSTRACT_LONG CLOB,
             PROTEIN_COUNT NUMBER DEFAULT 0 NOT NULL,
-            FULL_SEQ_COUNT NUMBER DEFAULT 0 NOT NULL,
-            RESIDUE_COUNT NUMBER DEFAULT 0 NOT NULL,
-            DESC_COUNT NUMBER DEFAULT 0 NOT NULL,
-            RANK_COUNT VARCHAR2(250) DEFAULT '{{}}' NOT NULL,
-            TERM_COUNT NUMBER DEFAULT 0 NOT NULL
+            FULL_SEQ_COUNT NUMBER DEFAULT 0 NOT NULL
         ) NOLOGGING
         """.format(owner)
     )
