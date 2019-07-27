@@ -281,7 +281,7 @@ def _get_tasks(**kwargs):
             name="taxa",
             fn=load_taxa,
             args=(user1, dsn),
-            scheduler=dict(queue=queue, mem=500)
+            scheduler=dict(queue=queue, mem=8000)  # todo: adjust
         ),
         Task(
             name="comments",
