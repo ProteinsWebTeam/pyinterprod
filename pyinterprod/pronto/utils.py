@@ -509,7 +509,6 @@ class PersistentBuffer(object):
         fd, self.filename = mkstemp(dir=dir)
         os.close(fd)
         self.fh = gzip.open(self.filename, "wb", compresslevel)
-        self.num_chunks = 0
 
     def __del__(self):
         self.close()
@@ -523,15 +522,16 @@ class PersistentBuffer(object):
     def __iter__(self):
         self.close()
         with gzip.open(self.filename, "rb") as fh:
-            for _ in range(self.num_chunks):
-                yield pickle.load(fh)
-
-    def __len__(self) -> int:
-        return self.num_chunks
+            while True:
+                try:
+                    obj = pickle.load(fh)
+                except EOFError:
+                    break
+                else:
+                    yield obj
 
     def add(self, obj: Any):
         pickle.dump(obj, self.fh)
-        self.num_chunks += 1
 
     @property
     def size(self) -> int:
