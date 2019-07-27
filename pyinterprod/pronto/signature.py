@@ -53,6 +53,20 @@ def load_matches(user: str, dsn: str):
         ON {}.MATCH (DBCODE) NOLOGGING
         """.format(owner)
     )
+
+    cur.execute(
+        """
+        MERGE INTO {0}.METHOD ME
+        USING (
+            SELECT METHOD_AC, COUNT(DISTINCT PROTEIN_AC) PROTEIN_COUNT
+            FROM {0}.MATCH
+            GROUP BY METHOD_AC
+        ) MA
+        ON (ME.METHOD_AC = MA.METHOD_AC)
+        WHEN MATCHED THEN UPDATE SET ME.PROTEIN_COUNT = MA.PROTEIN_COUNT
+        """.format(owner)
+    )
+    con.commit()
     cur.close()
     con.close()
 
@@ -113,27 +127,6 @@ def load_signatures(user: str, dsn: str):
 
     orautils.gather_stats(cur, owner, "METHOD")
     orautils.grant(cur, owner, "METHOD", "SELECT", "INTERPRO_SELECT")
-    cur.close()
-    con.close()
-
-
-def update_signatures(user: str, dsn: str):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    cur.execute(
-        """
-        MERGE INTO {0}.METHOD ME
-        USING (
-            SELECT METHOD_AC, COUNT(DISTINCT PROTEIN_AC) PROTEIN_COUNT
-            FROM {0}.MATCH
-            GROUP BY METHOD_AC
-        ) MA
-        ON (ME.METHOD_AC = MA.METHOD_AC)
-        WHEN MATCHED THEN UPDATE SET ME.PROTEIN_COUNT = MA.PROTEIN_COUNT
-        """.format(owner)
-    )
-    con.commit()
     cur.close()
     con.close()
 
