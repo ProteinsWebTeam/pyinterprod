@@ -4,6 +4,7 @@ import os
 import shutil
 import time
 from multiprocessing import Process, Queue
+from tempfile import mkstemp
 from typing import Dict, List, Optional, Tuple
 
 import cx_Oracle
