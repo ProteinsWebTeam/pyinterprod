@@ -251,7 +251,6 @@ def _get_tasks(**kwargs):
     processes = kwargs.get("processes", 1)
     queue = kwargs.get("queue")
     report_dst = kwargs.get("report", "swiss_de_families.tsv")
-    tmpdir = kwargs.get("tmpdir")
 
     return [
         Task(
@@ -326,7 +325,7 @@ def _get_tasks(**kwargs):
             name="signatures-proteins",
             fn=signature.load_signature2protein,
             args=(user1, dsn),
-            kwargs=dict(processes=processes, tmpdir=tmpdir),
+            kwargs=dict(processes=processes, tmpdir="/scratch/"),
             scheduler=dict(queue=queue, cpu=processes, mem=32000, scratch=32000),
             requires=["descriptions", "signatures", "taxa", "terms"]
         ),
@@ -357,8 +356,6 @@ def main():
     parser.add_argument("-s", "--steps", nargs="+",
                         choices=[t.name for t in _get_tasks()], default=None,
                         help="steps to run (default: all)")
-    parser.add_argument("-t", "--tmp", metavar="DIRECTORY",
-                        help="temporary directory", default=None)
     parser.add_argument("-p", "--processes", type=int, default=1,
                         help="number of processes (default: 1)")
     parser.add_argument("-o", "--output", default="swiss_de_families.tsv",
@@ -381,7 +378,6 @@ def main():
         processes=args.processes,
         queue=config["workflow"]["lsf-queue"],
         report=args.output,
-        tmpdir=args.tmp,
         steps=args.steps
     )
 
