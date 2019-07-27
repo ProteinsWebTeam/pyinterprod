@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import shutil
 import time
 from multiprocessing import Process, Queue
 from typing import Dict, List, Optional, Tuple
@@ -69,129 +70,6 @@ def load_comparators(user: str, dsn: str, comparators: list,
     table.close()
     con.commit()
     con.close()
-
-
-def load_comparisons(user: str, dsn: str, comparators: list,
-                     desc_buffers: list, taxa_buffers: list,
-                     term_buffers: list, remove: bool=True):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    orautils.drop_table(cur, owner, "METHOD_SIMILARITY", purge=True)
-    cur.execute(
-        """
-        CREATE TABLE {}.METHOD_SIMILARITY
-        (
-            METHOD_AC1 VARCHAR2(25) NOT NULL,
-            METHOD_AC2 VARCHAR2(25) NOT NULL,
-            COLL_INDEX BINARY_DOUBLE DEFAULT NULL,
-            COLL_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            COLL_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            POVR_INDEX BINARY_DOUBLE DEFAULT NULL,
-            POVR_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            POVR_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            ROVR_INDEX BINARY_DOUBLE DEFAULT NULL,
-            ROVR_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            ROVR_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            DESC_INDEX BINARY_DOUBLE DEFAULT NULL,
-            DESC_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            DESC_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            TAXA_INDEX BINARY_DOUBLE DEFAULT NULL,
-            TAXA_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            TAXA_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            TERM_INDEX BINARY_DOUBLE DEFAULT NULL,
-            TERM_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            TERM_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            CONSTRAINT PK_METHOD_SIMILARITY PRIMARY KEY (METHOD_AC1, METHOD_AC2)
-        ) NOLOGGING
-        """.format(owner)
-    )
-    cur.close()
-
-    table = orautils.TablePopulator(
-        con=con,
-        query="""
-                INSERT /*+ APPEND */ INTO {}.METHOD_SIMILARITY
-                VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12,
-                :13, :14, :15, :16, :17, :18, :19, :20)
-            """.format(owner),
-        autocommit=True
-    )
-
-    similarities = merge_comparators(comparators, remove=remove)
-    it_desc = merge_buffers(desc_buffers)
-    it_taxa = merge_buffers(taxa_buffers)
-    it_term = merge_buffers(term_buffers)
-
-    acc_desc = acc_taxa = acc_term = None
-    cmp_desc = cmp_taxa = cmp_term = None
-    logger.debug("populating METHOD_SIMILARITY")
-    for acc1 in sorted(similarities):
-        while acc_desc is None or acc_desc < acc1:
-            try:
-                acc_desc, cmp_desc = next(it_desc)
-            except StopIteration:
-                break
-
-        if acc_desc != acc1:
-            cmp_desc = {}
-
-        while acc_taxa is None or acc_taxa < acc1:
-            try:
-                acc_taxa, cmp_taxa = next(it_taxa)
-            except StopIteration:
-                break
-
-        if acc_taxa != acc1:
-            cmp_taxa = {}
-
-        while acc_term is None or acc_term < acc1:
-            try:
-                acc_term, cmp_term = next(it_term)
-            except StopIteration:
-                break
-
-        if acc_term != acc1:
-            cmp_term = {}
-
-        for acc2, val in similarities[acc1].items():
-            val_desc = cmp_desc.get(acc2, (None, None, None))
-            val_taxa = cmp_taxa.get(acc2, (None, None, None))
-            val_term = cmp_term.get(acc2, (None, None, None))
-            table.insert((acc1, acc2) + val + val_desc + val_taxa + val_term)
-
-    table.close()
-    con.commit()
-
-    if remove:
-        for b in desc_buffers:
-            b.remove()
-
-        for b in taxa_buffers:
-            b.remove()
-
-        for b in term_buffers:
-            b.remove()
-
-    logger.debug("indexing/anayzing METHOD_SIMILARITY")
-    cur = con.cursor()
-    orautils.grant(cur, owner, "METHOD_SIMILARITY", "SELECT", "INTERPRO_SELECT")
-    cur.execute(
-        """
-        CREATE INDEX I_METHOD_SIMILARITY$AC1
-        ON {}.METHOD_SIMILARITY (METHOD_AC1) NOLOGGING
-        """.format(owner)
-    )
-    cur.execute(
-        """
-        CREATE INDEX I_METHOD_SIMILARITY$AC2
-        ON {}.METHOD_SIMILARITY (METHOD_AC2) NOLOGGING
-        """.format(owner)
-    )
-    orautils.gather_stats(cur, owner, "METHOD_SIMILARITY")
-    cur.close()
-    con.close()
-    logger.debug("METHOD_SIMILARITY is ready")
 
 
 def _process(kvdb: Kvdb, task_queue: Queue, done_queue: Queue,
@@ -295,9 +173,10 @@ def _compare(kvdb: Kvdb, processes: int, tmpdir: Optional[str]) -> List[Persiste
     return buffers2
 
 
-def _export_signatures(cur: cx_Oracle.Cursor, outdir: Optional[str]=None) -> Kvdb:
+def _export_signatures(cur: cx_Oracle.Cursor, outdir: str,
+                       tmpdir: Optional[str]=None) -> str:
     logger.debug("exporting")
-    with Kvdb(dir=outdir, insertonly=True) as kvdb:
+    with Kvdb(dir=tmpdir, insertonly=True) as kvdb:
         values = set()
         _acc = None
         for acc, val in cur:
@@ -313,7 +192,13 @@ def _export_signatures(cur: cx_Oracle.Cursor, outdir: Optional[str]=None) -> Kvd
         if _acc:
             kvdb[_acc] = values
 
-    return kvdb
+    logger.debug(f"Disk usage: {kvdb.size/1024**2:.0f}MB")
+    fd, filepath = mkstemp(dir=outdir)
+    os.close(fd)
+    os.remove(filepath)
+    shutil.copy(kvdb.filepath, filepath)
+    kvdb.remove()
+    return filepath
 
 
 def _load_comparisons(user: str, dsn: str, column: str,

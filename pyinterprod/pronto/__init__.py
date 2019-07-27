@@ -281,13 +281,13 @@ def _get_tasks(**kwargs):
             name="taxa",
             fn=load_taxa,
             args=(user1, dsn),
-            scheduler=dict(queue=queue, mem=8000)  # todo: adjust
+            scheduler=dict(queue=queue, mem=1000)
         ),
         Task(
             name="comments",
             fn=protein.load_comments,
             args=(user1, dsn),
-            scheduler=dict(queue=queue, mem=8000)  # todo: adjust
+            scheduler=dict(queue=queue, mem=2000)
         ),
         Task(
             name="descriptions",

@@ -231,8 +231,9 @@ def main():
                 )
 
     wdir = config["workflow"]["dir"]
+    wdb = os.path.join(wdir, "proteinupdate.db")
     wname = "Protein Update"
-    with Workflow(tasks, name=wname, dir=wdir) as w:
+    with Workflow(tasks, db=wdb, dir=wdir, name=wname) as w:
         success = w.run(args.tasks, resume=args.resume, dry=args.dry_run,
                         secs=args.submit)
 
