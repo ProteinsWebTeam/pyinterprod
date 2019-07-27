@@ -116,6 +116,8 @@ def _compare(src: str, i_start: str, i_stop: str, j_start: str, j_stop: str,
              outdir: str, processes: int=8, tmpdir: Optional[str]=None):
     # Copy Kvdb file locally
     logger.info("copying")
+    if tmpdir:
+        os.makedirs(tmpdir, exist_ok=True)
     fd, dst = mkstemp(dir=tmpdir)
     os.close(fd)
     os.remove(dst)
