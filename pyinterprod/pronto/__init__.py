@@ -293,7 +293,7 @@ def _get_tasks(**kwargs):
             name="descriptions",
             fn=protein.load_descriptions,
             args=(user1, dsn),
-            scheduler=dict(queue=queue, mem=500)
+            scheduler=dict(queue=queue, mem=1000)
         ),
         Task(
             name="enzymes",

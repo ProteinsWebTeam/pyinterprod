@@ -183,6 +183,7 @@ def _get_matches(user: str, dsn: str, filepath: Optional[str]=None):
 def load_signature2protein(user: str, dsn: str, processes: int=1,
                            tmpdir: Optional[str]=None, chunk_size: int=1000,
                            filepath: Optional[str]=None):
+    logger.info("querying proteins")
     if tmpdir is not None:
         os.makedirs(tmpdir, exist_ok=True)
 
