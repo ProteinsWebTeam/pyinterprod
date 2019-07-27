@@ -269,6 +269,7 @@ def _load_comparisons(user: str, dsn: str, column: str, files: List[str]):
     table.close()
     con.commit()
     con.close()
+    logger.info(f"METHOD_SIMILARITY ({column}) updated")
 
 
 def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
