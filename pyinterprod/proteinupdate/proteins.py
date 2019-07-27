@@ -14,13 +14,13 @@ from .. import logger, orautils
 
 
 def load(user: str, dsn: str, swissp_src: str, trembl_src: str,
-         dir: Optional[str]=None):
+         tmpdir: Optional[str]=None):
     url = orautils.make_connect_string(user, dsn)
     database_old = database_new = None
     with futures.ProcessPoolExecutor(max_workers=2) as executor:
         fs = {
-            executor.submit(_export_proteins, url, dir): "old",
-            executor.submit(_load_flat_files, swissp_src, trembl_src, dir): "new"
+            executor.submit(_export_proteins, url, tmpdir): "old",
+            executor.submit(_load_flat_files, swissp_src, trembl_src, tmpdir): "new"
         }
 
         for f in futures.as_completed(fs):
@@ -51,8 +51,8 @@ def load(user: str, dsn: str, swissp_src: str, trembl_src: str,
     os.remove(database_new)
 
 
-def _export_proteins(url: str, dir: Optional[str]=None) -> Tuple[str, int, int]:
-    fd, database = mkstemp(dir=dir)
+def _export_proteins(url: str, tmpdir: Optional[str]=None) -> Tuple[str, int, int]:
+    fd, database = mkstemp(dir=tmpdir)
     os.close(fd)
     os.remove(database)
 
@@ -106,8 +106,8 @@ def _export_proteins(url: str, dir: Optional[str]=None) -> Tuple[str, int, int]:
     return database, swissp_cnt, trembl_cnt
 
 
-def _load_flat_files(swissp_src: str, trembl_src: str, dir: Optional[str]=None) -> Tuple[str, int, int]:
-    fd, database = mkstemp(dir=dir)
+def _load_flat_files(swissp_src: str, trembl_src: str, tmpdir: Optional[str]=None) -> Tuple[str, int, int]:
+    fd, database = mkstemp(dir=tmpdir)
     os.close(fd)
     os.remove(database)
 

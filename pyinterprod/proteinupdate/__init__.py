@@ -60,7 +60,7 @@ def main():
                 paths["flat-files"]["swissprot"],
                 paths["flat-files"]["trembl"]
             ),
-            kwargs=dict(dir="/scratch/"),
+            kwargs=dict(tmpdir="/scratch/"),
             scheduler=dict(queue=queue, cpu=2, mem=500, scratch=40000)
         ),
         Task(
@@ -177,8 +177,6 @@ def main():
             name="match-counts",
             fn=misc.refresh_mviews,
             args=(db_users["interpro"], db_dsn),
-            # TODO: set to `True` after all DB links are OK
-            kwargs=dict(plsql=False),
             scheduler=dict(queue=queue, mem=500),
             requires=["update-matches"]
         ),

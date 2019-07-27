@@ -195,9 +195,9 @@ def load_comparisons(user: str, dsn: str, comparators: list,
 
 
 def _process(kvdb: Kvdb, task_queue: Queue, done_queue: Queue,
-                dir: Optional[str]):
+             outdir: Optional[str]):
     signatures = {}
-    with PersistentBuffer(dir=dir, compresslevel=9) as buffer:
+    with PersistentBuffer(dir=outdir, compresslevel=9) as buffer:
         for acc_1, values_1 in iter(task_queue.get, None):
             counts = {}
             gen = kvdb.range(acc_1)
@@ -212,8 +212,8 @@ def _process(kvdb: Kvdb, task_queue: Queue, done_queue: Queue,
 
 
 def _calc_similarity(counts: Dict[str, int], src: PersistentBuffer,
-                     queue: Queue, dir: Optional[str]=None):
-    with PersistentBuffer(dir=dir, compresslevel=9) as dst:
+                     queue: Queue, outdir: Optional[str]=None):
+    with PersistentBuffer(dir=outdir, compresslevel=9) as dst:
         for acc1, cmps in src:
             cnt1 = counts[acc1]
             val = {}
@@ -234,13 +234,13 @@ def _calc_similarity(counts: Dict[str, int], src: PersistentBuffer,
     queue.put(dst)
 
 
-def _compare(kvdb: Kvdb, processes: int, dir: Optional[str]) -> List[PersistentBuffer]:
+def _compare(kvdb: Kvdb, processes: int, tmpdir: Optional[str]) -> List[PersistentBuffer]:
     logger.debug("comparing")
     pool = []
     task_queue = Queue(maxsize=1)
     done_queue = Queue()
     for _ in range(max(1, processes-1)):
-        p = Process(target=_process, args=(kvdb, task_queue, done_queue, dir))
+        p = Process(target=_process, args=(kvdb, task_queue, done_queue, tmpdir))
         p.start()
         pool.append(p)
 
@@ -273,7 +273,7 @@ def _compare(kvdb: Kvdb, processes: int, dir: Optional[str]) -> List[PersistentB
     pool = []
     for buffer in buffers:
         p = Process(target=_calc_similarity,
-                    args=(signatures, buffer, done_queue, dir))
+                    args=(signatures, buffer, done_queue, tmpdir))
         p.start()
         pool.append(p)
 
@@ -295,9 +295,9 @@ def _compare(kvdb: Kvdb, processes: int, dir: Optional[str]) -> List[PersistentB
     return buffers2
 
 
-def _export_signatures(cur: cx_Oracle.Cursor, dir: Optional[str]=None) -> Kvdb:
+def _export_signatures(cur: cx_Oracle.Cursor, outdir: Optional[str]=None) -> Kvdb:
     logger.debug("exporting")
-    with Kvdb(dir=dir, insertonly=True) as kvdb:
+    with Kvdb(dir=outdir, insertonly=True) as kvdb:
         values = set()
         _acc = None
         for acc, val in cur:
@@ -358,7 +358,7 @@ def _load_comparisons(user: str, dsn: str, column: str,
 
 
 def cmp_descriptions(user: str, dsn: str, **kwargs):
-    dir = kwargs.get("dir", None)
+    tmpdir = kwargs.get("tmpdir", None)
     processes = kwargs.get("processes", 1)
 
     owner = user.split('/')[0]
@@ -380,13 +380,13 @@ def cmp_descriptions(user: str, dsn: str, **kwargs):
     cur.close()
     con.close()
     logger.debug(f"Kvdb size: {kvdb.size/1024**2:.0f}MB")
-    buffers = _compare(kvdb, processes, dir)
+    buffers = _compare(kvdb, processes, tmpdir)
     kvdb.remove()
     _load_comparisons(user, dsn, "DESC", buffers)
 
 
 def cmp_taxa(user: str, dsn: str, **kwargs):
-    dir = kwargs.get("dir", None)
+    tmpdir = kwargs.get("tmpdir", None)
     processes = kwargs.get("processes", 1)
     ranks = kwargs.get("ranks", None)
     #ranks = ("superkingdom", "kingdom", "class", "family", "species")
@@ -409,13 +409,13 @@ def cmp_taxa(user: str, dsn: str, **kwargs):
     cur.close()
     con.close()
     logger.debug(f"Kvdb size: {kvdb.size/1024**2:.0f}MB")
-    buffers = _compare(kvdb, processes, dir)
+    buffers = _compare(kvdb, processes, tmpdir)
     kvdb.remove()
     _load_comparisons(user, dsn, "TAXA", buffers)
 
 
 def cmp_terms(user: str, dsn: str, **kwargs):
-    dir = kwargs.get("dir", None)
+    tmpdir = kwargs.get("tmpdir", None)
     processes = kwargs.get("processes", 1)
 
     owner = user.split('/')[0]
@@ -440,15 +440,15 @@ def cmp_terms(user: str, dsn: str, **kwargs):
     cur.close()
     con.close()
     logger.debug(f"Kvdb size: {kvdb.size/1024**2:.0f}MB")
-    buffers = _compare(kvdb, processes, dir)
+    buffers = _compare(kvdb, processes, tmpdir)
     kvdb.remove()
     _load_comparisons(user, dsn, "TERM", buffers)
 
 
-def compare(user: str, dsn: str, processes: int=1, dir: Optional[str]=None):
-    cmp_terms(user, dsn, dir=dir, processes=processes)
-    cmp_descriptions(user, dsn, dir=dir, processes=processes)
-    cmp_taxa(user, dsn, dir=dir, processes=processes)
+def compare(user: str, dsn: str, processes: int=1, tmpdir: Optional[str]=None):
+    cmp_terms(user, dsn, tmpdir=tmpdir, processes=processes)
+    cmp_descriptions(user, dsn, tmpdir=tmpdir, processes=processes)
+    cmp_taxa(user, dsn, tmpdir=tmpdir, processes=processes)
 
     logger.debug("indexing/anayzing METHOD_SIMILARITY")
     owner = user.split('/')[0]
