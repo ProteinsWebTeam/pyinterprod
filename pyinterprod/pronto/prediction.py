@@ -114,13 +114,13 @@ def _calc_similarity(counts: Dict[str, int], src: PersistentBuffer,
 def _compare(src: str, i_start: str, i_stop: str, j_start: str, j_stop: str,
              outdir: str, processes: int=8, tmpdir: Optional[str]=None):
     # Copy Kvdb file locally
-    logger.debug("copying")
+    logger.info("copying")
     fd, dst = mkstemp(dir=tmpdir)
     os.close(fd)
     os.remove(dst)
     shutil.copy(src, dst)
 
-    logger.debug("comparing")
+    logger.info("comparing")
     counts = {}  # required counts to compute similarities
     pool = []
     task_queue = Queue(maxsize=1)
@@ -159,7 +159,7 @@ def _compare(src: str, i_start: str, i_stop: str, j_start: str, j_stop: str,
     for p in pool:
         p.join()
 
-    logger.debug("calculating similarities")
+    logger.info("calculating similarities")
     pool = []
     for buffer in tmp_buffers:
         p = Process(target=_calc_similarity,
@@ -179,11 +179,11 @@ def _compare(src: str, i_start: str, i_stop: str, j_start: str, j_stop: str,
     for buffer in tmp_buffers:
         buffer.remove()
 
-    logger.debug(f"disk usage: {size/1024**2:.0f}MB")
+    logger.info(f"disk usage: {size/1024**2:.0f}MB")
 
 
 def _export_signatures(cur: cx_Oracle.Cursor, dst: str):
-    logger.debug("exporting")
+    logger.info("exporting")
     with Kvdb(insertonly=True) as kvdb:
         values = set()
         _acc = None
@@ -235,7 +235,7 @@ def _chunk_jobs(cur: cx_Oracle.Cursor, schema: str, chunk_size: int):
 
 
 def _load_comparisons(user: str, dsn: str, column: str, files: List[src]):
-    logger.debug(f"updating METHOD_SIMILARITY ({column})")
+    logger.info(f"updating METHOD_SIMILARITY ({column})")
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     table = orautils.TablePopulator(
@@ -324,9 +324,9 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
         for task in running:
             if task.done():
                 if task.successful():
-                    logger.debug(f"{task.name} done\n{task.stdout}\n{task.stderr}")
+                    logger.info(f"{task.name} done\n{task.stdout}\n{task.stderr}")
                 else:
-                    logger.debug(f"{task.name} failed\n{task.stdout}\n{task.stderr}")
+                    logger.info(f"{task.name} failed\n{task.stdout}\n{task.stderr}")
                     pending = []  # cancel pending tasks
             else:
                 _running.append(task)
@@ -384,7 +384,7 @@ def compare(user: str, dsn: str, processes: int=1, tmpdir: Optional[str]=None):
     cmp_descriptions(user, dsn, tmpdir=tmpdir, processes=processes)
     cmp_taxa(user, dsn, tmpdir=tmpdir, processes=processes)
 
-    logger.debug("indexing/anayzing METHOD_SIMILARITY")
+    logger.info("indexing/anayzing METHOD_SIMILARITY")
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -404,4 +404,4 @@ def compare(user: str, dsn: str, processes: int=1, tmpdir: Optional[str]=None):
     orautils.gather_stats(cur, owner, "METHOD_SIMILARITY")
     cur.close()
     con.close()
-    logger.debug("METHOD_SIMILARITY is ready")
+    logger.info("METHOD_SIMILARITY is ready")
