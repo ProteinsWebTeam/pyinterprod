@@ -287,7 +287,7 @@ def _get_tasks(**kwargs):
             name="comments",
             fn=protein.load_comments,
             args=(user1, dsn),
-            scheduler=dict(queue=queue, mem=500)
+            scheduler=dict(queue=queue, mem=8000)  # todo: adjust
         ),
         Task(
             name="descriptions",
