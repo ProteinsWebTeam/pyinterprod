@@ -234,7 +234,7 @@ def _chunk_jobs(cur: cx_Oracle.Cursor, schema: str, chunk_size: int):
     return jobs
 
 
-def _load_comparisons(user: str, dsn: str, column: str, files: List[src]):
+def _load_comparisons(user: str, dsn: str, column: str, files: List[str]):
     logger.info(f"updating METHOD_SIMILARITY ({column})")
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
