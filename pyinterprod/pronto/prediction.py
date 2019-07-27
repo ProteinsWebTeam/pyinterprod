@@ -91,7 +91,7 @@ def _process(kvdb: Kvdb, start: str, stop: str, task_queue: Queue,
 
 def _calc_similarity(counts: Dict[str, int], src: PersistentBuffer,
                      queue: Queue, dir: Optional[str]=None):
-    with PersistentBuffer(dir=dir) as buffer:
+    with PersistentBuffer(dir=dir) as dst:
         for acc1, cmps in src:
             cnt1 = counts[acc1]
             val = {}
@@ -109,7 +109,7 @@ def _calc_similarity(counts: Dict[str, int], src: PersistentBuffer,
             if val:
                 dst.add((acc1, val))
 
-    queue.put(buffer)
+    queue.put(dst)
 
 
 def _compare(src: str, i_start: str, i_stop: str, j_start: str, j_stop: str,
