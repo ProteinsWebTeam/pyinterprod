@@ -3,14 +3,13 @@
 
 import argparse
 import json
-import logging
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from tempfile import gettempdir
+import sys
 
 import cx_Oracle
+from mundone import Task, Workflow
 
-from .. import logger, orautils
+from .. import orautils
 from . import go, prediction, protein, signature
 
 
@@ -242,190 +241,129 @@ def copy_schema(user_src: str, user_dst: str, dsn: str):
             "indexes": orautils.get_indices(cur, owner, t),
             "partitions": orautils.get_partitions(cur, owner, t)
         })
-
     #orautils.clear_schema(user_dst, dsn)
 
 
-def _default_steps() -> list:
-    return sorted(k for k, v in _get_steps().items() if not v.get("skip"))
+def _get_tasks(**kwargs):
+    user1 = kwargs.get("user1")
+    user2 = kwargs.get("user2")
+    dsn = kwargs.get("dsn")
+    processes = kwargs.get("processes", 1)
+    queue = kwargs.get("queue")
+    report_dst = kwargs.get("report", "swiss_de_families.tsv")
+    tmpdir = kwargs.get("tmpdir")
 
+    return [
+        Task(
+            name="annotations",
+            fn=go.load_annotations,
+            args=(user1, dsn),
+            scheduler=dict(queue=queue, mem=500)
+        ),
+        Task(
+            name="publications",
+            fn=go.load_publications,
+            args=(user1, dsn),
+            scheduler=dict(queue=queue, mem=500)
+        ),
+        Task(
+            name="terms",
+            fn=go.load_terms,
+            args=(user1, dsn),
+            scheduler=dict(queue=queue, mem=500)
+        ),
+        Task(
+            name="databases",
+            fn=load_databases,
+            args=(user1, dsn),
+            scheduler=dict(queue=queue, mem=500)
+        ),
+        Task(
+            name="taxa",
+            fn=load_taxa,
+            args=(user1, dsn),
+            scheduler=dict(queue=queue, mem=500)
+        ),
+        Task(
+            name="comments",
+            fn=protein.load_comments,
+            args=(user1, dsn),
+            scheduler=dict(queue=queue, mem=500)
+        ),
+        Task(
+            name="descriptions",
+            fn=protein.load_descriptions,
+            args=(user1, dsn),
+            scheduler=dict(queue=queue, mem=500)
+        ),
+        Task(
+            name="enzymes",
+            fn=protein.load_enzymes,
+            args=(user1, dsn),
+            scheduler=dict(queue=queue, mem=500)
+        ),
+        Task(
+            name="proteins",
+            fn=protein.load_proteins,
+            args=(user1, dsn),
+            scheduler=dict(queue=queue, mem=500)
+        ),
 
-def _get_steps() -> dict:
-    return {
-        "annotations": {
-            "func": go.load_annotations
-        },
-        "comments": {
-            "func": protein.load_comments
-        },
-        "databases": {
-            "func": load_databases
-        },
-        "descriptions": {
-            "func": protein.load_descriptions
-        },
-        "enzymes": {
-            "func": protein.load_enzymes
-        },
-        "matches": {
-            "func": signature.load_matches
-        },
-        "proteins": {
-            "func": protein.load_proteins
-        },
-        "publications": {
-            "func": go.load_publications
-        },
-        "signatures": {
-            "func": signature.load_signatures
-        },
-        "terms": {
-            "func": go.load_terms
-        },
-        "taxa": {
-            "func": load_taxa
-        },
-
-        "signatures2": {
-            "func": signature.update_signatures,
-            "requires": ("signatures", "matches")
-        },
-        "signatures-proteins": {
-            "func": signature.load_signature2protein,
-            "requires": ("descriptions", "signatures", "taxa", "terms")
-        },
-
-        "signatures-proteins2": {
-            "func": signature.finalize_method2protein,
-            "requires": ("signatures-proteins",)
-        },
-
-        "similarities": {
-            "func": prediction.compare,
-            "requires": ("signatures-proteins",)
-        },
-
-        "copy": {
-            "func": copy_schema,
-            "requires": ("annotations", "comments", "databases",
-                         "descriptions", "enzymes", "matches", "proteins",
-                         "publications", "signatures", "terms", "taxa",
-                         "signatures2", "signatures-proteins",
-                         "signatures-proteins2")
-        },
-        "report": {
-            "func": report_description_changes,
-            "requires": ("signatures-proteins2",)
-        }
-    }
+        Task(
+            name="signatures",
+            fn=signature.load_signatures,
+            args=(user1, dsn),
+            scheduler=dict(queue=queue, mem=500)
+        ),
+        Task(
+            name="matches",
+            fn=signature.load_matches,
+            args=(user1, dsn),
+            scheduler=dict(queue=queue, mem=500),
+            requires=["signatures"]
+        ),
+        Task(
+            name="signatures-proteins",
+            fn=signature.load_signature2protein,
+            args=(user1, dsn),
+            kwargs=dict(processes=processes, tmpdir=tmpdir),
+            scheduler=dict(queue=queue, cpu=processes, mem=32000, scratch=32000),
+            requires=["descriptions", "signatures", "taxa", "terms"]
+        ),
+        Task(
+            name="index",
+            fn=signature.load_signature2protein,
+            args=(user1, dsn),
+            scheduler=dict(queue=queue, mem=500),
+            requires=["signatures-proteins"]
+        )
+    ]
 
 
 def run(user1: str, user2: str, dsn: str, **kwargs):
-    report_dst = kwargs.get("report", "swiss_de_families.tsv")
-    level = kwargs.get("level", logging.INFO)
-    processes = kwargs.get("processes", 1)
-    steps = kwargs.get("steps", _get_steps())
-    tmpdir = kwargs.get("tmpdir", gettempdir())
-
-    logger.setLevel(level)
-
-    for name, step in steps.items():
-        if name in ("signatures-proteins", "similarities"):
-            step["args"] = (user1, dsn, processes, tmpdir)
-        elif name == "copy":
-            step["args"] = (user1, user2, dsn)
-        elif name == "report":
-            step["args"] = (user1, dsn, report_dst)
-        else:
-            step["args"] = (user1, dsn)
-
-    for step in steps.values():
-        step["requires"] = list(step.get("requires", []))
-
-    with ThreadPoolExecutor(max_workers=processes) as executor:
-        pending = {}
-        running = {}
-        for name, step in steps.items():
-            for req_name in step["requires"]:
-                if req_name in steps:
-                    pending[name] = step
-                    break
-            else:
-                # no requirement scheduled to run
-                running[name] = step
-
-        fs = {}
-        for name, step in running.items():
-            logger.info(f" {name:<30}running")
-            f = executor.submit(step["func"], *step["args"])
-            fs[f] = name
-
-        done = set()
-        failed = set()
-        while fs or pending:
-            for f in as_completed(fs):
-                name = fs[f]
-                try:
-                    f.result()
-                except Exception as exc:
-                    logger.error(f"{name:<30}failed ({exc})")
-                    failed.add(name)
-                else:
-                    logger.info(f" {name:<30}done")
-                    done.add(name)
-
-                del running[name]
-
-                # Look if any pending step can be submitted/cancelled
-                num_submitted = 0
-                for pend_name in list(pending.keys()):
-                    pend_step = pending[pend_name]
-                    tmp = []
-                    for req_name in pend_step["requires"]:
-                        if req_name in failed:
-                            # cancel step (one dependency failed)
-                            del pending[pend_name]
-                            break
-                        elif req_name not in done:
-                            tmp.append(req_name)
-                    else:
-                        # No dependency failed
-                        # Update list of dependencies still to run
-                        pend_step["requires"] = tmp
-                        if not tmp:
-                            logger.info(f" {pend_name:<30}running")
-                            del pending[pend_name]
-                            running[pend_name] = pend_step
-                            f = executor.submit(pend_step["func"], *pend_step["args"])
-                            fs[f] = pend_name
-                            num_submitted += 1
-
-                if num_submitted:
-                    break
-
-            fs = {f: n for f, n in fs.items() if n in running}
-
-    if failed:
-        raise RuntimeError("one or more step failed")
+    kwargs["user1"] = user1
+    kwargs["user2"] = user2
+    kwargs["dsn"] = dsn
+    tasks = _get_tasks(**kwargs)
+    with Workflow(tasks) as w:
+        steps = kwargs.get("steps")
+        return w.run(steps, dependencies=False)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Pronto schema update")
     parser.add_argument("config", metavar="CONFIG.JSON",
                         help="config JSON file")
-    parser.add_argument("-s", "--steps", nargs="+", choices=_get_steps(),
-                        default=_default_steps(),
+    parser.add_argument("-s", "--steps", nargs="+",
+                        choices=[t.name for t in _get_tasks()], default=None,
                         help="steps to run (default: all)")
     parser.add_argument("-t", "--tmp", metavar="DIRECTORY",
-                        help="temporary directory", default=gettempdir())
+                        help="temporary directory", default=None)
     parser.add_argument("-p", "--processes", type=int, default=1,
                         help="number of processes (default: 1)")
     parser.add_argument("-o", "--output", default="swiss_de_families.tsv",
                         help="output report for curators "
                              "(default: swiss_de_families.tsv)")
-    parser.add_argument("--verbose", action="store_const",
-                        const=logging.DEBUG, default=logging.INFO,
-                        help="display additional logging messages")
     args = parser.parse_args()
 
     try:
@@ -436,16 +374,15 @@ def main():
     except json.JSONDecodeError:
         parser.error("{}: not a valid JSON file".format(args.config))
 
-    try:
-        os.makedirs(args.tmp, exist_ok=True)
-    except Exception as e:
-        parser.error(e)
-
-    run(config["database"]["users"]["pronto_main"],
+    success = run(
+        config["database"]["users"]["pronto_main"],
         config["database"]["users"]["pronto_alt"],
         config["database"]["dsn"],
-        steps={k: v for k, v in _get_steps().items() if k in args.steps},
-        tmpdir=args.tmp,
         processes=args.processes,
-        level=args.verbose,
-        report=args.output)
+        queue=config["workflow"]["lsf-queue"],
+        report=args.output,
+        tmpdir=args.tmp,
+        steps=args.steps
+    )
+
+    sys.exit(0 if success else 1)

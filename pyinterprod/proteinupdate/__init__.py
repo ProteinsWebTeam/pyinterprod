@@ -200,6 +200,7 @@ def main():
             args=(db_users["pronto_main"], db_users["pronto_alt"], db_dsn),
             kwargs=dict(
                 processes=16,
+                queue=queue,
                 report=os.path.join(paths["matches"], "swiss_de_families.tsv"),
                 tmpdir="/scratch/"
             ),
@@ -227,8 +228,7 @@ def main():
                 parser.error(
                     "argument -t/--tasks: "
                     "invalid choice: '{}' (choose from {})\n".format(
-                        arg,
-                        ", ".join(map("'{}'".format, task_names))
+                        arg, ", ".join(task_names)
                     )
                 )
 

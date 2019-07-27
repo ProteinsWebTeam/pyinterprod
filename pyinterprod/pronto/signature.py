@@ -245,10 +245,10 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
                 num_proteins += 1
                 if not num_proteins % 1e7:
-                    logger.debug("proteins: {:,}".format(num_proteins))
+                    logger.info("proteins: {:,}".format(num_proteins))
 
             elif _protein_acc is None:
-                logger.debug("processing proteins")
+                logger.info("processing proteins")
 
             _protein_acc = protein_acc
             length = row[1]
@@ -305,11 +305,11 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     for p in pool:
         p.join()
 
-    logger.debug("proteins: {:,}".format(num_proteins))
+    logger.info("proteins: {:,}".format(num_proteins))
 
-    prediction.load_comparators(user, dsn, comparators, remove=False)
-    with open("comparators.p", "wb") as fh:
-        pickle.dump(comparators, fh)
+    prediction.load_comparators(user, dsn, comparators, remove=True)
+    # with open("comparators.p", "wb") as fh:
+    #     pickle.dump(comparators, fh)
 
     _create_method_term(user, dsn, terms)
     _create_method_desc(user, dsn, names)
@@ -318,7 +318,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
 
 def _create_method_desc(user: str, dsn: str, organizers: list):
-    logger.debug("creating METHOD_DESC")
+    logger.info("creating METHOD_DESC")
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -380,11 +380,11 @@ def _create_method_desc(user: str, dsn: str, organizers: list):
     )
     cur.close()
     con.close()
-    logger.debug("METHOD_DESC ready")
+    logger.info("METHOD_DESC ready")
 
 
 def _create_method_taxa(user: str, dsn: str, organizers: list):
-    logger.debug("creating METHOD_TAXA")
+    logger.info("creating METHOD_TAXA")
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -454,11 +454,11 @@ def _create_method_taxa(user: str, dsn: str, organizers: list):
     )
     cur.close()
     con.close()
-    logger.debug("METHOD_TAXA ready")
+    logger.info("METHOD_TAXA ready")
 
 
 def _create_method_term(user: str, dsn: str, organizers: list):
-    logger.debug("creating METHOD_TERM")
+    logger.info("creating METHOD_TERM")
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -503,7 +503,7 @@ def _create_method_term(user: str, dsn: str, organizers: list):
     )
     cur.close()
     con.close()
-    logger.debug("METHOD_TERM ready")
+    logger.info("METHOD_TERM ready")
 
 
 def finalize_method2protein(user: str, dsn: str):
@@ -511,9 +511,9 @@ def finalize_method2protein(user: str, dsn: str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     orautils.grant(cur, owner, "METHOD2PROTEIN", "SELECT", "INTERPRO_SELECT")
-    logger.debug("METHOD2PROTEIN: gathering statistics")
+    logger.info("METHOD2PROTEIN: gathering statistics")
     orautils.gather_stats(cur, owner, "METHOD2PROTEIN")
-    logger.debug("METHOD2PROTEIN: creating index UI_METHOD2PROTEIN")
+    logger.info("METHOD2PROTEIN: creating index UI_METHOD2PROTEIN")
     cur.execute(
         """
         CREATE UNIQUE INDEX UI_METHOD2PROTEIN
@@ -521,7 +521,7 @@ def finalize_method2protein(user: str, dsn: str):
         NOLOGGING
         """.format(owner)
     )
-    logger.debug("METHOD2PROTEIN: creating index I_METHOD2PROTEIN$M")
+    logger.info("METHOD2PROTEIN: creating index I_METHOD2PROTEIN$M")
     cur.execute(
         """
         CREATE INDEX I_METHOD2PROTEIN$M
@@ -529,7 +529,7 @@ def finalize_method2protein(user: str, dsn: str):
         NOLOGGING
         """.format(owner)
     )
-    logger.debug("METHOD2PROTEIN: creating index I_METHOD2PROTEIN$P")
+    logger.info("METHOD2PROTEIN: creating index I_METHOD2PROTEIN$P")
     cur.execute(
         """
         CREATE INDEX I_METHOD2PROTEIN$P
@@ -537,7 +537,7 @@ def finalize_method2protein(user: str, dsn: str):
         NOLOGGING
         """.format(owner)
     )
-    logger.debug("METHOD2PROTEIN: creating index I_METHOD2PROTEIN$T")
+    logger.info("METHOD2PROTEIN: creating index I_METHOD2PROTEIN$T")
     cur.execute(
         """
         CREATE INDEX I_METHOD2PROTEIN$T
@@ -547,4 +547,4 @@ def finalize_method2protein(user: str, dsn: str):
     )
     cur.close()
     con.close()
-    logger.debug("METHOD2PROTEIN ready")
+    logger.info("METHOD2PROTEIN ready")
