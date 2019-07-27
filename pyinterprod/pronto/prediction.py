@@ -186,7 +186,6 @@ def _compare(src: str, i_start: str, i_stop: str, j_start: str, j_stop: str,
 
 
 def _export_signatures(cur: cx_Oracle.Cursor, dst: str):
-    logger.info("exporting")
     with Kvdb(insertonly=True) as kvdb:
         values = set()
         _acc = None
@@ -291,6 +290,7 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     cur.execute(query)
+    logger.info("exporting")
     _export_signatures(cur, kvdb_path)
     pending = _chunk_jobs(cur, owner, chunk_size)
     cur.close()
@@ -299,6 +299,7 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
+    logger.info("comparing")
     running = []
     submitted = 0
     while pending or running:
