@@ -307,13 +307,12 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
             except IndexError:
                 break
             else:
-                args = (kvdb_path, row_start, row_stop, col_start, col_stop)
                 t = Task(
                     name=f"pronto-cmp-{submitted}",
                     fn=_compare,
-                    args=(database, row_start, row_stop, col_start, col_stop,
-                          processes, tmpdir, outdir),
-                    scheduler=dict(queue=queue, cpu=processes, mem=2000, scratch=4000)
+                    args=(kvdb_path, row_start, row_stop, col_start, col_stop,
+                          outdir, processes, tmpdir),
+                    scheduler=dict(queue=queue, cpu=processes, mem=4000, scratch=4000)
                 )
                 t.run()
                 running.append(t)
