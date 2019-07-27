@@ -14,6 +14,7 @@ from .utils import merge_organizers
 
 
 def load_matches(user: str, dsn: str):
+    logger.info("creating MATCH")
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -33,20 +34,27 @@ def load_matches(user: str, dsn: str):
         """.format(owner)
     )
     orautils.gather_stats(cur, owner, "MATCH")
+
+    logger.info("analyzing MATCH")
     orautils.grant(cur, owner, "MATCH", "SELECT", "INTERPRO_SELECT")
 
+    logger.info("creating I_MATCH$PROTEIN")
     cur.execute(
         """
         CREATE INDEX I_MATCH$PROTEIN
         ON {}.MATCH (PROTEIN_AC) NOLOGGING
         """.format(owner)
     )
+
+    logger.info("creating I_MATCH$METHOD")
     cur.execute(
         """
         CREATE INDEX I_MATCH$METHOD
         ON {}.MATCH (METHOD_AC) NOLOGGING
         """.format(owner)
     )
+
+    logger.info("creating I_MATCH$DBCODE")
     cur.execute(
         """
         CREATE INDEX I_MATCH$DBCODE
@@ -54,6 +62,7 @@ def load_matches(user: str, dsn: str):
         """.format(owner)
     )
 
+    logger.info("updating METHOD")
     cur.execute(
         """
         MERGE INTO {0}.METHOD ME
@@ -69,6 +78,7 @@ def load_matches(user: str, dsn: str):
     con.commit()
     cur.close()
     con.close()
+    logger.info("complete")
 
 
 def load_signatures(user: str, dsn: str):
