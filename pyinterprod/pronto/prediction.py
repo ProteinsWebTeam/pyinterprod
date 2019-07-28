@@ -286,7 +286,7 @@ def _load_comparisons(user: str, dsn: str, column: str, files: List[str]):
 
 
 def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
-                     processes: int=8, max_jobs: int=10,
+                     processes: int=8, max_jobs: int=0,
                      tmpdir: Optional[str]=None, chunk_size: int=10000,
                      queue: Optional[str]=None) -> List[str]:
     try:
@@ -325,7 +325,7 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
                     fn=_compare,
                     args=(kvdb_path, row_start, row_stop, col_start, col_stop,
                           outdir, processes, tmpdir),
-                    scheduler=dict(queue=queue, cpu=processes, mem=4000, scratch=4000)
+                    scheduler=dict(queue=queue, cpu=processes, mem=1000, scratch=5000)
                 )
                 t.run()
                 running.append(t)
@@ -338,7 +338,7 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
                     fn=_compare,
                     args=(kvdb_path, row_start, row_stop, col_start, col_stop,
                           outdir, processes, tmpdir),
-                    scheduler=dict(queue=queue, cpu=processes, mem=4000, scratch=4000)
+                    scheduler=dict(queue=queue, cpu=processes, mem=1000, scratch=5000)
                 )
                 t.run()
                 running.append(t)
@@ -349,10 +349,11 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
         _running = []
         for task in running:
             if task.done():
+                logger.debug(f"{task.stdout}\n{task.stderr}")
                 if task.successful():
-                    logger.info(f"{task.name} done\n{task.stdout}\n{task.stderr}")
+                    logger.info(f"{task.name} done")
                 else:
-                    logger.info(f"{task.name} failed\n{task.stdout}\n{task.stderr}")
+                    logger.info(f"{task.name} failed")
                     pending = []  # cancel pending tasks
                     failed = True
             else:
