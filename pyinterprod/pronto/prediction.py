@@ -314,16 +314,14 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
     logger.info("comparing")
     running = []
     submitted = 0
+    failed = False
     while pending or running:
         time.sleep(10)
 
-        for _ in range(max_jobs - len(running)):
-            # Can submit a new job
-            try:
+        if max_jobs and pending:
+            for _ in range(max_jobs - len(running)):
+                # Can submit a new job
                 row_start, row_stop, col_start, col_stop = pending.pop()
-            except IndexError:
-                break
-            else:
                 t = Task(
                     name=f"pronto-cmp-{submitted}",
                     fn=_compare,
@@ -334,6 +332,20 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
                 t.run()
                 running.append(t)
                 submitted += 1
+        elif pending:
+            # Submit all jobs at once
+            for row_start, row_stop, col_start, col_stop in pending:
+                t = Task(
+                    name=f"pronto-cmp-{submitted}",
+                    fn=_compare,
+                    args=(kvdb_path, row_start, row_stop, col_start, col_stop,
+                          outdir, processes, tmpdir),
+                    scheduler=dict(queue=queue, cpu=processes, mem=4000, scratch=4000)
+                )
+                t.run()
+                running.append(t)
+                submitted += 1
+            pending = []
 
         # Check completed tasks
         _running = []
@@ -344,13 +356,20 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
                 else:
                     logger.info(f"{task.name} failed\n{task.stdout}\n{task.stderr}")
                     pending = []  # cancel pending tasks
+                    failed = True
             else:
                 _running.append(task)
 
         running = _running
 
     os.remove(kvdb_path)
-    return [os.path.join(outdir, f) for f in os.listdir(outdir)]
+    files = [os.path.join(outdir, f) for f in os.listdir(outdir)]
+    if failed:
+        for path in files:
+            os.remove(path)
+        raise RuntimeError("one or more tasks failed")
+
+    return files 
 
 
 def cmp_descriptions(user: str, dsn: str, outdir: str, processes: int=8, max_jobs: int=10, tmpdir: Optional[str]=None, chunk_size: int=10000, queue: Optional[str]=None):
@@ -370,7 +389,11 @@ def cmp_descriptions(user: str, dsn: str, outdir: str, processes: int=8, max_job
 
 
 def cmp_taxa(user: str, dsn: str, outdir: str, processes: int=8, max_jobs: int=10, tmpdir: Optional[str]=None, chunk_size: int=10000, queue: Optional[str]=None):
-    query = f"SELECT METHOD_AC, TAX_ID FROM {user.split('/')[0]}.METHOD_TAXA"
+    query = """
+        SELECT METHOD_AC, TAX_ID
+        FROM {}.METHOD_TAXA
+        ORDER BY METHOD_AC
+    """.format(user.split('/')[0])
     files = _run_comparisons(user, dsn, query, outdir, processes, max_jobs,
                              tmpdir, chunk_size, queue)
     _load_comparisons(user, dsn, "TAXA", files)
