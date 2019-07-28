@@ -316,8 +316,6 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
     submitted = 0
     failed = False
     while pending or running:
-        time.sleep(10)
-
         if max_jobs and pending:
             for _ in range(max_jobs - len(running)):
                 # Can submit a new job
@@ -361,6 +359,7 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
                 _running.append(task)
 
         running = _running
+        time.sleep(10)
 
     os.remove(kvdb_path)
     files = [os.path.join(outdir, f) for f in os.listdir(outdir)]
@@ -369,7 +368,7 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
             os.remove(path)
         raise RuntimeError("one or more tasks failed")
 
-    return files 
+    return files
 
 
 def cmp_descriptions(user: str, dsn: str, outdir: str, processes: int=8, max_jobs: int=10, tmpdir: Optional[str]=None, chunk_size: int=10000, queue: Optional[str]=None):
