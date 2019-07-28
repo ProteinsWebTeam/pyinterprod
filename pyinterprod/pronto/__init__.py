@@ -331,7 +331,7 @@ def _get_tasks(**kwargs):
         ),
         Task(
             name="index",
-            fn=signature.load_signature2protein,
+            fn=signature.finalize_method2protein,
             args=(user1, dsn),
             scheduler=dict(queue=queue, mem=500),
             requires=["signatures-proteins"]
