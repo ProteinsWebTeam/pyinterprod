@@ -357,7 +357,7 @@ def run(config_path: str, steps: Optional[List[str]]=None,
     with open(config_path, "rt") as fh:
         config = json.load(fh)
 
-    outdir = config["paths"]["pronto"]
+    outdir = config["paths"]["results"]
 
     if not report:
         report = os.path.join(outdir, "swiss_de_families.tsv")

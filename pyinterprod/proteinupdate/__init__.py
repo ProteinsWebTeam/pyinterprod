@@ -97,20 +97,20 @@ def main():
             name="import-matches",
             fn=interproscan.import_matches,
             args=(db_users["iprscan"], db_dsn),
-            kwargs=dict(max_workers=8, checkpoint=os.path.join(paths["matches"], "ispro-matches")),
+            kwargs=dict(max_workers=8, checkpoint=os.path.join(paths["results"], "ispro-matches")),
             scheduler=dict(queue=queue, mem=500)
         ),
         Task(
             name="import-sites",
             fn=interproscan.import_sites,
             args=(db_users["iprscan"], db_dsn),
-            kwargs=dict(checkpoint=os.path.join(paths["matches"], "ispro-sites")),
+            kwargs=dict(checkpoint=os.path.join(paths["results"], "ispro-sites")),
             scheduler=dict(queue=queue, mem=500)
         ),
         Task(
             name="update-matches",
             fn=matches.update_matches,
-            args=(db_users["interpro"], db_dsn, paths["matches"]),
+            args=(db_users["interpro"], db_dsn, paths["results"]),
             scheduler=dict(queue=queue, mem=500),
             requires=["import-matches", "proteins2scan"]
         ),
@@ -193,13 +193,13 @@ def main():
             scheduler=dict(queue=queue, mem=500)
         ),
         Task(
-            name="pronto",
+            name="results",
             fn=pronto.run,
             args=(db_users["pronto_main"], db_users["pronto_alt"], db_dsn),
             kwargs=dict(
                 processes=16,
                 queue=queue,
-                report=os.path.join(paths["matches"], "swiss_de_families.tsv"),
+                report=os.path.join(paths["results"], "swiss_de_families.tsv"),
                 tmpdir="/scratch/"
             ),
             scheduler=dict(queue=queue, cpu=16, mem=32000, scratch=32000),
@@ -210,11 +210,11 @@ def main():
             name="report-curators",
             fn=misc.report_to_curators,
             args=(db_users["interpro"], db_dsn, [
-                os.path.join(paths["matches"], "entries_changes.tsv"),
-                os.path.join(paths["matches"], "swiss_de_families.tsv")
+                os.path.join(paths["results"], "entries_changes.tsv"),
+                os.path.join(paths["results"], "swiss_de_families.tsv")
             ]),
             scheduler=dict(queue=queue, mem=500),
-            requires=["pronto"]
+            requires=["results"]
         )
     ]
 
