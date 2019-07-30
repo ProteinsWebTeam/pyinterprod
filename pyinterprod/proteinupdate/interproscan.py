@@ -94,6 +94,8 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
                                         "MV_IPRSCAN", partition, _id, fn)
                     fs[f] = table
                     running.add(table)
+                else:
+                    logger.warning(f"unknown analysis {name}")
 
             if signalp_actions:
                 f = executor.submit(_import_signalp, url, "IPRSCAN",
