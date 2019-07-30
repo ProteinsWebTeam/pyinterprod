@@ -373,7 +373,9 @@ def run(config_path: str, steps: Optional[List[str]]=None, processes: int=16,
         report=report
     )
 
-    with Workflow(tasks) as w:
+    wdir = config["workflow"]["dir"]
+    wdb = os.path.join(wdir, "pronto.db")
+    with Workflow(tasks, db=wdb, dir=wdir) as w:
         return w.run(steps, dependencies=False)
 
 
