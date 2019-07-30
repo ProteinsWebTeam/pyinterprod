@@ -347,10 +347,7 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
         for task in running:
             if task.done():
                 logger.debug(f"{task.stdout}\n{task.stderr}")
-                if task.successful():
-                    logger.info(f"{task.name} done")
-                else:
-                    logger.info(f"{task.name} failed")
+                if not task.successful():
                     pending = []  # cancel pending tasks
                     failed = True
             else:
