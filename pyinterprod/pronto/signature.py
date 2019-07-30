@@ -2,7 +2,6 @@
 
 import os
 import pickle
-from concurrent.futures import as_completed, ThreadPoolExecutor
 from multiprocessing import Process, Queue
 from typing import Optional
 
