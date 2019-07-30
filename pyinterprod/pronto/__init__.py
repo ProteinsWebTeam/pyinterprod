@@ -250,7 +250,6 @@ def _get_tasks(**kwargs):
     user2 = kwargs.get("user2")
     dsn = kwargs.get("dsn")
     outdir = kwargs.get("outdir", os.getcwd())
-    processes = kwargs.get("processes", 16)
     queue = kwargs.get("queue")
     report_dst = kwargs.get("report", "swiss_de_families.tsv")
 
@@ -327,8 +326,8 @@ def _get_tasks(**kwargs):
             name="signatures-proteins",
             fn=signature.load_signature2protein,
             args=(user1, dsn),
-            kwargs=dict(processes=processes, tmpdir="/scratch/"),
-            scheduler=dict(queue=queue, cpu=processes, mem=32000, scratch=32000),
+            kwargs=dict(processes=16, tmpdir="/scratch/"),
+            scheduler=dict(queue=queue, cpu=16, mem=32000, scratch=32000),
             requires=["descriptions", "signatures", "taxa", "terms"]
         ),
         Task(
@@ -352,7 +351,7 @@ def _get_tasks(**kwargs):
     ]
 
 
-def run(config_path: str, steps: Optional[List[str]]=None, processes: int=16,
+def run(config_path: str, steps: Optional[List[str]]=None,
         report: Optional[str]=None):
 
     with open(config_path, "rt") as fh:
@@ -368,7 +367,6 @@ def run(config_path: str, steps: Optional[List[str]]=None, processes: int=16,
         user2=config["database"]["users"]["pronto_alt"],
         dsn=config["database"]["dsn"],
         outdir=outdir,
-        processes=processes,
         queue=config["workflow"]["lsf-queue"],
         report=report
     )
@@ -386,12 +384,10 @@ def main():
     parser.add_argument("-s", "--steps", nargs="+",
                         choices=[t.name for t in _get_tasks()], default=None,
                         help="steps to run (default: all)")
-    parser.add_argument("-p", "--processes", type=int, default=1,
-                        help="number of processes (default: 1)")
     parser.add_argument("-o", "--output", default="swiss_de_families.tsv",
                         help="output report for curators "
                              "(default: swiss_de_families.tsv)")
     args = parser.parse_args()
 
-    success = run(args.config, args.steps, args.processes, args.output)
+    success = run(args.config, args.steps, args.output)
     sys.exit(0 if success else 1)
