@@ -446,7 +446,7 @@ Dear UniProt team,
 The InterPro cross-references files for {} are available in the following directory:
   {}
 
-Best regards,
+Kind regards,
 The InterPro Production Team
         """.format(release, dst)
     )
@@ -557,8 +557,8 @@ Please, take a snapshot of IPPRO, and inform UniProt they can refresh IPREADU.
 
 Recipients
 ----------
-  To: uniprot-database@ebi.ac.uk
-  Cc: automated_annotation@ebi.ac.uk, uniprot-prod@ebi.ac.uk
+To: uniprot-database@ebi.ac.uk
+Cc: automated_annotation@ebi.ac.uk, uniprot-prod@ebi.ac.uk
 
 Subject
 -------
@@ -585,7 +585,7 @@ There are no changes to the analysis IDs for this protein update.
 """
 
     content += """
-Best regards,
+Kind regards,
 The InterPro Production Team
 """
 
@@ -685,7 +685,7 @@ Please find below the list of recent integration changes.
     for acc in sorted(changes, key=lambda k: k.lower()):
         content += "{:<30}{:<30}{:<20}{:<20}\n".format(acc, *changes[acc])
 
-    content += "\nBest regards,\nThe InterPro Production Team\n"
+    content += "\nKind regards,\nThe InterPro Production Team\n"
 
     send_mail(
         to_addrs=["aa_dev@ebi.ac.uk"],

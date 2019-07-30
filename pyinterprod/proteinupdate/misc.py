@@ -285,8 +285,40 @@ The InterPro Production Team
 
 
 def export_for_sib(user: str, dsn: str):
+    logger.info("exporting data")
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    cur.callproc("INTERPRO.SIB_EXPORT.EXP_SIB_DATA")
+    cur.callproc("SIB_EXPORT.EXP_SIB_DATA")
+    cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
+    release = cur.fetchone()[0]
     cur.close()
     con.close()
+
+    logger.info("data successfully exported")
+
+    send_mail(
+        to_addrs=["interpro-team@ebi.ac.uk"],
+        subject=f"Data for SIB ready",
+        content=f"""\
+The data required by SIB was successfully exported.
+
+Please, archive the dump on the FTP, and inform SIB that the archive is ready.
+
+Recipients
+----------
+  To: uniprot-prod@isb-sib.ch
+
+Subject
+-------
+InterPro data for UniProt private release available
+
+Body 
+----
+Dear Swiss-Prot team,
+
+The interpro.tar.gz archive for UniProt private release {release} is available at ftp://ftp-private-beta.ebi.ac.uk/interpro/
+
+Kind regards,
+The InterPro Production Team
+""",
+    )
