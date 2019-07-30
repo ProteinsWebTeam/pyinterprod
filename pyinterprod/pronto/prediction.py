@@ -5,20 +5,19 @@ import shutil
 import time
 from multiprocessing import Process, Queue
 from tempfile import mkstemp
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import cx_Oracle
 from mundone import Task
 
 from .. import logger, orautils
-from .utils import merge_buffers, merge_comparators, Kvdb, PersistentBuffer
+from .utils import merge_comparators, Kvdb, PersistentBuffer
 
 JACCARD_THRESHOLD = 0.5
 PROGRESS_SECONDS = 3600
 
 
-def load_comparators(user: str, dsn: str, comparators: list,
-                     remove: bool=True):
+def load_comparators(user: str, dsn: str, comparators: list):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -53,7 +52,7 @@ def load_comparators(user: str, dsn: str, comparators: list,
     )
     cur.close()
 
-    similarities, num_full_sequences = merge_comparators(comparators, remove=remove)
+    similarities, num_full_sequences = merge_comparators(comparators)
     table = orautils.TablePopulator(
         con=con,
         query="""
@@ -262,7 +261,7 @@ def _load_comparisons(user: str, dsn: str, column: str, files: List[str]):
     )
 
     with PersistentBuffer() as buffer:
-         # remove temp file created by new instance
+        # remove temp file created by new instance
         buffer.close()
         buffer.remove()
 
@@ -279,6 +278,8 @@ def _load_comparisons(user: str, dsn: str, column: str, files: List[str]):
                         "ct2": ct2
                     })
 
+            buffer.remove()
+
     table.close()
     con.commit()
     con.close()
@@ -288,14 +289,8 @@ def _load_comparisons(user: str, dsn: str, column: str, files: List[str]):
 def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
                      processes: int=8, max_jobs: int=0,
                      tmpdir: Optional[str]=None, chunk_size: int=10000,
-                     queue: Optional[str]=None) -> List[str]:
-    try:
-        shutil.rmtree(outdir)
-    except FileNotFoundError:
-        pass
-    finally:
-        os.makedirs(outdir)
-
+                     job_queue: Optional[str]=None) -> List[str]:
+    os.makedirs(outdir, exist_ok=True)
     kvdb_path = os.path.join(outdir, "signatures.db")
 
     owner = user.split('/')[0]
@@ -325,7 +320,8 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
                     fn=_compare,
                     args=(kvdb_path, row_start, row_stop, col_start, col_stop,
                           outdir, processes, tmpdir),
-                    scheduler=dict(queue=queue, cpu=processes, mem=1000, scratch=5000)
+                    scheduler=dict(queue=job_queue, cpu=processes, mem=1000,
+                                   scratch=5000)
                 )
                 t.run()
                 running.append(t)
@@ -338,7 +334,8 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
                     fn=_compare,
                     args=(kvdb_path, row_start, row_stop, col_start, col_stop,
                           outdir, processes, tmpdir),
-                    scheduler=dict(queue=queue, cpu=processes, mem=1000, scratch=5000)
+                    scheduler=dict(queue=job_queue, cpu=processes, mem=1000,
+                                   scratch=5000)
                 )
                 t.run()
                 running.append(t)
@@ -372,7 +369,9 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
     return files
 
 
-def cmp_descriptions(user: str, dsn: str, outdir: str, processes: int=8, max_jobs: int=10, tmpdir: Optional[str]=None, chunk_size: int=10000, queue: Optional[str]=None):
+def cmp_descriptions(user: str, dsn: str, outdir: str, processes: int=8,
+                     max_jobs: int=0, tmpdir: Optional[str]=None,
+                     chunk_size: int=10000, job_queue: Optional[str]=None):
     query = """
         SELECT METHOD_AC, DESC_ID
         FROM {0}.METHOD_DESC
@@ -384,22 +383,26 @@ def cmp_descriptions(user: str, dsn: str, outdir: str, processes: int=8, max_job
         ORDER BY METHOD_AC
     """.format(user.split('/')[0])
     files = _run_comparisons(user, dsn, query, outdir, processes, max_jobs,
-                             tmpdir, chunk_size, queue)
+                             tmpdir, chunk_size, job_queue)
     _load_comparisons(user, dsn, "DESC", files)
 
 
-def cmp_taxa(user: str, dsn: str, outdir: str, processes: int=8, max_jobs: int=10, tmpdir: Optional[str]=None, chunk_size: int=10000, queue: Optional[str]=None):
+def cmp_taxa(user: str, dsn: str, outdir: str, processes: int=8,
+             max_jobs: int=0, tmpdir: Optional[str]=None,
+             chunk_size: int=10000, job_queue: Optional[str]=None):
     query = """
         SELECT METHOD_AC, TAX_ID
         FROM {}.METHOD_TAXA
         ORDER BY METHOD_AC
     """.format(user.split('/')[0])
     files = _run_comparisons(user, dsn, query, outdir, processes, max_jobs,
-                             tmpdir, chunk_size, queue)
+                             tmpdir, chunk_size, job_queue)
     _load_comparisons(user, dsn, "TAXA", files)
 
 
-def cmp_terms(user: str, dsn: str, outdir: str, processes: int=8, max_jobs: int=10, tmpdir: Optional[str]=None, chunk_size: int=10000, queue: Optional[str]=None):
+def cmp_terms(user: str, dsn: str, outdir: str, processes: int=8,
+              max_jobs: int=0, tmpdir: Optional[str]=None,
+              chunk_size: int=10000, job_queue: Optional[str]=None):
     query = """
         SELECT METHOD_AC, GO_ID
         FROM {0}.METHOD_TERM
@@ -414,14 +417,19 @@ def cmp_terms(user: str, dsn: str, outdir: str, processes: int=8, max_jobs: int=
         ORDER BY METHOD_AC
     """.format(user.split('/')[0])
     files = _run_comparisons(user, dsn, query, outdir, processes, max_jobs,
-                             tmpdir, chunk_size, queue)
+                             tmpdir, chunk_size, job_queue)
     _load_comparisons(user, dsn, "TERM", files)
 
 
-def compare(user: str, dsn: str, processes: int=1, tmpdir: Optional[str]=None):
-    cmp_terms(user, dsn, tmpdir=tmpdir, processes=processes)
-    cmp_descriptions(user, dsn, tmpdir=tmpdir, processes=processes)
-    cmp_taxa(user, dsn, tmpdir=tmpdir, processes=processes)
+def compare(user: str, dsn: str, outdir: str, processes: int=8,
+            max_jobs: int = 0, tmpdir: Optional[str] = None,
+            chunk_size: int = 10000, job_queue: Optional[str]=None):
+    cmp_terms(user, dsn, outdir, processes, max_jobs, tmpdir, chunk_size,
+              job_queue)
+    cmp_descriptions(user, dsn, outdir, processes, max_jobs, tmpdir,
+                     chunk_size, job_queue)
+    cmp_taxa(user, dsn, outdir, processes, max_jobs, tmpdir, chunk_size,
+             job_queue)
 
     logger.info("indexing/anayzing METHOD_SIMILARITY")
     owner = user.split('/')[0]

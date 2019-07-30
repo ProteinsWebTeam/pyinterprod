@@ -19,8 +19,9 @@
             "trembl": ""
         },
         "matches": "",
-        "xrefs": "",
-        "unirule": ""
+        "pronto": "",
+        "unirule": "",
+        "xrefs": ""
     },
     "workflow": {
         "lsf-queue": "",

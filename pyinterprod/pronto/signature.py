@@ -307,10 +307,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     logger.info("proteins: {:,}".format(num_proteins))
 
-    prediction.load_comparators(user, dsn, comparators, remove=True)
-    # with open("comparators.p", "wb") as fh:
-    #     pickle.dump(comparators, fh)
-
+    prediction.load_comparators(user, dsn, comparators)
     _create_method_term(user, dsn, terms)
     _create_method_desc(user, dsn, names)
     _create_method_taxa(user, dsn, taxa)
@@ -351,7 +348,7 @@ def _create_method_desc(user: str, dsn: str, organizers: list):
                                           "VALUES (:1, :2, :3, :4)".format(owner),
                                     autocommit=True)
 
-    for acc, descriptions in merge_organizers(organizers, remove=True):
+    for acc, descriptions in merge_organizers(organizers):
         counts = {}
         for descid, dbcode in descriptions:
             if descid in counts:
@@ -421,7 +418,7 @@ def _create_method_taxa(user: str, dsn: str, organizers: list):
                                           "VALUES (:1, :2, :3, :4)".format(owner),
                                     autocommit=True)
 
-    for acc, tax_ids in merge_organizers(organizers, remove=True):
+    for acc, tax_ids in merge_organizers(organizers):
         counts = {}
         for tax_id in tax_ids:
             try:
@@ -480,7 +477,7 @@ def _create_method_term(user: str, dsn: str, organizers: list):
                                           "INTO {}.METHOD_TERM "
                                           "VALUES (:1, :2, :3)".format(owner),
                                     autocommit=True)
-    for acc, terms in merge_organizers(organizers, remove=True):
+    for acc, terms in merge_organizers(organizers):
         counts = {}
         for go_id in terms:
             if go_id in counts:

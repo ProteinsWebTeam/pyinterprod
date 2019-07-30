@@ -414,7 +414,7 @@ class Kvdb(object):
         os.remove(self.filepath)
 
 
-def merge_comparators(comparators: Iterable[MatchComparator], remove: bool=False):
+def merge_comparators(comparators: Iterable[MatchComparator]):
     signatures = {}
     comparisons = {}
     for c in comparators:
@@ -433,8 +433,7 @@ def merge_comparators(comparators: Iterable[MatchComparator], remove: bool=False
                 signatures[acc_1] = val
                 comparisons[acc_1] = _comparisons
 
-        if remove:
-            c.remove()
+        c.remove()
 
     num_full_sequences = {}
     similarities = {}
@@ -464,7 +463,7 @@ def merge_comparators(comparators: Iterable[MatchComparator], remove: bool=False
     return similarities, num_full_sequences
 
 
-def merge_kvdbs(iterable: Iterable[Kvdb], remove: bool=False):
+def merge_kvdbs(iterable: Iterable[Kvdb]):
     items = []
     _key = None
     for key, value in heapq.merge(*iterable, key=lambda x: x[0]):
@@ -479,12 +478,11 @@ def merge_kvdbs(iterable: Iterable[Kvdb], remove: bool=False):
     if _key is not None:
         yield _key, items
 
-    if remove:
-        for kvdb in iterable:
-            kvdb.remove()
+    for kvdb in iterable:
+        kvdb.remove()
 
 
-def merge_organizers(iterable: Iterable[Organizer], remove: bool=False):
+def merge_organizers(iterable: Iterable[Organizer]):
     _key = None
     items = []
     for key, values in heapq.merge(*iterable, key=lambda x: x[0]):
@@ -499,9 +497,8 @@ def merge_organizers(iterable: Iterable[Organizer], remove: bool=False):
     if _key is not None:
         yield _key, items
 
-    if remove:
-        for organizer in iterable:
-            organizer.remove()
+    for organizer in iterable:
+        organizer.remove()
 
 
 class PersistentBuffer(object):

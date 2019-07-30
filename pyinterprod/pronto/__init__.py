@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import sys
+from typing import List, Optional
 
 import cx_Oracle
 from mundone import Task, Workflow
@@ -248,7 +249,8 @@ def _get_tasks(**kwargs):
     user1 = kwargs.get("user1")
     user2 = kwargs.get("user2")
     dsn = kwargs.get("dsn")
-    processes = kwargs.get("processes", 1)
+    outdir = kwargs.get("outdir", os.getcwd())
+    processes = kwargs.get("processes", 16)
     queue = kwargs.get("queue")
     report_dst = kwargs.get("report", "swiss_de_families.tsv")
 
@@ -335,17 +337,43 @@ def _get_tasks(**kwargs):
             args=(user1, dsn),
             scheduler=dict(queue=queue, mem=500),
             requires=["signatures-proteins"]
+        ),
+        Task(
+            name="compare",
+            fn=prediction.compare(user1, dsn, outdir),
+            args=(user1, dsn),
+            kwargs=dict(processes=8, max_jobs=0, tmpdir="/scratch/",
+                        chunk_size=25000, job_queue=queue),
+            scheduler=dict(queue=queue, mem=500),
+            requires=["signatures-proteins"]
         )
+
+        # todo: add report and copy tasks
     ]
 
 
-def run(user1: str, user2: str, dsn: str, **kwargs):
-    kwargs["user1"] = user1
-    kwargs["user2"] = user2
-    kwargs["dsn"] = dsn
-    tasks = _get_tasks(**kwargs)
+def run(config_path: str, steps: Optional[List[str]]=None, processes: int=16,
+        report: Optional[str]=None):
+
+    with open(config_path, "rt") as fh:
+        config = json.load(fh)
+
+    outdir = config["paths"]["pronto"]
+
+    if not report:
+        report = os.path.join(outdir, "swiss_de_families.tsv")
+
+    tasks = _get_tasks(
+        user1=config["database"]["users"]["pronto_main"],
+        user2=config["database"]["users"]["pronto_alt"],
+        dsn=config["database"]["dsn"],
+        outdir=outdir,
+        processes=processes,
+        queue=config["workflow"]["lsf-queue"],
+        report=report
+    )
+
     with Workflow(tasks) as w:
-        steps = kwargs.get("steps")
         return w.run(steps, dependencies=False)
 
 
@@ -363,22 +391,5 @@ def main():
                              "(default: swiss_de_families.tsv)")
     args = parser.parse_args()
 
-    try:
-        with open(args.config, "rt") as fh:
-            config = json.load(fh)
-    except FileNotFoundError:
-        parser.error("{}: no such file or directory".format(args.config))
-    except json.JSONDecodeError:
-        parser.error("{}: not a valid JSON file".format(args.config))
-
-    success = run(
-        config["database"]["users"]["pronto_main"],
-        config["database"]["users"]["pronto_alt"],
-        config["database"]["dsn"],
-        processes=args.processes,
-        queue=config["workflow"]["lsf-queue"],
-        report=args.output,
-        steps=args.steps
-    )
-
+    success = run(args.config, args.steps, args.processes, args.output)
     sys.exit(0 if success else 1)
