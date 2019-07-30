@@ -306,7 +306,7 @@ Please, archive the dump on the FTP, and inform SIB that the archive is ready.
 
 Recipients
 ----------
-  To: uniprot-prod@isb-sib.ch
+To: uniprot-prod@isb-sib.ch
 
 Subject
 -------
