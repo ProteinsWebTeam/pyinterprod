@@ -340,8 +340,8 @@ def _get_tasks(**kwargs):
         ),
         Task(
             name="compare",
-            fn=prediction.compare(user1, dsn, outdir),
-            args=(user1, dsn),
+            fn=prediction.compare,
+            args=(user1, dsn, outdir),
             kwargs=dict(processes=8, max_jobs=0, tmpdir="/scratch/",
                         chunk_size=25000, job_queue=queue),
             scheduler=dict(queue=queue, mem=500),
