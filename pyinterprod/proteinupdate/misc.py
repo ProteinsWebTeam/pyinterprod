@@ -282,3 +282,11 @@ The InterPro Production Team
 
     os.remove(filename)
     os.rmdir(dirname)
+
+
+def export_for_sib(user: str, dsn: str):
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    cur.callproc("INTERPRO.SIB_EXPORT.EXP_SIB_DATA")
+    cur.close()
+    con.close()
