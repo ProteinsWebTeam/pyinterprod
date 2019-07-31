@@ -100,6 +100,45 @@ def _process(kvdb: Kvdb, start: str, stop: str, task_queue: Queue,
     done_queue.put(buffer)
 
 
+def _persist_similarity(user: str, dsn: str, column: str,
+                        counts: Dict[str, int], buffer: PersistentBuffer):
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    table = orautils.TablePopulator(
+        con=con,
+        query="""
+              UPDATE {0}.METHOD_SIMILARITY
+              SET {1}_INDEX=:idx, {1}_CONT1=:ct1, {1}_CONT2=:ct2
+              WHERE METHOD_AC1 = :ac1 AND METHOD_AC2 = :ac2
+              """.format(owner, column)
+    )
+
+    for acc1, cmps in buffer:
+        cnt1 = counts[acc1]
+        val = {}
+        for acc2, intersect in cmps.items():
+            cnt2 = counts[acc2]
+            # J(A, B) = intersection(A, B) / union(A, B)
+            idx = intersect / (cnt1 + cnt2 - intersect)
+            # C(A, B) = intersection(A, B) / size(A)
+            #       --> larger values indicate more of A lying in B
+            ct1 = intersect / cnt1
+            ct2 = intersect / cnt2
+            if any([sim >= JACCARD_THRESHOLD for sim in (idx, ct1, ct2)]):
+                val[acc2] = (idx, ct1, ct2)
+                table.update({
+                    "ac1": acc1,
+                    "ac2": acc2,
+                    "idx": idx,
+                    "ct1": ct1,
+                    "ct2": ct2
+                })
+
+    table.close()
+    con.commit()
+    con.close()
+
+
 def _calc_similarity(counts: Dict[str, int], src: PersistentBuffer,
                      queue: Queue, dir: Optional[str]=None):
     with PersistentBuffer(dir=dir) as dst:
@@ -123,23 +162,24 @@ def _calc_similarity(counts: Dict[str, int], src: PersistentBuffer,
     queue.put(dst)
 
 
-def _compare(src: str, i_start: str, i_stop: str, j_start: str, j_stop: str,
-             outdir: str, processes: int=8, tmpdir: Optional[str]=None):
+def _compare(user: str, dsn: str, column: str, kvdb_src: str,
+             i_start: str, i_stop: str, j_start: str, j_stop: str,
+             processes: int=8, tmpdir: Optional[str]=None):
     # Copy Kvdb file locally
     logger.info("copying")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
-    fd, dst = mkstemp(dir=tmpdir)
+    fd, kvdb_dst = mkstemp(dir=tmpdir)
     os.close(fd)
-    os.remove(dst)
-    shutil.copy(src, dst)
+    os.remove(kvdb_dst)
+    shutil.copy(kvdb_src, kvdb_dst)
 
     logger.info("comparing")
     counts = {}  # required counts to compute similarities
     pool = []
     task_queue = Queue(maxsize=1)
     done_queue = Queue()
-    with Kvdb(dst) as kvdb:
+    with Kvdb(kvdb_dst) as kvdb:
         for _ in range(max(1, processes-1)):
             p = Process(target=_process,
                         args=(kvdb, j_start, j_stop, task_queue, done_queue,
@@ -152,7 +192,7 @@ def _compare(src: str, i_start: str, i_stop: str, j_start: str, j_stop: str,
             counts[acc_1] = len(taxids_1)
 
         if i_start != j_start:
-            # Get remaning required counts
+            # Get remaining required counts
             for acc_1, taxids_1 in kvdb.range(j_start, j_stop):
                 counts[acc_1] = len(taxids_1)
 
@@ -173,19 +213,13 @@ def _compare(src: str, i_start: str, i_stop: str, j_start: str, j_stop: str,
     for p in pool:
         p.join()
 
-    logger.info("calculating similarities")
+    logger.info("persisting similarities")
     pool = []
     for buffer in tmp_buffers:
-        p = Process(target=_calc_similarity,
-                    args=(counts, buffer, done_queue, outdir))
+        p = Process(target=_persist_similarity,
+                    args=(user, dsn, column, counts, buffer))
         p.start()
         pool.append(p)
-
-    # Final similarity buffers
-    sim_buffers = []
-    for _ in pool:
-        buffer = done_queue.get()
-        sim_buffers.append(buffer)
 
     for p in pool:
         p.join()
@@ -247,51 +281,14 @@ def _chunk_jobs(cur: cx_Oracle.Cursor, schema: str, chunk_size: int):
     return jobs
 
 
-def _load_comparisons(user: str, dsn: str, column: str, files: List[str]):
-    logger.info(f"updating METHOD_SIMILARITY ({column})")
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    table = orautils.TablePopulator(
-        con=con,
-        query="""
-              UPDATE {0}.METHOD_SIMILARITY
-              SET {1}_INDEX=:idx, {1}_CONT1=:ct1, {1}_CONT2=:ct2
-              WHERE METHOD_AC1 = :ac1 AND METHOD_AC2 = :ac2
-              """.format(owner, column)
-    )
-
-    with PersistentBuffer() as buffer:
-        # remove temp file created by new instance
-        buffer.close()
-        buffer.remove()
-
-        for f in files:
-            buffer.filename = f
-
-            for acc1, cmps in buffer:
-                for acc2, (idx, ct1, ct2) in cmps.items():
-                    table.update({
-                        "ac1": acc1,
-                        "ac2": acc2,
-                        "idx": idx,
-                        "ct1": ct1,
-                        "ct2": ct2
-                    })
-
-            buffer.remove()
-
-    table.close()
-    con.commit()
-    con.close()
-    logger.info(f"METHOD_SIMILARITY ({column}) updated")
-
-
-def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
-                     processes: int=8, max_jobs: int=0,
+def _run_comparisons(user: str, dsn: str, query: str, column: str,
+                     outdir: str, processes: int=8, max_jobs: int=0,
                      tmpdir: Optional[str]=None, chunk_size: int=10000,
                      job_queue: Optional[str]=None) -> List[str]:
     os.makedirs(outdir, exist_ok=True)
-    kvdb_path = os.path.join(outdir, "signatures.db")
+    fd, kvdb_path = mkstemp(suffix=".db", dir=outdir)
+    os.close(fd)
+    os.remove(kvdb_path)
 
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
@@ -318,8 +315,8 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
                 t = Task(
                     name=f"pronto-cmp-{submitted}",
                     fn=_compare,
-                    args=(kvdb_path, row_start, row_stop, col_start, col_stop,
-                          outdir, processes, tmpdir),
+                    args=(user, dsn, column, kvdb_path, row_start, row_stop,
+                          col_start, col_stop, processes, tmpdir),
                     scheduler=dict(queue=job_queue, cpu=processes, mem=1000,
                                    scratch=5000)
                 )
@@ -332,8 +329,8 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
                 t = Task(
                     name=f"pronto-cmp-{submitted}",
                     fn=_compare,
-                    args=(kvdb_path, row_start, row_stop, col_start, col_stop,
-                          outdir, processes, tmpdir),
+                    args=(user, dsn, column, kvdb_path, row_start, row_stop,
+                          col_start, col_stop, processes, tmpdir),
                     scheduler=dict(queue=job_queue, cpu=processes, mem=1000,
                                    scratch=5000)
                 )
@@ -357,13 +354,10 @@ def _run_comparisons(user: str, dsn: str, query: str, outdir: str,
         time.sleep(10)
 
     os.remove(kvdb_path)
-    files = [os.path.join(outdir, f) for f in os.listdir(outdir)]
     if failed:
-        for path in files:
-            os.remove(path)
         raise RuntimeError("one or more tasks failed")
 
-    return files
+    logger.info("complete")
 
 
 def cmp_descriptions(user: str, dsn: str, outdir: str, processes: int=8,
@@ -379,9 +373,8 @@ def cmp_descriptions(user: str, dsn: str, outdir: str, processes: int=8,
         )
         ORDER BY METHOD_AC
     """.format(user.split('/')[0])
-    files = _run_comparisons(user, dsn, query, outdir, processes, max_jobs,
-                             tmpdir, chunk_size, job_queue)
-    _load_comparisons(user, dsn, "DESC", files)
+    _run_comparisons(user, dsn, query, "DESC", outdir, processes, max_jobs,
+                     tmpdir, chunk_size, job_queue)
 
 
 def cmp_taxa(user: str, dsn: str, outdir: str, processes: int=8,
@@ -392,9 +385,8 @@ def cmp_taxa(user: str, dsn: str, outdir: str, processes: int=8,
         FROM {}.METHOD_TAXA
         ORDER BY METHOD_AC
     """.format(user.split('/')[0])
-    files = _run_comparisons(user, dsn, query, outdir, processes, max_jobs,
-                             tmpdir, chunk_size, job_queue)
-    _load_comparisons(user, dsn, "TAXA", files)
+    _run_comparisons(user, dsn, query, "TAXA", outdir, processes, max_jobs,
+                     tmpdir, chunk_size, job_queue)
 
 
 def cmp_terms(user: str, dsn: str, outdir: str, processes: int=8,
@@ -413,9 +405,8 @@ def cmp_terms(user: str, dsn: str, outdir: str, processes: int=8,
         )
         ORDER BY METHOD_AC
     """.format(user.split('/')[0])
-    files = _run_comparisons(user, dsn, query, outdir, processes, max_jobs,
-                             tmpdir, chunk_size, job_queue)
-    _load_comparisons(user, dsn, "TERM", files)
+    _run_comparisons(user, dsn, query, "TERM", outdir, processes, max_jobs,
+                     tmpdir, chunk_size, job_queue)
 
 
 def compare(user: str, dsn: str, outdir: str, processes: int=8,
