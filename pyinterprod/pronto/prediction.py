@@ -284,7 +284,7 @@ def _chunk_jobs(cur: cx_Oracle.Cursor, schema: str, chunk_size: int):
 def _run_comparisons(user: str, dsn: str, query: str, column: str,
                      outdir: str, processes: int=8, max_jobs: int=0,
                      tmpdir: Optional[str]=None, chunk_size: int=10000,
-                     job_queue: Optional[str]=None) -> List[str]:
+                     job_queue: Optional[str]=None):
     os.makedirs(outdir, exist_ok=True)
     fd, kvdb_path = mkstemp(suffix=".db", dir=outdir)
     os.close(fd)
