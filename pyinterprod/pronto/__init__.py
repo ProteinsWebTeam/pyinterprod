@@ -363,8 +363,8 @@ def run(config_path: str, steps: Optional[List[str]]=None,
         report = os.path.join(outdir, "swiss_de_families.tsv")
 
     tasks = _get_tasks(
-        user1=config["database"]["users"]["pronto_main"],
-        user2=config["database"]["users"]["pronto_alt"],
+        user1=config["database"]["users"]["pronto-pri"],
+        user2=config["database"]["users"]["pronto-sec"],
         dsn=config["database"]["dsn"],
         outdir=outdir,
         queue=config["workflow"]["lsf-queue"],

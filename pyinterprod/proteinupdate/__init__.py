@@ -208,7 +208,7 @@ def main():
         Task(
             name="pronto",
             fn=pronto.run,
-            args=(db_users["pronto_main"], db_users["pronto_alt"], db_dsn),
+            args=(db_users["pronto-pri"], db_users["pronto-sec"], db_dsn),
             kwargs=dict(
                 processes=16,
                 queue=queue,
