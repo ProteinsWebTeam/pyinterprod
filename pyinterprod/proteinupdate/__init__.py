@@ -45,6 +45,7 @@ def main():
     paths = config["paths"]
     queue = config["workflow"]["lsf-queue"]
     notify = config["email-notifications"]
+    os.makedirs(paths["results"], exist_ok=True)
 
     tasks = [
         Task(
