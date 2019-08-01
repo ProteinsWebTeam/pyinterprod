@@ -320,7 +320,7 @@ def build_xref_summary(user: str, dsn: str):
     con.close()
 
 
-def export_databases(user: str, dsn: str, dst: str):
+def export_databases(user: str, dsn: str, dst: str, notify: bool=True):
     logger.info("exporting dat/tab files")
     os.makedirs(dst, exist_ok=True)
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
@@ -436,11 +436,12 @@ def export_databases(user: str, dsn: str, dst: str):
     for path in files:
         os.chmod(path, 0o775)
 
-    send_mail(
-        to_addrs=["uniprot-database@ebi.ac.uk"],
-        cc_addrs=["uniprot-prod@ebi.ac.uk"],
-        subject="InterPro XREF files are ready",
-        content="""\
+    if notify:
+        send_mail(
+            to_addrs=["uniprot-database@ebi.ac.uk"],
+            cc_addrs=["uniprot-prod@ebi.ac.uk"],
+            subject="InterPro XREF files are ready",
+            content="""\
 Dear UniProt team,
 
 The InterPro cross-references files for {} are available in the following directory:
@@ -448,8 +449,8 @@ The InterPro cross-references files for {} are available in the following direct
 
 Kind regards,
 The InterPro Production Team
-        """.format(release, dst)
-    )
+""".format(release, dst)
+        )
 
     logger.info("complete")
 
@@ -527,7 +528,7 @@ def build_aa_iprscan(user: str, dsn: str):
     logger.info("AA_IPRSCAN is ready")
 
 
-def ask_to_snapshot(user: str, dsn: str):
+def ask_to_snapshot(user: str, dsn: str, notify: bool=True):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
@@ -590,11 +591,12 @@ The InterPro Production Team
 """
 
     try:
-        send_mail(
-            to_addrs=["interpro-team@ebi.ac.uk"],
-            subject="Protein update {}: please snapshot IPPRO".format(release),
-            content=content
-        )
+        if notify:
+            send_mail(
+                to_addrs=["interpro-team@ebi.ac.uk"],
+                subject="Protein update {}: please snapshot IPPRO".format(release),
+                content=content
+            )
 
         # Update PREV_ID only if mail sent
         cur.execute(
@@ -609,7 +611,7 @@ The InterPro Production Team
         con.close()
 
 
-def report_integration_changes(user: str, dsn: str):
+def report_integration_changes(user: str, dsn: str, notify: bool=True):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     cur.execute(
@@ -687,13 +689,14 @@ Please find below the list of recent integration changes.
 
     content += "\nKind regards,\nThe InterPro Production Team\n"
 
-    send_mail(
-        to_addrs=["aa_dev@ebi.ac.uk"],
-        cc_addrs=["unirule@ebi.ac.uk"],
-        bcc_addrs=["interpro-team@ebi.ac.uk"],
-        subject="Protein update {}: integration changes".format(release),
-        content=content
-    )
+    if notify:
+        send_mail(
+            to_addrs=["aa_dev@ebi.ac.uk"],
+            cc_addrs=["unirule@ebi.ac.uk"],
+            bcc_addrs=["interpro-team@ebi.ac.uk"],
+            subject="Protein update {}: integration changes".format(release),
+            content=content
+        )
 
 
 def import_unirules(user: str, dsn: str, src: str):

@@ -13,12 +13,14 @@ from .. import logger, orautils
 from .sendmail import send_mail
 
 
-def refresh_mviews(user: str, dsn: str, notice: int=3600, plsql: bool=True):
-    date = datetime.now() + timedelta(seconds=notice)
-    send_mail(
-        to_addrs=["interpro-team@ebi.ac.uk"],
-        subject="MV update scheduled",
-        content="""\
+def refresh_mviews(user: str, dsn: str, notice: int=3600, plsql: bool=True,
+                   notify: bool=True):
+    if notify:
+        date = datetime.now() + timedelta(seconds=notice)
+        send_mail(
+            to_addrs=["interpro-team@ebi.ac.uk"],
+            subject="MV update scheduled",
+            content="""\
 Dear curators,
 
 Legacy materialized views will start being updated \
@@ -36,10 +38,11 @@ modified (name, short name, abstracts, GO terms, etc.), or checked/unchecked.
 An email notification will automatically be sent at the end of the update.
 
 The InterPro Production Team
-""".format(date)
-    )
+    """.format(date)
+        )
 
-    time.sleep(notice)
+        time.sleep(notice)
+
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
@@ -143,18 +146,19 @@ The InterPro Production Team
     cur.close()
     con.close()
 
-    send_mail(
-        to_addrs=["interpro-team@ebi.ac.uk"],
-        subject="MV update complete",
-        content="""\
+    if notify:
+        send_mail(
+            to_addrs=["interpro-team@ebi.ac.uk"],
+            subject="MV update complete",
+            content="""\
 Dear curators,
 
 Legacy materialized views are now updated. \
 You may resume integrating or unintegrating signatures. Have fun!
 
 The InterPro Production Team
-""".format(date)
-    )
+"""
+        )
 
 
 def refresh_taxonomy(user: str, dsn: str):
@@ -251,7 +255,8 @@ def refresh_taxonomy(user: str, dsn: str):
     logger.info("complete")
 
 
-def report_to_curators(user: str, dsn: str, files: List[str]):
+def report_to_curators(user: str, dsn: str, files: List[str],
+                       notify: bool=True):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
@@ -266,10 +271,11 @@ def report_to_curators(user: str, dsn: str, files: List[str]):
         for path in files:
             fh.write(path, arcname=os.path.basename(path))
 
-    send_mail(
-        to_addrs=["interpro-team@ebi.ac.uk"],
-        subject=f"Protein update report: UniProt {release}",
-        content="""\
+    if notify:
+        send_mail(
+            to_addrs=["interpro-team@ebi.ac.uk"],
+            subject=f"Protein update report: UniProt {release}",
+            content="""\
 Dear curators,
 
 Pronto has been refreshed. Please find attached a ZIP archive containing \
@@ -277,14 +283,14 @@ the report files for this month's protein update.
 
 The InterPro Production Team
 """,
-        attachments=[filename]
-    )
+            attachments=[filename]
+        )
 
     os.remove(filename)
     os.rmdir(dirname)
 
 
-def export_for_sib(user: str, dsn: str):
+def export_for_sib(user: str, dsn: str, notify: bool=True):
     logger.info("exporting data")
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -296,10 +302,11 @@ def export_for_sib(user: str, dsn: str):
 
     logger.info("data successfully exported")
 
-    send_mail(
-        to_addrs=["interpro-team@ebi.ac.uk"],
-        subject=f"Data for SIB ready",
-        content=f"""\
+    if notify:
+        send_mail(
+            to_addrs=["interpro-team@ebi.ac.uk"],
+            subject=f"Data for SIB ready",
+            content=f"""\
 The data required by SIB was successfully exported.
 
 Please, archive the dump on the FTP, and inform SIB that the archive is ready.
@@ -321,4 +328,4 @@ The interpro.tar.gz archive for UniProt private release {release} is available a
 Kind regards,
 The InterPro Production Team
 """,
-    )
+        )

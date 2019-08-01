@@ -44,6 +44,7 @@ def main():
     db_users = db_info["users"]
     paths = config["paths"]
     queue = config["workflow"]["lsf-queue"]
+    notify = config["email-notifications"]
 
     tasks = [
         Task(
@@ -140,6 +141,7 @@ def main():
         Task(
             name="report-unintegrated",
             fn=uniprot.report_integration_changes,
+            kwargs=dict(notify=notify),
             args=(db_users["interpro"], db_dsn),
             scheduler=dict(queue=queue, mem=2000),
             requires=["update-matches"]
@@ -162,6 +164,7 @@ def main():
             name="alert-interpro",
             fn=uniprot.ask_to_snapshot,
             args=(db_users["interpro"], db_dsn),
+            kwargs=dict(notify=notify),
             scheduler=dict(queue=queue, mem=500),
             requires=["aa-iprscan", "xref-summary", "xref-condensed",
                       "update-feature-matches"]
@@ -170,6 +173,7 @@ def main():
             name="dump-xrefs",
             fn=uniprot.export_databases,
             args=(db_users["interpro"], db_dsn, paths["xrefs"]),
+            kwargs=dict(notify=notify),
             scheduler=dict(queue=queue, mem=500),
             requires=["xref-summary"]
         ),
@@ -177,6 +181,7 @@ def main():
             name="match-counts",
             fn=misc.refresh_mviews,
             args=(db_users["interpro"], db_dsn),
+            kwargs=dict(notify=notify),
             scheduler=dict(queue=queue, mem=500),
             requires=["update-matches"]
         ),
@@ -184,6 +189,7 @@ def main():
             name="export-sib",
             fn=misc.export_for_sib,
             args=(db_users["interpro"], db_dsn),
+            kwargs=dict(notify=notify),
             scheduler=dict(queue=queue, mem=500),
             requires=["update-matches"]
         ),
@@ -200,7 +206,7 @@ def main():
             scheduler=dict(queue=queue, mem=500)
         ),
         Task(
-            name="results",
+            name="pronto",
             fn=pronto.run,
             args=(db_users["pronto_main"], db_users["pronto_alt"], db_dsn),
             kwargs=dict(
@@ -220,8 +226,9 @@ def main():
                 os.path.join(paths["results"], "entries_changes.tsv"),
                 os.path.join(paths["results"], "swiss_de_families.tsv")
             ]),
+            kwargs=dict(notify=notify),
             scheduler=dict(queue=queue, mem=500),
-            requires=["results"]
+            requires=["pronto"]
         )
     ]
 
