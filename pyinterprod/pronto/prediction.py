@@ -294,7 +294,7 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     cur.execute(query)
-    logger.info("exporting")
+    logger.info(f"{column}: exporting")
     _export_signatures(cur, kvdb_path)
     pending = _chunk_jobs(cur, owner, chunk_size)
     cur.close()
@@ -303,7 +303,7 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
-    logger.info("comparing")
+    logger.info(f"{column}: comparing")
     running = []
     submitted = 0
     failed = False
@@ -357,7 +357,7 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
     if failed:
         raise RuntimeError("one or more tasks failed")
 
-    logger.info("complete")
+    logger.info(f"{column}: complete")
 
 
 def cmp_descriptions(user: str, dsn: str, outdir: str, processes: int=8,
