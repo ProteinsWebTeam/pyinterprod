@@ -181,6 +181,13 @@ def main():
             requires=["update-matches"]
         ),
         Task(
+            name="export-sib",
+            fn=misc.export_for_sib,
+            args=(db_users["interpro"], db_dsn),
+            scheduler=dict(queue=queue, mem=500),
+            requires=["update-matches"]
+        ),
+        Task(
             name="taxonomy",
             fn=misc.refresh_taxonomy,
             args=(db_users["interpro"], db_dsn),
