@@ -4,8 +4,8 @@ import os
 import sqlite3
 from concurrent import futures
 from datetime import datetime
-from tempfile import mkdtemp, mkstemp
-from typing import Generator, Iterable, Optional, Tuple
+from tempfile import mkstemp
+from typing import Optional, Tuple
 
 import cx_Oracle
 
