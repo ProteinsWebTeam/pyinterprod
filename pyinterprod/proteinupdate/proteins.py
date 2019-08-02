@@ -84,7 +84,6 @@ def _export_proteins(url: str, tmpdir: Optional[str]=None) -> Tuple[str, int, in
                 """
             )
 
-            rows = []
             for row in cur2:
                 if row[2] == 'S':
                     swissp_cnt += 1
