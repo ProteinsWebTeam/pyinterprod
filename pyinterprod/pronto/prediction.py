@@ -139,27 +139,54 @@ def _persist_similarity(user: str, dsn: str, column: str,
     con.close()
 
 
-def _calc_similarity(src: PersistentBuffer, counts: Dict[str, int], dir: str):
-    with PersistentBuffer(dir=dir) as dst:
-        for acc1, cmps in src:
-            cnt1 = counts[acc1]
-            val = {}
-            for acc2, intersect in cmps.items():
-                cnt2 = counts[acc2]
-                # J(A, B) = intersection(A, B) / union(A, B)
-                idx = intersect / (cnt1 + cnt2 - intersect)
-                # C(A, B) = intersection(A, B) / size(A)
-                #       --> larger values indicate more of A lying in B
-                ct1 = intersect / cnt1
-                ct2 = intersect / cnt2
-                if any([sim >= JACCARD_THRESHOLD for sim in (idx, ct1, ct2)]):
-                    val[acc2] = (idx, ct1, ct2)
+def _load_similarities(user: str, dsn: str, column: str, queue: Queue):
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    table = orautils.TablePopulator(
+        con=con,
+        query="""
+              UPDATE {0}.METHOD_SIMILARITY
+              SET {1}_INDEX=:idx, {1}_CONT1=:ct1, {1}_CONT2=:ct2
+              WHERE METHOD_AC1 = :ac1 AND METHOD_AC2 = :ac2
+              """.format(owner, column)
+    )
 
-            if val:
-                dst.add((acc1, val))
+    for acc1, sim in iter(queue.get, None):
+        for acc2, (idx, ct1, ct2) in sim.items():
+            table.update({
+                "ac1": acc1,
+                "ac2": acc2,
+                "idx": idx,
+                "ct1": ct1,
+                "ct2": ct2
+            })
 
-    src.remove()
-    os.rename(dst.filename, dst.filename + ".ok")
+    table.close()
+    con.commit()
+    con.close()
+
+
+def _calc_similarities(buffer: PersistentBuffer, counts: Dict[str, int],
+                       queue: Queue):
+    results = {}
+    for acc1, cmps in buffer:
+        cnt1 = counts[acc1]
+        val = {}
+        for acc2, intersect in cmps.items():
+            cnt2 = counts[acc2]
+            # J(A, B) = intersection(A, B) / union(A, B)
+            idx = intersect / (cnt1 + cnt2 - intersect)
+            # C(A, B) = intersection(A, B) / size(A)
+            #       --> larger values indicate more of A lying in B
+            ct1 = intersect / cnt1
+            ct2 = intersect / cnt2
+            if any([sim >= JACCARD_THRESHOLD for sim in (idx, ct1, ct2)]):
+                val[acc2] = (idx, ct1, ct2)
+
+        if val:
+            results[acc1] = val
+
+    queue.put(results)
 
 
 def _compare(user: str, dsn: str, column: str, kvdb_src: str,
@@ -213,18 +240,29 @@ def _compare(user: str, dsn: str, column: str, kvdb_src: str,
     for p in pool:
         p.join()
 
-    logger.info("persisting similarities")
+    logger.info("calculating similarities")
     pool = []
     for buffer in tmp_buffers:
-        # Temporary buffers are deleted in _calc_similarity()
-        p = Process(target=_calc_similarity, args=(buffer, counts, outdir))
+        # Temporary buffers are deleted in _calc_similarities()
+        p = Process(target=_calc_similarities,
+                    args=(buffer, counts, done_queue))
         p.start()
         pool.append(p)
+
+    results = {}
+    for _ in pool:
+        res = done_queue.get()
+        for acc in res:
+            if acc in results:
+                results[acc].update(res[acc])
+            else:
+                results[acc] = res[acc]
 
     for p in pool:
         p.join()
 
     logger.info(f"disk usage: {size/1024**2:.0f}MB")
+    return results
 
 
 def _export_signatures(cur: cx_Oracle.Cursor, dst: str):
@@ -294,11 +332,17 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
     logger.info(f"{column}: exporting")
     _export_signatures(cur, kvdb_path)
     logger.info(f"{column}:     {os.path.getsize(kvdb_path)/1024**2:.0f}MB")
+
+    queue = Queue()
+    loader = Process(target=_load_similarities,
+                     args=(user, dns, column, queue))
+    loader.start()
+
+    logger.info(f"{column}: comparing")
     pending = _chunk_jobs(cur, owner, chunk_size)
     cur.close()
     con.close()
 
-    logger.info(f"{column}: comparing")
     running = []
     submitted = 0
     failed = False
@@ -339,7 +383,10 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
         for task in running:
             if task.done():
                 logger.debug(f"{task.stdout}\n{task.stderr}")
-                if not task.successful():
+                if task.successful():
+                    queue.put(task.output.read())
+                    task = None
+                else:
                     pending = []  # cancel pending tasks
                     failed = True
             else:
@@ -348,7 +395,9 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
         running = _running
         time.sleep(10)
 
+    queue.put(None)
     os.remove(kvdb_path)
+    loader.join()
     if failed:
         raise RuntimeError("one or more tasks failed")
 
@@ -425,6 +474,8 @@ def compare(user: str, dsn: str, outdir: str, processes: int=8,
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     orautils.grant(cur, owner, "METHOD_SIMILARITY", "SELECT", "INTERPRO_SELECT")
+    orautils.drop_index(cur, owner, "I_METHOD_SIMILARITY$AC1")
+    orautils.drop_index(cur, owner, "I_METHOD_SIMILARITY$AC2")
     cur.execute(
         """
         CREATE INDEX I_METHOD_SIMILARITY$AC1
