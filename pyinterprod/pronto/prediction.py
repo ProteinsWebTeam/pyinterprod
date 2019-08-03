@@ -248,7 +248,6 @@ def _export_signatures(cur: cx_Oracle.Cursor, dst: str):
             kvdb[_acc] = values
 
     shutil.copy(kvdb.filepath, dst)
-    logger.info(f"disk usage: {kvdb.size/1024**2:.0f}MB")
     kvdb.remove()
 
 
@@ -297,6 +296,7 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
     cur.execute(query)
     logger.info(f"{column}: exporting")
     _export_signatures(cur, kvdb_path)
+    logger.info(f"{column}:     {os.path.getsize(kvdb_path)/1024**2:.0f}MB")
     pending = _chunk_jobs(cur, owner, chunk_size)
     cur.close()
     con.close()
