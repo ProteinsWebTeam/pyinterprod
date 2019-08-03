@@ -139,8 +139,7 @@ def _persist_similarity(user: str, dsn: str, column: str,
     con.close()
 
 
-def _calc_similarity(counts: Dict[str, int], src: PersistentBuffer,
-                     queue: Queue, dir: Optional[str]=None):
+def _calc_similarity(src: PersistentBuffer, counts: Dict[str, int], dir: str):
     with PersistentBuffer(dir=dir) as dst:
         for acc1, cmps in src:
             cnt1 = counts[acc1]
@@ -159,12 +158,13 @@ def _calc_similarity(counts: Dict[str, int], src: PersistentBuffer,
             if val:
                 dst.add((acc1, val))
 
-    queue.put(dst)
+    src.remove()
+    os.rename(dst.filename, dst.filename + ".ok")
 
 
 def _compare(user: str, dsn: str, column: str, kvdb_src: str,
              i_start: str, i_stop: str, j_start: str, j_stop: str,
-             processes: int=8, tmpdir: Optional[str]=None):
+             outdir: str, processes: int=8, tmpdir: Optional[str]=None):
     # Copy Kvdb file locally
     logger.info("copying")
     if tmpdir:
@@ -203,7 +203,7 @@ def _compare(user: str, dsn: str, column: str, kvdb_src: str,
     size = kvdb.size
     kvdb.remove()
 
-    # Temporary buffers (with intersections, NOT similarities)
+    # Temporary buffers containing intersections
     tmp_buffers = []
     for _ in pool:
         buffer = done_queue.get()
@@ -216,16 +216,13 @@ def _compare(user: str, dsn: str, column: str, kvdb_src: str,
     logger.info("persisting similarities")
     pool = []
     for buffer in tmp_buffers:
-        p = Process(target=_persist_similarity,
-                    args=(user, dsn, column, counts, buffer))
+        # Temporary buffers are deleted in _calc_similarity()
+        p = Process(target=_calc_similarity, args=(buffer, counts, outdir))
         p.start()
         pool.append(p)
 
     for p in pool:
         p.join()
-
-    for buffer in tmp_buffers:
-        buffer.remove()
 
     logger.info(f"disk usage: {size/1024**2:.0f}MB")
 
@@ -317,7 +314,7 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                     name=f"pronto-cmp-{submitted}",
                     fn=_compare,
                     args=(user, dsn, column, kvdb_path, row_start, row_stop,
-                          col_start, col_stop, processes, tmpdir),
+                          col_start, col_stop, outdir, processes, tmpdir),
                     scheduler=dict(queue=job_queue, cpu=processes, mem=1000,
                                    scratch=5000)
                 )
@@ -331,7 +328,7 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                     name=f"pronto-cmp-{submitted}",
                     fn=_compare,
                     args=(user, dsn, column, kvdb_path, row_start, row_stop,
-                          col_start, col_stop, processes, tmpdir),
+                          col_start, col_stop, outdir, processes, tmpdir),
                     scheduler=dict(queue=job_queue, cpu=processes, mem=1000,
                                    scratch=5000)
                 )
