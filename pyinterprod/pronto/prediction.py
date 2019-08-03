@@ -100,45 +100,6 @@ def _process(kvdb: Kvdb, start: str, stop: str, task_queue: Queue,
     done_queue.put(buffer)
 
 
-def _persist_similarity(user: str, dsn: str, column: str,
-                        counts: Dict[str, int], buffer: PersistentBuffer):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    table = orautils.TablePopulator(
-        con=con,
-        query="""
-              UPDATE {0}.METHOD_SIMILARITY
-              SET {1}_INDEX=:idx, {1}_CONT1=:ct1, {1}_CONT2=:ct2
-              WHERE METHOD_AC1 = :ac1 AND METHOD_AC2 = :ac2
-              """.format(owner, column)
-    )
-
-    for acc1, cmps in buffer:
-        cnt1 = counts[acc1]
-        val = {}
-        for acc2, intersect in cmps.items():
-            cnt2 = counts[acc2]
-            # J(A, B) = intersection(A, B) / union(A, B)
-            idx = intersect / (cnt1 + cnt2 - intersect)
-            # C(A, B) = intersection(A, B) / size(A)
-            #       --> larger values indicate more of A lying in B
-            ct1 = intersect / cnt1
-            ct2 = intersect / cnt2
-            if any([sim >= JACCARD_THRESHOLD for sim in (idx, ct1, ct2)]):
-                val[acc2] = (idx, ct1, ct2)
-                table.update({
-                    "ac1": acc1,
-                    "ac2": acc2,
-                    "idx": idx,
-                    "ct1": ct1,
-                    "ct2": ct2
-                })
-
-    table.close()
-    con.commit()
-    con.close()
-
-
 def _load_similarities(user: str, dsn: str, column: str, queue: Queue):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
@@ -151,15 +112,25 @@ def _load_similarities(user: str, dsn: str, column: str, queue: Queue):
               """.format(owner, column)
     )
 
-    for acc1, sim in iter(queue.get, None):
-        for acc2, (idx, ct1, ct2) in sim.items():
-            table.update({
-                "ac1": acc1,
-                "ac2": acc2,
-                "idx": idx,
-                "ct1": ct1,
-                "ct2": ct2
-            })
+    with PersistentBuffer() as buffer:
+        buffer.close()
+        buffer.remove()
+
+        for filename in iter(queue.get, None):
+            buffer.filename = filename
+
+            for similarities in buffer:
+                for acc_1, obj in similarities.items():
+                    for acc_2, (idx, ct1, ct2) in obj.items():
+                        table.update({
+                            "ac1": acc_1,
+                            "ac2": acc_2,
+                            "idx": idx,
+                            "ct1": ct1,
+                            "ct2": ct2
+                        })
+
+            buffer.remove()
 
     table.close()
     con.commit()
@@ -249,20 +220,15 @@ def _compare(user: str, dsn: str, column: str, kvdb_src: str,
         p.start()
         pool.append(p)
 
-    results = {}
-    for _ in pool:
-        res = done_queue.get()
-        for acc in res:
-            if acc in results:
-                results[acc].update(res[acc])
-            else:
-                results[acc] = res[acc]
+    with PersistentBuffer(dir=outdir) as buffer:
+        for _ in pool:
+            buffer.add(done_queue.get())
 
     for p in pool:
         p.join()
 
     logger.info(f"disk usage: {size/1024**2:.0f}MB")
-    return results
+    return buffer.filename
 
 
 def _export_signatures(cur: cx_Oracle.Cursor, dst: str):
@@ -385,7 +351,6 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                 logger.debug(f"{task.stdout}\n{task.stderr}")
                 if task.successful():
                     queue.put(task.output.read())
-                    task = None
                 else:
                     pending = []  # cancel pending tasks
                     failed = True
