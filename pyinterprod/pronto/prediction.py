@@ -248,6 +248,7 @@ def _export_signatures(cur: cx_Oracle.Cursor, dst: str):
             kvdb[_acc] = values
 
     shutil.copy(kvdb.filepath, dst)
+    logger.info(f"disk usage: {kvdb.size/1024**2:.0f}MB")
     kvdb.remove()
 
 
@@ -411,13 +412,19 @@ def cmp_terms(user: str, dsn: str, outdir: str, processes: int=8,
 
 def compare(user: str, dsn: str, outdir: str, processes: int=8,
             max_jobs: int = 0, tmpdir: Optional[str] = None,
-            chunk_size: int = 10000, job_queue: Optional[str]=None):
-    cmp_terms(user, dsn, outdir, processes, max_jobs, tmpdir, chunk_size,
-              job_queue)
-    cmp_descriptions(user, dsn, outdir, processes, max_jobs, tmpdir,
-                     chunk_size, job_queue)
-    cmp_taxa(user, dsn, outdir, processes, max_jobs, tmpdir, chunk_size,
-             job_queue)
+            chunk_size: int = 10000, job_queue: Optional[str]=None,
+            flag: int=7):
+    if flag & 1:
+        cmp_terms(user, dsn, outdir, processes, max_jobs, tmpdir, chunk_size,
+                  job_queue)
+
+    if flag & 2:
+        cmp_descriptions(user, dsn, outdir, processes, max_jobs, tmpdir,
+                         chunk_size, job_queue)
+
+    if flag & 4:
+        cmp_taxa(user, dsn, outdir, processes, max_jobs, tmpdir, chunk_size,
+                 job_queue)
 
     logger.info("indexing/anayzing METHOD_SIMILARITY")
     owner = user.split('/')[0]
