@@ -335,7 +335,7 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
 
     queue = Queue()
     loader = Process(target=_load_similarities,
-                     args=(user, dns, column, queue))
+                     args=(user, dsn, column, queue))
     loader.start()
 
     logger.info(f"{column}: comparing")
