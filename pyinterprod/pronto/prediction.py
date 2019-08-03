@@ -298,9 +298,6 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
     cur.close()
     con.close()
 
-    if tmpdir:
-        os.makedirs(tmpdir, exist_ok=True)
-
     logger.info(f"{column}: comparing")
     running = []
     submitted = 0
