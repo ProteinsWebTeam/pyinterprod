@@ -343,7 +343,7 @@ def _get_tasks(**kwargs):
             args=(user1, dsn, outdir),
             kwargs=dict(processes=8, max_jobs=0, tmpdir="/scratch/",
                         chunk_size=5000, job_queue=queue),
-            scheduler=dict(queue=queue, mem=500),
+            scheduler=dict(queue=queue, cpu=2, mem=500),
             requires=["signatures-proteins"]
         )
 
