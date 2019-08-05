@@ -99,6 +99,7 @@ def main():
             name="import-matches",
             fn=interproscan.import_matches,
             args=(db_users["iprscan"], db_dsn),
+            # todo: remove when ISPRO persist flag is ready
             kwargs=dict(max_workers=8, checkpoint=os.path.join(paths["results"], "ispro-matches")),
             scheduler=dict(queue=queue, mem=500)
         ),
@@ -106,6 +107,7 @@ def main():
             name="import-sites",
             fn=interproscan.import_sites,
             args=(db_users["iprscan"], db_dsn),
+            # todo: remove when ISPRO persist flag is ready
             kwargs=dict(checkpoint=os.path.join(paths["results"], "ispro-sites")),
             scheduler=dict(queue=queue, mem=500)
         ),
