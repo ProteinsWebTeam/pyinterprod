@@ -325,7 +325,7 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                     scheduler=dict(queue=job_queue, cpu=processes, mem=1000,
                                    scratch=5000)
                 )
-                t.run()
+                t.run(workdir=outdir)
                 running.append(t)
                 submitted += 1
         elif pending:
@@ -339,7 +339,7 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                     scheduler=dict(queue=job_queue, cpu=processes, mem=1000,
                                    scratch=5000)
                 )
-                t.run()
+                t.run(workdir=outdir)
                 running.append(t)
                 submitted += 1
             pending = []
