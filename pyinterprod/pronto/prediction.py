@@ -157,6 +157,7 @@ def _calc_similarities(buffer: PersistentBuffer, counts: Dict[str, int],
         if val:
             results[acc1] = val
 
+    buffer.remove()
     queue.put(results)
 
 
@@ -280,9 +281,9 @@ def _chunk_jobs(cur: cx_Oracle.Cursor, schema: str, chunk_size: int):
 
 
 def _run_comparisons(user: str, dsn: str, query: str, column: str,
-                     outdir: str, processes: int=8, max_jobs: int=0,
-                     tmpdir: Optional[str]=None, chunk_size: int=10000,
-                     job_queue: Optional[str]=None):
+                     outdir: str, max_jobs: int=0, max_comparators: int=8,
+                     max_loaders: int=4, tmpdir: Optional[str]=None,
+                     chunk_size: int=10000, job_queue: Optional[str]=None):
     os.makedirs(outdir, exist_ok=True)
     fd, kvdb_path = mkstemp(suffix=".db", dir=outdir)
     os.close(fd)
@@ -297,9 +298,12 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
     logger.info(f"{column}:     {os.path.getsize(kvdb_path)/1024**2:.0f}MB")
 
     queue = Queue()
-    loader = Process(target=_load_similarities,
-                     args=(user, dsn, column, queue))
-    loader.start()
+    loaders = []
+    for _ in range(max_loaders):
+        p = Process(target=_load_similarities,
+                    args=(user, dsn, column, queue))
+        p.start()
+        loaders.append(p)
 
     logger.info(f"{column}: comparing")
     pending = _chunk_jobs(cur, owner, chunk_size)
@@ -318,9 +322,9 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                     name=f"pronto-cmp-{submitted}",
                     fn=_compare,
                     args=(kvdb_path, row_start, row_stop, col_start, col_stop,
-                          outdir, processes, tmpdir),
-                    scheduler=dict(queue=job_queue, cpu=processes, mem=4000,
-                                   scratch=5000)
+                          outdir, max_comparators, tmpdir),
+                    scheduler=dict(queue=job_queue, cpu=max_comparators,
+                                   mem=4000, scratch=5000)
                 )
                 t.run(workdir=outdir)
                 running.append(t)
@@ -332,9 +336,9 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                     name=f"pronto-cmp-{submitted}",
                     fn=_compare,
                     args=(kvdb_path, row_start, row_stop, col_start, col_stop,
-                          outdir, processes, tmpdir),
-                    scheduler=dict(queue=job_queue, cpu=processes, mem=4000,
-                                   scratch=5000)
+                          outdir, max_comparators, tmpdir),
+                    scheduler=dict(queue=job_queue, cpu=max_comparators,
+                                   mem=4000, scratch=5000)
                 )
                 t.run(workdir=outdir)
                 running.append(t)
@@ -358,9 +362,14 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
         running = _running
         time.sleep(10)
 
-    queue.put(None)
+    for _ in loaders:
+        queue.put(None)
+
     os.remove(kvdb_path)
-    loader.join()
+
+    for p in loaders:
+        p.join()
+
     if failed:
         raise RuntimeError("one or more tasks failed")
 
