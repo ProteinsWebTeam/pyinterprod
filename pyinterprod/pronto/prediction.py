@@ -294,8 +294,8 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    cur.execute(query)
     logger.info(f"{column}: exporting")
+    cur.execute(query)
     _export_signatures(cur, kvdb_path)
     logger.info(f"{column}:     {os.path.getsize(kvdb_path)/1024**2:.0f}MB")
 
