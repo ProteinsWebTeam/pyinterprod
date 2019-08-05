@@ -160,11 +160,10 @@ def _calc_similarities(buffer: PersistentBuffer, counts: Dict[str, int],
     queue.put(results)
 
 
-def _compare(user: str, dsn: str, column: str, kvdb_src: str,
-             i_start: str, i_stop: str, j_start: str, j_stop: str,
-             outdir: str, processes: int=8, tmpdir: Optional[str]=None):
+def _compare(kvdb_src: str, i_start: str, i_stop: str, j_start: str,
+             j_stop: str, outdir: str, processes: int=8,
+             tmpdir: Optional[str]=None):
     # Copy Kvdb file locally
-    logger.info("copying")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
     fd, kvdb_dst = mkstemp(dir=tmpdir)
@@ -172,7 +171,6 @@ def _compare(user: str, dsn: str, column: str, kvdb_src: str,
     os.remove(kvdb_dst)
     shutil.copy(kvdb_src, kvdb_dst)
 
-    logger.info("comparing")
     counts = {}  # required counts to compute similarities
     pool = []
     task_queue = Queue(maxsize=1)
@@ -211,7 +209,6 @@ def _compare(user: str, dsn: str, column: str, kvdb_src: str,
     for p in pool:
         p.join()
 
-    logger.info("calculating similarities")
     pool = []
     for buffer in tmp_buffers:
         # Temporary buffers are deleted in _calc_similarities()
@@ -320,8 +317,8 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                 t = Task(
                     name=f"pronto-cmp-{submitted}",
                     fn=_compare,
-                    args=(user, dsn, column, kvdb_path, row_start, row_stop,
-                          col_start, col_stop, outdir, processes, tmpdir),
+                    args=(kvdb_path, row_start, row_stop, col_start, col_stop,
+                          outdir, processes, tmpdir),
                     scheduler=dict(queue=job_queue, cpu=processes, mem=4000,
                                    scratch=5000)
                 )
@@ -334,8 +331,8 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                 t = Task(
                     name=f"pronto-cmp-{submitted}",
                     fn=_compare,
-                    args=(user, dsn, column, kvdb_path, row_start, row_stop,
-                          col_start, col_stop, outdir, processes, tmpdir),
+                    args=(kvdb_path, row_start, row_stop, col_start, col_stop,
+                          outdir, processes, tmpdir),
                     scheduler=dict(queue=job_queue, cpu=processes, mem=4000,
                                    scratch=5000)
                 )
@@ -350,6 +347,7 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
             if task.done():
                 logger.debug(f"{task.stdout}\n{task.stderr}")
                 if task.successful():
+                    # todo: change this when updating `mundone`
                     queue.put(task.output.read())
                 else:
                     pending = []  # cancel pending tasks
