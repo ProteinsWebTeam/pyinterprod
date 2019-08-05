@@ -92,7 +92,7 @@ def _process(kvdb: Kvdb, start: str, stop: str, task_queue: Queue,
         for acc_1, values_1 in iter(task_queue.get, None):
             intersections = {}
             for acc_2, values_2 in kvdb.range(start, stop):
-                if acc_1 != acc_2:
+                if acc_1 < acc_2:
                     intersections[acc_2] = len(values_1 & values_2)
 
             buffer.add((acc_1, intersections))
@@ -109,7 +109,8 @@ def _load_similarities(user: str, dsn: str, column: str, queue: Queue):
               UPDATE {0}.METHOD_SIMILARITY
               SET {1}_INDEX=:idx, {1}_CONT1=:ct1, {1}_CONT2=:ct2
               WHERE METHOD_AC1 = :ac1 AND METHOD_AC2 = :ac2
-              """.format(owner, column)
+              """.format(owner, column),
+        autocommit=True
     )
 
     with PersistentBuffer() as buffer:
@@ -133,7 +134,6 @@ def _load_similarities(user: str, dsn: str, column: str, queue: Queue):
             buffer.remove()
 
     table.close()
-    con.commit()
     con.close()
 
 
@@ -270,11 +270,8 @@ def _chunk_jobs(cur: cx_Oracle.Cursor, schema: str, chunk_size: int):
         chunks.append((start, stop))
 
     jobs = []
-    n = len(chunks)
-    for i in range(n):
-        row_start, row_stop = chunks[i]
-        for j in range(i, n):
-            col_start, col_stop = chunks[j]
+    for i, (row_start, row_stop) in enumerate(chunks):
+        for col_start, col_stop in chunks[i:]:
             jobs.append((row_start, row_stop, col_start, col_stop))
 
     return jobs
