@@ -322,7 +322,7 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                     fn=_compare,
                     args=(user, dsn, column, kvdb_path, row_start, row_stop,
                           col_start, col_stop, outdir, processes, tmpdir),
-                    scheduler=dict(queue=job_queue, cpu=processes, mem=1000,
+                    scheduler=dict(queue=job_queue, cpu=processes, mem=4000,
                                    scratch=5000)
                 )
                 t.run(workdir=outdir)
@@ -336,7 +336,7 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                     fn=_compare,
                     args=(user, dsn, column, kvdb_path, row_start, row_stop,
                           col_start, col_stop, outdir, processes, tmpdir),
-                    scheduler=dict(queue=job_queue, cpu=processes, mem=1000,
+                    scheduler=dict(queue=job_queue, cpu=processes, mem=4000,
                                    scratch=5000)
                 )
                 t.run(workdir=outdir)
