@@ -67,6 +67,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
         pending = set()
         running = set()
         done = set()
+        ignored = set()
         while True:
             signalp_actions = []
             for analysis in analyses:
@@ -77,27 +78,34 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
 
                 if table in running or table in done:
                     continue
-                elif not ready:
-                    pending.add(table)
+                elif table != "ipm_signalp_match" and table not in functions:
+                    if table not in ignored:
+                        logger.warning(f"ignored analysis: {name}")
+                        ignored.add(table)
                     continue
-                elif table == "ipm_signalp_match":
-                    # SignalP has one source table, but three analyses
-                    partition = signalp_partitions[name]
-                    signalp_actions.append((_id, partition))
-                elif table in functions:
+                elif ready:
                     try:
                         pending.remove(table)
                     except KeyError:
                         pass
-                    fn, partition = functions[table]
-                    f = executor.submit(_import_member_db, url, "IPRSCAN", table,
-                                        "MV_IPRSCAN", partition, _id, fn)
-                    fs[f] = table
-                    running.add(table)
+
+                    if table == "ipm_signalp_match":
+                        # SignalP has one source table, but three analyses
+                        partition = signalp_partitions[name]
+                        signalp_actions.append((_id, partition))
+                    else:
+                        logger.info(f"  {table2name[table]:<40}started")
+                        fn, partition = functions[table]
+                        f = executor.submit(_import_member_db, url, "IPRSCAN",
+                                            table, "MV_IPRSCAN", partition,
+                                            _id, fn)
+                        fs[f] = table
+                        running.add(table)
                 else:
-                    logger.warning(f"unknown analysis {name}")
+                    pending.add(table)
 
             if signalp_actions:
+                logger.info(f"  {table2name['ipm_signalp_match']:<40}started")
                 f = executor.submit(_import_signalp, url, "IPRSCAN",
                                     "ipm_signalp_match", "MV_IPRSCAN",
                                     signalp_actions)
@@ -111,14 +119,16 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
                     running.remove(table)
                     done.add(table)
                     exc = f.exception()
+                    name = table2name[table]
                     if exc is None:
-                        logger.info(f"  {table2name[table]:<40}imported")
+                        logger.info(f"  {name:<40}imported")
                     else:
                         exc_name = exc.__class__.__name__
-                        logger.error(f"  {table2name[table]:<40}failed ({exc_name}: {exc})")
+                        logger.error(f"  {name:<40}failed ({exc_name}: {exc})")
                         num_errors += 1
                 else:
                     _fs[f] = table
+
             fs = _fs
 
             if not pending and not running:
@@ -198,9 +208,11 @@ def import_sites(user: str, dsn: str, max_workers: int=0,
                     except KeyError:
                         pass
 
+                    logger.info(f"  {full_name:<40}started")
                     partition = partitions[table.lower()]
-                    f = executor.submit(_import_member_db, url, "IPRSCAN", table,
-                                        "SITE", partition, _id, _insert_sites)
+                    f = executor.submit(_import_member_db, url, "IPRSCAN",
+                                        table, "SITE", partition, _id,
+                                        _insert_sites)
                     fs[f] = full_name
                     running.add(full_name)
 
