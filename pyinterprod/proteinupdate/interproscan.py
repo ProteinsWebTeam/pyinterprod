@@ -21,7 +21,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
         return
 
     url = orautils.make_connect_string(user, dsn)
-    analyses = _get_analyses(url)
+    analyses = _get_analyses(url, datatype="matches")
 
     if not isinstance(max_workers, int) or max_workers < 1:
         max_workers = len(analyses)
@@ -135,7 +135,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
                 break
 
             time.sleep(600)
-            analyses = _get_analyses(url)
+            analyses = _get_analyses(url, datatype="matches")
 
     if num_errors:
         raise RuntimeError("{} analyses failed".format(num_errors))
@@ -171,7 +171,7 @@ def import_sites(user: str, dsn: str, max_workers: int=0,
 
         return
     url = orautils.make_connect_string(user, dsn)
-    analyses = _get_analyses(url, persited=1)  # todo: `persisted=2`
+    analyses = _get_analyses(url, datatype="sites")
 
     if not isinstance(max_workers, int) or max_workers < 1:
         max_workers = len(analyses)
@@ -237,7 +237,7 @@ def import_sites(user: str, dsn: str, max_workers: int=0,
                 break
 
             time.sleep(600)
-            analyses = _get_analyses(url, persited=2)
+            analyses = _get_analyses(url, datatype="sites")
 
     if num_errors:
         raise RuntimeError("{} analyses failed".format(num_errors))
@@ -264,9 +264,7 @@ def import_sites(user: str, dsn: str, max_workers: int=0,
 
 
 def _get_max_persisted_job(cur: cx_Oracle.Cursor, analysis_id: int,
-                           persisted: int=1) -> Optional[str]:
-    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
-    max_upi_read = cur.fetchone()[0]
+                           max_upi: str, persist_flag: int) -> Optional[str]:
     cur.execute(
         """
         SELECT SUM(CNT)
@@ -279,15 +277,15 @@ def _get_max_persisted_job(cur: cx_Oracle.Cursor, analysis_id: int,
             SELECT COUNT(*) AS CNT
             FROM IPRSCAN.IPM_COMPLETED_JOBS@ISPRO
             WHERE ANALYSIS_ID = :analysisid
-              AND JOB_START <= :maxupi AND PERSISTED < :persisted
+              AND JOB_START <= :maxupi AND PERSISTED != :persisted
             UNION ALL
             SELECT COUNT(*) AS CNT
             FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
             WHERE ANALYSIS_ID = :analysisid
-              AND JOB_START <= :maxupi AND PERSISTED < :persisted
+              AND JOB_START <= :maxupi AND PERSISTED != :persisted
         )
         """,
-        dict(analysisid=analysis_id, persisted=persisted, maxupi=max_upi_read)
+        dict(analysisid=analysis_id, persisted=persist_flag, maxupi=max_upi)
     )
     if cur.fetchone()[0]:
         return None
@@ -303,11 +301,11 @@ def _get_max_persisted_job(cur: cx_Oracle.Cursor, analysis_id: int,
     return row[0] if row else None
 
 
-def _get_analyses(url: str, persited: int=1) -> List[dict]:
+def _get_analyses(url: str, datatype: str="matches") -> List[dict]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
-    max_upi_read = cur.fetchone()[0]
+    max_upi = cur.fetchone()[0]
     cur.execute(
         """
         SELECT *
@@ -353,23 +351,30 @@ def _get_analyses(url: str, persited: int=1) -> List[dict]:
             "name": row[2],
             "match_table": match_table,
             "site_table": row[4],
-            "upi": None
+            "upi": None,
+            "ready": False
         })
 
     for e in analyses:
-        e["upi"] = _get_max_persisted_job(cur, e["id"], persited)
+        if datatype == "sites":
+            key = "site_table"
+            flag = 2
+        else:
+            key = "match_table"
+            flag = 1 if e["name"] in ("cdd", "sfld") else 2
+
+        if e[key] is not None:
+            e["upi"] = _get_max_persisted_job(cur, e["id"], max_upi, flag)
+            e["ready"] = e["upi"] and e["upi"] >= max_upi
 
     cur.close()
     con.close()
 
-    for e in analyses:
-        e["ready"] = e["upi"] and e["upi"] >= max_upi_read
-
     return analyses
 
 
-def check_ispro(url: str, persisted: int=1):
-    analyses = _get_analyses(url, persisted)
+def check_ispro(url: str, datatype: str):
+    analyses = _get_analyses(url, datatype)
     for e in analyses:
         e["status"] = "ready" if e["ready"] else "not ready"
 
