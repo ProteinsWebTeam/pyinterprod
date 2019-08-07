@@ -11,7 +11,7 @@ from .. import logger, orautils
 
 
 def import_matches(user: str, dsn: str, max_workers: int=0,
-                   checkpoint: Optional[str]=None):
+                   checkpoint: Optional[str]=None, force: bool=False):
     if checkpoint:
         open(checkpoint, "w").close()
         os.chmod(checkpoint, 0o775)
@@ -21,7 +21,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
         return
 
     url = orautils.make_connect_string(user, dsn)
-    analyses = _get_analyses(url, datatype="matches")
+    analyses = _get_analyses(url, datatype="matches", force=force)
 
     if not isinstance(max_workers, int) or max_workers < 1:
         max_workers = len(analyses)
@@ -135,7 +135,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
                 break
 
             time.sleep(600)
-            analyses = _get_analyses(url, datatype="matches")
+            analyses = _get_analyses(url, datatype="matches", force=force)
 
     if num_errors:
         raise RuntimeError("{} analyses failed".format(num_errors))
@@ -162,7 +162,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
 
 
 def import_sites(user: str, dsn: str, max_workers: int=0,
-                 checkpoint: Optional[str]=None):
+                 checkpoint: Optional[str]=None, force: bool=False):
     if checkpoint:
         open(checkpoint, "w").close()
         os.chmod(checkpoint, 0o775)
@@ -171,7 +171,7 @@ def import_sites(user: str, dsn: str, max_workers: int=0,
 
         return
     url = orautils.make_connect_string(user, dsn)
-    analyses = _get_analyses(url, datatype="sites")
+    analyses = _get_analyses(url, datatype="sites", force=force)
 
     if not isinstance(max_workers, int) or max_workers < 1:
         max_workers = len(analyses)
@@ -237,7 +237,7 @@ def import_sites(user: str, dsn: str, max_workers: int=0,
                 break
 
             time.sleep(600)
-            analyses = _get_analyses(url, datatype="sites")
+            analyses = _get_analyses(url, datatype="sites", force=force)
 
     if num_errors:
         raise RuntimeError("{} analyses failed".format(num_errors))
@@ -301,7 +301,7 @@ def _get_max_persisted_job(cur: cx_Oracle.Cursor, analysis_id: int,
     return row[0] if row else None
 
 
-def _get_analyses(url: str, datatype: str="matches") -> List[dict]:
+def _get_analyses(url: str, datatype: str="matches", force: bool=False) -> List[dict]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
@@ -366,6 +366,9 @@ def _get_analyses(url: str, datatype: str="matches") -> List[dict]:
         if e[key] is not None:
             e["upi"] = _get_max_persisted_job(cur, e["id"], max_upi, flag)
             e["ready"] = e["upi"] and e["upi"] >= max_upi
+
+        if force:
+            e["ready"] = True
 
     cur.close()
     con.close()
