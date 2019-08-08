@@ -94,7 +94,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
                         partition = signalp_partitions[name]
                         signalp_actions.append((_id, partition))
                     else:
-                        logger.info(f"  {table2name[table]:<40}started")
+                        # logger.info(f"  {table2name[table]:<40}started")
                         fn, partition = functions[table]
                         f = executor.submit(_import_member_db, url, "IPRSCAN",
                                             table, "MV_IPRSCAN", partition,
