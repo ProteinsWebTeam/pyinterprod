@@ -211,14 +211,11 @@ def main():
         Task(
             name="pronto",
             fn=pronto.run,
-            args=(db_users["pronto-pri"], db_users["pronto-sec"], db_dsn),
+            args=(args.config, ),
             kwargs=dict(
-                processes=16,
-                queue=queue,
-                report=os.path.join(paths["results"], "swiss_de_families.tsv"),
-                tmpdir="/scratch/"
+                report=os.path.join(paths["results"], "swiss_de_families.tsv")
             ),
-            scheduler=dict(queue=queue, cpu=16, mem=32000, scratch=32000),
+            scheduler=dict(queue=queue, mem=500),
             requires=["update-matches", "update-feature-matches", "taxonomy",
                       "signatures-descriptions"]
         ),
