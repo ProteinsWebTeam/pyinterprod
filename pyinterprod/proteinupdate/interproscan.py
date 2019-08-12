@@ -277,12 +277,12 @@ def _get_max_persisted_job(cur: cx_Oracle.Cursor, analysis_id: int,
             SELECT COUNT(*) AS CNT
             FROM IPRSCAN.IPM_COMPLETED_JOBS@ISPRO
             WHERE ANALYSIS_ID = :analysisid
-              AND JOB_START <= :maxupi AND PERSISTED != :persisted
+              AND JOB_START <= :maxupi AND PERSISTED < :persisted
             UNION ALL
             SELECT COUNT(*) AS CNT
             FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
             WHERE ANALYSIS_ID = :analysisid
-              AND JOB_START <= :maxupi AND PERSISTED != :persisted
+              AND JOB_START <= :maxupi AND PERSISTED < :persisted
         )
         """,
         dict(analysisid=analysis_id, persisted=persist_flag, maxupi=max_upi)
@@ -356,6 +356,14 @@ def _get_analyses(url: str, datatype: str="matches", force: bool=False) -> List[
         })
 
     for e in analyses:
+        """
+        CDD/SFLD
+            - PERSISTED=1 when matches are ready
+            - PERSISTED=2 when matches and sites are ready
+            
+        Others:
+            - PERSISTED=2 when matches are ready
+        """
         if datatype == "sites":
             key = "site_table"
             flag = 2
