@@ -341,9 +341,10 @@ def _get_tasks(**kwargs):
             name="compare",
             fn=prediction.compare,
             args=(user1, dsn, outdir),
-            kwargs=dict(processes=8, max_jobs=0, tmpdir="/scratch/",
-                        chunk_size=5000, job_queue=queue),
-            scheduler=dict(queue=queue, cpu=2, mem=500),
+            kwargs=dict(processes=4, chunk_size=5000, max_jobs=0,
+                        job_processes=8, job_tmpdir="/scratch/",
+                        job_queue=queue),
+            scheduler=dict(queue=queue, cpu=4, mem=500),
             requires=["signatures-proteins"]
         )
 

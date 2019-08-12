@@ -278,9 +278,9 @@ def _chunk_jobs(cur: cx_Oracle.Cursor, schema: str, chunk_size: int):
 
 
 def _run_comparisons(user: str, dsn: str, query: str, column: str,
-                     outdir: str, max_jobs: int=0, max_comparators: int=8,
-                     max_loaders: int=4, tmpdir: Optional[str]=None,
-                     chunk_size: int=10000, job_queue: Optional[str]=None):
+                     outdir: str, processes: int, chunk_size: int,
+                     max_jobs: int, job_processes: int,
+                     job_tmpdir: Optional[str], job_queue: Optional[str]):
     os.makedirs(outdir, exist_ok=True)
     fd, kvdb_path = mkstemp(suffix=".db", dir=outdir)
     os.close(fd)
@@ -296,7 +296,7 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
 
     queue = Queue()
     loaders = []
-    for _ in range(max_loaders):
+    for _ in range(max(1, processes-1)):
         p = Process(target=_load_similarities,
                     args=(user, dsn, column, queue))
         p.start()
@@ -320,8 +320,8 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                     name=f"pronto-cmp-{submitted}",
                     fn=_compare,
                     args=(kvdb_path, row_start, row_stop, col_start, col_stop,
-                          outdir, max_comparators, tmpdir),
-                    scheduler=dict(queue=job_queue, cpu=max_comparators,
+                          outdir, job_processes, job_tmpdir),
+                    scheduler=dict(queue=job_queue, cpu=job_processes,
                                    mem=4000, scratch=5000)
                 )
                 t.run(workdir=outdir)
@@ -334,8 +334,8 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                     name=f"pronto-cmp-{submitted}",
                     fn=_compare,
                     args=(kvdb_path, row_start, row_stop, col_start, col_stop,
-                          outdir, max_comparators, tmpdir),
-                    scheduler=dict(queue=job_queue, cpu=max_comparators,
+                          outdir, job_processes, job_tmpdir),
+                    scheduler=dict(queue=job_queue, cpu=job_processes,
                                    mem=4000, scratch=5000)
                 )
                 t.run(workdir=outdir)
@@ -377,9 +377,9 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
     logger.info(f"{column}: complete")
 
 
-def cmp_descriptions(user: str, dsn: str, outdir: str, max_jobs: int=0,
-                     max_comparators: int=8, max_loaders: int=4,
-                     tmpdir: Optional[str]=None, chunk_size: int=10000,
+def cmp_descriptions(user: str, dsn: str, outdir: str, processes: int=4,
+                     chunk_size: int=10000, max_jobs: int=0,
+                     job_processes: int=8, job_tmpdir: Optional[str]=None,
                      job_queue: Optional[str]=None):
     query = """
         SELECT METHOD_AC, DESC_ID
@@ -391,28 +391,26 @@ def cmp_descriptions(user: str, dsn: str, outdir: str, max_jobs: int=0,
         )
         ORDER BY METHOD_AC
     """.format(user.split('/')[0])
-    _run_comparisons(user, dsn, query, "DESC", outdir, max_jobs,
-                     max_comparators, max_loaders, tmpdir, chunk_size,
-                     job_queue)
+    _run_comparisons(user, dsn, query, "DESC", outdir, processes, chunk_size,
+                     max_jobs, job_processes, job_tmpdir, job_queue)
 
 
-def cmp_taxa(user: str, dsn: str, outdir: str, max_jobs: int=0,
-             max_comparators: int=8, max_loaders: int=4,
-             tmpdir: Optional[str]=None, chunk_size: int=10000,
+def cmp_taxa(user: str, dsn: str, outdir: str, processes: int=4,
+             chunk_size: int=10000, max_jobs: int=0,
+             job_processes: int=8, job_tmpdir: Optional[str]=None,
              job_queue: Optional[str]=None):
     query = """
         SELECT METHOD_AC, TAX_ID
         FROM {}.METHOD_TAXA
         ORDER BY METHOD_AC
     """.format(user.split('/')[0])
-    _run_comparisons(user, dsn, query, "TAXA", outdir, max_jobs,
-                     max_comparators, max_loaders, tmpdir, chunk_size,
-                     job_queue)
+    _run_comparisons(user, dsn, query, "TAXA", outdir, processes, chunk_size,
+                     max_jobs, job_processes, job_tmpdir, job_queue)
 
 
-def cmp_terms(user: str, dsn: str, outdir: str, max_jobs: int=0,
-              max_comparators: int=8, max_loaders: int=4,
-              tmpdir: Optional[str]=None, chunk_size: int=10000,
+def cmp_terms(user: str, dsn: str, outdir: str, processes: int=4,
+              chunk_size: int=10000, max_jobs: int=0,
+              job_processes: int=8, job_tmpdir: Optional[str]=None,
               job_queue: Optional[str]=None):
     query = """
         SELECT METHOD_AC, GO_ID
@@ -427,26 +425,25 @@ def cmp_terms(user: str, dsn: str, outdir: str, max_jobs: int=0,
         )
         ORDER BY METHOD_AC
     """.format(user.split('/')[0])
-    _run_comparisons(user, dsn, query, "TERM", outdir, max_jobs,
-                     max_comparators, max_loaders, tmpdir, chunk_size,
-                     job_queue)
+    _run_comparisons(user, dsn, query, "TERM", outdir, processes, chunk_size,
+                     max_jobs, job_processes, job_tmpdir, job_queue)
 
 
-def compare(user: str, dsn: str, outdir: str, max_jobs: int=0,
-              max_comparators: int=8, max_loaders: int=4,
-            tmpdir: Optional[str] = None, chunk_size: int=10000,
+def compare(user: str, dsn: str, outdir: str, processes: int=4,
+            chunk_size: int=10000, max_jobs: int=0, job_processes: int=8,
+            job_tmpdir: Optional[str]=None,
             job_queue: Optional[str]=None, flag: int=7):
     if flag & 1:
-        cmp_terms(user, dsn, outdir, max_jobs, max_comparators, max_loaders,
-                  tmpdir, chunk_size, job_queue)
+        cmp_terms(user, dsn, outdir, processes, chunk_size, max_jobs,
+                  job_processes, job_tmpdir, job_queue)
 
     if flag & 2:
-        cmp_descriptions(user, dsn, outdir, max_jobs, max_comparators,
-                         max_loaders, tmpdir, chunk_size, job_queue)
+        cmp_descriptions(user, dsn, outdir, processes, chunk_size, max_jobs,
+                         job_processes, job_tmpdir, job_queue)
 
     if flag & 4:
-        cmp_taxa(user, dsn, outdir, max_jobs, max_comparators, max_loaders,
-                 tmpdir, chunk_size, job_queue)
+        cmp_taxa(user, dsn, outdir, processes, chunk_size, max_jobs,
+                 job_processes, job_tmpdir, job_queue)
 
     logger.info("indexing/anayzing METHOD_SIMILARITY")
     owner = user.split('/')[0]
