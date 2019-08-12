@@ -327,7 +327,7 @@ def _get_tasks(**kwargs):
             fn=signature.load_signature2protein,
             args=(user1, dsn),
             kwargs=dict(processes=16, tmpdir="/scratch/"),
-            scheduler=dict(queue=queue, cpu=16, mem=32000, scratch=32000),
+            scheduler=dict(queue=queue, cpu=16, mem=24000, scratch=32000),
             requires=["descriptions", "signatures", "taxa", "terms"]
         ),
         Task(
