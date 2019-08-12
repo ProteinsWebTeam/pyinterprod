@@ -309,7 +309,8 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
 
     running = []
     submitted = 0
-    failed = False
+    done = 0
+    failed = 0
     while pending or running:
         if max_jobs and pending:
             for _ in range(max_jobs - len(running)):
@@ -350,9 +351,12 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                 if task.successful():
                     # todo: change this when updating `mundone`
                     queue.put(task.output.read())
+                    done += 1
                 else:
                     pending = []  # cancel pending tasks
-                    failed = True
+                    failed += 1
+
+                logger.info(f"{column}:     {done} done; {failed} failed")
             else:
                 _running.append(task)
 
@@ -368,7 +372,7 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
         p.join()
 
     if failed:
-        raise RuntimeError("one or more tasks failed")
+        raise RuntimeError(f"{failed} task(s) failed")
 
     logger.info(f"{column}: complete")
 
