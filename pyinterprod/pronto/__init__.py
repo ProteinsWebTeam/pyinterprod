@@ -353,7 +353,7 @@ def _get_tasks(**kwargs):
 
 
 def run(config_path: str, steps: Optional[List[str]]=None,
-        report: Optional[str]=None):
+        report: Optional[str]=None, raise_on_error: bool=True):
 
     with open(config_path, "rt") as fh:
         config = json.load(fh)
@@ -375,7 +375,12 @@ def run(config_path: str, steps: Optional[List[str]]=None,
     wdir = config["workflow"]["dir"]
     wdb = os.path.join(wdir, "pronto.db")
     with Workflow(tasks, db=wdb, dir=wdir) as w:
-        return w.run(steps, dependencies=False)
+        status = w.run(steps, dependencies=False)
+
+    if not status and raise_on_error:
+        raise RuntimeError("")
+
+    return status
 
 
 def main():
@@ -390,5 +395,5 @@ def main():
                              "(default: swiss_de_families.tsv)")
     args = parser.parse_args()
 
-    success = run(args.config, args.steps, args.output)
+    success = run(args.config, args.steps, args.output, raise_on_error=False)
     sys.exit(0 if success else 1)
