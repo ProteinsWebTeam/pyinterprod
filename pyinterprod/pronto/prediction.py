@@ -431,19 +431,15 @@ def cmp_terms(user: str, dsn: str, outdir: str, processes: int=4,
 
 def compare(user: str, dsn: str, outdir: str, processes: int=4,
             chunk_size: int=10000, max_jobs: int=0, job_processes: int=8,
-            job_tmpdir: Optional[str]=None,
-            job_queue: Optional[str]=None, flag: int=7):
-    if flag & 1:
-        cmp_terms(user, dsn, outdir, processes, chunk_size, max_jobs,
-                  job_processes, job_tmpdir, job_queue)
+            job_tmpdir: Optional[str]=None, job_queue: Optional[str]=None):
+    cmp_terms(user, dsn, outdir, processes, chunk_size, max_jobs,
+              job_processes, job_tmpdir, job_queue)
 
-    if flag & 2:
-        cmp_descriptions(user, dsn, outdir, processes, chunk_size, max_jobs,
-                         job_processes, job_tmpdir, job_queue)
+    cmp_descriptions(user, dsn, outdir, processes, chunk_size, max_jobs,
+                     job_processes, job_tmpdir, job_queue)
 
-    if flag & 4:
-        cmp_taxa(user, dsn, outdir, processes, chunk_size, max_jobs,
-                 job_processes, job_tmpdir, job_queue)
+    cmp_taxa(user, dsn, outdir, processes, chunk_size, max_jobs,
+             job_processes, job_tmpdir, job_queue)
 
     logger.info("indexing/anayzing METHOD_SIMILARITY")
     owner = user.split('/')[0]
