@@ -300,7 +300,7 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
     finally:
         shutil.move(kvdb_tmp, kvdb_path)
 
-    queue = Queue()
+    queue = Queue(maxsize=1)
     loader = Process(target=_load_similarities,
                      args=(user, dsn, column, queue))
     loader.start()
