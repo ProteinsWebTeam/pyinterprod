@@ -278,9 +278,9 @@ def _chunk_jobs(cur: cx_Oracle.Cursor, schema: str, chunk_size: int):
 
 
 def _run_comparisons(user: str, dsn: str, query: str, column: str,
-                     outdir: str, processes: int, chunk_size: int,
-                     max_jobs: int, job_processes: int,
-                     job_tmpdir: Optional[str], job_queue: Optional[str]):
+                     outdir: str, chunk_size: int, max_jobs: int,
+                     job_processes: int, job_tmpdir: Optional[str],
+                     job_queue: Optional[str]):
     os.makedirs(outdir, exist_ok=True)
     fd, kvdb_path = mkstemp(suffix=".db", dir=outdir)
     os.close(fd)
@@ -295,12 +295,9 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
     logger.info(f"{column}:     {os.path.getsize(kvdb_path)/1024**2:.0f}MB")
 
     queue = Queue()
-    loaders = []
-    for _ in range(max(1, processes-1)):
-        p = Process(target=_load_similarities,
-                    args=(user, dsn, column, queue))
-        p.start()
-        loaders.append(p)
+    loader = Process(target=_load_similarities,
+                     args=(user, dsn, column, queue))
+    loader.start()
 
     logger.info(f"{column}: comparing")
     pending = _chunk_jobs(cur, owner, chunk_size)
@@ -355,21 +352,15 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                 else:
                     pending = []  # cancel pending tasks
                     failed += 1
-
-                logger.info(f"{column}:     {done} done; {failed} failed")
             else:
                 _running.append(task)
 
         running = _running
         time.sleep(10)
 
-    for _ in loaders:
-        queue.put(None)
-
+    queue.put(None)
     os.remove(kvdb_path)
-
-    for p in loaders:
-        p.join()
+    loader.join()
 
     if failed:
         raise RuntimeError(f"{failed} task(s) failed")
@@ -377,9 +368,9 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
     logger.info(f"{column}: complete")
 
 
-def cmp_descriptions(user: str, dsn: str, outdir: str, processes: int=4,
-                     chunk_size: int=10000, max_jobs: int=0,
-                     job_processes: int=8, job_tmpdir: Optional[str]=None,
+def cmp_descriptions(user: str, dsn: str, outdir: str, chunk_size: int=10000,
+                     max_jobs: int=0, job_processes: int=8,
+                     job_tmpdir: Optional[str]=None,
                      job_queue: Optional[str]=None):
     query = """
         SELECT METHOD_AC, DESC_ID
@@ -391,26 +382,26 @@ def cmp_descriptions(user: str, dsn: str, outdir: str, processes: int=4,
         )
         ORDER BY METHOD_AC
     """.format(user.split('/')[0])
-    _run_comparisons(user, dsn, query, "DESC", outdir, processes, chunk_size,
+    _run_comparisons(user, dsn, query, "DESC", outdir, chunk_size,
                      max_jobs, job_processes, job_tmpdir, job_queue)
 
 
-def cmp_taxa(user: str, dsn: str, outdir: str, processes: int=4,
-             chunk_size: int=10000, max_jobs: int=0,
-             job_processes: int=8, job_tmpdir: Optional[str]=None,
+def cmp_taxa(user: str, dsn: str, outdir: str, chunk_size: int=10000,
+             max_jobs: int=0, job_processes: int=8,
+             job_tmpdir: Optional[str]=None,
              job_queue: Optional[str]=None):
     query = """
         SELECT METHOD_AC, TAX_ID
         FROM {}.METHOD_TAXA
         ORDER BY METHOD_AC
     """.format(user.split('/')[0])
-    _run_comparisons(user, dsn, query, "TAXA", outdir, processes, chunk_size,
+    _run_comparisons(user, dsn, query, "TAXA", outdir, chunk_size,
                      max_jobs, job_processes, job_tmpdir, job_queue)
 
 
-def cmp_terms(user: str, dsn: str, outdir: str, processes: int=4,
-              chunk_size: int=10000, max_jobs: int=0,
-              job_processes: int=8, job_tmpdir: Optional[str]=None,
+def cmp_terms(user: str, dsn: str, outdir: str, chunk_size: int=10000,
+              max_jobs: int=0, job_processes: int=8,
+              job_tmpdir: Optional[str]=None,
               job_queue: Optional[str]=None):
     query = """
         SELECT METHOD_AC, GO_ID
@@ -425,20 +416,20 @@ def cmp_terms(user: str, dsn: str, outdir: str, processes: int=4,
         )
         ORDER BY METHOD_AC
     """.format(user.split('/')[0])
-    _run_comparisons(user, dsn, query, "TERM", outdir, processes, chunk_size,
+    _run_comparisons(user, dsn, query, "TERM", outdir, chunk_size,
                      max_jobs, job_processes, job_tmpdir, job_queue)
 
 
-def compare(user: str, dsn: str, outdir: str, processes: int=4,
-            chunk_size: int=10000, max_jobs: int=0, job_processes: int=8,
+def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
+            max_jobs: int=0, job_processes: int=8,
             job_tmpdir: Optional[str]=None, job_queue: Optional[str]=None):
-    cmp_terms(user, dsn, outdir, processes, chunk_size, max_jobs,
+    cmp_terms(user, dsn, outdir, chunk_size, max_jobs,
               job_processes, job_tmpdir, job_queue)
 
-    cmp_descriptions(user, dsn, outdir, processes, chunk_size, max_jobs,
+    cmp_descriptions(user, dsn, outdir, chunk_size, max_jobs,
                      job_processes, job_tmpdir, job_queue)
 
-    cmp_taxa(user, dsn, outdir, processes, chunk_size, max_jobs,
+    cmp_taxa(user, dsn, outdir, chunk_size, max_jobs,
              job_processes, job_tmpdir, job_queue)
 
     logger.info("indexing/anayzing METHOD_SIMILARITY")
