@@ -170,12 +170,12 @@ def report_description_changes(user: str, dsn: str, dst: str):
         )
         """
     )
-    then = {}
+    entries_then = {}
     for acc, description in cur:
-        if acc in then:
-            then[acc].add(description)
+        if acc in entries_then:
+            entries_then[acc].add(description)
         else:
-            then[acc] = {description}
+            entries_then[acc] = {description}
 
     cur.execute(
         """
@@ -190,31 +190,31 @@ def report_description_changes(user: str, dsn: str, dst: str):
        )
        """.format(owner)
     )
-    now = {}
+    entries_now = {}
     for acc, description in cur:
-        if acc in now:
-            now[acc].add(description)
+        if acc in entries_now:
+            entries_now[acc].add(description)
         else:
-            now[acc] = {description}
+            entries_now[acc] = {description}
 
     cur.close()
     con.close()
 
-    changes = {}
-    for acc, descs_then in then.items():
+    changes = {}  # key: accession, value: (gained, lost)
+    for acc, descs_now in entries_now.items():
         try:
-            descs_now = now.pop(acc)
+            descs_then = entries_then.pop(acc)
         except KeyError:
-            # Lost all descriptions
-            changes[acc] = ([], descs_then)
+            # This entry did not have descriptions then
+            changes[acc] = (descs_now, [])
         else:
-            changes[acc] = (descs_then-descs_now, descs_now-descs_then)
+            changes[acc] = (descs_now - descs_then, descs_then - descs_now)
 
-    for acc, descs_now in now.items():
-        changes[acc] = (descs_now, [])
+    # Entries that no longer have descriptions
+    for acc, descs_then in entries_then.items():
+        changes[acc] = ([], descs_then)
 
-    dst_tmp = dst + ".tmp"
-    with open(dst_tmp, "wt") as fh:
+    with open(dst, "wt") as fh:
         fh.write("Accession\tChecked\t# Lost\t# Gained\tLost\tGained\n")
         for acc in sorted(changes):
             lost, gained = changes[acc]
@@ -222,8 +222,6 @@ def report_description_changes(user: str, dsn: str, dst: str):
                 acc, entries[acc], len(lost), len(gained), " | ".join(lost),
                 " | ".join(gained)
             ))
-
-    os.rename(dst_tmp, dst)
 
 
 def copy_schema(user_src: str, user_dst: str, dsn: str):
