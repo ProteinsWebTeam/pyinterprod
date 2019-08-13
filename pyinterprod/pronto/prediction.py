@@ -229,8 +229,8 @@ def _compare(kvdb_src: str, i_start: str, i_stop: str, j_start: str,
     return buffer.filename
 
 
-def _export_signatures(cur: cx_Oracle.Cursor, dst: str):
-    with Kvdb(insertonly=True) as kvdb:
+def _export_signatures(cur: cx_Oracle.Cursor, database: str):
+    with Kvdb(database, insertonly=True) as kvdb:
         values = set()
         _acc = None
         for acc, val in cur:
@@ -245,9 +245,6 @@ def _export_signatures(cur: cx_Oracle.Cursor, dst: str):
 
         if _acc:
             kvdb[_acc] = values
-
-    shutil.copy(kvdb.filepath, dst)
-    kvdb.remove()
 
 
 def _chunk_jobs(cur: cx_Oracle.Cursor, schema: str, chunk_size: int):
@@ -281,18 +278,27 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                      outdir: str, chunk_size: int, max_jobs: int,
                      job_processes: int, job_tmpdir: Optional[str],
                      job_queue: Optional[str]):
-    os.makedirs(outdir, exist_ok=True)
-    fd, kvdb_path = mkstemp(suffix=".db", dir=outdir)
+    os.makedirs(job_tmpdir, exist_ok=True)
+    fd, kvdb_tmp = mkstemp(suffix=".db", dir=job_tmpdir)
     os.close(fd)
-    os.remove(kvdb_path)
+    os.remove(kvdb_tmp)
 
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     logger.info(f"{column}: exporting")
     cur.execute(query)
-    _export_signatures(cur, kvdb_path)
-    logger.info(f"{column}:     {os.path.getsize(kvdb_path)/1024**2:.0f}MB")
+    _export_signatures(cur, kvdb_tmp)
+    logger.info(f"{column}:     {os.path.getsize(kvdb_tmp)/1024**2:.0f}MB")
+
+    os.makedirs(outdir, exist_ok=True)
+    kvdb_path = os.path.join(outdir, os.path.basename(kvdb_tmp))
+    try:
+        os.remove(kvdb_path)
+    except FileNotFoundError:
+        pass
+    finally:
+        shutil.move(kvdb_tmp, kvdb_path)
 
     queue = Queue()
     loader = Process(target=_load_similarities,
