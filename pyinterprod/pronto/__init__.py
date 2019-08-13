@@ -349,7 +349,7 @@ def _get_tasks(**kwargs):
     ]
 
 
-def run(config_path: str, steps: Optional[List[str]]=None,
+def run(config_path: str, task_names: Optional[List[str]]=None,
         report: Optional[str]=None, raise_on_error: bool=True):
 
     with open(config_path, "rt") as fh:
@@ -372,7 +372,7 @@ def run(config_path: str, steps: Optional[List[str]]=None,
     wdir = config["workflow"]["dir"]
     wdb = os.path.join(wdir, "pronto.db")
     with Workflow(tasks, db=wdb, dir=wdir) as w:
-        status = w.run(steps, dependencies=False)
+        status = w.run(task_names, dependencies=False)
 
     if not status and raise_on_error:
         raise RuntimeError("")
@@ -384,13 +384,13 @@ def main():
     parser = argparse.ArgumentParser(description="Pronto schema update")
     parser.add_argument("config", metavar="CONFIG.JSON",
                         help="config JSON file")
-    parser.add_argument("-s", "--steps", nargs="+",
+    parser.add_argument("-t", "--tasks", nargs="+",
                         choices=[t.name for t in _get_tasks()], default=None,
-                        help="steps to run (default: all)")
+                        help="tasks to run")
     parser.add_argument("-o", "--output", default="swiss_de_families.tsv",
                         help="output report for curators "
                              "(default: swiss_de_families.tsv)")
     args = parser.parse_args()
 
-    success = run(args.config, args.steps, args.output, raise_on_error=False)
+    success = run(args.config, args.tasks, args.output, raise_on_error=False)
     sys.exit(0 if success else 1)
