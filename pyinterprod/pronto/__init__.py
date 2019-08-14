@@ -388,7 +388,8 @@ def main():
                         choices=[t.name for t in _get_tasks()], default=None,
                         help="tasks to run")
     parser.add_argument("-o", "--output", default="swiss_de_families.tsv",
-                        help=("output report for curators (default: swiss_de_families.tsv)"))
+                        help=("output report for curators "
+                              "(default: swiss_de_families.tsv)"))
     args = parser.parse_args()
 
     success = run(args.config, args.tasks, args.output, raise_on_error=False)
