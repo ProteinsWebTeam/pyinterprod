@@ -28,9 +28,11 @@ def load_comparators(user: str, dsn: str, comparators: list):
         (
             METHOD_AC1 VARCHAR2(25) NOT NULL,
             METHOD_AC2 VARCHAR2(25) NOT NULL,
+            COLL_COUNT NUMBER(*) DEFAULT NULL,
             COLL_INDEX BINARY_DOUBLE DEFAULT NULL,
             COLL_CONT1 BINARY_DOUBLE DEFAULT NULL,
             COLL_CONT2 BINARY_DOUBLE DEFAULT NULL,
+            POVR_COUNT NUMBER(*) DEFAULT NULL,
             POVR_INDEX BINARY_DOUBLE DEFAULT NULL,
             POVR_CONT1 BINARY_DOUBLE DEFAULT NULL,
             POVR_CONT2 BINARY_DOUBLE DEFAULT NULL,
@@ -57,11 +59,12 @@ def load_comparators(user: str, dsn: str, comparators: list):
         con=con,
         query="""
                 INSERT /*+ APPEND */ INTO {}.METHOD_SIMILARITY (
-                  METHOD_AC1, METHOD_AC2, COLL_INDEX, COLL_CONT1, COLL_CONT2,
-                  POVR_INDEX, POVR_CONT1, POVR_CONT2,
+                  METHOD_AC1, METHOD_AC2, 
+                  COLL_COUNT, COLL_INDEX, COLL_CONT1, COLL_CONT2, 
+                  POVR_COUNT, POVR_INDEX, POVR_CONT1, POVR_CONT2,
                   ROVR_INDEX, ROVR_CONT1, ROVR_CONT2
                 )
-                VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11)
+                VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13)
             """.format(owner),
         autocommit=True
     )

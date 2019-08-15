@@ -447,10 +447,12 @@ def merge_comparators(comparators: Iterable[MatchComparator]):
 
             similarities[acc_1][acc_2] = (
                 # Collocation
+                n_col,
                 n_col / (n_prot1 + n_prot2 - n_col),
                 n_col / n_prot1,
                 n_col / n_prot2,
                 # Protein overlap
+                n_prot_over,
                 n_prot_over / (n_prot1 + n_prot2 - n_prot_over),
                 n_prot_over / n_prot1,
                 n_prot_over / n_prot2,
