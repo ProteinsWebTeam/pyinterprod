@@ -552,7 +552,7 @@ def ask_to_snapshot(user: str, dsn: str, notify: bool=True):
         updates.append((name, analysis_id))
 
     content = """\
-INTERPRO.XREF_SUMMARY and INTERPRO.XREF_CONDENSED are ready.
+INTERPRO.XREF_SUMMARY, INTERPRO.XREF_CONDENSED, and IPRSCAN.AA_IPRSCAN are ready.
 
 Please, take a snapshot of IPPRO, and inform UniProt they can refresh IPREADU.
 
