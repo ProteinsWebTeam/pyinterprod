@@ -377,14 +377,19 @@ def _get_tasks(**kwargs):
             requires=["signatures-proteins"]
         ),
         Task(
+            name="report",
+            fn=report_description_changes,
+            args=(user1, dsn, report_dst),
+            scheduler=dict(queue=queue, mem=2000),
+            requires=["index"]
+        ),
+        Task(
             name="copy",
             fn=copy_schema,
             args=(user1, user2, dsn),
             scheduler=dict(queue=queue, mem=500),
             requires=["compare", "index"]
         )
-
-        # todo: add report task
     ]
 
 
