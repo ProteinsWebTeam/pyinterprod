@@ -30,13 +30,278 @@ The `pyinterprod` package include command line tools, which expect a JSON config
     - `results`: directory for any non-shared data, or large temporary files 
     - `unirule`: file listing InterPro entries and member database signatures used in UniRule
     - `xrefs`: InterPro cross-references, generated for UniProt
+- `email-notifications`: boolean enabling or disabling email notifications to the InterPro or UniProt teams
 - `workflow`:
     - `lsf-queue`: name of the LSF queue to use
     - `dir`: directory to use for LSF job files. Must be accessible from the login **and** processing nodes.
     
 ## Usage
 
+### Protein update
+
 ```bash
-$ ipr-update-proteins config.json [OPTIONS]
-$ ipr-update-pronto config.json [OPTIONS]
+$ ipr-update-proteins CONFIG.JSON [OPTIONS]
 ```
+
+The optional arguments are:
+
+- `-t, --tasks`: list of tasks to run, by default all tasks are run (see [Tasks](#protein-update-tasks) for a description of available tasks)
+- `--dry-run`: do not run tasks, only list those about to be run
+- `--resume`: skip successfully completed tasks. By default all tasks are run, even if already completed in the past. 
+
+<a name="protein-update-tasks"/>
+
+#### Tasks
+
+<table>
+<thead>
+<tr>
+    <th>Name</th>
+    <th>Description</th>
+    <th>Dependencies</th>
+    </tr>
+</thead>
+<tbody>
+<tr>
+    <td>unirule</td>
+    <td>Import the InterPro entries and member database signatures used in UniRule</td>
+    <td></td>
+</tr>
+<tr>
+    <td>load-proteins</td>
+    <td>Import the new Swiss-Prot and TrEMBL proteins, and compare with the current ones</td>
+    <td></td>
+</tr>
+<tr>
+    <td>update-proteins</td>
+    <td>Delete obsolete proteins in all production tables</td>
+    <td>load-proteins</td>
+</tr>
+<tr>
+    <td>update-uniparc</td>
+    <td>Import UniParc cross-references</td>
+    <td></td>
+</tr>
+<tr>
+    <td>check-crc64</td>
+    <td>Check that CRC64 checksums in UniProt entries and UniParc cross-references are the same</td>
+    <td>update-proteins, update-uniparc</td>
+</tr>
+<tr>
+    <td>proteins2scan</td>
+    <td>Track UniParc sequences (UPI) associated to UniProt entries that need to be imported (e.g. new or updated sequence)</td>
+    <td>check-crc64</td>
+</tr>
+<tr>
+    <td>import-matches</td>
+    <td>Import protein matches from ISPRO</td>
+    <td></td>
+</tr>
+<tr>
+    <td>import-sites</td>
+    <td>Import residue annotations from ISPRO</td>
+    <td></td>
+</tr>
+<tr>
+    <td>update-matches</td>
+    <td>Update protein matches for new or updated sequences, run various checks, and track changes in protein counts for InterPro entries</td>
+    <td>import-matches, proteins2scan</td>
+</tr>
+<tr>
+    <td>update-feature-matches</td>
+    <td>Update protein matches for sequence features (e.g. MobiDB-lite, Coils, etc.)</td>
+    <td>import-matches, proteins2scan</td>
+</tr>
+<tr>
+    <td>update-sites</td>
+    <td>Update residue annotations for CDD, and SFLD</td>
+    <td>import-sites, update-matches</td>
+</tr>
+<tr>
+    <td>aa-iprscan</td>
+    <td>Build the AA_IPRSCAN table, required by the Automatic Annotation team.</td>
+    <td>update-matches</td>
+</tr>
+<tr>
+    <td>report-unintegrated</td>
+    <td>Report recent integration changes to the Automatic Annotation and UniRule teams</td>
+    <td>update-matches</td>
+</tr>
+<tr>
+    <td>xref-summary</td>
+    <td>Build the XREF_SUMMARY table for the Automatic Annotation team (contains protein matches for integrated member database signatures)</td>
+    <td>report-unintegrated</td>
+</tr>
+<tr>
+    <td>xref-condensed</td>
+    <td>Build the XREF_CONDENSED table for the Automatic Annotation team (contains representations of protein matches for InterPro entries)</td>
+    <td>update-matches</td>
+</tr>
+<tr>
+    <td>alert-interpro</td>
+    <td>Notify the InterPro team that all tables required by the Automatic Annotation team are ready, so we can take a snapshot of our database</td>
+    <td>aa-iprscan, xref-summary, xref-condensed, update-feature-matches</td>
+</tr>
+<tr>
+    <td>dump-xrefs</td>
+    <td>Export text files containing protein matches</td>
+    <td>xref-summary</td>
+</tr>
+<tr>
+    <td>match-counts</td>
+    <td>Update legacy materialized views</td>
+    <td>update-matches</td>
+</tr>
+<tr>
+    <td>export-sib</td>
+    <td>Export Oracle tables required by the Swiss-Prot team</td>
+    <td>update-matches</td>
+</tr>
+<tr>
+    <td>taxonomy</td>
+    <td>Import the latest taxonomy data from UniProt</td>
+    <td></td>
+</tr>
+<tr>
+    <td>signatures-descriptions</td>
+    <td>Copy the Swiss-Prot descriptions associated to member database signatures in the previous release of UniProt</td>
+    <td></td>
+</tr>
+<tr>
+    <td>pronto</td>
+    <td>Refresh the database schema used by Pronto</td>
+    <td>update-matches, update-feature-matches, taxonomy, signatures-descriptions</td>
+</tr>
+<tr>
+    <td>report-curators</td>
+    <td>Send reports to curators, and inform them that Pronto is ready</td>
+    <td>pronto</td>
+</tr>
+</tobdy>
+</table>
+
+### Pronto
+
+```bash
+$ ipr-update-pronto CONFIG.JSON [OPTIONS]
+```
+
+The optional arguments are:
+
+- `-t, --tasks`: list of tasks to run, by default all tasks are run (see [Tasks](#pronto-tasks) for a description of available tasks)
+- `-o, --output`: output report for curators (default: swiss_de_families.tsv in the current working directory) 
+
+Note that there is not `--resume` argument. When using the `-t, --tasks` option, **only the passed tasks are run**, regardless of the status of their respective dependencies.
+
+<a name="pronto-tasks"/>
+
+#### Tasks
+
+<table>
+<thead>
+<tr>
+    <th>Name</th>
+    <th>Description</th>
+    <th>Source</th>
+    <th>Dependencies</th>
+    </tr>
+</thead>
+<tbody>
+<tr>
+    <td>annotations</td>
+    <td>Import protein annotations</td>
+    <td>Gene Ontology Annotation</td>
+    <td></td>
+</tr>
+<tr>
+    <td>publications</td>
+    <td>Import publications associated to protein annotations</td>
+    <td>Gene Ontology Annotation</td>
+    <td></td>
+</tr>
+<tr>
+    <td>terms</td>
+    <td>Import GO terms</td>
+    <td>Gene Ontology Annotation</td>
+    <td></td>
+</tr>
+<tr>
+    <td>databases</td>
+    <td>Import database information (e.g. version, release date)</td>
+    <td>InterPro</td>
+    <td></td>
+</tr>
+<tr>
+    <td>taxa</td>
+    <td>Import taxonomy information</td>
+    <td>InterPro</td>
+    <td></td>
+</tr>
+<tr>
+    <td>comments</td>
+    <td>Import Swiss-Prot comments</td>
+    <td>UniProt</td>
+    <td></td>
+</tr>
+<tr>
+    <td>descriptions</td>
+    <td>Import protein descriptions</td>
+    <td>UniProt</td>
+    <td></td>
+</tr>
+<tr>
+    <td>enzymes</td>
+    <td>Import Enzyme Commission (EC) numbers</td>
+    <td>UniProt</td>
+    <td></td>
+</tr>
+<tr>
+    <td>proteins</td>
+    <td>Import Swiss-Prot and TrEMBL proteins</td>
+    <td>InterPro</td>
+    <td></td>
+</tr>
+<tr>
+    <td>signatures</td>
+    <td>Import member database signatures</td>
+    <td>InterPro</td>
+    <td></td>
+</tr>
+<tr>
+    <td>matches</td>
+    <td>Import protein matches, then count the number of proteins matched by each member database signature</td>
+    <td>InterPro</td>
+    <td>signatures</td>
+</tr>
+<tr>
+    <td>signatures-proteins</td>
+    <td>Associate member database signatures with UniProt proteins, UniProt descriptions, taxonomic origins, and GO terms</td>
+    <td></td>
+    <td>descriptions, signatures, taxa, terms</td>
+</tr>
+<tr>
+    <td>index</td>
+    <td>Create various database indexes</td>
+    <td></td>
+    <td>signatures-proteins</td>
+</tr>
+<tr>
+    <td>compare</td>
+    <td>Evaluate the similarity between member database signatures based on protein overlaps, common UniProt descriptions, common taxonomic origins, and common GO terms</td>
+    <td></td>
+    <td>signatures-proteins</td>
+</tr>
+<tr>
+    <td>report</td>
+    <td>Evaluate the gained and lost Swiss-Prot descriptions for InterPro entries between the previous and current UniProt releases</td>
+    <td></td>
+    <td>index</td>
+</tr>
+<tr>
+    <td>copy</td>
+    <td>Copy schema</td>
+    <td></td>
+    <td>compare, index</td>
+</tr>
+</tbody>
+</table>
