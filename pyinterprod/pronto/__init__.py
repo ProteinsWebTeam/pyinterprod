@@ -5,12 +5,13 @@ import argparse
 import json
 import os
 import sys
+from concurrent.futures import as_completed, ThreadPoolExecutor
 from typing import List, Optional
 
 import cx_Oracle
 from mundone import Task, Workflow
 
-from .. import orautils
+from .. import logger, orautils
 from . import go, prediction, protein, signature
 
 
@@ -224,13 +225,13 @@ def report_description_changes(user: str, dsn: str, dst: str):
             ))
 
 
-def copy_schema(user_src: str, user_dst: str, dsn: str):
+def copy_schema(user_src: str, user_dst: str, dsn: str,
+                max_workers: Optional[int]=None):
     owner = user_src.split('/')[0]
 
     con = cx_Oracle.connect(orautils.make_connect_string(user_src, dsn))
     cur = con.cursor()
     cur.execute("UPDATE {}.CV_DATABASE SET IS_READY = 'Y'".format(owner))
-
     tables = []
     for t in orautils.get_tables(cur, owner):
         tables.append({
@@ -240,7 +241,38 @@ def copy_schema(user_src: str, user_dst: str, dsn: str):
             "indexes": orautils.get_indices(cur, owner, t),
             "partitions": orautils.get_partitions(cur, owner, t)
         })
-    #orautils.clear_schema(user_dst, dsn)
+    con.commit()
+    cur.close()
+    con.close()
+
+    orautils.clear_schema(user_dst, dsn)
+
+    num_errors = 0
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        fs = {}
+        for table in tables:
+            f = executor.submit(orautils.copy_table, user_src, user_dst, dsn,
+                                table)
+            fs[f] = table["name"]
+
+        for f in as_completed(fs):
+            exc = f.exception()
+            if exc:
+                logger.error(f"{fs[f]}: failed ({exc})")
+                num_errors += 1
+            else:
+                logger.info(f"{fs[f]}: done")
+
+    if num_errors:
+        raise RuntimeError(f"{num_errors} table(s) were not copied")
+
+    owner = user_dst.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user_dst, dsn))
+    cur = con.cursor()
+    cur.execute("UPDATE {}.CV_DATABASE SET IS_READY = 'Y'".format(owner))
+    con.commit()
+    cur.close()
+    con.close()
 
 
 def _get_tasks(**kwargs):
@@ -343,9 +375,16 @@ def _get_tasks(**kwargs):
                         job_tmpdir="/scratch/", job_queue=queue),
             scheduler=dict(queue=queue, cpu=2, mem=2000, scratch=5000),
             requires=["signatures-proteins"]
+        ),
+        Task(
+            name="copy",
+            fn=copy_schema,
+            args=(user1, user2, dsn),
+            scheduler=dict(queue=queue, mem=500),
+            requires=["compare", "index"]
         )
 
-        # todo: add report and copy tasks
+        # todo: add report task
     ]
 
 

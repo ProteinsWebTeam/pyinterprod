@@ -11,6 +11,69 @@ from . import logger
 INSERT_SIZE = 100000
 
 
+def copy_table(user_src: str, user_dst: str, dsn: str, table: dict):
+    owner_src = user_src.split('/')[0]
+    owner_dst = user_dst.split('/')[0]
+
+    con = cx_Oracle.connect(make_connect_string(user_dst, dsn))
+    cur = con.cursor()
+
+    query = f"CREATE TABLE {owner_dst}.{table['name']}"
+    if table["partitions"]:
+        column = table["partitions"][0]["column"]
+        partitions = []
+        for p in table["partitions"]:
+            partitions.append(f"PARTITION {p['name']} VALUES ({p['value']})")
+
+        query += f" PARTITION BY LIST ({column}) ({','.join(partitions)})"
+
+    query += f" NOLOGGING AS SELECT * FROM {owner_src}.{table['name']}"
+    cur.execute(query)
+
+    for idx in table["indexes"]:
+        columns = ','.join([
+            f"{col['name']} {col['order']}"
+            for col in idx["columns"]
+        ])
+
+        query = f"""
+            CREATE {'UNIQUE' if idx['is_unique'] else ''} INDEX {idx['name']} 
+            ON {owner_dst}.{table['name']} ({columns})
+            {'LOGGING' if idx['logging'] else 'NOLOGGING'}
+        """
+        cur.execute(query)
+
+    for c in table["constraints"]:
+        if c["type"] == 'C':
+            c_type = "CHECK"
+            c_check = c["condition"]
+        elif c["type"] == 'P':
+            c_type = "PRIMARY KEY"
+            c_check = ", ".join([col["name"] for col in c["columns"]])
+        elif c["type"] == 'U':
+            c_type = "UNIQUE"
+            c_check = ", ".join([col["name"] for col in c["columns"]])
+        else:
+            continue
+
+        query = f"""
+            ALTER TABLE {owner_dst}.{table['name']}
+            ADD CONSTRAINT {c['name']} {c_type} ({c_check})
+        """
+
+        if c["index_name"]:
+            query += f"USING INDEX {c['index_name']}"
+
+        cur.execute(query)
+
+    for privilege, grantee in table["grants"]:
+        grant(cur, owner_dst, table["name"], privilege, grantee)
+
+    gather_stats(cur, owner_dst, table["name"])
+    cur.close()
+    con.close()
+
+
 def clear_schema(user: str, dsn: str):
     con = cx_Oracle.connect(make_connect_string(user, dsn))
     cur = con.cursor()
