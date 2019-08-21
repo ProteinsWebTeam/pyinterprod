@@ -44,7 +44,7 @@ def copy_table(user_src: str, user_dst: str, dsn: str, table: dict):
         cur.execute(query)
 
     for c in table["constraints"]:
-        if c["type"] == 'C':
+        if c["type"] == 'C' and not c["condition"].endswith("IS NOT NULL"):
             c_type = "CHECK"
             c_check = c["condition"]
         elif c["type"] == 'P':
