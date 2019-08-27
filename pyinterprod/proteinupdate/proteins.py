@@ -191,7 +191,7 @@ def _diff_databases(url: str, database_old: str, database_new: str):
     row2 = next(it2)
     is_alive1 = is_alive2 = True
 
-    while is_alive1 and is_alive2:
+    while is_alive1 or is_alive2:
         """
         row:
             - accession (str)
