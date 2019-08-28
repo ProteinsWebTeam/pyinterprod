@@ -227,6 +227,10 @@ def report_description_changes(user: str, dsn: str, dst: str):
 
 def copy_schema(user_src: str, user_dst: str, dsn: str,
                 max_workers: Optional[int]=None):
+    if user_src == user_dst:
+        logger.warning("identical source and target schemas")
+        return
+
     owner = user_src.split('/')[0]
 
     con = cx_Oracle.connect(orautils.make_connect_string(user_src, dsn))
