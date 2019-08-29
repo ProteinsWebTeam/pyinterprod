@@ -13,7 +13,7 @@ from mundone import Task
 from .. import logger, orautils
 from .utils import merge_comparators, Kvdb, PersistentBuffer
 
-JACCARD_THRESHOLD = 0.5
+
 PROGRESS_SECONDS = 3600
 
 
@@ -96,9 +96,12 @@ def _process(kvdb: Kvdb, start: str, stop: str, task_queue: Queue,
             intersections = {}
             for acc_2, values_2 in kvdb.range(start, stop):
                 if acc_1 < acc_2:
-                    intersections[acc_2] = len(values_1 & values_2)
+                    intersection = len(values_1 & values_2)
+                    if intersection:
+                        intersections[acc_2] = intersection
 
-            buffer.add((acc_1, intersections))
+            if intersections:
+                buffer.add((acc_1, intersections))
 
     done_queue.put(buffer)
 
@@ -154,8 +157,7 @@ def _calc_similarities(buffer: PersistentBuffer, counts: Dict[str, int],
             #       --> larger values indicate more of A lying in B
             ct1 = intersect / cnt1
             ct2 = intersect / cnt2
-            if any([sim >= JACCARD_THRESHOLD for sim in (idx, ct1, ct2)]):
-                val[acc2] = (idx, ct1, ct2)
+            val[acc2] = (idx, ct1, ct2)
 
         if val:
             results[acc1] = val
