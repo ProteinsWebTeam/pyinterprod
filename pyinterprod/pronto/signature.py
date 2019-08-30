@@ -3,13 +3,13 @@
 import os
 import pickle
 from multiprocessing import Process, Queue
-from typing import Optional
+from typing import List, Optional
 
 import cx_Oracle
 
 from .. import logger, orautils
-from . import prediction, protein
-from .utils import merge_organizers
+from . import protein
+from .utils import merge_organizers, MatchComparator
 
 
 def load_matches(user: str, dsn: str):
@@ -306,11 +306,90 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     logger.info("proteins: {:,}".format(num_proteins))
 
-    prediction.load_comparators(user, dsn, comparators)
+    _load_comparators(user, dsn, comparators)
     _create_method_term(user, dsn, terms)
     _create_method_desc(user, dsn, names)
     _create_method_taxa(user, dsn, taxa)
     logger.info(f"disk usage: {size/1024**2:.0f}MB")
+
+
+def _load_comparators(user: str, dsn: str, comparators: List[MatchComparator]):
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    orautils.drop_table(cur, owner, "METHOD_OVERLAP", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE {}.METHOD_OVERLAP
+        (
+            METHOD_AC1 VARCHAR2(25) NOT NULL,
+            PROT_COUNT1 NUMBER(*) NOT NULL,
+            RES_COUNT1 NUMBER(*) NOT NULL,
+            METHOD_AC2 VARCHAR2(25) NOT NULL,
+            PROT_COUNT2 NUMBER(*) NOT NULL,
+            RES_COUNT2 NUMBER(*) NOT NULL,
+            COLL_COUNT NUMBER(*) NOT NULL,
+            PROT_OVER_COUNT NUMBER(*) NOT NULL,
+            RES_OVER_COUNT NUMBER(*) NOT NULL
+        ) NOLOGGING
+        """.format(owner)
+    )
+    cur.close()
+
+    signatures = {}
+    comparisons = {}
+    for c in comparators:
+        for acc_1, val, _comparisons in c:
+            if acc_1 in signatures:
+                for i, v in enumerate(val):
+                    signatures[acc_1][i] += v
+
+                for acc_2, val in _comparisons.items():
+                    if acc_2 in comparisons[acc_1]:
+                        for i, v in enumerate(val):
+                            comparisons[acc_1][acc_2][i] += v
+                    else:
+                        comparisons[acc_1][acc_2] = val
+            else:
+                signatures[acc_1] = val
+                comparisons[acc_1] = _comparisons
+
+        c.remove()
+
+    num_full_sequences = {}
+    table = orautils.TablePopulator(
+        con=con,
+        query="""
+                INSERT /*+ APPEND */ INTO {}.METHOD_OVERLAP
+                VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9)
+            """.format(owner),
+        autocommit=True
+    )
+
+    for acc_1 in comparisons:
+        n_prot1, n_res1 = signatures[acc_1]
+        num_full_sequences[acc_1] = n_prot1
+        for acc_2 in comparisons[acc_1]:
+            n_col, n_prot_over, n_res_over = comparisons[acc_1][acc_2]
+            n_prot2, n_res2 = signatures[acc_2]
+            table.insert((acc_1, n_prot1, n_res1, acc_2, n_prot2, n_res2,
+                          n_col, n_prot_over, n_res_over))
+    table.close()
+
+    table = orautils.TablePopulator(
+        con=con,
+        query="""
+                UPDATE {}.METHOD
+                SET FULL_SEQ_COUNT = :1
+                WHERE METHOD_AC = :2
+            """.format(owner),
+        autocommit=True
+    )
+    for acc, n in num_full_sequences.items():
+        table.update((n, acc))
+    table.close()
+    con.commit()
+    con.close()
 
 
 def _create_method_desc(user: str, dsn: str, organizers: list):

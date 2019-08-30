@@ -11,82 +11,67 @@ import cx_Oracle
 from mundone import Task
 
 from .. import logger, orautils
-from .utils import merge_comparators, Kvdb, PersistentBuffer
+from .utils import Kvdb, PersistentBuffer as Buffer
 
 
 PROGRESS_SECONDS = 3600
+SIMILARITY_THRESHOLD = 0.75
 
 
-def load_comparators(user: str, dsn: str, comparators: list):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    orautils.drop_table(cur, owner, "METHOD_SIMILARITY", purge=True)
-    cur.execute(
-        """
-        CREATE TABLE {}.METHOD_SIMILARITY
-        (
-            METHOD_AC1 VARCHAR2(25) NOT NULL,
-            METHOD_AC2 VARCHAR2(25) NOT NULL,
-            COLL_COUNT NUMBER(*) DEFAULT NULL,
-            COLL_INDEX BINARY_DOUBLE DEFAULT NULL,
-            COLL_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            COLL_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            POVR_COUNT NUMBER(*) DEFAULT NULL,
-            POVR_INDEX BINARY_DOUBLE DEFAULT NULL,
-            POVR_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            POVR_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            ROVR_INDEX BINARY_DOUBLE DEFAULT NULL,
-            ROVR_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            ROVR_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            DESC_INDEX BINARY_DOUBLE DEFAULT NULL,
-            DESC_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            DESC_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            TAXA_INDEX BINARY_DOUBLE DEFAULT NULL,
-            TAXA_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            TAXA_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            TERM_INDEX BINARY_DOUBLE DEFAULT NULL,
-            TERM_CONT1 BINARY_DOUBLE DEFAULT NULL,
-            TERM_CONT2 BINARY_DOUBLE DEFAULT NULL,
-            CONSTRAINT PK_METHOD_SIMILARITY PRIMARY KEY (METHOD_AC1, METHOD_AC2)
-        ) NOLOGGING
-        """.format(owner)
-    )
-    cur.close()
+def _compare_chunk(database: str, start1: str, stop1: str, start2: str,
+                   stop2: str, dst: str, tmpdir: Optional[str]):
+    fd, _database = mkstemp(dir=tmpdir)
+    os.close(fd)
+    os.remove(_database)
+    shutil.copy(database, _database)
 
-    similarities, num_full_sequences = merge_comparators(comparators)
-    table = orautils.TablePopulator(
-        con=con,
-        query="""
-                INSERT /*+ APPEND */ INTO {}.METHOD_SIMILARITY (
-                  METHOD_AC1, METHOD_AC2, 
-                  COLL_COUNT, COLL_INDEX, COLL_CONT1, COLL_CONT2, 
-                  POVR_COUNT, POVR_INDEX, POVR_CONT1, POVR_CONT2,
-                  ROVR_INDEX, ROVR_CONT1, ROVR_CONT2
-                )
-                VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13)
-            """.format(owner),
-        autocommit=True
-    )
-    for acc1 in similarities:
-        for acc2, values in similarities[acc1].items():
-            table.insert((acc1, acc2) + values)
-    table.close()
+    counts = {}
+    with Buffer(dir=tmpdir) as tmp, Buffer(filepath=dst) as buffer:
+        with Kvdb(_database) as kvdb:
+            for acc_1, values_1 in kvdb.range(start1, stop1):
+                counts[acc_1] = len(values_1)
+                intersections = {}
 
-    table = orautils.TablePopulator(
-        con=con,
-        query="""
-                UPDATE {}.METHOD
-                SET FULL_SEQ_COUNT = :1
-                WHERE METHOD_AC = :2
-            """.format(owner),
-        autocommit=True
-    )
-    for acc, n in num_full_sequences.items():
-        table.update((n, acc))
-    table.close()
-    con.commit()
-    con.close()
+                for acc_2, values_2 in kvdb.range(start2, stop2):
+                    if acc_1 == acc_2:
+                        continue  # skip diagonal
+
+                    intersection = len(values_1 & values_2)
+                    if intersection:
+                        intersections[acc_2] = intersection
+
+                if intersections:
+                    tmp.add((acc_1, intersections))
+
+            if start1 != start2:
+                for acc_1, values_1 in kvdb.range(start2, stop2):
+                    counts[acc_1] = len(values_1)
+
+        size = kvdb.size + tmp.size
+        kvdb.remove()
+
+        for acc_1, intersections in tmp:
+            cnt_1 = counts[acc_1]
+            similarities = {}
+
+            for acc_2, intersection in intersections.items():
+                cnt_2 = counts[acc_2]
+
+                # J(A, B) = intersection(A, B) / union(A, B)
+                idx = intersection / (cnt_1 + cnt_2 - intersection)
+
+                # C(A, B) = intersection(A, B) / size(A)
+                #       --> larger values indicate more of A lying in B
+                ct1 = intersection / cnt_1
+                ct2 = intersection / cnt_2
+
+                similarities[acc_2] = (idx, ct1, ct2)
+
+            buffer.add((acc_1, similarities))
+
+        tmp.remove()
+
+    logger.info(f"disk usage: {size/1024**2:.0f}MB")
 
 
 def _process(kvdb: Kvdb, start: str, stop: str, task_queue: Queue,
@@ -271,18 +256,14 @@ def _chunk_jobs(cur: cx_Oracle.Cursor, schema: str, chunk_size: int):
 
         chunks.append((start, stop))
 
-    jobs = []
     for i, (row_start, row_stop) in enumerate(chunks):
         for col_start, col_stop in chunks[i:]:
-            jobs.append((row_start, row_stop, col_start, col_stop))
-
-    return jobs
+            yield row_start, row_stop, col_start, col_stop
 
 
 def _run_comparisons(user: str, dsn: str, query: str, column: str,
-                     outdir: str, chunk_size: int, max_jobs: int,
-                     job_processes: int, job_tmpdir: Optional[str],
-                     job_queue: Optional[str]):
+                     outdir: str, chunk_size: int, job_processes: int,
+                     job_tmpdir: Optional[str], job_queue: Optional[str]):
     os.makedirs(job_tmpdir, exist_ok=True)
     fd, kvdb_tmp = mkstemp(suffix=".db", dir=job_tmpdir)
     os.close(fd)
@@ -310,47 +291,29 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                      args=(user, dsn, column, queue))
     loader.start()
 
+    # Submit all jobs at once
     logger.info(f"{column}: comparing")
-    pending = _chunk_jobs(cur, owner, chunk_size)
+    running = []
+    submitted = 0
+    for start1, stop1, start2, stop2 in _chunk_jobs(cur, owner, chunk_size):
+        t = Task(
+            name=f"pronto-cmp-{submitted}",
+            fn=_compare,
+            args=(kvdb_path, start1, stop1, start2, stop2,
+                  outdir, job_processes, job_tmpdir),
+            scheduler=dict(queue=job_queue, cpu=job_processes,
+                           mem=4000, scratch=5000)
+        )
+        t.run(workdir=outdir)
+        running.append(t)
+        submitted += 1
+
     cur.close()
     con.close()
 
-    running = []
-    submitted = 0
     done = 0
     failed = 0
-    while pending or running:
-        if max_jobs and pending:
-            for _ in range(max_jobs - len(running)):
-                # Can submit a new job
-                row_start, row_stop, col_start, col_stop = pending.pop()
-                t = Task(
-                    name=f"pronto-cmp-{submitted}",
-                    fn=_compare,
-                    args=(kvdb_path, row_start, row_stop, col_start, col_stop,
-                          outdir, job_processes, job_tmpdir),
-                    scheduler=dict(queue=job_queue, cpu=job_processes,
-                                   mem=4000, scratch=5000)
-                )
-                t.run(workdir=outdir)
-                running.append(t)
-                submitted += 1
-        elif pending:
-            # Submit all jobs at once
-            for row_start, row_stop, col_start, col_stop in pending:
-                t = Task(
-                    name=f"pronto-cmp-{submitted}",
-                    fn=_compare,
-                    args=(kvdb_path, row_start, row_stop, col_start, col_stop,
-                          outdir, job_processes, job_tmpdir),
-                    scheduler=dict(queue=job_queue, cpu=job_processes,
-                                   mem=4000, scratch=5000)
-                )
-                t.run(workdir=outdir)
-                running.append(t)
-                submitted += 1
-            pending = []
-
+    while running:
         # Check completed tasks
         _running = []
         for task in running:
@@ -361,7 +324,6 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
                     queue.put(task.output.read())
                     done += 1
                 else:
-                    pending = []  # cancel pending tasks
                     failed += 1
             else:
                 _running.append(task)
@@ -379,9 +341,12 @@ def _run_comparisons(user: str, dsn: str, query: str, column: str,
     logger.info(f"{column}: complete")
 
 
+def _predict(user: str, dsn: str, queue: str, num_producers: int):
+
+
+
 def cmp_descriptions(user: str, dsn: str, outdir: str, chunk_size: int=10000,
-                     max_jobs: int=0, job_processes: int=8,
-                     job_tmpdir: Optional[str]=None,
+                     job_processes: int=8, job_tmpdir: Optional[str]=None,
                      job_queue: Optional[str]=None):
     query = """
         SELECT METHOD_AC, DESC_ID
@@ -394,12 +359,11 @@ def cmp_descriptions(user: str, dsn: str, outdir: str, chunk_size: int=10000,
         ORDER BY METHOD_AC
     """.format(user.split('/')[0])
     _run_comparisons(user, dsn, query, "DESC", outdir, chunk_size,
-                     max_jobs, job_processes, job_tmpdir, job_queue)
+                     job_processes, job_tmpdir, job_queue)
 
 
 def cmp_taxa(user: str, dsn: str, outdir: str, chunk_size: int=10000,
-             max_jobs: int=0, job_processes: int=8,
-             job_tmpdir: Optional[str]=None,
+             job_processes: int=8, job_tmpdir: Optional[str]=None,
              job_queue: Optional[str]=None):
     query = """
         SELECT METHOD_AC, TAX_ID
@@ -407,12 +371,11 @@ def cmp_taxa(user: str, dsn: str, outdir: str, chunk_size: int=10000,
         ORDER BY METHOD_AC
     """.format(user.split('/')[0])
     _run_comparisons(user, dsn, query, "TAXA", outdir, chunk_size,
-                     max_jobs, job_processes, job_tmpdir, job_queue)
+                     job_processes, job_tmpdir, job_queue)
 
 
 def cmp_terms(user: str, dsn: str, outdir: str, chunk_size: int=10000,
-              max_jobs: int=0, job_processes: int=8,
-              job_tmpdir: Optional[str]=None,
+              job_processes: int=8, job_tmpdir: Optional[str]=None,
               job_queue: Optional[str]=None):
     query = """
         SELECT METHOD_AC, GO_ID
@@ -428,20 +391,150 @@ def cmp_terms(user: str, dsn: str, outdir: str, chunk_size: int=10000,
         ORDER BY METHOD_AC
     """.format(user.split('/')[0])
     _run_comparisons(user, dsn, query, "TERM", outdir, chunk_size,
-                     max_jobs, job_processes, job_tmpdir, job_queue)
+                     job_processes, job_tmpdir, job_queue)
+
+
+def _compare_signatures(user: str, dsn: str, query: str, source: str,
+                        outdir: str, queue: Queue, chunk_size: int,
+                        tmpdir: Optional[str], job_queue: Optional[str]):
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+
+    # Export signatures to local database
+    fd, database = mkstemp(suffix=".db", dir=tmpdir)
+    os.close(fd)
+    os.remove(database)
+    with Kvdb(database, insertonly=True) as kvdb:
+        cur.execute(query)
+        values = set()
+        _acc = None
+        for acc, val in cur:
+            if acc != _acc:
+                if _acc:
+                    kvdb[_acc] = values
+
+                _acc = acc
+                values.clear()
+
+            values.add(val)
+
+        if _acc:
+            kvdb[_acc] = values
+            values.clear()
+
+    # Move database
+    dst = os.path.join(outdir, os.path.basename(database))
+    try:
+        os.remove(dst)
+    except FileNotFoundError:
+        pass
+    finally:
+        shutil.move(database, dst)
+        database = dst
+
+    # Submit all jobs
+    owner = user.split('/')[0]
+    tasks = {}
+    for start1, stop1, start2, stop2 in _chunk_jobs(cur, owner, chunk_size):
+        fd, filepath = mkstemp(dir=outdir)
+        os.close(fd)
+        t = Task(
+            fn=_compare_chunk,
+            args=(database, start1, stop1, start2, stop2, filepath, tmpdir),
+            scheduler=dict(queue=job_queue, mem=4000)
+        )
+        t.run(workdir=outdir)
+        tasks[t] = (start1, start2, filepath)
+
+    cur.close()
+    con.close()
+    running = len(tasks)
+    while running:
+        for t in tasks:
+            if t.done():
+                logger.debug(f"{task.stdout}\n{task.stderr}")
+                running -= 1
+                if t.successful():
+                    start1, start2, filepath = tasks[t]
+                    queue.put(((start1, start2), source, filepath))
+
+        time.sleep(10)
+
+    queue.put(None)
 
 
 def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
-            max_jobs: int=0, job_processes: int=8,
             job_tmpdir: Optional[str]=None, job_queue: Optional[str]=None):
-    cmp_terms(user, dsn, outdir, chunk_size, max_jobs,
-              job_processes, job_tmpdir, job_queue)
+    os.makedirs(outdir, exist_ok=True)
+    if job_tmpdir:
+        os.makedirs(job_tmpdir, exist_ok=True)
 
-    cmp_descriptions(user, dsn, outdir, chunk_size, max_jobs,
-                     job_processes, job_tmpdir, job_queue)
+    queue = Queue()
 
-    cmp_taxa(user, dsn, outdir, chunk_size, max_jobs,
-             job_processes, job_tmpdir, job_queue)
+    owner = user.split('/')[0]
+    producers = []
+    query = f"""
+        SELECT METHOD_AC, DESC_ID
+        FROM {owner}.METHOD_DESC
+        WHERE DESC_ID NOT IN (
+          SELECT DESC_ID
+          FROM {owner}.DESC_VALUE
+          WHERE TEXT IN ('Uncharacterized protein', 'Predicted protein')
+        )
+        ORDER BY METHOD_AC
+    """
+    producers.append(Process(target=_compare_signatures,
+                             args=(user, dsn, query, "desc", outdir, queue,
+                                   chunk_size, job_tmpdir, job_queue)))
+
+    query = f"""
+        SELECT METHOD_AC, TAX_ID
+        FROM {owner}.METHOD_TAXA
+        ORDER BY METHOD_AC
+    """
+    producers.append(Process(target=_compare_signatures,
+                             args=(user, dsn, query, "taxa", outdir, queue,
+                                   chunk_size, job_tmpdir, job_queue)))
+
+    query = f"""
+        SELECT METHOD_AC, GO_ID
+        FROM {owner}.METHOD_TERM
+        WHERE GO_ID NOT IN (
+          SELECT GO_ID
+          FROM {owner}.TERM
+          WHERE NAME IN (
+            'protein binding', 'molecular_function', 'biological_process',
+            'cellular_component'
+          )
+        )
+        ORDER BY METHOD_AC
+    """
+    producers.append(Process(target=_compare_signatures,
+                             args=(user, dsn, query, "term", outdir, queue,
+                                   chunk_size, job_tmpdir, job_queue)))
+
+    for p in producers:
+        p.start()
+
+    running = len(producers)
+    chunks = {}
+    while running:
+        for key, source, filepath in iter(queue.get, None):
+            if key in chunks:
+                pass
+            else:
+                chunks[key] = {
+                    "desc": None,
+                    "taxa": None,
+                    "term": None
+                }
+
+        running -= 1
+
+    for p in producers:
+        p.join()
+
+    return
 
     logger.info("indexing/anayzing METHOD_SIMILARITY")
     owner = user.split('/')[0]

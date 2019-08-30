@@ -414,76 +414,6 @@ class Kvdb(object):
         os.remove(self.filepath)
 
 
-def merge_comparators(comparators: Iterable[MatchComparator]):
-    signatures = {}
-    comparisons = {}
-    for c in comparators:
-        for acc_1, val, _comparisons in c:
-            if acc_1 in signatures:
-                for i, v in enumerate(val):
-                    signatures[acc_1][i] += v
-
-                for acc_2, val in _comparisons.items():
-                    if acc_2 in comparisons[acc_1]:
-                        for i, v in enumerate(val):
-                            comparisons[acc_1][acc_2][i] += v
-                    else:
-                        comparisons[acc_1][acc_2] = val
-            else:
-                signatures[acc_1] = val
-                comparisons[acc_1] = _comparisons
-
-        c.remove()
-
-    num_full_sequences = {}
-    similarities = {}
-    for acc_1 in comparisons:
-        n_prot1, n_res1 = signatures[acc_1]
-        num_full_sequences[acc_1] = n_prot1
-        similarities[acc_1] = {}
-        for acc_2 in comparisons[acc_1]:
-            n_col, n_prot_over, n_res_over = comparisons[acc_1][acc_2]
-            n_prot2, n_res2 = signatures[acc_2]
-
-            similarities[acc_1][acc_2] = (
-                # Collocation
-                n_col,
-                n_col / (n_prot1 + n_prot2 - n_col),
-                n_col / n_prot1,
-                n_col / n_prot2,
-                # Protein overlap
-                n_prot_over,
-                n_prot_over / (n_prot1 + n_prot2 - n_prot_over),
-                n_prot_over / n_prot1,
-                n_prot_over / n_prot2,
-                # Residue overlap
-                n_res_over / (n_res1 + n_res2 - n_res_over),
-                n_res_over / n_res1,
-                n_res_over / n_res2
-            )
-
-    return similarities, num_full_sequences
-
-
-def merge_kvdbs(iterable: Iterable[Kvdb]):
-    items = []
-    _key = None
-    for key, value in heapq.merge(*iterable, key=lambda x: x[0]):
-        if key != _key:
-            if _key is not None:
-                yield _key, items
-            _key = key
-            items = []
-
-        items.append(value)
-
-    if _key is not None:
-        yield _key, items
-
-    for kvdb in iterable:
-        kvdb.remove()
-
-
 def merge_organizers(iterable: Iterable[Organizer]):
     _key = None
     items = []
@@ -504,10 +434,15 @@ def merge_organizers(iterable: Iterable[Organizer]):
 
 
 class PersistentBuffer(object):
-    def __init__(self, dir: Optional[str]=None, compresslevel: int=COMPRESS_LVL):
-        fd, self.filename = mkstemp(dir=dir)
-        os.close(fd)
-        self.fh = gzip.open(self.filename, "wb", compresslevel)
+    def __init__(self, filepath: Optional[str]=None,
+                 dir: Optional[str]=None, compresslevel: int=COMPRESS_LVL):
+        if filepath:
+            self.filepath = filepath
+            self.fh = None
+        else:
+            fd, self.filepath = mkstemp(dir=dir)
+            os.close(fd)
+            self.fh = gzip.open(self.filepath, "wb", compresslevel)
 
     def __del__(self):
         self.close()
@@ -520,7 +455,7 @@ class PersistentBuffer(object):
 
     def __iter__(self):
         self.close()
-        with gzip.open(self.filename, "rb") as fh:
+        with gzip.open(self.filepath, "rb") as fh:
             while True:
                 try:
                     obj = pickle.load(fh)
@@ -535,13 +470,13 @@ class PersistentBuffer(object):
     @property
     def size(self) -> int:
         try:
-            return os.path.getsize(self.filename)
+            return os.path.getsize(self.filepath)
         except FileNotFoundError:
             return 0
 
     def remove(self):
         try:
-            os.remove(self.filename)
+            os.remove(self.filepath)
         except FileNotFoundError:
             pass
 
@@ -550,7 +485,3 @@ class PersistentBuffer(object):
             return
         self.fh.close()
         self.fh = None
-
-
-def merge_buffers(iterable: Iterable[PersistentBuffer]):
-    return heapq.merge(*iterable, key=lambda x: x[0])
