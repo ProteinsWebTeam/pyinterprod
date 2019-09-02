@@ -402,7 +402,6 @@ def _load_comparators(user: str, dsn: str, comparators: List[MatchComparator]):
 
 
 def _create_method_desc(user: str, dsn: str, organizers: list):
-    logger.info("creating METHOD_DESC")
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -455,7 +454,6 @@ def _create_method_desc(user: str, dsn: str, organizers: list):
     table.close()
     cur = con.cursor()
     orautils.grant(cur, owner, "METHOD_DESC", "SELECT", "INTERPRO_SELECT")
-    orautils.gather_stats(cur, owner, "METHOD_DESC")
     cur.execute(
         """
         CREATE INDEX I_METHOD_DESC
@@ -468,7 +466,6 @@ def _create_method_desc(user: str, dsn: str, organizers: list):
 
 
 def _create_method_taxa(user: str, dsn: str, organizers: list):
-    logger.info("creating METHOD_TAXA")
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -529,7 +526,6 @@ def _create_method_taxa(user: str, dsn: str, organizers: list):
     table.close()
     cur = con.cursor()
     orautils.grant(cur, owner, "METHOD_TAXA", "SELECT", "INTERPRO_SELECT")
-    orautils.gather_stats(cur, owner, "METHOD_TAXA")
     cur.execute(
         """
         CREATE INDEX I_METHOD_TAXA
@@ -542,7 +538,6 @@ def _create_method_taxa(user: str, dsn: str, organizers: list):
 
 
 def _create_method_term(user: str, dsn: str, organizers: list):
-    logger.info("creating METHOD_TERM")
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
@@ -578,7 +573,6 @@ def _create_method_term(user: str, dsn: str, organizers: list):
     table.close()
     cur = con.cursor()
     orautils.grant(cur, owner, "METHOD_TERM", "SELECT", "INTERPRO_SELECT")
-    orautils.gather_stats(cur, owner, "METHOD_TERM")
     cur.execute(
         """
         CREATE INDEX I_METHOD_TERM
