@@ -434,15 +434,14 @@ def merge_organizers(iterable: Iterable[Organizer]):
 
 
 class PersistentBuffer(object):
-    def __init__(self, filepath: Optional[str]=None,
-                 dir: Optional[str]=None, compresslevel: int=COMPRESS_LVL):
+    def __init__(self, filepath: Optional[str]=None, dir: Optional[str]=None):
         if filepath:
             self.filepath = filepath
             self.fh = None
         else:
             fd, self.filepath = mkstemp(dir=dir)
             os.close(fd)
-            self.fh = gzip.open(self.filepath, "wb", compresslevel)
+            self.fh = gzip.open(self.filepath, "wb", COMPRESS_LVL)
 
     def __del__(self):
         self.close()
@@ -465,6 +464,9 @@ class PersistentBuffer(object):
                     yield obj
 
     def add(self, obj: Any):
+        if self.fh is None:
+            self.fh = gzip.open(self.filepath, "wb", COMPRESS_LVL)
+
         pickle.dump(obj, self.fh)
 
     @property

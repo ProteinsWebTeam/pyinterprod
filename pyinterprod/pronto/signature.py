@@ -376,6 +376,15 @@ def _load_comparators(user: str, dsn: str, comparators: List[MatchComparator]):
                           n_col, n_prot_over, n_res_over))
     table.close()
 
+    cur = con.cursor()
+    cur.execute(
+        f"""
+        CREATE UNIQUE INDEX PK_METHOD_OVERLAP
+        ON {owner}.METHOD_OVERLAP (METHOD_AC1, METHOD_AC2) NOLOGGING
+        """
+    )
+    cur.close()
+
     table = orautils.TablePopulator(
         con=con,
         query="""
