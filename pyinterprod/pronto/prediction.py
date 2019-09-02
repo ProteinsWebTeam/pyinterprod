@@ -158,7 +158,7 @@ def _compare_signatures(user: str, dsn: str, query: str, outdir: str,
                 start1, stop1, start2, stop2, filepath = tasks[t]
                 running -= 1
 
-                logger.debug(f"{task.stdout}\n{task.stderr}")
+                logger.debug(f"{t.stdout}\n{t.stderr}")
                 if t.successful():
                     queue.put((query, start1, stop1, start2, stop2, filepath))
                 else:
@@ -318,8 +318,8 @@ class Predictor(object):
         self.table = orautils.TablePopulator(self.con, query, autocommit=True)
 
         self.query = f"""
-            SELECT 
-              METHOD_AC1, METHOD_AC2, PROT_COUNT1, RES_COUNT1, PROT_COUNT2, 
+            SELECT
+              METHOD_AC1, METHOD_AC2, PROT_COUNT1, RES_COUNT1, PROT_COUNT2,
               RES_COUNT2, COLL_COUNT, PROT_OVER_COUNT, RES_OVER_COUNT
             FROM {owner}.METHOD_OVERLAP
             WHERE METHOD_AC1 BETWEEN :1 AND :2
