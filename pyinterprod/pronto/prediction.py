@@ -315,7 +315,6 @@ class Predictor(object):
                 PROT_COUNT2 NUMBER(*) NOT NULL,
                 COLL_COUNT NUMBER(*) NOT NULL,
                 PROT_OVER_COUNT NUMBER(*) NOT NULL,
-                COLL_SIM NUMBER(*) NOT NULL,
                 PROT_SIM NUMBER(*) NOT NULL,
                 PROT_PRED CHAR(1) NOT NULL,
                 RESI_PRED CHAR(1) NOT NULL,
@@ -354,9 +353,6 @@ class Predictor(object):
             res_cnt_2 = row[9]
             res_over_cnt = row[10]
 
-            # Collocation similarity
-            csim = coll_cnt / (prot_cnt_1 + prot_cnt_2 - coll_cnt)
-
             # Protein overlap similarity
             psim = prot_over_cnt / (prot_cnt_1 + prot_cnt_2 - prot_over_cnt)
             pct1 = prot_over_cnt / prot_cnt_1
@@ -373,7 +369,7 @@ class Predictor(object):
 
             # Protein/residue values to persist
             row = [acc_1, dbcode_1, acc_2, dbcode_2, prot_cnt_1, prot_cnt_2,
-                   coll_cnt, prot_over_cnt, csim, psim, ppred, rpred,
+                   coll_cnt, prot_over_cnt, psim, ppred, rpred,
                    None, None, None]
 
             try:
@@ -386,7 +382,7 @@ class Predictor(object):
             INSERT /*+ APPEND */ INTO {owner}.METHOD_SIMILARITY
             VALUES (
               :1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, 
-              :14, :15
+              :14
             )
         """
         self.table = orautils.TablePopulator(con, query, autocommit=True)
@@ -417,11 +413,11 @@ class Predictor(object):
     def put(self, chunk: Dict[str, str]):
         for source, filepath in chunk.items():
             if source == "desc":
-                i = 12
+                i = 11
             elif source == "taxa":
-                i = 13
+                i = 12
             else:
-                i = 14
+                i = 13
 
             with Buffer(filepath) as buffer:
                 for acc_1, similarities in buffer:
