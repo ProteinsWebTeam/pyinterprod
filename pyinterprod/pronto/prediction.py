@@ -308,11 +308,15 @@ class Predictor(object):
             CREATE TABLE {owner}.METHOD_SIMILARITY
             (
                 METHOD_AC1 VARCHAR2(25) NOT NULL,
+                DBCODE1 CHAR(1) NOT NULL,
                 METHOD_AC2 VARCHAR2(25) NOT NULL,
+                DBCODE2 CHAR(1) NOT NULL,
                 PROT_COUNT1 NUMBER(*) NOT NULL,
                 PROT_COUNT2 NUMBER(*) NOT NULL,
                 COLL_COUNT NUMBER(*) NOT NULL,
                 PROT_OVER_COUNT NUMBER(*) NOT NULL,
+                COLL_SIM NUMBER(*) NOT NULL,
+                PROT_SIM NUMBER(*) NOT NULL,
                 PROT_PRED CHAR(1) NOT NULL,
                 RESI_PRED CHAR(1) NOT NULL,
                 DESC_PRED CHAR(1),
@@ -325,47 +329,65 @@ class Predictor(object):
         cur.execute(
             f"""
             SELECT
-              METHOD_AC1, METHOD_AC2, PROT_COUNT1, RES_COUNT1, PROT_COUNT2,
-              RES_COUNT2, COLL_COUNT, PROT_OVER_COUNT, RES_OVER_COUNT
-            FROM {owner}.METHOD_OVERLAP
+              MS.METHOD_AC1, M1.DBCODE, 
+              MS.METHOD_AC2, M2.DBCODE, 
+              MS.PROT_COUNT1, MS.PROT_COUNT2, MS.COLL_COUNT, MS.PROT_OVER_COUNT,
+              MS.RES_COUNT1, MS.RES_COUNT2, MS.RES_OVER_COUNT
+            FROM {owner}.METHOD_OVERLAP MS
+            INNER JOIN {owner}.METHOD M1 
+              ON MS.METHOD_AC1 = M1.METHOD_AC
+            INNER JOIN {owner}.METHOD M2 
+              ON MS.METHOD_AC2 = M2.METHOD_AC
             """
         )
-        self.predictions = {}
+        self.rows = {}
         for row in cur:
             acc_1 = row[0]
-            acc_2 = row[1]
-            prot_cnt_1 = row[2]
-            res_cnt_1 = row[3]
-            prot_cnt_2 = row[4]
-            res_cnt_2 = row[5]
+            dbcode_1 = row[1]
+            acc_2 = row[2]
+            dbcode_2 = row[3]
+            prot_cnt_1 = row[4]
+            prot_cnt_2 = row[5]
             coll_cnt = row[6]
             prot_over_cnt = row[7]
-            res_over_cnt = row[8]
+            res_cnt_1 = row[8]
+            res_cnt_2 = row[9]
+            res_over_cnt = row[10]
 
-            # Protein similarity
+            # Collocation similarity
+            csim = coll_cnt / (prot_cnt_1 + prot_cnt_2 - coll_cnt)
+
+            # Protein overlap similarity
             psim = prot_over_cnt / (prot_cnt_1 + prot_cnt_2 - prot_over_cnt)
             pct1 = prot_over_cnt / prot_cnt_1
             pct2 = prot_over_cnt / prot_cnt_2
 
-            # Residue similarity
+            # Residue overlap similarity
             rsim = res_over_cnt / (res_cnt_1 + res_cnt_2 - res_over_cnt)
             rct1 = res_over_cnt / res_cnt_1
             rct2 = res_over_cnt / res_cnt_2
 
+            # Protein/residue predictions
+            ppred = self.predict(psim, pct1, pct2)
+            rpred = self.predict(rsim, rct1, rct2)
+
             # Protein/residue values to persist
-            obj = [prot_cnt_1, prot_cnt_2, coll_cnt, prot_over_cnt,
-                   self.predict(psim, pct1, pct2),
-                   self.predict(rsim, rct1, rct2)]
+            row = [acc_1, dbcode_1, acc_2, dbcode_2, prot_cnt_1, prot_cnt_2,
+                   coll_cnt, prot_over_cnt, csim, psim, ppred, rpred,
+                   None, None, None]
 
             try:
-                self.predictions[acc_1][acc_2] = obj
+                self.rows[acc_1][acc_2] = row
             except KeyError:
-                self.predictions[acc_1] = {acc_2: obj}
+                self.rows[acc_1] = {acc_2: row}
         cur.close()
 
         query = f"""
             INSERT /*+ APPEND */ INTO {owner}.METHOD_SIMILARITY
-            VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11)
+            VALUES (
+              :1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, 
+              :14, :15
+            )
         """
         self.table = orautils.TablePopulator(con, query, autocommit=True)
 
@@ -393,39 +415,28 @@ class Predictor(object):
         cur.close()
 
     def put(self, chunk: Dict[str, str]):
-        predictions = {}
         for source, filepath in chunk.items():
             if source == "desc":
-                i = 8
+                i = 12
             elif source == "taxa":
-                i = 9
+                i = 13
             else:
-                i = 10
+                i = 14
 
             with Buffer(filepath) as buffer:
                 for acc_1, similarities in buffer:
                     for acc_2, (sim, ct1, ct2) in similarities.items():
                         try:
-                            obj = self.predictions[acc_1][acc_2]
+                            row = self.rows[acc_1][acc_2]
                         except KeyError:
                             continue  # not a single common protein: skip
-
-                        if acc_1 in predictions:
-                            try:
-                                row = predictions[acc_1][acc_2]
-                            except KeyError:
-                                row = [acc_1, acc_2] + obj + [None, None, None]
-                                predictions[acc_1][acc_2] = row
                         else:
-                            row = [acc_1, acc_2] + obj + [None, None, None]
-                            predictions[acc_1] = {acc_2: row}
-
-                        row[i] = self.predict(sim, ct1, ct2)
+                            row[i] = self.predict(sim, ct1, ct2)
 
                 buffer.remove()
 
-        for acc_1 in predictions:
-            for acc_2, row in predictions[acc_1].items():
+        for acc_1 in self.rows:
+            for acc_2, row in self.rows[acc_1].items():
                 self.table.insert(tuple(row))
 
     @staticmethod
