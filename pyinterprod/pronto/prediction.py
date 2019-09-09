@@ -209,7 +209,7 @@ def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
     if job_tmpdir:
         os.makedirs(job_tmpdir, exist_ok=True)
 
-    queue = Queue()
+    cmp_queue = Queue()
 
     owner = user.split('/')[0]
     producers = []
@@ -226,7 +226,7 @@ def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
     """
     sources[query] = "desc"
     producers.append(Process(target=compare_signatures,
-                             args=(user, dsn, query, outdir, queue,
+                             args=(user, dsn, query, outdir, cmp_queue,
                                    chunk_size, job_tmpdir, job_queue)))
 
     query = f"""
@@ -236,7 +236,7 @@ def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
     """
     sources[query] = "taxa"
     producers.append(Process(target=compare_signatures,
-                             args=(user, dsn, query, outdir, queue,
+                             args=(user, dsn, query, outdir, cmp_queue,
                                    chunk_size, job_tmpdir, job_queue)))
 
     query = f"""
@@ -254,19 +254,52 @@ def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
     """
     sources[query] = "terms"
     producers.append(Process(target=compare_signatures,
-                             args=(user, dsn, query, outdir, queue,
+                             args=(user, dsn, query, outdir, cmp_queue,
                                    chunk_size, job_tmpdir, job_queue)))
 
     for p in producers:
         p.start()
 
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    predictor = Predictor(con, owner)
+    cur = con.cursor()
+    orautils.drop_table(cur, owner, "METHOD_SIMILARITY", purge=True)
+    cur.execute(
+        f"""
+        CREATE TABLE {owner}.METHOD_SIMILARITY
+        (
+            METHOD_AC1 VARCHAR2(25) NOT NULL,
+            METHOD_AC2 VARCHAR2(25) NOT NULL,
+            DBCODE1 CHAR(1) NOT NULL,
+            DBCODE2 CHAR(1) NOT NULL,
+            PROT_COUNT1 NUMBER(*) NOT NULL,
+            PROT_COUNT2 NUMBER(*) NOT NULL,
+            COLL_COUNT NUMBER(*) NOT NULL,
+            PROT_OVER_COUNT NUMBER(*) NOT NULL,
+            PROT_SIM NUMBER(*) NOT NULL,
+            PROT_PRED CHAR(1),
+            RESI_PRED CHAR(1),
+            DESC_PRED CHAR(1),
+            TAXA_PRED CHAR(1),
+            TERM_PRED CHAR(1)
+        ) NOLOGGING
+        """
+    )
+    cur.close()
+    con.close()
+
+    chunk_queue = Queue()
+    loaders = []
+    for _ in range(4):
+        p = Process(target=load_similarities,
+                    args=(user, dsn, chunk_queue))
+        p.start()
+        loaders.append(p)
+
     running = len(producers)
     chunks = {}
     failed = 0
     while running:
-        for query, start1, start2, filepath in iter(queue.get, None):
+        for query, start1, start2, filepath in iter(cmp_queue.get, None):
             if query is None:
                 failed += 1
                 continue
@@ -279,174 +312,150 @@ def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
             chunks[key][source] = filepath
 
             if all(chunks[key].values()):
-                predictor.put(chunks.pop(key))
+                chunk_queue.put(chunks.pop(key))
 
         running -= 1
 
     for p in producers:
         p.join()
 
-    predictor.close()
+    for _ in loaders:
+        chunk_queue.put(None)
+
+    for p in loaders:
+        p.join()
 
     if failed:
-        con.close()
         raise RuntimeError(f"{failed} jobs failed")
 
-    predictor.index()
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    orautils.grant(cur, owner, "METHOD_SIMILARITY", "SELECT",
+                   "INTERPRO_SELECT")
+    cur.execute(
+        f"""
+        CREATE INDEX I_METHOD_SIMILARITY$AC1
+        ON {owner}.METHOD_SIMILARITY (METHOD_AC1) NOLOGGING
+        """
+    )
+    cur.execute(
+        f"""
+        CREATE INDEX I_METHOD_SIMILARITY$AC2
+        ON {owner}.METHOD_SIMILARITY (METHOD_AC2) NOLOGGING
+        """
+    )
+    cur.close()
     con.close()
 
 
-class Predictor(object):
-    def __init__(self, con: cx_Oracle.Connection, owner: str):
-        self.con = con
-        self.owner = owner
+def load_similarities(user: str, dsn: str, queue: Queue):
+    owner = user.split('/')[0]
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    get_query = f"""
+        SELECT
+          M1.DBCODE, M2.DBCODE, MS.PROT_COUNT1, MS.PROT_COUNT2, 
+          MS.COLL_COUNT, MS.PROT_OVER_COUNT,
+          MS.RES_COUNT1, MS.RES_COUNT2, MS.RES_OVER_COUNT
+        FROM {owner}.METHOD_OVERLAP MS
+        INNER JOIN {owner}.METHOD M1 
+          ON MS.METHOD_AC1 = M1.METHOD_AC
+        INNER JOIN {owner}.METHOD M2 
+          ON MS.METHOD_AC2 = M2.METHOD_AC
+        WHERE MS.METHOD_AC1 = :1 AND MS.METHOD_AC2 = :2
+        """
 
-        cur = con.cursor()
-        orautils.drop_table(cur, owner, "METHOD_SIMILARITY", purge=True)
-        cur.execute(
-            f"""
-            CREATE TABLE {owner}.METHOD_SIMILARITY
-            (
-                METHOD_AC1 VARCHAR2(25) NOT NULL,
-                DBCODE1 CHAR(1) NOT NULL,
-                METHOD_AC2 VARCHAR2(25) NOT NULL,
-                DBCODE2 CHAR(1) NOT NULL,
-                PROT_COUNT1 NUMBER(*) NOT NULL,
-                PROT_COUNT2 NUMBER(*) NOT NULL,
-                COLL_COUNT NUMBER(*) NOT NULL,
-                PROT_OVER_COUNT NUMBER(*) NOT NULL,
-                PROT_SIM NUMBER(*) NOT NULL,
-                PROT_PRED CHAR(1),
-                RESI_PRED CHAR(1),
-                DESC_PRED CHAR(1),
-                TAXA_PRED CHAR(1),
-                TERM_PRED CHAR(1)
-            ) NOLOGGING
-            """
-        )
-
-        cur.execute(
-            f"""
-            SELECT
-              MS.METHOD_AC1, M1.DBCODE, 
-              MS.METHOD_AC2, M2.DBCODE, 
-              MS.PROT_COUNT1, MS.PROT_COUNT2, MS.COLL_COUNT, MS.PROT_OVER_COUNT,
-              MS.RES_COUNT1, MS.RES_COUNT2, MS.RES_OVER_COUNT
-            FROM {owner}.METHOD_OVERLAP MS
-            INNER JOIN {owner}.METHOD M1 
-              ON MS.METHOD_AC1 = M1.METHOD_AC
-            INNER JOIN {owner}.METHOD M2 
-              ON MS.METHOD_AC2 = M2.METHOD_AC
-            """
-        )
-        self.rows = {}
-        for row in cur:
-            acc_1 = row[0]
-            dbcode_1 = row[1]
-            acc_2 = row[2]
-            dbcode_2 = row[3]
-            prot_cnt_1 = row[4]
-            prot_cnt_2 = row[5]
-            coll_cnt = row[6]
-            prot_over_cnt = row[7]
-            res_cnt_1 = row[8]
-            res_cnt_2 = row[9]
-            res_over_cnt = row[10]
-
-            # Protein overlap similarity
-            psim = prot_over_cnt / (prot_cnt_1 + prot_cnt_2 - prot_over_cnt)
-            pct1 = prot_over_cnt / prot_cnt_1
-            pct2 = prot_over_cnt / prot_cnt_2
-
-            # Residue overlap similarity
-            rsim = res_over_cnt / (res_cnt_1 + res_cnt_2 - res_over_cnt)
-            rct1 = res_over_cnt / res_cnt_1
-            rct2 = res_over_cnt / res_cnt_2
-
-            # Protein/residue predictions
-            ppred = self.predict(psim, pct1, pct2)
-            rpred = self.predict(rsim, rct1, rct2)
-
-            # Protein/residue values to persist
-            row = [acc_1, dbcode_1, acc_2, dbcode_2, prot_cnt_1, prot_cnt_2,
-                   coll_cnt, prot_over_cnt, psim, ppred, rpred,
-                   None, None, None]
-
-            try:
-                self.rows[acc_1][acc_2] = row
-            except KeyError:
-                self.rows[acc_1] = {acc_2: row}
-        cur.close()
-
-        query = f"""
+    table = orautils.TablePopulator(
+        con=con,
+        query=f"""
             INSERT /*+ APPEND */ INTO {owner}.METHOD_SIMILARITY
             VALUES (
-              :1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, 
-              :14
+                :1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, :14
             )
-        """
-        self.table = orautils.TablePopulator(con, query, autocommit=True)
+        """,
+        autocommit=True
+    )
 
-    def __del__(self):
-        self.close()
+    indices = {
+        "desc": 9,
+        "taxa": 10,
+        "terms": 11
+    }
 
-    def close(self):
-        self.table.close()
+    for chunk in iter(queue.get, None):
+        rows = {}
 
-    def index(self):
-        cur = self.con.cursor()
-        orautils.grant(cur, self.owner, "METHOD_SIMILARITY", "SELECT", "INTERPRO_SELECT")
-        cur.execute(
-            f"""
-            CREATE INDEX I_METHOD_SIMILARITY$AC1
-            ON {self.owner}.METHOD_SIMILARITY (METHOD_AC1) NOLOGGING
-            """
-        )
-        cur.execute(
-            f"""
-            CREATE INDEX I_METHOD_SIMILARITY$AC2
-            ON {self.owner}.METHOD_SIMILARITY (METHOD_AC2) NOLOGGING
-            """
-        )
-        cur.close()
-
-    def put(self, chunk: Dict[str, str]):
-        keys = set()
         for source, filepath in chunk.items():
-            if source == "desc":
-                i = 11
-            elif source == "taxa":
-                i = 12
-            else:
-                i = 13
-
             with Buffer(filepath) as buffer:
                 for acc_1, similarities in buffer:
                     for acc_2, (sim, ct1, ct2) in similarities.items():
-                        try:
-                            row = self.rows[acc_1][acc_2]
-                        except KeyError:
-                            continue  # not a single common protein: skip
+                        if acc_1 in rows and acc_2 in rows[acc_1]:
+                            row = rows[acc_1][acc_2]
                         else:
-                            row[i] = self.predict(sim, ct1, ct2)
-                            keys.add((acc_1, acc_2))
+                            if acc_1 not in rows:
+                                rows[acc_1] = {}
+
+                            cur.execute(get_query, (acc_1, acc_2))
+                            row = cur.fetchone()
+
+                            if row is None:
+                                continue
+
+                            dbcode_1 = row[0]
+                            dbcode_2 = row[1]
+                            prot_cnt_1 = row[2]
+                            prot_cnt_2 = row[3]
+                            coll_cnt = row[4]
+                            prot_over_cnt = row[5]
+                            res_cnt_1 = row[6]
+                            res_cnt_2 = row[7]
+                            res_over_cnt = row[8]
+
+                            # Protein overlap similarity
+                            psim = prot_over_cnt / (prot_cnt_1 + prot_cnt_2
+                                                    - prot_over_cnt)
+                            pct1 = prot_over_cnt / prot_cnt_1
+                            pct2 = prot_over_cnt / prot_cnt_2
+
+                            # Residue overlap similarity
+                            rsim = res_over_cnt / (res_cnt_1 + res_cnt_2
+                                                   - res_over_cnt)
+                            rct1 = res_over_cnt / res_cnt_1
+                            rct2 = res_over_cnt / res_cnt_2
+
+                            # Protein/residue predictions
+                            ppred = _predict(psim, pct1, pct2)
+                            rpred = _predict(rsim, rct1, rct2)
+
+                            row = rows[acc_1][acc_2] = [
+                                dbcode_1, dbcode_2, prot_cnt_1, prot_cnt_2,
+                                coll_cnt, prot_over_cnt, psim,
+                                ppred, rpred, None, None, None
+                            ]
+
+                        i = indices[source]
+                        row[i] = _predict(sim, ct1, ct2)
 
                 buffer.remove()
 
-        for acc_1, acc_2 in keys:
-            row = self.rows[acc_1][acc_2]
-            self.table.insert(tuple(row))
+        for acc_1 in rows:
+            for acc_2, row in rows[acc_1].items():
+                table.insert((acc_1, acc_2) + tuple(row))
 
-    @staticmethod
-    def predict(similarity: float, containment1: float, containment2: float):
-        if similarity >= SIMILARITY_THRESHOLD:
-            return 'S'  # Similar
-        elif containment1 >= SIMILARITY_THRESHOLD:
-            if containment2 >= SIMILARITY_THRESHOLD:
-                return 'R'  # Related
-            else:
-                return 'C'  # Child
-        elif containment2 >= SIMILARITY_THRESHOLD:
-            return 'P'  # Parent
+    cur.close()
+    table.close()
+    con.close()
+
+
+def _predict(similarity: float, containment1: float, containment2: float) -> Optional[str]:
+    if similarity >= SIMILARITY_THRESHOLD:
+        return 'S'  # Similar
+    elif containment1 >= SIMILARITY_THRESHOLD:
+        if containment2 >= SIMILARITY_THRESHOLD:
+            return 'R'  # Related
         else:
-            return None  # Dissimilar
+            return 'C'  # Child
+    elif containment2 >= SIMILARITY_THRESHOLD:
+        return 'P'  # Parent
+    else:
+        return None  # Dissimilar
