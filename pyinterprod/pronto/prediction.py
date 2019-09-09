@@ -411,6 +411,7 @@ class Predictor(object):
         cur.close()
 
     def put(self, chunk: Dict[str, str]):
+        keys = set()
         for source, filepath in chunk.items():
             if source == "desc":
                 i = 11
@@ -428,12 +429,13 @@ class Predictor(object):
                             continue  # not a single common protein: skip
                         else:
                             row[i] = self.predict(sim, ct1, ct2)
+                            keys.add((acc_1, acc_2))
 
                 buffer.remove()
 
-        for acc_1 in self.rows:
-            for acc_2, row in self.rows[acc_1].items():
-                self.table.insert(tuple(row))
+        for acc_1, acc_2 in keys:
+            row = self.rows[acc_1][acc_2]
+            self.table.insert(tuple(row))
 
     @staticmethod
     def predict(similarity: float, containment1: float, containment2: float):
