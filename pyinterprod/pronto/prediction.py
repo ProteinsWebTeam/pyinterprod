@@ -316,8 +316,8 @@ class Predictor(object):
                 COLL_COUNT NUMBER(*) NOT NULL,
                 PROT_OVER_COUNT NUMBER(*) NOT NULL,
                 PROT_SIM NUMBER(*) NOT NULL,
-                PROT_PRED CHAR(1) NOT NULL,
-                RESI_PRED CHAR(1) NOT NULL,
+                PROT_PRED CHAR(1),
+                RESI_PRED CHAR(1),
                 DESC_PRED CHAR(1),
                 TAXA_PRED CHAR(1),
                 TERM_PRED CHAR(1)
@@ -449,4 +449,4 @@ class Predictor(object):
         elif containment2 >= SIMILARITY_THRESHOLD:
             return 'P'  # Parent
         else:
-            return 'D'  # Dissimilar
+            return None  # Dissimilar
