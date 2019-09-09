@@ -352,18 +352,62 @@ def load_similarities(user: str, dsn: str, queue: Queue):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    get_query = f"""
+    cur.execute(
+        f"""
         SELECT
-          M1.DBCODE, M2.DBCODE, MS.PROT_COUNT1, MS.PROT_COUNT2, 
+          MS.METHOD_AC1, MS.METHOD_AC2, M1.DBCODE, M2.DBCODE,
+          MS.PROT_COUNT1, MS.PROT_COUNT2,
           MS.COLL_COUNT, MS.PROT_OVER_COUNT,
           MS.RES_COUNT1, MS.RES_COUNT2, MS.RES_OVER_COUNT
         FROM {owner}.METHOD_OVERLAP MS
-        INNER JOIN {owner}.METHOD M1 
+        INNER JOIN {owner}.METHOD M1
           ON MS.METHOD_AC1 = M1.METHOD_AC
-        INNER JOIN {owner}.METHOD M2 
+        INNER JOIN {owner}.METHOD M2
           ON MS.METHOD_AC2 = M2.METHOD_AC
-        WHERE MS.METHOD_AC1 = :1 AND MS.METHOD_AC2 = :2
         """
+    )
+    rows = {}
+    for row in cur:
+        acc_1 = row[0]
+        acc_2 = row[1]
+        dbcode_1 = row[2]
+        dbcode_2 = row[3]
+        prot_cnt_1 = row[4]
+        prot_cnt_2 = row[5]
+        coll_cnt = row[6]
+        prot_over_cnt = row[7]
+        res_cnt_1 = row[8]
+        res_cnt_2 = row[9]
+        res_over_cnt = row[10]
+
+        # Protein overlap similarity
+        psim = prot_over_cnt / (prot_cnt_1 + prot_cnt_2
+                                - prot_over_cnt)
+        pct1 = prot_over_cnt / prot_cnt_1
+        pct2 = prot_over_cnt / prot_cnt_2
+
+        # Residue overlap similarity
+        rsim = res_over_cnt / (res_cnt_1 + res_cnt_2
+                               - res_over_cnt)
+        rct1 = res_over_cnt / res_cnt_1
+        rct2 = res_over_cnt / res_cnt_2
+
+        # Protein/residue predictions
+        ppred = _predict(psim, pct1, pct2)
+        rpred = _predict(rsim, rct1, rct2)
+
+        rec = [
+            dbcode_1, dbcode_2, prot_cnt_1, prot_cnt_2,
+            coll_cnt, prot_over_cnt, psim,
+            ppred, rpred, None, None, None
+        ]
+
+        try:
+            rows[acc_1][acc_2] = rec
+        except KeyError:
+            rows[acc_1] = {acc_2: rec}
+
+    cur.close()
 
     table = orautils.TablePopulator(
         con=con,
@@ -383,66 +427,27 @@ def load_similarities(user: str, dsn: str, queue: Queue):
     }
 
     for chunk in iter(queue.get, None):
-        rows = {}
-
+        keys = set()
         for source, filepath in chunk.items():
+            i = indices[source]
+
             with Buffer(filepath) as buffer:
                 for acc_1, similarities in buffer:
                     for acc_2, (sim, ct1, ct2) in similarities.items():
-                        if acc_1 in rows and acc_2 in rows[acc_1]:
+                        try:
                             row = rows[acc_1][acc_2]
+                        except KeyError:
+                            pass
                         else:
-                            if acc_1 not in rows:
-                                rows[acc_1] = {}
-
-                            cur.execute(get_query, (acc_1, acc_2))
-                            row = cur.fetchone()
-
-                            if row is None:
-                                continue
-
-                            dbcode_1 = row[0]
-                            dbcode_2 = row[1]
-                            prot_cnt_1 = row[2]
-                            prot_cnt_2 = row[3]
-                            coll_cnt = row[4]
-                            prot_over_cnt = row[5]
-                            res_cnt_1 = row[6]
-                            res_cnt_2 = row[7]
-                            res_over_cnt = row[8]
-
-                            # Protein overlap similarity
-                            psim = prot_over_cnt / (prot_cnt_1 + prot_cnt_2
-                                                    - prot_over_cnt)
-                            pct1 = prot_over_cnt / prot_cnt_1
-                            pct2 = prot_over_cnt / prot_cnt_2
-
-                            # Residue overlap similarity
-                            rsim = res_over_cnt / (res_cnt_1 + res_cnt_2
-                                                   - res_over_cnt)
-                            rct1 = res_over_cnt / res_cnt_1
-                            rct2 = res_over_cnt / res_cnt_2
-
-                            # Protein/residue predictions
-                            ppred = _predict(psim, pct1, pct2)
-                            rpred = _predict(rsim, rct1, rct2)
-
-                            row = rows[acc_1][acc_2] = [
-                                dbcode_1, dbcode_2, prot_cnt_1, prot_cnt_2,
-                                coll_cnt, prot_over_cnt, psim,
-                                ppred, rpred, None, None, None
-                            ]
-
-                        i = indices[source]
-                        row[i] = _predict(sim, ct1, ct2)
+                            keys.add((acc_1, acc_2))
+                            row[i] = _predict(sim, ct1, ct2)
 
                 buffer.remove()
 
-        for acc_1 in rows:
-            for acc_2, row in rows[acc_1].items():
-                table.insert((acc_1, acc_2) + tuple(row))
+        for acc_1, acc_2 in keys:
+            row = rows[acc_1].pop(acc_2)
+            table.insert((acc_1, acc_2) + tuple(row))
 
-    cur.close()
     table.close()
     con.close()
 
