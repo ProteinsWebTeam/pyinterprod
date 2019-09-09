@@ -282,7 +282,7 @@ class MatchComparator(object):
 
 class Kvdb(object):
     def __init__(self, database: Optional[str]=None, dir: Optional[str]=None,
-                 writeback: bool=False, insertonly: bool=False):
+                 writeback: bool=False):
         if database:
             self.filepath = database
         else:
@@ -291,30 +291,18 @@ class Kvdb(object):
             os.remove(self.filepath)
 
         self.writeback = writeback
-        self.insertonly = insertonly
         self.cache = {}
 
         self.con = sqlite3.connect(self.filepath)
-        if self.insertonly:
-            self.con.execute(
-                """
-                CREATE TABLE IF NOT EXISTS data (
-                    id TEXT NOT NULL,
-                    val TEXT NOT NULL
-                )
-                """
+        self.con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS data (
+                id TEXT PRIMARY KEY NOT NULL,
+                val TEXT NOT NULL
             )
-            self.stmt = "INSERT INTO data (id, val) VALUES (?, ?)"
-        else:
-            self.con.execute(
-                """
-                CREATE TABLE IF NOT EXISTS data (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    val TEXT NOT NULL
-                )
-                """
-            )
-            self.stmt = "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)"
+            """
+        )
+        self.stmt = "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)"
 
     def __enter__(self):
         return self
@@ -395,17 +383,12 @@ class Kvdb(object):
         )
         self.cache = {}
 
-    def index(self):
-        if self.insertonly:
-            self.con.execute("CREATE UNIQUE INDEX idx_data ON data (id)")
-
     def close(self):
         if self.con is None:
             return
 
         self.sync()
         self.con.commit()
-        self.index()
         self.con.close()
         self.con = None
 

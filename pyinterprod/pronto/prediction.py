@@ -137,7 +137,7 @@ def compare_signatures(user: str, dsn: str, query: str, outdir: str,
     fd, database = mkstemp(dir=tmpdir)
     os.close(fd)
     os.remove(database)
-    with Kvdb(database, insertonly=True) as kvdb:
+    with Kvdb(database) as kvdb:
         cur.execute(query)
         values = set()
         _acc = None
