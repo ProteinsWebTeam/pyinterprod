@@ -338,12 +338,12 @@ def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
         ON {owner}.METHOD_SIMILARITY (METHOD_AC1) NOLOGGING
         """
     )
-    cur.execute(
-        f"""
-        CREATE INDEX I_METHOD_SIMILARITY$AC2
-        ON {owner}.METHOD_SIMILARITY (METHOD_AC2) NOLOGGING
-        """
-    )
+    # cur.execute(
+    #     f"""
+    #     CREATE INDEX I_METHOD_SIMILARITY$AC2
+    #     ON {owner}.METHOD_SIMILARITY (METHOD_AC2) NOLOGGING
+    #     """
+    # )
     cur.close()
     con.close()
 
@@ -447,6 +447,18 @@ def load_similarities(user: str, dsn: str, queue: Queue):
         for acc_1, acc_2 in keys:
             row = rows[acc_1].pop(acc_2)
             table.insert((acc_1, acc_2) + tuple(row))
+
+            row = row.copy()
+            row[0], row[1] = row[1], row[0]
+            row[2], row[3] = row[3], row[2]
+
+            for i, pred in enumerate(row[7:]):
+                if pred == 'P':
+                    row[7+i] = 'C'
+                elif pred == 'C':
+                    row[7+i] = 'P'
+
+            table.insert((acc_2, acc_1) + tuple(row))
 
     table.close()
     con.close()
