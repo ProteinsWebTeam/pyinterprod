@@ -18,8 +18,6 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
         while os.path.isfile(checkpoint):
             time.sleep(600)
 
-        return
-
     url = orautils.make_connect_string(user, dsn)
     analyses = _get_analyses(url, datatype="matches", force=force)
 
@@ -167,7 +165,6 @@ def import_sites(user: str, dsn: str, max_workers: int=0,
         while os.path.isfile(checkpoint):
             time.sleep(600)
 
-        return
     url = orautils.make_connect_string(user, dsn)
     analyses = _get_analyses(url, datatype="sites", force=force)
 
