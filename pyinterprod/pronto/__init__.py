@@ -386,13 +386,13 @@ def _get_tasks(**kwargs):
             scheduler=dict(queue=queue, mem=2000),
             requires=["index"]
         ),
-        Task(
-            name="copy",
-            fn=copy_schema,
-            args=(user1, user2, dsn),
-            scheduler=dict(queue=queue, mem=500),
-            requires=["compare", "index"]
-        )
+        # Task(
+        #     name="copy",
+        #     fn=copy_schema,
+        #     args=(user1, user2, dsn),
+        #     scheduler=dict(queue=queue, mem=500),
+        #     requires=["compare", "index"]
+        # )
     ]
 
 
