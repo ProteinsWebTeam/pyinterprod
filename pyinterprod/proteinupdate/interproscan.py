@@ -296,6 +296,10 @@ def _get_max_persisted_job(cur: cx_Oracle.Cursor, analysis_id: int,
 
 
 def _get_analyses(url: str, datatype: str="matches", force: bool=False) -> List[dict]:
+    if datatype not in ("matches", "sites"):
+        raise ValueError("invalid value for 'datatype' argument "
+                         "(expects 'matches' or 'sites')")
+
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
@@ -358,12 +362,12 @@ def _get_analyses(url: str, datatype: str="matches", force: bool=False) -> List[
         Others:
             - PERSISTED=2 when matches are ready
         """
-        if datatype == "sites":
-            key = "site_table"
-            flag = 2
-        else:
+        if datatype == "matches":
             key = "match_table"
             flag = 1 if e["name"] in ("cdd", "sfld") else 2
+        else:
+            key = "site_table"
+            flag = 2
 
         if e[key] is not None:
             e["upi"] = _get_max_persisted_job(cur, e["id"], max_upi, flag)
