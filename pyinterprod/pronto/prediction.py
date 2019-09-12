@@ -128,8 +128,8 @@ def compare_chunk(database: str, start1: str, stop1: str, start2: str,
 
 
 def compare_signatures(user: str, dsn: str, query: str, outdir: str,
-                       queue: Queue, chunk_size: int, tmpdir: Optional[str],
-                       job_queue: Optional[str]):
+                       queue: Queue, chunk_size: int, processes: int,
+                       tmpdir: Optional[str], job_queue: Optional[str]):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
@@ -174,8 +174,8 @@ def compare_signatures(user: str, dsn: str, query: str, outdir: str,
         t = Task(
             fn=compare_chunk,
             args=(database, start1, stop1, start2, stop2, filepath),
-            kwargs=dict(processes=8, tmpdir=tmpdir),
-            scheduler=dict(queue=job_queue, cpu=8, mem=4000)
+            kwargs=dict(processes=processes, tmpdir=tmpdir),
+            scheduler=dict(queue=job_queue, cpu=processes, mem=4000)
         )
         t.run(workdir=outdir)
         tasks[t] = (start1, stop1, start2, stop2, filepath)
@@ -204,7 +204,8 @@ def compare_signatures(user: str, dsn: str, query: str, outdir: str,
 
 
 def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
-            job_tmpdir: Optional[str]=None, job_queue: Optional[str]=None):
+            job_processes: int=8, job_tmpdir: Optional[str]=None,
+            job_queue: Optional[str]=None, load_processes: int=4):
     os.makedirs(outdir, exist_ok=True)
     if job_tmpdir:
         os.makedirs(job_tmpdir, exist_ok=True)
@@ -227,7 +228,8 @@ def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
     sources[query] = "desc"
     producers.append(Process(target=compare_signatures,
                              args=(user, dsn, query, outdir, cmp_queue,
-                                   chunk_size, job_tmpdir, job_queue)))
+                                   chunk_size, job_processes, job_tmpdir,
+                                   job_queue)))
 
     query = f"""
         SELECT METHOD_AC, TAX_ID
@@ -237,7 +239,8 @@ def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
     sources[query] = "taxa"
     producers.append(Process(target=compare_signatures,
                              args=(user, dsn, query, outdir, cmp_queue,
-                                   chunk_size, job_tmpdir, job_queue)))
+                                   chunk_size, job_processes, job_tmpdir,
+                                   job_queue)))
 
     query = f"""
         SELECT METHOD_AC, GO_ID
@@ -255,7 +258,8 @@ def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
     sources[query] = "terms"
     producers.append(Process(target=compare_signatures,
                              args=(user, dsn, query, outdir, cmp_queue,
-                                   chunk_size, job_tmpdir, job_queue)))
+                                   chunk_size, job_processes, job_tmpdir,
+                                   job_queue)))
 
     for p in producers:
         p.start()
@@ -289,7 +293,7 @@ def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
 
     chunk_queue = Queue()
     loaders = []
-    for _ in range(4):
+    for _ in range(load_processes):
         p = Process(target=load_similarities,
                     args=(user, dsn, chunk_queue))
         p.start()
