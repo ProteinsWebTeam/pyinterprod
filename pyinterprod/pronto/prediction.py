@@ -5,7 +5,7 @@ import shutil
 import time
 from multiprocessing import Process, Queue
 from tempfile import mkstemp
-from typing import Dict, Optional
+from typing import Optional
 
 import cx_Oracle
 from mundone import Task
