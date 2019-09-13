@@ -227,6 +227,10 @@ def report_description_changes(user: str, dsn: str, dst: str):
 
 def copy_schema(user_src: str, user_dst: str, dsn: str,
                 max_workers: Optional[int]=None):
+    if user_src == user_dst:
+        logger.warning("identical source and target schemas")
+        return
+
     owner_src = user_src.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user_src, dsn))
     cur = con.cursor()
@@ -289,7 +293,7 @@ def _get_tasks(**kwargs):
     queue = kwargs.get("queue")
     report_dst = kwargs.get("report", "swiss_de_families.tsv")
 
-    tasks = [
+    return [
         Task(
             name="annotations",
             fn=go.load_annotations,
@@ -387,19 +391,15 @@ def _get_tasks(**kwargs):
             args=(user1, dsn, report_dst),
             scheduler=dict(queue=queue, mem=2000),
             requires=["index"]
-        )
-    ]
-
-    if user2 and user1 != user2:
-        tasks.append(Task(
+        ),
+        Task(
             name="copy",
             fn=copy_schema,
             args=(user1, user2, dsn),
             scheduler=dict(queue=queue, mem=500),
             requires=["compare", "index"]
-        ))
-
-    return tasks
+        )
+    ]
 
 
 def run(config_path: str, task_names: Optional[List[str]]=None,
