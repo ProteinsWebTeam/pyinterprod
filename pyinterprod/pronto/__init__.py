@@ -227,27 +227,22 @@ def report_description_changes(user: str, dsn: str, dst: str):
 
 def copy_schema(user_src: str, user_dst: str, dsn: str,
                 max_workers: Optional[int]=None):
-    if user_src == user_dst:
-        logger.warning("identical source and target schemas")
-        return
-
-    owner = user_src.split('/')[0]
-
+    owner_src = user_src.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user_src, dsn))
     cur = con.cursor()
     tables = []
-    for t in orautils.get_tables(cur, owner):
+    for t in orautils.get_tables(cur, owner_src):
         tables.append({
             "name": t,
-            "grants": orautils.get_grants(cur, owner, t),
-            "constraints": orautils.get_constraints(cur, owner, t),
-            "indexes": orautils.get_indices(cur, owner, t),
-            "partitions": orautils.get_partitions(cur, owner, t)
+            "grants": orautils.get_grants(cur, owner_src, t),
+            "constraints": orautils.get_constraints(cur, owner_src, t),
+            "indexes": orautils.get_indices(cur, owner_src, t),
+            "partitions": orautils.get_partitions(cur, owner_src, t)
         })
     cur.close()
     con.close()
 
-    owner = user_dst.split('/')[0]
+    owner_dst = user_dst.split('/')[0]
     orautils.clear_schema(user_dst, dsn)
     conn_str = orautils.make_connect_string(user_dst, dsn)
     num_errors = 0
@@ -270,7 +265,7 @@ def copy_schema(user_src: str, user_dst: str, dsn: str,
                     # Update table so the API detects that the DB is not ready
                     con = cx_Oracle.connect(conn_str)
                     cur = con.cursor()
-                    cur.execute(f"UPDATE {owner}.CV_DATABASE SET IS_READY = 'N'")
+                    cur.execute(f"UPDATE {owner_dst}.CV_DATABASE SET IS_READY = 'N'")
                     con.commit()
                     cur.close()
                     con.close()
@@ -280,7 +275,7 @@ def copy_schema(user_src: str, user_dst: str, dsn: str,
 
     con = cx_Oracle.connect(conn_str)
     cur = con.cursor()
-    cur.execute(f"UPDATE {owner}.CV_DATABASE SET IS_READY = 'Y'")
+    cur.execute(f"UPDATE {owner_dst}.CV_DATABASE SET IS_READY = 'Y'")
     con.commit()
     cur.close()
     con.close()
@@ -395,7 +390,7 @@ def _get_tasks(**kwargs):
         )
     ]
 
-    if user2:
+    if user2 and user1 != user2:
         tasks.append(Task(
             name="copy",
             fn=copy_schema,
