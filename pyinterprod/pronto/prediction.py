@@ -344,7 +344,13 @@ def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
     )
     cur.execute(
         f"""
-        CREATE INDEX I_METHOD_SIMILARITY$DBCODE$PPRED
+        CREATE INDEX I_METHOD_SIMILARITY$DBCODE1
+        ON {owner}.METHOD_SIMILARITY (DBCODE1) NOLOGGING
+        """
+    )
+    cur.execute(
+        f"""
+        CREATE INDEX I_METHOD_SIMILARITY$DBCODE1$PPRED
         ON {owner}.METHOD_SIMILARITY (DBCODE1, PROT_PRED) NOLOGGING
         """
     )
