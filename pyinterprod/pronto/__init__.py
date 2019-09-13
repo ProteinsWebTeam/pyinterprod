@@ -235,7 +235,6 @@ def copy_schema(user_src: str, user_dst: str, dsn: str,
 
     con = cx_Oracle.connect(orautils.make_connect_string(user_src, dsn))
     cur = con.cursor()
-    cur.execute("UPDATE {}.CV_DATABASE SET IS_READY = 'Y'".format(owner))
     tables = []
     for t in orautils.get_tables(cur, owner):
         tables.append({
@@ -245,12 +244,12 @@ def copy_schema(user_src: str, user_dst: str, dsn: str,
             "indexes": orautils.get_indices(cur, owner, t),
             "partitions": orautils.get_partitions(cur, owner, t)
         })
-    con.commit()
     cur.close()
     con.close()
 
+    owner = user_dst.split('/')[0]
     orautils.clear_schema(user_dst, dsn)
-
+    conn_str = orautils.make_connect_string(user_dst, dsn)
     num_errors = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         fs = {}
@@ -267,13 +266,21 @@ def copy_schema(user_src: str, user_dst: str, dsn: str,
             else:
                 logger.info(f"{fs[f]}: done")
 
+                if fs[f] == "CV_DATABASE":
+                    # Update table so the API detects that the DB is not ready
+                    con = cx_Oracle.connect(conn_str)
+                    cur = con.cursor()
+                    cur.execute(f"UPDATE {owner}.CV_DATABASE SET IS_READY = 'N'")
+                    con.commit()
+                    cur.close()
+                    con.close()
+
     if num_errors:
         raise RuntimeError(f"{num_errors} table(s) were not copied")
 
-    owner = user_dst.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user_dst, dsn))
+    con = cx_Oracle.connect(conn_str)
     cur = con.cursor()
-    cur.execute("UPDATE {}.CV_DATABASE SET IS_READY = 'Y'".format(owner))
+    cur.execute(f"UPDATE {owner}.CV_DATABASE SET IS_READY = 'Y'")
     con.commit()
     cur.close()
     con.close()
