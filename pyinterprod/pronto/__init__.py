@@ -287,7 +287,7 @@ def _get_tasks(**kwargs):
     queue = kwargs.get("queue")
     report_dst = kwargs.get("report", "swiss_de_families.tsv")
 
-    return [
+    tasks = [
         Task(
             name="annotations",
             fn=go.load_annotations,
@@ -385,15 +385,19 @@ def _get_tasks(**kwargs):
             args=(user1, dsn, report_dst),
             scheduler=dict(queue=queue, mem=2000),
             requires=["index"]
-        ),
-        # Task(
-        #     name="copy",
-        #     fn=copy_schema,
-        #     args=(user1, user2, dsn),
-        #     scheduler=dict(queue=queue, mem=500),
-        #     requires=["compare", "index"]
-        # )
+        )
     ]
+
+    if user2:
+        tasks.append(Task(
+            name="copy",
+            fn=copy_schema,
+            args=(user1, user2, dsn),
+            scheduler=dict(queue=queue, mem=500),
+            requires=["compare", "index"]
+        ))
+
+    return tasks
 
 
 def run(config_path: str, task_names: Optional[List[str]]=None,
@@ -403,7 +407,6 @@ def run(config_path: str, task_names: Optional[List[str]]=None,
         config = json.load(fh)
 
     outdir = config["paths"]["results"]
-
     if not report:
         report = os.path.join(outdir, "swiss_de_families.tsv")
 
