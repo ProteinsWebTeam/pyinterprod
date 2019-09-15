@@ -338,19 +338,19 @@ def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
                    "INTERPRO_SELECT")
     cur.execute(
         f"""
-        CREATE INDEX I_METHOD_SIMILARITY$AC1
+        CREATE INDEX I_METHOD_SIMILARITY$AC
         ON {owner}.METHOD_SIMILARITY (METHOD_AC1) NOLOGGING
         """
     )
     cur.execute(
         f"""
-        CREATE INDEX I_METHOD_SIMILARITY$DBCODE1
+        CREATE INDEX I_METHOD_SIMILARITY$DB
         ON {owner}.METHOD_SIMILARITY (DBCODE1) NOLOGGING
         """
     )
     cur.execute(
         f"""
-        CREATE INDEX I_METHOD_SIMILARITY$DBCODE1$PPRED
+        CREATE INDEX I_METHOD_SIMILARITY$DB$PRED
         ON {owner}.METHOD_SIMILARITY (DBCODE1, PROT_PRED) NOLOGGING
         """
     )
