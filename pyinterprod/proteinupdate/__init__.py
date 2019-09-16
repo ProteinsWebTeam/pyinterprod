@@ -109,6 +109,13 @@ def main():
             scheduler=dict(queue=queue, mem=500)
         ),
         Task(
+            name="update-variants",
+            fn=matches.update_variant_matches,
+            args=(db_users["interpro"], db_dsn),
+            scheduler=dict(queue=queue, mem=500),
+            requires=["import-matches", "update-uniparc"]
+        ),
+        Task(
             name="update-matches",
             fn=matches.update_matches,
             args=(db_users["interpro"], db_dsn, paths["results"]),

@@ -415,3 +415,49 @@ def update_site_matches(user: str, dsn: str, drop_indices: bool=False):
     orautils.drop_table(cur, "INTERPRO", "SITE_MATCH_NEW", purge=True)
     cur.close()
     con.close()
+
+
+def update_variant_matches(user: str, dsn: str):
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    orautils.truncate_table(cur, "INTERPRO", "VARSPLIC_MASTER")
+    cur.execute(
+        """
+        INSERT /*+ APPEND */ INTO INTERPRO.VARSPLIC_MASTER
+        SELECT 
+          SUBSTR(X.AC, 1, INSTR(X.AC, '-') - 1),
+          SUBSTR(X.AC, INSTR(X.AC, '-') + 1),
+          P.CRC64,
+          P.LEN
+        FROM UNIPARC.XREF X
+        INNER JOIN UNIPARC.PROTEIN P ON X.UPI = P.UPI
+        WHERE X.DBID IN (24, 25) AND X.DELETED = 'N'
+        """
+    )
+    con.commit()
+
+    orautils.truncate_table(cur, "INTERPRO", "VARSPLIC_MATCH")
+    cur.execute(
+        """
+        INSERT  /*+ APPEND */ INTO INTERPRO.VARSPLIC_MATCH
+        SELECT 
+          X.AC, MV.METHOD_AC, MV.SEQ_START, MV.SEQ_END, 'T' AS STATUS, 
+          I2D.DBCODE, I2D.EVIDENCE, SYSDATE, SYSDATE, SYSDATE, 
+          'INTERPRO', MV.EVALUE, MV.MODEL_AC, MV.FRAGMENTS
+        FROM UNIPARC.XREF X
+        INNER JOIN IPRSCAN.MV_IPRSCAN MV
+          ON X.UPI = MV.UPI
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
+          ON MV.ANALYSIS_ID = I2D.DBCODE
+        INNER JOIN INTERPRO.METHOD M
+          ON MV.METHOD_AC = M.METHOD_AC
+        WHERE X.DBID IN (24, 25)
+        AND X.DELETED = 'N'
+        AND I2D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
+        AND M.SKIP_FLAG = 'N'
+        """
+    )
+    con.commit()
+
+    cur.close()
+    con.close()
