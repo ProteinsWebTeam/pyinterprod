@@ -103,6 +103,11 @@ The optional arguments are:
     <td></td>
 </tr>
 <tr>
+    <td>update-variants</td>
+    <td>Update splice variant matches</td>
+    <td>update-uniparc, import-matches</td>
+</tr>
+<tr>
     <td>update-matches</td>
     <td>Update protein matches for new or updated sequences, run various checks, and track changes in protein counts for InterPro entries</td>
     <td>import-matches, proteins2scan</td>
