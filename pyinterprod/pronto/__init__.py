@@ -397,7 +397,7 @@ def _get_tasks(**kwargs):
             fn=copy_schema,
             args=(user1, user2, dsn),
             scheduler=dict(queue=queue, mem=500),
-            requires=["compare", "index"]
+            requires=["matches", "compare", "index"]
         )
     ]
 
