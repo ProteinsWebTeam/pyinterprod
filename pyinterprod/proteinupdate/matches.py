@@ -448,7 +448,7 @@ def update_variant_matches(user: str, dsn: str):
         INNER JOIN IPRSCAN.MV_IPRSCAN MV
           ON X.UPI = MV.UPI
         INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
-          ON MV.ANALYSIS_ID = I2D.DBCODE
+          ON MV.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
         INNER JOIN INTERPRO.METHOD M
           ON MV.METHOD_AC = M.METHOD_AC
         WHERE X.DBID IN (24, 25)
