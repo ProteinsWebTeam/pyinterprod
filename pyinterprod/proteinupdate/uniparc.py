@@ -121,8 +121,8 @@ def _update_xref(cur: cx_Oracle.Cursor):
     )
     orautils.grant(cur, "UNIPARC", "XREF", "SELECT", "PUBLIC")
 
-    logger.info("analyzing UNIPARC.XREF")
-    orautils.gather_stats(cur, "UNIPARC", "XREF")
+    # logger.info("analyzing UNIPARC.XREF")
+    # orautils.gather_stats(cur, "UNIPARC", "XREF")
 
     for col in ("UPI", "AC", "DBID"):
         logger.info("creating index INDEX I_XREF${}".format(col))
