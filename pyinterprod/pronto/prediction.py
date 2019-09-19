@@ -354,6 +354,12 @@ def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
         ON {owner}.METHOD_SIMILARITY (DBCODE1, PROT_PRED) NOLOGGING
         """
     )
+    cur.execute(
+        f"""
+        CREATE INDEX I_METHOD_SIMILARITY$AC$PRED 
+        ON {owner}.METHOD_SIMILARITY(METHOD_AC1, PROT_PRED) NOLOGGING
+        """
+    )
 
     cur.execute(f"UPDATE {owner}.CV_DATABASE SET IS_READY = 'Y'")
     cur.close()
