@@ -72,17 +72,15 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
             signalp_actions = []
             for analysis in analyses:
                 _id = analysis["id"]
-                name = analysis["name"]
                 table = analysis["match_table"].lower()
-                ready = analysis["ready"]
 
                 if table in running or table in done or table in ignored:
                     continue
                 elif table not in functions and table != "ipm_signalp_match":
-                    logger.warning(f"ignored analysis: {name}")
+                    logger.warning(f"ignored analysis: {analysis['full_name']}")
                     ignored.add(table)
                     continue
-                elif ready:
+                elif analysis["ready"]:
                     try:
                         pending.remove(table)
                     except KeyError:
@@ -90,7 +88,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
 
                     if table == "ipm_signalp_match":
                         # SignalP has one source table, but three analyses
-                        partition = signalp_partitions[name]
+                        partition = signalp_partitions[analysis["name"]]
                         signalp_actions.append((_id, partition))
                     else:
                         fn, partition = functions[table]
@@ -99,7 +97,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
                                             _id, fn)
                         fs[f] = table
                         running.add(table)
-                        logger.info(f"  {name:<40}started")
+                        logger.info(f"  {analysis['full_name']:<40}started")
                 else:
                     pending.add(table)
 
