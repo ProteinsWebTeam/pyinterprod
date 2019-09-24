@@ -99,6 +99,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
                                             _id, fn)
                         fs[f] = table
                         running.add(table)
+                        logger.info(f"  {name:<40}started")
                 else:
                     pending.add(table)
 
@@ -108,6 +109,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
                                     signalp_actions)
                 fs[f] = "ipm_signalp_match"
                 running.add("ipm_signalp_match")
+                logger.info(f"  {'SIGNALP':<40}started")
 
             _fs = {}
             for f in fs:
@@ -223,6 +225,7 @@ def import_sites(user: str, dsn: str, max_workers: int=0,
                                         _insert_sites)
                     fs[f] = full_name
                     running.add(full_name)
+                    logger.info(f"  {full_name:<40}started")
 
             _fs = {}
             for f in fs:
