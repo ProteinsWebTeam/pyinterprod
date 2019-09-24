@@ -66,6 +66,8 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
         running = set()
         done = set()
         ignored = set()
+        timestamp = time.time()
+
         while True:
             signalp_actions = []
             for analysis in analyses:
@@ -74,12 +76,11 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
                 table = analysis["match_table"].lower()
                 ready = analysis["ready"]
 
-                if table in running or table in done:
+                if table in running or table in done or table in ignored:
                     continue
-                elif table != "ipm_signalp_match" and table not in functions:
-                    if table not in ignored:
-                        logger.warning(f"ignored analysis: {name}")
-                        ignored.add(table)
+                elif table not in functions and table != "ipm_signalp_match":
+                    logger.warning(f"ignored analysis: {name}")
+                    ignored.add(table)
                     continue
                 elif ready:
                     try:
@@ -101,7 +102,7 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
                 else:
                     pending.add(table)
 
-            if signalp_actions:
+            if len(signalp_actions) == len(signalp_partitions):
                 f = executor.submit(_import_signalp, url, "IPRSCAN",
                                     "ipm_signalp_match", "MV_IPRSCAN",
                                     signalp_actions)
@@ -122,6 +123,8 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
                         exc_name = exc.__class__.__name__
                         logger.error(f"  {name:<40}failed ({exc_name}: {exc})")
                         num_errors += 1
+
+                    timestamp = time.time()
                 else:
                     _fs[f] = table
 
@@ -132,6 +135,17 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
 
             time.sleep(600)
             analyses = _get_analyses(url, datatype="matches", force=force)
+
+            if time.time() - timestamp > 6 * 3600:
+                timestamp = time.time()
+
+                if pending:
+                    logger.info(f"  {len(pending)} pending: "
+                                f"{', '.join(pending)}")
+
+                if running:
+                    logger.info(f"  {len(running)} running: "
+                                f"{', '.join(running)}")
 
     if num_errors:
         raise RuntimeError("{} analyses failed".format(num_errors))
