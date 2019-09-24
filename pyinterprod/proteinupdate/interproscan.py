@@ -316,8 +316,7 @@ def _get_analyses(url: str, datatype: str="matches", force: bool=False) -> List[
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
-    max_upi = cur.fetchone()[0]
+    max_upi = _get_max_upi(cur, "UNIPARC", "PROTEIN", "UAREAD")
     cur.execute(
         """
         SELECT *
@@ -436,7 +435,8 @@ def _import_signalp(url: str, owner: str, table_src: str, table_dst: str,
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     upi = _get_max_upi(cur, owner, table_src)
-    if not upi or upi != _get_max_upi(cur, owner, table_src, "ISPRO"):
+    max_upi = _get_max_upi(cur, "UNIPARC", "PROTEIN", "UAREAD")
+    if not upi or upi < max_upi:
         # Not the same UPI: import table
         orautils.drop_mview(cur, owner, table_src)
         orautils.drop_table(cur, owner, table_src, purge=True)
@@ -498,7 +498,8 @@ def _import_member_db(url: str, owner: str, table_src: str, table_dst: str,
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     upi = _get_max_upi(cur, owner, table_stg)
-    if not upi or upi != _get_max_upi(cur, owner, table_src, "ISPRO"):
+    max_upi = _get_max_upi(cur, "UNIPARC", "PROTEIN", "UAREAD")
+    if not upi or upi < max_upi:
         # Not the same UPI: import table
         orautils.drop_mview(cur, owner, table_stg)
         orautils.drop_table(cur, owner, table_stg, purge=True)
