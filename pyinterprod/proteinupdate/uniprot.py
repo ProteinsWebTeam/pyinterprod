@@ -223,7 +223,7 @@ def build_xref_condensed(user: str, dsn: str):
     table.close()
 
     logger.info("gathering statistics")
-    orautils.gather_stats(cur, "INTERPRO", "XREF_CONDENSED")
+    # orautils.gather_stats(cur, "INTERPRO", "XREF_CONDENSED")
 
     logger.info("creating indexes")
     for col in ("PROTEIN_AC", "ENTRY_AC"):
@@ -303,8 +303,8 @@ def build_xref_summary(user: str, dsn: str):
     )
     con.commit()
 
-    logger.info("gathering statistics")
-    orautils.gather_stats(cur, "INTERPRO", "XREF_SUMMARY")
+    # logger.info("gathering statistics")
+    # orautils.gather_stats(cur, "INTERPRO", "XREF_SUMMARY")
 
     logger.info("creating indexes")
     for col in ("PROTEIN_AC", "ENTRY_AC", "METHOD_AC"):
@@ -510,7 +510,7 @@ def build_aa_iprscan(user: str, dsn: str):
     )
     con.commit()
 
-    orautils.gather_stats(cur, "IPRSCAN", "AA_IPRSCAN")
+    # orautils.gather_stats(cur, "IPRSCAN", "AA_IPRSCAN")
     orautils.grant(cur, "IPRSCAN", "AA_IPRSCAN", "SELECT", "KRAKEN")
 
     logger.info("creating indices")
