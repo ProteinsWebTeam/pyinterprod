@@ -222,7 +222,7 @@ def build_xref_condensed(user: str, dsn: str):
 
     table.close()
 
-    logger.info("gathering statistics")
+    # logger.info("gathering statistics")
     # orautils.gather_stats(cur, "INTERPRO", "XREF_CONDENSED")
 
     logger.info("creating indexes")
