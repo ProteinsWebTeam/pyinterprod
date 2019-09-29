@@ -322,7 +322,7 @@ def build_xref_summary(user: str, dsn: str):
 
 def export_databases(user: str, dsn: str, dst: str, notify: bool=True):
     logger.info("exporting dat/tab files")
-    os.makedirs(dst, exist_ok=True)
+    os.makedirs(dst, 0o775, exist_ok=True)
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
