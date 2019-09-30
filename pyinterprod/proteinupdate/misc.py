@@ -32,7 +32,7 @@ any of the following actions:
     - unintegrate a member database signature;
     - delete an Interpro entry (unless it does not have any signature).
 
-InterPro entries may be created (but do NOT integrate any entry), \
+InterPro entries may be created (but do NOT integrate any signature), \
 modified (name, short name, abstracts, GO terms, etc.), or checked/unchecked.
 
 An email notification will automatically be sent at the end of the update.
