@@ -169,15 +169,9 @@ def refresh_taxonomy(user: str, dsn: str):
     orautils.drop_table(cur, "INTERPRO", "TAXONOMY_LOAD", purge=True)
     cur.execute(
         """
-        CREATE TABLE INTERPRO.TAXONOMY_LOAD
-        NOLOGGING
-        AS
-        SELECT
-          TAX_ID,
-          PARENT_ID,
-          SPTR_SCIENTIFIC AS SCIENTIFIC_NAME,
-          RANK,
-          NVL(SPTR_COMMON, NCBI_COMMON) AS COMMON_NAME
+        CREATE TABLE INTERPRO.TAXONOMY_LOAD NOLOGGING 
+        AS SELECT TAX_ID, PARENT_ID, SPTR_SCIENTIFIC AS SCIENTIFIC_NAME, RANK, 
+                  NVL(SPTR_COMMON, NCBI_COMMON) AS COMMON_NAME
         FROM TAXONOMY.V_PUBLIC_NODE@SWPREAD
         """
     )
@@ -187,9 +181,8 @@ def refresh_taxonomy(user: str, dsn: str):
     orautils.drop_table(cur, "INTERPRO", "ETAXI", purge=True)
     cur.execute(
         """
-        CREATE TABLE INTERPRO.ETAXI
-        AS
-          SELECT
+        CREATE TABLE INTERPRO.ETAXI NOLOGGING
+        AS SELECT
             N.TAX_ID, N.PARENT_ID, N.SCIENTIFIC_NAME,
             'X' COMPLETE_GENOME_FLAG, N.RANK, 0 HIDDEN,
             LR.TREE_LEFT LEFT_NUMBER, LR.TREE_RIGHT RIGHT_NUMBER,
@@ -230,26 +223,101 @@ def refresh_taxonomy(user: str, dsn: str):
     cur.execute(
         """
         CREATE INDEX I_ETAXI$L$R$T
-        ON INTERPRO.ETAXI (LEFT_NUMBER, RIGHT_NUMBER, TAX_ID)
+        ON INTERPRO.ETAXI (LEFT_NUMBER, RIGHT_NUMBER, TAX_ID) NOLOGGING
         """
     )
     cur.execute(
         """
         CREATE INDEX I_ETAXI$P$T$R
-        ON INTERPRO.ETAXI (PARENT_ID, TAX_ID, RANK)
+        ON INTERPRO.ETAXI (PARENT_ID, TAX_ID, RANK) NOLOGGING
         """
     )
     cur.execute(
         """
         CREATE INDEX I_ETAXI$T$P$R
-        ON INTERPRO.ETAXI (TAX_ID, PARENT_ID, RANK)
+        ON INTERPRO.ETAXI (TAX_ID, PARENT_ID, RANK) NOLOGGING
         """
     )
+    orautils.grant(cur, "INTERPRO", "ETAXI", "SELECT", "PUBLIC")
 
     # Dropping temporary table
     orautils.drop_table(cur, "INTERPRO", "TAXONOMY_LOAD", purge=True)
 
-    orautils.grant(cur, "INTERPRO", "ETAXI", "SELECT", "PUBLIC")
+    # TODO: stop refreshing the tables below when we stop supporting InterPro6
+    logger.info("creating UNIPROT_TAXONOMY")
+    orautils.drop_table(cur, "INTERPRO", "UNIPROT_TAXONOMY", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.UNIPROT_TAXONOMY NOLOGGING
+        AS SELECT P.PROTEIN_AC, P.TAX_ID, NVL(ET.LEFT_NUMBER, 0) LEFT_NUMBER, 
+                  NVL(ET.RIGHT_NUMBER, 0) RIGHT_NUMBER
+        FROM INTERPRO.PROTEIN P
+          LEFT OUTER JOIN INTERPRO.ETAXI ET ON P.TAX_ID = ET.TAX_ID
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX UNIPROT_TAXONOMY$L$P 
+        ON INTERPRO.UNIPROT_TAXONOMY (LEFT_NUMBER, PROTEIN_AC) NOLOGGING
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX UNIPROT_TAXONOMY$P$L 
+        ON INTERPRO.UNIPROT_TAXONOMY (PROTEIN_AC, LEFT_NUMBER) NOLOGGING
+        """
+    )
+    orautils.grant(cur, "INTERPRO", "UNIPROT_TAXONOMY", "SELECT", "PUBLIC")
+
+    logger.info("creating MV_TAX_ENTRY_COUNT")
+    orautils.drop_table(cur, "INTERPRO", "MV_TAX_ENTRY_COUNT", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.MV_TAX_ENTRY_COUNT NOLOGGING AS
+        WITH QUERY1 AS (
+          SELECT ENTRY_AC, ANC.PARENT AS TAX_ID, COUNT(1) AS COUNT
+          FROM INTERPRO.UNIPROT_TAXONOMY UT
+          JOIN INTERPRO.MV_ENTRY2PROTEIN_TRUE MVEP
+            ON UT.PROTEIN_AC=MVEP.PROTEIN_AC
+          JOIN (
+            SELECT NVL(
+                     SUBSTR(
+                       SYS_CONNECT_BY_PATH(TAX_ID, '.'), 
+                       2, 
+                       INSTR(SYS_CONNECT_BY_PATH (TAX_ID,'.'),'.',2) - 2
+                     ), 
+                     TAX_ID
+                   ) AS CHILD, 
+                   TAX_ID AS PARENT
+            FROM INTERPRO.ETAXI ET
+            CONNECT BY PRIOR PARENT_ID=TAX_ID
+          ) ANC ON ANC.CHILD=UT.TAX_ID
+          GROUP BY ENTRY_AC, ANC.PARENT
+        ), 
+        QUERY2 AS (
+          SELECT ENTRY_AC, TAX_ID, COUNT(1) AS COUNT
+          FROM INTERPRO.UNIPROT_TAXONOMY UT
+          JOIN INTERPRO.MV_ENTRY2PROTEIN_TRUE MVEP
+          ON UT.PROTEIN_AC=MVEP.PROTEIN_AC
+          GROUP BY ENTRY_AC, TAX_ID
+        )
+        SELECT QUERY1.ENTRY_AC, QUERY1.TAX_ID, QUERY1.COUNT AS COUNT, 
+               QUERY2.COUNT AS COUNT_SPECIFIED_TAX_ID
+        FROM QUERY1
+        LEFT OUTER JOIN QUERY2
+          ON QUERY1.ENTRY_AC = QUERY2.ENTRY_AC 
+          AND QUERY1.TAX_ID = QUERY2.TAX_ID
+        """
+    )
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX PK_MV_TAX_ENTRY_COUNT
+        ON INTERPRO.MV_TAX_ENTRY_COUNT (ENTRY_AC, TAX_ID) NOLOGGING 
+        """
+    )
+    orautils.grant(cur, "INTERPRO", "MV_TAX_ENTRY_COUNT", "SELECT",
+                   "INTERPRO_SELECT")
+
     cur.close()
     con.close()
     logger.info("complete")
