@@ -514,10 +514,13 @@ def _import_member_db(url: str, owner: str, table_src: str, table_dst: str,
         )
         cur.execute(
             """
-            CREATE INDEX {0}.I_{1}
-            ON {0}.{2}(ANALYSIS_ID)
-            NOLOGGING
-            """.format(owner,  table_src, table_stg)
+            CREATE INDEX {0}.I_{1}$ID ON {0}.{2} (ANALYSIS_ID) NOLOGGING
+            """.format(owner, table_src, table_stg)
+        )
+        cur.execute(
+            """
+            CREATE INDEX {0}.I_{1}$UPI ON {0}.{2} (UPI) NOLOGGING
+            """.format(owner, table_src, table_stg)
         )
 
     # Create temporary table for partition exchange
