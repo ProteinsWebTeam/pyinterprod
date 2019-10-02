@@ -228,10 +228,10 @@ def build_xref_condensed(user: str, dsn: str):
     logger.info("creating indexes")
     for col in ("PROTEIN_AC", "ENTRY_AC"):
         cur.execute(
+            f"""
+            CREATE INDEX I_XREF_CONDENSED${col}
+            ON INTERPRO.XREF_CONDENSED ({col}) NOLOGGING
             """
-            CREATE INDEX I_XREF_CONDENSED${0}
-            ON INTERPRO.XREF_CONDENSED ({0}) NOLOGGING
-            """.format(col)
         )
 
     orautils.grant(cur, "INTERPRO", "XREF_CONDENSED", "SELECT", "KRAKEN")
@@ -309,10 +309,10 @@ def build_xref_summary(user: str, dsn: str):
     logger.info("creating indexes")
     for col in ("PROTEIN_AC", "ENTRY_AC", "METHOD_AC"):
         cur.execute(
+            f"""
+            CREATE INDEX I_XREF_SUMMARY${col}
+            ON INTERPRO.XREF_SUMMARY ({col}) NOLOGGING
             """
-            CREATE INDEX I_XREF_SUMMARY${0}
-            ON INTERPRO.XREF_SUMMARY ({0}) NOLOGGING
-            """.format(col)
         )
 
     orautils.grant(cur, "INTERPRO", "XREF_SUMMARY", "SELECT", "KRAKEN")
@@ -321,6 +321,16 @@ def build_xref_summary(user: str, dsn: str):
 
 
 def export_databases(user: str, dsn: str, dst: str, notify: bool=True):
+    """
+    Format for Uniprot dat files:
+      <protein>    DR   <database>; <signature/entry>; <name>; <count>.
+
+    Exceptions:
+        - Gene3D: do not include prefix before accession (G3DSA:)
+                  replace signature#s name by hyphen (-)
+        - PRINTS: do not include match count
+        - InterPro: do not include match count
+    """
     logger.info("exporting dat/tab files")
     os.makedirs(dst, 0o775, exist_ok=True)
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
@@ -396,35 +406,40 @@ def export_databases(user: str, dsn: str, dst: str, notify: bool=True):
         dbname, dbkey = dbcodes[dbcode]
         fh1, fh2 = handlers[dbcode]
 
-        row = (protein_acc, dbkey, signature_acc, signature_name, num_matches)
-        fh1.write("{}\t{}\t{}\t{}\t{}\n".format(*row))
+        fh1.write(f"{protein_acc}\t{dbkey}\t{signature_acc}\t"
+                  f"{signature_name}\t{num_matches}\n")
 
         if dbcode == 'X':
-            # Gene3D: transform accession and do not print signature name
-            fh2.write(
-                "{}   DR   {}; {}; -; {}.\n".format(*_convert_gene3d(row)))
+            """
+            Gene3D
+              - accession: G3DSA:3.90.1580.10 -> 3.90.1580.10
+              - do not print signature's name
+            """
+            fh2.write(f"{protein_acc}    DR   {dbname}; {signature_acc[6:]}; "
+                      f"-; {num_matches}.\n")
         elif dbcode == 'F':
             # PRINTS: do not print match count
-            fh2.write("{}   DR   {}; {}; {}.\n".format(*row))
+            fh2.write(f"{protein_acc}    DR   {dbname}; {signature_acc}; "
+                      f"{signature_name}.\n")
         else:
-            fh2.write("{}   DR   {}; {}; {}; {}.\n".format(*row))
+            fh2.write(f"{protein_acc}    DR   {dbname}; {signature_acc}; "
+                      f"{signature_name}; {num_matches}.\n")
 
         if protein_acc != _protein:
             for _entry in sorted(entries):
-                row = (_protein, _entry, entries[_entry])
-                ifh1.write("{}\t{}\t{}\n".format(*row))
-                ifh2.write("{}    DR   InterPro; {}; {}.\n".format(*row))
+                _name = entries[_entry]
+                ifh1.write(f"{_protein}\t{_entry}\t{_name}\n")
+                ifh2.write(f"{_protein}    DR   InterPro; {_entry}; {_name}.\n")
 
             entries = {}
             _protein = protein_acc
 
-        if entry_acc not in entries:
-            entries[entry_acc] = entry_name
+        entries[entry_acc] = entry_name
 
     for _entry in sorted(entries):
-        row = (_protein, _entry, entries[_entry])
-        ifh1.write("{}\t{}\t{}\n".format(*row))
-        ifh2.write("{}    DR   InterPro; {}; {}.\n".format(*row))
+        _name = entries[_entry]
+        ifh1.write(f"{_protein}\t{_entry}\t{_name}\n")
+        ifh2.write(f"{_protein}    DR   InterPro; {_entry}; {_name}.\n")
 
     ifh1.close()
     ifh2.close()
@@ -441,15 +456,15 @@ def export_databases(user: str, dsn: str, dst: str, notify: bool=True):
             to_addrs=["uniprot-database@ebi.ac.uk"],
             cc_addrs=["uniprot-prod@ebi.ac.uk"],
             subject="InterPro XREF files are ready",
-            content="""\
+            content=f"""\
 Dear UniProt team,
 
-The InterPro cross-references files for {} are available in the following directory:
-  {}
+The InterPro cross-references files for {release} are available in the following directory:
+  {dst}
 
 Kind regards,
 The InterPro Production Team
-""".format(release, dst)
+"""
         )
 
     logger.info("complete")
@@ -479,34 +494,34 @@ def build_aa_iprscan(user: str, dsn: str):
     """
 
     cur.execute(
-        """
+        f"""
         CREATE TABLE IPRSCAN.AA_IPRSCAN COMPRESS NOLOGGING
-        AS {} FROM IPRSCAN.MV_IPRSCAN WHERE 1 = 0
-        """.format(select_stmt)
+        AS {select_stmt} FROM IPRSCAN.MV_IPRSCAN WHERE 1 = 0
+        """
     )
 
     partitions = ("TMHMM", "SIGNALP_EUK", "SIGNALP_GRAM_POSITIVE",
                   "SIGNALP_GRAM_NEGATIVE", "COILS", "PROSITE_PATTERNS",
                   "PROSITE_PROFILES", "MOBIDBLITE")
     for p in partitions:
-        logger.debug("inserting partition {}".format(p))
+        logger.debug(f"inserting partition {p}")
         cur.execute(
-            """
+            f"""
             INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
-            {}
-            FROM IPRSCAN.MV_IPRSCAN PARTITION({})
-            """.format(select_stmt, p)
+            {select_stmt}
+            FROM IPRSCAN.MV_IPRSCAN PARTITION({p})
+            """
         )
         con.commit()
 
     logger.debug("inserting partition PHOBIUS")
     cur.execute(
-        """
+        f"""
         INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
-        {}
+        {select_stmt}
         FROM IPRSCAN.MV_IPRSCAN PARTITION(PHOBIUS)
         WHERE METHOD_AC IN ('SIGNAL_PEPTIDE','TRANSMEMBRANE')
-        """.format(select_stmt)
+        """
     )
     con.commit()
 
@@ -515,12 +530,12 @@ def build_aa_iprscan(user: str, dsn: str):
 
     logger.info("creating indices")
     for col in ("UPI", "SIGNATURE"):
-        logger.debug("index on {}".format(col))
+        logger.debug(f"index on {col}")
         cur.execute(
+            f"""
+            CREATE INDEX I_AA_IPRSCAN${col}
+            ON IPRSCAN.AA_IPRSCAN ({col}) NOLOGGING
             """
-            CREATE INDEX I_AA_IPRSCAN${0}
-            ON IPRSCAN.AA_IPRSCAN ({0}) NOLOGGING
-            """.format(col)
         )
 
     cur.close()
@@ -551,7 +566,7 @@ def ask_to_snapshot(user: str, dsn: str, notify: bool=True):
             name += " (" + version + ")"
         updates.append((name, analysis_id))
 
-    content = """\
+    content = f"""\
 INTERPRO.XREF_SUMMARY, INTERPRO.XREF_CONDENSED, and IPRSCAN.AA_IPRSCAN are ready.
 
 Please, take a snapshot of IPPRO, and inform UniProt they can refresh IPREADU.
@@ -564,7 +579,7 @@ Bcc: interpro-team@ebi.ac.uk
 
 Subject
 -------
-Protein update {} completed: please refresh IPREADU
+Protein update {release} completed: please refresh IPREADU
 
 Body (change text between square brackets)
 ------------------------------------------
@@ -572,15 +587,15 @@ Dear UniProt team,
 
 You may refresh IPREADU with the snapshot of IPPRO from [date/time].
 
-The max UPI we processed up to in this update is {}.
-""".format(release, max_upi)
+The max UPI we processed up to in this update is {max_upi}.
+"""
 
     if updates:
         content += """
 We have updated the following databases since the previous protein update:
 """
-        for db in updates:
-            content += "  - {:<30}new analysis ID: {}\n".format(*db)
+        for name, analysis_id in updates:
+            content += f"  - {name:<30}new analysis ID: {analysis_id}\n"
     else:
         content += """
 There are no changes to the analysis IDs for this protein update.
@@ -595,7 +610,7 @@ The InterPro Production Team
         if notify:
             send_mail(
                 to_addrs=["interpro-team@ebi.ac.uk"],
-                subject="Protein update {}: please snapshot IPPRO".format(release),
+                subject=f"Protein update {release}: please snapshot IPPRO",
                 content=content
             )
 
@@ -680,13 +695,13 @@ Dear UniProt team,
 Please find below the list of recent integration changes.
 
 """
-    content += "{:<30}{:<30}{:<20}{:<20}\n".format("Signature", "Comment",
-                                                   "Previous entry",
-                                                   "Current entry")
+    content += (f"{'Signature':<30}{'Comment':<30}{'Previous entry':<20}"
+                f"{'Current entry':<20}\n")
     content += '-' * 100 + '\n'
 
     for acc in sorted(changes, key=lambda k: k.lower()):
-        content += "{:<30}{:<30}{:<20}{:<20}\n".format(acc, *changes[acc])
+        status, prev, curr = changes[acc]
+        content += f"{acc:<30}{status:<30}{prev:<20}{curr:<20}\n"
 
     content += "\nKind regards,\nThe InterPro Production Team\n"
 
@@ -695,7 +710,7 @@ Please find below the list of recent integration changes.
             to_addrs=["aa_dev@ebi.ac.uk"],
             cc_addrs=["unirule@ebi.ac.uk"],
             bcc_addrs=["interpro-team@ebi.ac.uk"],
-            subject="Protein update {}: integration changes".format(release),
+            subject=f"Protein update {release}: integration changes",
             content=content
         )
 
