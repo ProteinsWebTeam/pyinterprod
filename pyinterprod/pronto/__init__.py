@@ -219,10 +219,9 @@ def report_description_changes(user: str, dsn: str, dst: str):
         fh.write("Accession\tChecked\t# Lost\t# Gained\tLost\tGained\n")
         for acc in sorted(changes):
             lost, gained = changes[acc]
-            fh.write("{}\t{}\t{}\t{}\t{}\t{}\n".format(
-                acc, entries[acc], len(lost), len(gained), " | ".join(lost),
-                " | ".join(gained)
-            ))
+            if lost or gained:
+                fh.write(f"{acc}\t{entries[acc]}\t{len(lost)}\t{len(gained)}"
+                         f"\t{' | '.join(lost)}\t{' | '.join(gained)}\n")
 
 
 def copy_schema(user_src: str, user_dst: str, dsn: str,
