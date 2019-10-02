@@ -21,8 +21,8 @@ def load_databases(user: str, dsn: str):
     cur = con.cursor()
     orautils.drop_table(cur, owner, "CV_DATABASE", purge=True)
     cur.execute(
-        """
-        CREATE TABLE {}.CV_DATABASE
+        f"""
+        CREATE TABLE {cur}.CV_DATABASE
         (
             DBCODE VARCHAR2(10) NOT NULL,
             DBNAME VARCHAR2(50) NOT NULL,
@@ -32,19 +32,19 @@ def load_databases(user: str, dsn: str):
             IS_READY CHAR(1) DEFAULT 'N',
             CONSTRAINT PK_DATABASE PRIMARY KEY (DBCODE)
         ) NOLOGGING
-        """.format(owner)
+        """
     )
 
     cur.execute(
-        """
-        INSERT /*+ APPEND */ INTO {}.CV_DATABASE (
+        f"""
+        INSERT /*+ APPEND */ INTO {owner}.CV_DATABASE (
             DBCODE, DBNAME, DBSHORT, VERSION, FILE_DATE
         )
         SELECT DB.DBCODE, DB.DBNAME, DB.DBSHORT, V.VERSION, V.FILE_DATE
         FROM INTERPRO.CV_DATABASE DB
         LEFT OUTER JOIN INTERPRO.DB_VERSION V
           ON DB.DBCODE = V.DBCODE
-        """.format(owner)
+        """
     )
     con.commit()
 
@@ -64,34 +64,34 @@ def load_taxa(user: str, dsn: str, **kwargs):
     cur = con.cursor()
     orautils.drop_table(cur, owner, "ETAXI", purge=True)
     cur.execute(
-        """
-        CREATE TABLE {}.ETAXI
+        f"""
+        CREATE TABLE {owner}.ETAXI
         NOLOGGING
         AS
         SELECT
           TAX_ID, PARENT_ID, SCIENTIFIC_NAME, RANK, FULL_NAME
         FROM INTERPRO.ETAXI
-        """.format(owner)
+        """
     )
     orautils.gather_stats(cur, owner, "ETAXI")
     orautils.grant(cur, owner, "ETAXI", "SELECT", "INTERPRO_SELECT")
     cur.execute(
-        """
-        ALTER TABLE {}.ETAXI
+        f"""
+        ALTER TABLE {owner}.ETAXI
         ADD CONSTRAINT PK_ETAXI PRIMARY KEY (TAX_ID)
-        """.format(owner)
+        """
     )
 
     orautils.drop_table(cur, owner, "LINEAGE", purge=True)
     cur.execute(
-        """
-        CREATE TABLE {}.LINEAGE
+        f"""
+        CREATE TABLE {owner}.LINEAGE
         (
             TAX_ID NUMBER(10) NOT NULL,
             RANK VARCHAR2(50) NOT NULL,
             RANK_TAX_ID NUMBER(10)
         ) NOLOGGING
-        """.format(owner)
+        """
     )
 
     """
@@ -103,11 +103,11 @@ def load_taxa(user: str, dsn: str, **kwargs):
     therefore it is not needed (we don't want a meta-superkingdom)
     """
     cur.execute(
-        """
+        f"""
         SELECT TAX_ID, PARENT_ID, RANK
-        FROM {}.ETAXI
+        FROM {owner}.ETAXI
         WHERE TAX_ID != 131567
-        """.format(owner)
+        """
     )
     taxa = {}
     for tax_id, parent_id, rank in cur:
@@ -117,9 +117,9 @@ def load_taxa(user: str, dsn: str, **kwargs):
             taxa[tax_id] = (rank, parent_id)
 
     table = orautils.TablePopulator(con,
-                                    query="INSERT /*+ APPEND */ "
-                                          "INTO {}.LINEAGE "
-                                          "VALUES (:1, :2, :3)".format(owner),
+                                    query=f"INSERT /*+ APPEND */ "
+                                          f"INTO {owner}.LINEAGE "
+                                          f"VALUES (:1, :2, :3)",
                                     autocommit=True)
     for tax_id in taxa:
         rank, parent_id = taxa[tax_id]
@@ -136,11 +136,11 @@ def load_taxa(user: str, dsn: str, **kwargs):
     orautils.gather_stats(cur, owner, "LINEAGE")
     orautils.grant(cur, owner, "LINEAGE", "SELECT", "INTERPRO_SELECT")
     cur.execute(
-        """
+        f"""
         CREATE INDEX I_LINEAGE
-        ON {}.LINEAGE (TAX_ID, RANK)
+        ON {owner}.LINEAGE (TAX_ID, RANK)
         NOLOGGING
-        """.format(owner)
+        """
     )
 
     cur.close()
@@ -179,17 +179,17 @@ def report_description_changes(user: str, dsn: str, dst: str):
             entries_then[acc] = {description}
 
     cur.execute(
-        """
+        f"""
         SELECT DISTINCT EM.ENTRY_AC, D.TEXT
-        FROM {0}.METHOD2PROTEIN PARTITION(M2P_SWISSP) M
-        INNER JOIN {0}.DESC_VALUE D
+        FROM {owner}.METHOD2PROTEIN PARTITION(M2P_SWISSP) M
+        INNER JOIN {owner}.DESC_VALUE D
           ON M.DESC_ID = D.DESC_ID
         INNER JOIN INTERPRO.ENTRY2METHOD EM
           ON M.METHOD_AC = EM.METHOD_AC
        WHERE EM.ENTRY_AC IN (
          SELECT ENTRY_AC FROM INTERPRO.ENTRY WHERE ENTRY_TYPE='F'
        )
-       """.format(owner)
+       """
     )
     entries_now = {}
     for acc, description in cur:
