@@ -470,12 +470,6 @@ The InterPro Production Team
     logger.info("complete")
 
 
-def _convert_gene3d(row: Tuple[str, str, str, str, int]) -> Tuple[str, str,
-                                                                  str, int]:
-    # G3DSA:3.90.1580.10 -> 3.90.1580.10
-    return row[0], row[1], row[2][6:], row[4]
-
-
 def build_aa_iprscan(user: str, dsn: str):
     logger.info("creating AA_IPRSCAN")
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
