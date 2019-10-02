@@ -392,6 +392,8 @@ def export_databases(user: str, dsn: str, dst: str, notify: bool=True):
     files.append(os.path.join(dst, "InterPro.dat"))
     ifh2 = open(files[-1], "wt")
 
+    # starts at -1 because on the first row, `protein_acc != _protein` is True
+    cnt = -1
     entries = {}
     _protein = None
     for row in cur:
@@ -433,9 +435,15 @@ def export_databases(user: str, dsn: str, dst: str, notify: bool=True):
 
             entries = {}
             _protein = protein_acc
+            cnt += 1
+            if not cnt % 10000000:
+                logger.info(f"  {cnt:,}")
 
         entries[entry_acc] = entry_name
 
+    # Last protein
+    cnt += 1
+    logger.info(f"  {cnt:,}")
     for _entry in sorted(entries):
         _name = entries[_entry]
         ifh1.write(f"{_protein}\t{_entry}\t{_name}\n")
