@@ -147,7 +147,7 @@ def load_taxa(user: str, dsn: str, **kwargs):
     con.close()
 
 
-def IPP(user: str, dsn: str, dst: str):
+def report_description_changes(user: str, dsn: str, dst: str):
     try:
         os.remove(dst)
     except FileNotFoundError:
