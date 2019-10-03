@@ -157,8 +157,8 @@ def report_description_changes(user: str, dsn: str, dst: str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
-    cur.execute("SELECT ENTRY_AC, CHECKED FROM INTERPRO.ENTRY")
-    entries = dict(cur.fetchall())
+    cur.execute("SELECT ENTRY_AC, CHECKED, ENTRY_TYPE FROM INTERPRO.ENTRY")
+    entries = {row[0]: (row[1], row[2]) for row in cur}
 
     cur.execute(
         """
@@ -218,9 +218,10 @@ def report_description_changes(user: str, dsn: str, dst: str):
     with open(dst, "wt") as fh:
         fh.write("Accession\tChecked\t# Lost\t# Gained\tLost\tGained\n")
         for acc in sorted(changes):
-            lost, gained = changes[acc]
-            if lost or gained:
-                fh.write(f"{acc}\t{entries[acc]}\t{len(lost)}\t{len(gained)}"
+            gained, lost = changes[acc]
+            is_checked, entry_type = entries[acc]
+            if entry_type == 'F' and (lost or gained):
+                fh.write(f"{acc}\t{is_checked}\t{len(lost)}\t{len(gained)}"
                          f"\t{' | '.join(lost)}\t{' | '.join(gained)}\n")
 
 
