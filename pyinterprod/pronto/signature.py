@@ -377,6 +377,7 @@ def _load_comparators(user: str, dsn: str, comparators: List[MatchComparator]):
     table.close()
 
     cur = con.cursor()
+    orautils.grant(cur, owner, "METHOD_OVERLAP", "SELECT", "INTERPRO_SELECT")
     cur.execute(
         f"""
         CREATE UNIQUE INDEX PK_METHOD_OVERLAP
