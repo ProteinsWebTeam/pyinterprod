@@ -3,8 +3,6 @@
 import os
 import time
 from datetime import datetime, timedelta
-from typing import List
-from tempfile import mkdtemp
 from zipfile import ZipFile, ZIP_DEFLATED
 
 import cx_Oracle
