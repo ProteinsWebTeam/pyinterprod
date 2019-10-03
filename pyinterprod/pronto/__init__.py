@@ -147,7 +147,7 @@ def load_taxa(user: str, dsn: str, **kwargs):
     con.close()
 
 
-def report_description_changes(user: str, dsn: str, dst: str):
+def IPP(user: str, dsn: str, dst: str):
     try:
         os.remove(dst)
     except FileNotFoundError:
@@ -157,7 +157,7 @@ def report_description_changes(user: str, dsn: str, dst: str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
-    cur.execute("SELECT ENTRY_AC, CHECKED, ENTRY_TYPE FROM INTERPRO.ENTRY")
+    cur.execute("SELECT ENTRY_AC, ENTRY_TYPE, CHECKED FROM INTERPRO.ENTRY")
     entries = {row[0]: (row[1], row[2]) for row in cur}
 
     cur.execute(
@@ -216,13 +216,14 @@ def report_description_changes(user: str, dsn: str, dst: str):
         changes[acc] = ([], descs_then)
 
     with open(dst, "wt") as fh:
-        fh.write("Accession\tChecked\t# Lost\t# Gained\tLost\tGained\n")
+        fh.write("Accession\tType\tChecked\t# Lost\t# Gained\tLost\tGained\n")
         for acc in sorted(changes):
             gained, lost = changes[acc]
-            is_checked, entry_type = entries[acc]
-            if entry_type == 'F' and (lost or gained):
-                fh.write(f"{acc}\t{is_checked}\t{len(lost)}\t{len(gained)}"
-                         f"\t{' | '.join(lost)}\t{' | '.join(gained)}\n")
+            if lost or gained:
+                entry_type, is_checked = entries[acc]
+                fh.write(f"{acc}\t{entry_type}\t{is_checked}\t{len(lost)}\t"
+                         f"{len(gained)}\t{' | '.join(lost)}\t"
+                         f"{' | '.join(gained)}\n")
 
 
 def copy_schema(user_src: str, user_dst: str, dsn: str,
