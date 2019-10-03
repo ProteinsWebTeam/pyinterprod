@@ -63,11 +63,6 @@ The optional arguments are:
 </thead>
 <tbody>
 <tr>
-    <td>unirule</td>
-    <td>Import the InterPro entries and member database signatures used in UniRule</td>
-    <td></td>
-</tr>
-<tr>
     <td>load-proteins</td>
     <td>Import the new Swiss-Prot and TrEMBL proteins, and compare with the current ones</td>
     <td></td>
@@ -180,6 +175,11 @@ The optional arguments are:
 <tr>
     <td>report-curators</td>
     <td>Send reports to curators, and inform them that Pronto is ready</td>
+    <td>pronto</td>
+</tr>
+<tr>
+    <td>unirule</td>
+    <td>Import the InterPro entries and member database signatures used in UniRule</td>
     <td>pronto</td>
 </tr>
 </tobdy>

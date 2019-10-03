@@ -49,12 +49,6 @@ def main():
 
     tasks = [
         Task(
-            name="unirule",
-            fn=uniprot.import_unirules,
-            args=(db_users["interpro"], db_dsn, paths["unirule"]),
-            scheduler=dict(queue=queue, mem=500)
-        ),
-        Task(
             name="load-proteins",
             fn=proteins.load,
             args=(
@@ -230,7 +224,14 @@ def main():
             kwargs=dict(notify=notify),
             scheduler=dict(queue=queue, mem=500),
             requires=["pronto"]
-        )
+        ),
+        Task(
+            name="unirule",
+            fn=uniprot.import_unirules,
+            args=(db_users["interpro"], db_dsn, paths["unirule"]),
+            scheduler=dict(queue=queue, mem=500),
+            requires=["pronto"]
+        ),
     ]
 
     task_names = [t.name for t in tasks]
