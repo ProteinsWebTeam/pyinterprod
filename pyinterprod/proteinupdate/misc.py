@@ -323,21 +323,48 @@ def refresh_taxonomy(user: str, dsn: str):
     logger.info("complete")
 
 
-def report_to_curators(user: str, dsn: str, files: List[str],
-                       notify: bool=True):
+def report_to_curators(user: str, dsn: str, dirname: str, notify: bool=True):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     release = cur.fetchone()[0]
+    cur.execute("SELECT CODE, LOWER(ABBREV) FROM INTERPRO.CV_ENTRY_TYPE")
+    types = dict(cur.fetchall())
     cur.close()
     con.close()
 
-    dirname = mkdtemp()
-    filename = os.path.join(dirname, f"protein_update_{release}.zip")
+    # Split description changes by entry type
+    files = {}
+    with open(os.path.join(dirname, "swiss_de_changes.tsv"), "rt") as ifh:
+        header = next(ifh)
+        for line in ifh:
+            type_code = line.split('\t')[1]
+            try:
+                path, ofh = files[type_code]
+            except KeyError:
+                type_abbr = types[type_code]
+                path = os.path.join(dirname, f"swiss_de_{type_abbr}.tsv")
+                ofh = open(path, "wt")
+                ofh.write(header)
+                files[type_code] = (path, ofh)
 
+            ofh.write(line)
+
+    for path, ofh in files.values():
+        ofh.close()
+
+    # Write ZIP file
+    filename = os.path.join(dirname, f"protein_update_{release}.zip")
     with ZipFile(filename, 'w', compression=ZIP_DEFLATED) as fh:
-        for path in files:
+        path = os.path.join(dirname, "entries_changes.tsv")
+        fh.write(path, arcname=os.path.basename(path))
+
+        for path, ofh in files.values():
             fh.write(path, arcname=os.path.basename(path))
+
+    # Delete temporary files
+    for path, ofh in files.values():
+        os.remove(path)
 
     if notify:
         send_mail(
@@ -355,7 +382,6 @@ The InterPro Production Team
         )
 
     os.remove(filename)
-    os.rmdir(dirname)
 
 
 def export_for_sib(user: str, dsn: str, notify: bool=True):

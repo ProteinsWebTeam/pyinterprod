@@ -217,7 +217,7 @@ def main():
             fn=pronto.run,
             args=(args.config, ),
             kwargs=dict(
-                report=os.path.join(paths["results"], "swiss_de_families.tsv")
+                report=os.path.join(paths["results"], "swiss_de_changes.tsv")
             ),
             scheduler=dict(queue=queue, mem=500),
             requires=["update-matches", "update-feature-matches", "taxonomy",
@@ -226,10 +226,7 @@ def main():
         Task(
             name="report-curators",
             fn=misc.report_to_curators,
-            args=(db_users["interpro"], db_dsn, [
-                os.path.join(paths["results"], "entries_changes.tsv"),
-                os.path.join(paths["results"], "swiss_de_families.tsv")
-            ]),
+            args=(db_users["interpro"], db_dsn, paths["results"]),
             kwargs=dict(notify=notify),
             scheduler=dict(queue=queue, mem=500),
             requires=["pronto"]
