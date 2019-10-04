@@ -306,7 +306,7 @@ def export_databases(user: str, dsn: str, dst: str, notify: bool=True):
             # P (PROSITE patterns) -> same file than M (PROSITE profiles)
             dbname, dbkey = dbcodes[dbcode]
 
-            files.append(os.path.join(dst, dbname.lower() + ".tab"))
+            files.append(os.path.join(dst, '.' + dbname.lower() + ".tab"))
             fh1 = open(files[-1], "wt")
 
             files.append(os.path.join(dst, dbname + ".dat"))
@@ -316,7 +316,7 @@ def export_databases(user: str, dsn: str, dst: str, notify: bool=True):
 
     handlers['P'] = handlers['M']
 
-    files.append(os.path.join(dst, "interpro.tab"))
+    files.append(os.path.join(dst, ".interpro.tab"))
     ifh1 = open(files[-1], "wt")
     files.append(os.path.join(dst, "InterPro.dat"))
     ifh2 = open(files[-1], "wt")
