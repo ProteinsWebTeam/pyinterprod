@@ -22,7 +22,7 @@ def load_databases(user: str, dsn: str):
     orautils.drop_table(cur, owner, "CV_DATABASE", purge=True)
     cur.execute(
         f"""
-        CREATE TABLE {cur}.CV_DATABASE
+        CREATE TABLE {owner}.CV_DATABASE
         (
             DBCODE VARCHAR2(10) NOT NULL,
             DBNAME VARCHAR2(50) NOT NULL,
