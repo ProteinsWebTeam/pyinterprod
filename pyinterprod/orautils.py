@@ -9,6 +9,27 @@ from . import logger
 
 
 INSERT_SIZE = 100000
+# # Disabled as DBAs did not give us sufficient privileges
+# DATA_PUMP_DIR = "PANDA_DATA_PUMP_DIR"
+# DATA_PUMP_PREFIX = "INTERPRO_ANALYSIS_LOAD"
+#
+#
+# def export_schema(user: str, dsn: str) -> int:
+#     return subprocess.call(["expdp", make_connect_string(user, dsn),
+#                             f"SCHEMAS={user.split('/')[0]}",
+#                             f"DIRECTORY={DATA_PUMP_DIR}",
+#                             f"DUMPFILE={DATA_PUMP_PREFIX}.dmp",
+#                             f"LOGFILE={DATA_PUMP_PREFIX}-exp.log",
+#                             "REUSE_DUMPFILES=YES"])
+#
+#
+# def import_schema(user: str, dsn: str, schema_src: str) -> int:
+#     return subprocess.call(["impdp", make_connect_string(user, dsn),
+#                             f"SCHEMAS={schema_src}",
+#                             f"DIRECTORY={DATA_PUMP_DIR}",
+#                             f"DUMPFILE={DATA_PUMP_PREFIX}.dmp",
+#                             f"LOGFILE={DATA_PUMP_PREFIX}-imp.log",
+#                             f"REMAP_SCHEMA={schema_src}:{user.split('/')[0]}"])
 
 
 def copy_table(user_src: str, user_dst: str, dsn: str, table: dict):
