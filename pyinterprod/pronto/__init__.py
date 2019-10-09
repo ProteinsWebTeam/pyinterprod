@@ -248,7 +248,7 @@ def copy_schema(user_src: str, user_dst: str, dsn: str,
     con.close()
 
     owner_dst = user_dst.split('/')[0]
-    orautils.clear_schema(user_dst, dsn)
+    orautils.drop_all(user_dst, dsn)
     conn_str = orautils.make_connect_string(user_dst, dsn)
     num_errors = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:

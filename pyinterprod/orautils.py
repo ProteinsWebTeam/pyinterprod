@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import re
+import subprocess
 from typing import List, Optional, Tuple, Union
 
 import cx_Oracle
@@ -9,27 +10,56 @@ from . import logger
 
 
 INSERT_SIZE = 100000
-# # Disabled as DBAs did not give us sufficient privileges
-# DATA_PUMP_DIR = "PANDA_DATA_PUMP_DIR"
-# DATA_PUMP_PREFIX = "INTERPRO_ANALYSIS_LOAD"
-#
-#
-# def export_schema(user: str, dsn: str) -> int:
-#     return subprocess.call(["expdp", make_connect_string(user, dsn),
-#                             f"SCHEMAS={user.split('/')[0]}",
-#                             f"DIRECTORY={DATA_PUMP_DIR}",
-#                             f"DUMPFILE={DATA_PUMP_PREFIX}.dmp",
-#                             f"LOGFILE={DATA_PUMP_PREFIX}-exp.log",
-#                             "REUSE_DUMPFILES=YES"])
-#
-#
-# def import_schema(user: str, dsn: str, schema_src: str) -> int:
-#     return subprocess.call(["impdp", make_connect_string(user, dsn),
-#                             f"SCHEMAS={schema_src}",
-#                             f"DIRECTORY={DATA_PUMP_DIR}",
-#                             f"DUMPFILE={DATA_PUMP_PREFIX}.dmp",
-#                             f"LOGFILE={DATA_PUMP_PREFIX}-imp.log",
-#                             f"REMAP_SCHEMA={schema_src}:{user.split('/')[0]}"])
+DATA_PUMP_DIR = "PANDA_DATA_PUMP_DIR"
+
+
+def copy_tables(user_src: str, user_dst: str, dsn: str):
+    schema_src = user_src.split('/')[0]
+    schema_dst = user_dst.split('/')[0]
+    dumpfile = schema_src.upper()
+
+    con = cx_Oracle.connect(make_connect_string(user_src, dsn))
+    cur = con.cursor()
+    tables = [f"{schema_src}.{t}" for t in get_tables(cur, schema_src)]
+    cur.execute(f"UPDATE {schema_src}.CV_DATABASE SET IS_READY = 'N'")
+    con.commit()
+    cur.close()
+    con.close()
+
+    returncode = subprocess.call(["expdp", make_connect_string(user_src, dsn),
+                                  f"TABLES={','.join(tables)}",
+                                  f"DIRECTORY={DATA_PUMP_DIR}",
+                                  f"DUMPFILE={dumpfile}.dmp",
+                                  f"LOGFILE={dumpfile}-exp.log",
+                                  "REUSE_DUMPFILES=YES"])
+
+    if returncode:
+        raise RuntimeError(f"expdp exited with code {returncode}")
+
+    con = cx_Oracle.connect(make_connect_string(user_src, dsn))
+    cur = con.cursor()
+    cur.execute(f"UPDATE {schema_src}.CV_DATABASE SET IS_READY = 'Y'")
+    con.commit()
+    cur.close()
+    con.close()
+
+    drop_all(user_dst, dsn)
+    returncode = subprocess.call(["impdp", make_connect_string(user_dst, dsn),
+                                  f"TABLES={','.join(tables)}",
+                                  f"DIRECTORY={DATA_PUMP_DIR}",
+                                  f"DUMPFILE={dumpfile}.dmp",
+                                  f"LOGFILE={dumpfile}-imp.log",
+                                  f"REMAP_SCHEMA={schema_src}:{schema_dst}"])
+
+    if returncode:
+        raise RuntimeError(f"impdp exited with code {returncode}")
+
+    con = cx_Oracle.connect(make_connect_string(user_dst, dsn))
+    cur = con.cursor()
+    cur.execute(f"UPDATE {schema_dst}.CV_DATABASE SET IS_READY = 'Y'")
+    con.commit()
+    cur.close()
+    con.close()
 
 
 def copy_table(user_src: str, user_dst: str, dsn: str, table: dict):
@@ -95,7 +125,7 @@ def copy_table(user_src: str, user_dst: str, dsn: str, table: dict):
     con.close()
 
 
-def clear_schema(user: str, dsn: str):
+def drop_all(user: str, dsn: str):
     con = cx_Oracle.connect(make_connect_string(user, dsn))
     cur = con.cursor()
     owner = user.split('/')[0]
