@@ -10,8 +10,8 @@ import cx_Oracle
 from .. import logger, orautils
 
 
-SUFFIX = "MV_"
-PREFIX = "_TMP"
+PREFIX = "MV_"
+SUFFIX = "_TMP"
 
 
 def import_matches(user: str, dsn: str, max_workers: int=0,
