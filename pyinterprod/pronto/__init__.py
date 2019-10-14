@@ -490,7 +490,7 @@ def run(config_path: str, task_names: Optional[List[str]]=None,
         status = w.run(task_names, dependencies=False)
 
     if not status and raise_on_error:
-        raise RuntimeError("")
+        raise RuntimeError("one or several tasks failed")
 
     return status
 
