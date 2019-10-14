@@ -10,6 +10,10 @@ import cx_Oracle
 from .. import logger, orautils
 
 
+SUFFIX = "MV_"
+PREFIX = "_TMP"
+
+
 def import_matches(user: str, dsn: str, max_workers: int=0,
                    checkpoint: Optional[str]=None, force: bool=False):
     if checkpoint:
@@ -433,32 +437,37 @@ def _get_max_upi(cur: cx_Oracle.Cursor, owner: str, table: str,
 
 def _import_signalp(url: str, owner: str, table_src: str, table_dst: str,
                     actions: List[Tuple[int, str]]):
+    table_stg = PREFIX + table_src
+    table_tmp = table_src + SUFFIX
+
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    upi = _get_max_upi(cur, owner, table_src)
+    upi = _get_max_upi(cur, owner, table_stg)
     max_upi = _get_max_upi(cur, "UNIPARC", "PROTEIN", "UAREAD")
     if not upi or upi < max_upi:
         # Not the same UPI: import table
-        orautils.drop_mview(cur, owner, table_src)
-        orautils.drop_table(cur, owner, table_src, purge=True)
+        orautils.drop_mview(cur, owner, table_stg)
+        orautils.drop_table(cur, owner, table_stg, purge=True)
         cur.execute(
             """
             CREATE TABLE {0}.{1} NOLOGGING
             AS
             SELECT *
-            FROM {0}.{1}@ISPRO
-            """.format(owner, table_src)
+            FROM {0}.{2}@ISPRO
+            """.format(owner, table_stg, table_src)
         )
-        orautils.gather_stats(cur, owner, table_src)
         cur.execute(
             """
-            CREATE INDEX {0}.I_{1}
-            ON {0}.{1}(ANALYSIS_ID)
-            NOLOGGING
-            """.format(owner, table_src)
+            CREATE INDEX {0}.I_{1}$ID ON {0}.{2} (ANALYSIS_ID) NOLOGGING
+            """.format(owner, table_src, table_stg)
+        )
+        cur.execute(
+            """
+            CREATE INDEX {0}.I_{1}$UPI ON {0}.{2} (UPI) NOLOGGING
+            """.format(owner, table_src, table_stg)
         )
 
-    table_tmp = table_src + "_TMP"
+    # Create temporary table for partition exchange
     orautils.drop_table(cur, owner, table_tmp, purge=True)
     cur.execute(
         """
@@ -493,8 +502,8 @@ def _import_signalp(url: str, owner: str, table_src: str, table_dst: str,
 
 def _import_member_db(url: str, owner: str, table_src: str, table_dst: str,
                       partition: str, analysis_id: int, func: Callable):
-    table_stg = "MV_" + table_src
-    table_tmp = table_src + "_TMP"
+    table_stg = PREFIX + table_src
+    table_tmp = table_src + SUFFIX
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
