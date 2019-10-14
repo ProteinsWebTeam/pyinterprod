@@ -458,12 +458,12 @@ def _import_signalp(url: str, owner: str, table_src: str, table_dst: str,
         )
         cur.execute(
             """
-            CREATE INDEX {0}.I_{1}$ID ON {0}.{2} (ANALYSIS_ID) NOLOGGING
+            CREATE INDEX {0}.{1}$ID ON {0}.{2} (ANALYSIS_ID) NOLOGGING
             """.format(owner, table_src, table_stg)
         )
         cur.execute(
             """
-            CREATE INDEX {0}.I_{1}$UPI ON {0}.{2} (UPI) NOLOGGING
+            CREATE INDEX {0}.{1}$UPI ON {0}.{2} (UPI) NOLOGGING
             """.format(owner, table_src, table_stg)
         )
 
