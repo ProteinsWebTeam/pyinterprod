@@ -13,18 +13,19 @@ INSERT_SIZE = 100000
 DATA_PUMP_DIR = "PANDA_DATA_PUMP_DIR"
 
 
-def copy_tables(user_src: str, user_dst: str, dsn: str):
+def copy_tables(user_src: str, user_dst: str, dsn: str, set_status: bool=False):
     schema_src = user_src.split('/')[0]
     schema_dst = user_dst.split('/')[0]
     dumpfile = schema_src.upper()
 
-    con = cx_Oracle.connect(make_connect_string(user_src, dsn))
-    cur = con.cursor()
-    tables = [f"{schema_src}.{t}" for t in get_tables(cur, schema_src)]
-    cur.execute(f"UPDATE {schema_src}.CV_DATABASE SET IS_READY = 'N'")
-    con.commit()
-    cur.close()
-    con.close()
+    if set_status:
+        con = cx_Oracle.connect(make_connect_string(user_src, dsn))
+        cur = con.cursor()
+        tables = [f"{schema_src}.{t}" for t in get_tables(cur, schema_src)]
+        cur.execute(f"UPDATE {schema_src}.CV_DATABASE SET IS_READY = 'N'")
+        con.commit()
+        cur.close()
+        con.close()
 
     returncode = subprocess.call(["expdp", make_connect_string(user_src, dsn),
                                   f"TABLES={','.join(tables)}",
