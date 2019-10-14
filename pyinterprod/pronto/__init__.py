@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import subprocess
 import sys
 from concurrent.futures import as_completed, ThreadPoolExecutor
 from typing import List, Optional
@@ -13,6 +14,9 @@ from mundone import Task, Workflow
 
 from .. import logger, orautils
 from . import go, prediction, protein, signature
+
+
+DATA_PUMP_DIR = "PANDA_DATA_PUMP_DIR"
 
 
 def load_databases(user: str, dsn: str):
@@ -226,6 +230,63 @@ def report_description_changes(user: str, dsn: str, dst: str):
                          f"{' | '.join(gained)}\n")
 
 
+def copy_tables(user_src: str, user_dst: str, dsn: str, set_status: bool=False):
+    if user_src == user_dst:
+        logger.warning("identical source and target schemas")
+        return
+
+    schema_src = user_src.split('/')[0]
+    schema_dst = user_dst.split('/')[0]
+    dumpfile = schema_src.upper()
+
+    if set_status:
+        con = cx_Oracle.connect(orautils.make_connect_string(user_src, dsn))
+        cur = con.cursor()
+        tables = [f"{schema_src}.{t}"
+                  for t in orautils.get_tables(cur, schema_src)]
+        cur.execute(f"UPDATE {schema_src}.CV_DATABASE SET IS_READY = 'N'")
+        con.commit()
+        cur.close()
+        con.close()
+
+    returncode = subprocess.call(["expdp",
+                                  orautils.make_connect_string(user_src, dsn),
+                                  f"TABLES={','.join(tables)}",
+                                  f"DIRECTORY={DATA_PUMP_DIR}",
+                                  f"DUMPFILE={dumpfile}.dmp",
+                                  f"LOGFILE={dumpfile}-exp.log",
+                                  "REUSE_DUMPFILES=YES"])
+
+    if returncode:
+        raise RuntimeError(f"expdp exited with code {returncode}")
+
+    con = cx_Oracle.connect(orautils.make_connect_string(user_src, dsn))
+    cur = con.cursor()
+    cur.execute(f"UPDATE {schema_src}.CV_DATABASE SET IS_READY = 'Y'")
+    con.commit()
+    cur.close()
+    con.close()
+
+    orautils.drop_all(user_dst, dsn)
+    returncode = subprocess.call(["impdp",
+                                  orautils.make_connect_string(user_dst, dsn),
+                                  f"TABLES={','.join(tables)}",
+                                  f"DIRECTORY={DATA_PUMP_DIR}",
+                                  f"DUMPFILE={dumpfile}.dmp",
+                                  f"LOGFILE={dumpfile}-imp.log",
+                                  f"REMAP_SCHEMA={schema_src}:{schema_dst}"])
+
+    if returncode:
+        raise RuntimeError(f"impdp exited with code {returncode}")
+
+    con = cx_Oracle.connect(orautils.make_connect_string(user_dst, dsn))
+    cur = con.cursor()
+    cur.execute(f"UPDATE {schema_dst}.CV_DATABASE SET IS_READY = 'Y'")
+    con.commit()
+    cur.close()
+    con.close()
+
+
 def copy_schema(user_src: str, user_dst: str, dsn: str,
                 max_workers: Optional[int]=None):
     if user_src == user_dst:
@@ -395,7 +456,7 @@ def _get_tasks(**kwargs):
         ),
         Task(
             name="copy",
-            fn=copy_schema,
+            fn=copy_tables,
             args=(user1, user2, dsn),
             scheduler=dict(queue=queue, mem=500),
             requires=["annotations", "publications", "databases", "comments",
