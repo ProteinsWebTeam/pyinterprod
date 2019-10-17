@@ -486,6 +486,7 @@ def run(config_path: str, task_names: Optional[List[str]]=None,
         report=report
     )
 
+    # TODO: add UniProt release as subdirectory
     wdir = config["workflow"]["dir"]
     wdb = os.path.join(wdir, "pronto.db")
     with Workflow(tasks, db=wdb, dir=wdir) as w:
