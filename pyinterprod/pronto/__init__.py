@@ -462,7 +462,7 @@ def _get_tasks(**kwargs):
             args=(user1, user2, dsn),
             scheduler=dict(queue=queue, mem=500),
             requires=["annotations", "publications", "databases", "comments",
-                      "enzymes", "proteins","matches", "compare"]
+                      "enzymes", "proteins", "matches", "index", "compare"]
         )
     ]
 
