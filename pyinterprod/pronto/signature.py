@@ -92,7 +92,6 @@ def load_signatures(user: str, dsn: str):
             METHOD_AC VARCHAR2(25) NOT NULL,
             NAME VARCHAR2(100),
             DBCODE CHAR(1) NOT NULL,
-            CANDIDATE CHAR(1) NOT NULL,
             DESCRIPTION VARCHAR2(400),
             SIG_TYPE CHAR(1),
             ABSTRACT VARCHAR2(4000),
@@ -106,12 +105,12 @@ def load_signatures(user: str, dsn: str):
     cur.execute(
         """
         INSERT /*+ APPEND */ INTO {}.METHOD (
-            METHOD_AC, NAME, DBCODE, CANDIDATE,
-            DESCRIPTION, SIG_TYPE, ABSTRACT, ABSTRACT_LONG
+            METHOD_AC, NAME, DBCODE, DESCRIPTION, SIG_TYPE, ABSTRACT, 
+            ABSTRACT_LONG
         )
         SELECT
-            METHOD_AC, NAME, DBCODE, CANDIDATE,
-            DESCRIPTION, SIG_TYPE, ABSTRACT, ABSTRACT_LONG
+            METHOD_AC, NAME, DBCODE, DESCRIPTION, SIG_TYPE, ABSTRACT, 
+            ABSTRACT_LONG
         FROM INTERPRO.METHOD
         """.format(owner)
     )
