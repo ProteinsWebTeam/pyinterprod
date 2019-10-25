@@ -246,8 +246,7 @@ def main():
                     )
                 )
 
-    # TODO: add UniProt release as subdirectory
-    wdir = config["workflow"]["dir"]
+    wdir = os.path.join(config["workflow"]["dir"], config["release"]["version"])
     wdb = os.path.join(wdir, "proteinupdate.db")
     wname = "Protein Update"
     with Workflow(tasks, db=wdb, dir=wdir, name=wname) as w:
