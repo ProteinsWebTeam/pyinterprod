@@ -170,9 +170,6 @@ def report_description_changes(user: str, dsn: str, dst: str):
         FROM INTERPRO.ENTRY2METHOD EM
         INNER JOIN INTERPRO.METHOD2SWISS_DE M
           ON EM.METHOD_AC = M.METHOD_AC
-        WHERE EM.ENTRY_AC IN (
-          SELECT ENTRY_AC FROM INTERPRO.ENTRY WHERE ENTRY_TYPE='F'
-        )
         """
     )
     entries_then = {}
@@ -190,9 +187,6 @@ def report_description_changes(user: str, dsn: str, dst: str):
           ON M.DESC_ID = D.DESC_ID
         INNER JOIN INTERPRO.ENTRY2METHOD EM
           ON M.METHOD_AC = EM.METHOD_AC
-       WHERE EM.ENTRY_AC IN (
-         SELECT ENTRY_AC FROM INTERPRO.ENTRY WHERE ENTRY_TYPE='F'
-       )
        """
     )
     entries_now = {}
