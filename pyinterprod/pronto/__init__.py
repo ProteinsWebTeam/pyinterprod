@@ -283,66 +283,6 @@ def copy_tables(user_src: str, user_dst: str, dsn: str, set_status: bool=False):
     con.close()
 
 
-def copy_schema(user_src: str, user_dst: str, dsn: str,
-                max_workers: Optional[int]=None):
-    if user_src == user_dst:
-        logger.warning("identical source and target schemas")
-        return
-
-    owner_src = user_src.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user_src, dsn))
-    cur = con.cursor()
-    tables = []
-    for t in orautils.get_tables(cur, owner_src):
-        tables.append({
-            "name": t,
-            "grants": orautils.get_grants(cur, owner_src, t),
-            "constraints": orautils.get_constraints(cur, owner_src, t),
-            "indexes": orautils.get_indices(cur, owner_src, t),
-            "partitions": orautils.get_partitions(cur, owner_src, t)
-        })
-    cur.close()
-    con.close()
-
-    owner_dst = user_dst.split('/')[0]
-    orautils.drop_all(user_dst, dsn)
-    conn_str = orautils.make_connect_string(user_dst, dsn)
-    num_errors = 0
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        fs = {}
-        for table in tables:
-            f = executor.submit(orautils.copy_table, user_src, user_dst, dsn,
-                                table)
-            fs[f] = table["name"]
-
-        for f in as_completed(fs):
-            exc = f.exception()
-            if exc:
-                logger.error(f"{fs[f]}: failed ({exc})")
-                num_errors += 1
-            else:
-                logger.info(f"{fs[f]}: done")
-
-                if fs[f] == "CV_DATABASE":
-                    # Update table so the API detects that the DB is not ready
-                    con = cx_Oracle.connect(conn_str)
-                    cur = con.cursor()
-                    cur.execute(f"UPDATE {owner_dst}.CV_DATABASE SET IS_READY = 'N'")
-                    con.commit()
-                    cur.close()
-                    con.close()
-
-    if num_errors:
-        raise RuntimeError(f"{num_errors} table(s) were not copied")
-
-    con = cx_Oracle.connect(conn_str)
-    cur = con.cursor()
-    cur.execute(f"UPDATE {owner_dst}.CV_DATABASE SET IS_READY = 'Y'")
-    con.commit()
-    cur.close()
-    con.close()
-
-
 def _get_tasks(**kwargs):
     user1 = kwargs.get("user1")
     user2 = kwargs.get("user2")
