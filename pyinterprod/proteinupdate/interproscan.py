@@ -140,16 +140,16 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
             time.sleep(600)
             analyses = _get_analyses(url, datatype="matches", force=force)
 
-            if time.time() - timestamp > 6 * 3600:
-                timestamp = time.time()
-
-                if pending:
-                    logger.info(f"  {len(pending)} pending: "
-                                f"{', '.join(pending)}")
-
-                if running:
-                    logger.info(f"  {len(running)} running: "
-                                f"{', '.join(running)}")
+            # if time.time() - timestamp > 6 * 3600:
+            #     timestamp = time.time()
+            #
+            #     if pending:
+            #         logger.info(f"  {len(pending)} pending: "
+            #                     f"{', '.join(pending)}")
+            #
+            #     if running:
+            #         logger.info(f"  {len(running)} running: "
+            #                     f"{', '.join(running)}")
 
     if num_errors:
         raise RuntimeError("{} analyses failed".format(num_errors))
