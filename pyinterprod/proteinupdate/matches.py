@@ -187,6 +187,10 @@ def insert_matches(user: str, dsn: str, drop_indices: bool=False):
     else:
         to_recreate = []
 
+    """
+    Matches for obsolete proteins are already deleted as this point
+        -> should be fast
+    """
     cur.execute(
         """
         DELETE FROM INTERPRO.MATCH
