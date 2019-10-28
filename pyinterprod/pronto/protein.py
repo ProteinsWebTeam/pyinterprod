@@ -449,13 +449,12 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue,
     comparator = utils.MatchComparator(dir=tmpdir)
     table = orautils.TablePopulator(
         con=con,
-        query="INSERT /*+ APPEND */ "
-              "INTO {}.METHOD2PROTEIN "
-              "VALUES (:1, :2, :3, :4, :5, :6, :7)".format(owner),
+        query=f"INSERT /*+ APPEND */ INTO {owner}.METHOD2PROTEIN "
+              f"VALUES (:1, :2, :3, :4, :5, :6, :7, :8)",
         autocommit=True
     )
     for chunk in iter(task_queue.get, None):
-        for acc, dbcode, length, tax_id, desc_id, matches in chunk:
+        for acc, dbcode, length, tax_id, left_n, desc_id, matches in chunk:
             md5 = _hash_protein(matches)
             protein_terms = proteins2go.get(acc, [])
 
@@ -472,7 +471,7 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue,
                     terms.add(signature_acc, go_id)
 
                 table.insert((signature_acc, acc, dbcode, md5, length,
-                              tax_id, desc_id))
+                              tax_id, left_n, desc_id))
 
         names.flush()
         taxa.flush()

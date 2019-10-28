@@ -165,10 +165,12 @@ def _get_matches(user: str, dsn: str, filepath: Optional[str]=None):
         cur.execute(
             """
             SELECT
-                P.PROTEIN_AC, P.LEN, P.DBCODE, P.TAX_ID, D.DESC_ID,
-                MA.METHOD_AC, MA.POS_FROM, MA.POS_TO, MA.FRAGMENTS
+                P.PROTEIN_AC, P.LEN, P.DBCODE, P.TAX_ID, E.LEFT_NUMBER, 
+                D.DESC_ID, MA.METHOD_AC, MA.POS_FROM, MA.POS_TO, MA.FRAGMENTS
             FROM INTERPRO.PROTEIN P
-            INNER JOIN {}.PROTEIN_DESC D
+            INNER JOIN {0}.ETAXI E
+              ON P.TAX_ID = E.TAX_ID
+            INNER JOIN {0}.PROTEIN_DESC D
               ON P.PROTEIN_AC = D.PROTEIN_AC
             INNER JOIN INTERPRO.MATCH MA
               ON P.PROTEIN_AC = MA.PROTEIN_AC
@@ -214,6 +216,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
             MD5 VARCHAR(32) NOT NULL,
             LEN NUMBER(5) NOT NULL,
             TAX_ID NUMBER(10) NOT NULL,
+            LEFT_NUMBER NUMBER NOT NULL,
             DESC_ID NUMBER(10) NOT NULL
         )
         PARTITION BY LIST (DBCODE) (
@@ -227,14 +230,14 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     chunk = []
     matches = []
-    _protein_acc = dbcode = length = descid = tax_id = None
+    _protein_acc = dbcode = length = descid = tax_id = left_n = None
     num_proteins = 0
     for row in _get_matches(user, dsn, filepath):
         protein_acc = row[0]
 
         if protein_acc != _protein_acc:
             if _protein_acc:
-                chunk.append((_protein_acc, dbcode, length, tax_id,
+                chunk.append((_protein_acc, dbcode, length, tax_id, left_n,
                               descid, matches))
 
                 if len(chunk) == chunk_size:
@@ -252,13 +255,14 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
             length = row[1]
             dbcode = row[2]
             tax_id = row[3]
-            descid = row[4]
+            left_n = row[4]
+            descid = row[5]
             matches = []
 
-        signature_acc = row[5]
-        pos_start = row[6]
-        pos_end = row[7]
-        fragments = row[8]
+        signature_acc = row[6]
+        pos_start = row[7]
+        pos_end = row[8]
+        fragments = row[9]
         if fragments is not None:
             for frag in fragments.split(','):
                 """
@@ -276,7 +280,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     if _protein_acc:
         # Last protein
-        chunk.append((_protein_acc, dbcode, length, tax_id,
+        chunk.append((_protein_acc, dbcode, length, tax_id, left_n,
                       descid, matches))
         task_queue.put(chunk)
         chunk = []

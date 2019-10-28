@@ -6,7 +6,6 @@ import json
 import os
 import subprocess
 import sys
-from concurrent.futures import as_completed, ThreadPoolExecutor
 from typing import List, Optional
 
 import cx_Oracle
@@ -72,8 +71,8 @@ def load_taxa(user: str, dsn: str, **kwargs):
         CREATE TABLE {owner}.ETAXI
         NOLOGGING
         AS
-        SELECT
-          TAX_ID, PARENT_ID, SCIENTIFIC_NAME, RANK, FULL_NAME
+        SELECT TAX_ID, PARENT_ID, SCIENTIFIC_NAME, RANK, LEFT_NUMBER, 
+               RIGHT_NUMBER, FULL_NAME
         FROM INTERPRO.ETAXI
         """
     )
