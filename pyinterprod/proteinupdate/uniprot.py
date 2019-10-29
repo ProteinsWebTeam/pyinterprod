@@ -608,7 +608,7 @@ def report_integration_changes(user: str, dsn: str, notify: bool=True):
                     pass  # No changes
                 else:
                     # In the same (now unchecked) entry
-                    changes[s_acc] = ("entry unchecked", e_acc, '')
+                    changes[s_acc] = ("entry unchecked", '', e_acc)
             else:
                 # Signature unintegrated
                 changes[s_acc] = ("unintegrated", e_acc, '')
