@@ -71,7 +71,7 @@ def load_taxa(user: str, dsn: str, **kwargs):
         CREATE TABLE {owner}.ETAXI
         NOLOGGING
         AS
-        SELECT TAX_ID, PARENT_ID, SCIENTIFIC_NAME, RANK, LEFT_NUMBER, 
+        SELECT TAX_ID, PARENT_ID, SCIENTIFIC_NAME, RANK, LEFT_NUMBER,
                RIGHT_NUMBER, FULL_NAME
         FROM INTERPRO.ETAXI
         """
@@ -419,7 +419,8 @@ def run(config_path: str, task_names: Optional[List[str]]=None,
         report=report
     )
 
-    wdir = os.path.join(config["workflow"]["dir"], config["release"]["version"])
+    # wdir = os.path.join(config["workflow"]["dir"], config["release"]["version"])
+    wdir = config["workflow"]["dir"]
     wdb = os.path.join(wdir, "pronto.db")
     with Workflow(tasks, db=wdb, dir=wdir) as w:
         status = w.run(task_names, dependencies=False)
