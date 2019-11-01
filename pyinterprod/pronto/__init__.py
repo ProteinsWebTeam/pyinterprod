@@ -419,8 +419,7 @@ def run(config_path: str, task_names: Optional[List[str]]=None,
         report=report
     )
 
-    # wdir = os.path.join(config["workflow"]["dir"], config["release"]["version"])
-    wdir = config["workflow"]["dir"]
+    wdir = os.path.join(config["workflow"]["dir"], config["release"]["version"])
     wdb = os.path.join(wdir, "pronto.db")
     with Workflow(tasks, db=wdb, dir=wdir) as w:
         status = w.run(task_names, dependencies=False)
