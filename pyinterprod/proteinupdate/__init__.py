@@ -17,27 +17,25 @@ def main():
     parser = argparse.ArgumentParser(description="InterPro protein update")
     parser.add_argument("config", metavar="CONFIG.JSON",
                         help="config JSON file")
-    parser.add_argument("-t", "--tasks", nargs="*", default=None,
-                        metavar="TASK", help="tasks to run")
+    parser.add_argument("-t", "--tasks", nargs="*",
+                        metavar="TASK", help="tasks to run (default: all)")
     parser.add_argument("--dry-run", action="store_true", default=False,
-                        help="list tasks to run and exit")
+                        help="list tasks to run and exit (default: off)")
     parser.add_argument("--resume", action="store_true", default=False,
-                        help="skip completed tasks")
+                        help="skip completed tasks (default: off)")
     parser.add_argument("--submit", action="store_const",
                         const=0, default=60,
-                        help="submit tasks to run and exit")
+                        help="submit tasks to run and exit (default: off)")
     parser.add_argument("-v", "--version", action="version",
                         version="%(prog)s {}".format(__version__),
                         help="show the version and exit")
     args = parser.parse_args()
 
-    try:
-        with open(args.config, "rt") as fh:
-            config = json.load(fh)
-    except FileNotFoundError:
-        parser.error("{}: no such file or directory".format(args.config))
-    except json.JSONDecodeError:
-        parser.error("{}: not a valid JSON file".format(args.config))
+    if not os.path.isfile(args.config):
+        parser.error(f"{args.config}: no such file or directory")
+
+    with open(args.config, "rt") as fh:
+        config = json.load(fh)
 
     db_info = config["database"]
     db_dsn = db_info["dsn"]
@@ -209,13 +207,26 @@ def main():
         Task(
             name="pronto",
             fn=pronto.run,
-            args=(args.config, ),
+            args=(args.config,),
             kwargs=dict(
-                report=os.path.join(paths["results"], "swiss_de_changes.tsv")
+                raise_on_error=True,
+                report=os.path.join(paths["results"], "swiss_de_changes.tsv"),
+                exclude=["copy"]
             ),
             scheduler=dict(queue=queue, mem=500),
             requires=["update-matches", "update-feature-matches", "taxonomy",
                       "signatures-descriptions"]
+        ),
+        Task(
+            name="pronto-copy",
+            fn=pronto.run,
+            args=(args.config,),
+            kwargs=dict(
+                raise_on_error=True,
+                tasks=["copy"]
+            ),
+            scheduler=dict(queue=queue, mem=500),
+            requires=["pronto"]
         ),
         Task(
             name="report-curators",
