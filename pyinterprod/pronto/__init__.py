@@ -15,7 +15,8 @@ from .. import logger, orautils
 from . import go, prediction, protein, signature
 
 
-DATA_PUMP_DIR = "PANDA_DATA_PUMP_DIR"
+_DATA_PUMP_DIR = "PANDA_DATA_PUMP_DIR"
+_REPORT = "swiss_de_families.tsv"
 
 
 def load_databases(user: str, dsn: str):
@@ -247,7 +248,7 @@ def copy_tables(user_src: str, user_dst: str, dsn: str, set_status: bool=False):
     returncode = subprocess.call(["expdp",
                                   orautils.make_connect_string(user_src, dsn),
                                   f"TABLES={','.join(tables)}",
-                                  f"DIRECTORY={DATA_PUMP_DIR}",
+                                  f"DIRECTORY={_DATA_PUMP_DIR}",
                                   f"DUMPFILE={dumpfile}.dmp",
                                   f"LOGFILE={dumpfile}-exp.log",
                                   "REUSE_DUMPFILES=YES"])
@@ -266,7 +267,7 @@ def copy_tables(user_src: str, user_dst: str, dsn: str, set_status: bool=False):
     returncode = subprocess.call(["impdp",
                                   orautils.make_connect_string(user_dst, dsn),
                                   f"TABLES={','.join(tables)}",
-                                  f"DIRECTORY={DATA_PUMP_DIR}",
+                                  f"DIRECTORY={_DATA_PUMP_DIR}",
                                   f"DUMPFILE={dumpfile}.dmp",
                                   f"LOGFILE={dumpfile}-imp.log",
                                   f"REMAP_SCHEMA={schema_src}:{schema_dst}"])
@@ -282,15 +283,22 @@ def copy_tables(user_src: str, user_dst: str, dsn: str, set_status: bool=False):
     con.close()
 
 
-def _get_tasks(**kwargs):
-    user1 = kwargs.get("user1")
-    user2 = kwargs.get("user2")
-    dsn = kwargs.get("dsn")
-    outdir = kwargs.get("outdir", os.getcwd())
-    queue = kwargs.get("queue")
-    report_dst = kwargs.get("report", "swiss_de_families.tsv")
+def run(config_path: str, **kwargs):
+    raise_on_error = kwargs.get("raise_on_error", False)
+    report = kwargs.get("report", _REPORT)
+    task_names = kwargs.get("tasks")
+    exclude = kwargs.get("exclude", [])
 
-    return [
+    with open(config_path, "rt") as fh:
+        config = json.load(fh)
+
+    user1 = config["database"]["users"]["pronto-pri"]
+    user2 = config["database"]["users"]["pronto-sec"]
+    dsn = config["database"]["dsn"]
+    outdir = config["paths"]["results"]
+    queue = config["workflow"]["lsf-queue"]
+
+    tasks = [
         Task(
             name="annotations",
             fn=go.load_annotations,
@@ -385,7 +393,7 @@ def _get_tasks(**kwargs):
         Task(
             name="report",
             fn=report_description_changes,
-            args=(user1, dsn, report_dst),
+            args=(user1, dsn, report),
             scheduler=dict(queue=queue, mem=2000),
             requires=["index"]
         ),
@@ -399,25 +407,8 @@ def _get_tasks(**kwargs):
         )
     ]
 
-
-def run(config_path: str, task_names: Optional[List[str]]=None,
-        report: Optional[str]=None, raise_on_error: bool=True):
-
-    with open(config_path, "rt") as fh:
-        config = json.load(fh)
-
-    outdir = config["paths"]["results"]
-    if not report:
-        report = os.path.join(outdir, "swiss_de_families.tsv")
-
-    tasks = _get_tasks(
-        user1=config["database"]["users"]["pronto-pri"],
-        user2=config["database"]["users"]["pronto-sec"],
-        dsn=config["database"]["dsn"],
-        outdir=outdir,
-        queue=config["workflow"]["lsf-queue"],
-        report=report
-    )
+    if not task_names and exclude:
+        task_names = [t.name for t in tasks if t.name not in exclude]
 
     wdir = os.path.join(config["workflow"]["dir"], config["release"]["version"])
     wdb = os.path.join(wdir, "pronto.db")
@@ -434,13 +425,11 @@ def main():
     parser = argparse.ArgumentParser(description="Pronto schema update")
     parser.add_argument("config", metavar="CONFIG.JSON",
                         help="config JSON file")
-    parser.add_argument("-t", "--tasks", nargs="+",
-                        choices=[t.name for t in _get_tasks()], default=None,
-                        help="tasks to run")
-    parser.add_argument("-o", "--output", default="swiss_de_families.tsv",
-                        help=("output report for curators "
-                              "(default: swiss_de_families.tsv)"))
+    parser.add_argument("-t", "--tasks", nargs="*",
+                        help="tasks to run (default: all)")
+    parser.add_argument("-o", "--output", default=_REPORT,
+                        help=f"output report for curators (default: {_REPORT})")
     args = parser.parse_args()
 
-    success = run(args.config, args.tasks, args.output, raise_on_error=False)
+    success = run(args.config, report=args.output, tasks=args.tasks)
     sys.exit(0 if success else 1)
