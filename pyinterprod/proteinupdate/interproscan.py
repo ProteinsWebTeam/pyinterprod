@@ -162,12 +162,11 @@ def import_matches(user: str, dsn: str, max_workers: int=0,
         # cur.execute("ALTER INDEX {} REBUILD NOLOGGING".format(idx))
         orautils.drop_index(cur, "IPRSCAN", idx["name"])
 
-    cur.execute(
-        """
+    orautils.catch_temp_error(cur, """
         CREATE INDEX I_MV_IPRSCAN$UPI
         ON IPRSCAN.MV_IPRSCAN (UPI) NOLOGGING
-        """
-    )
+        """)
+
     orautils.gather_stats(cur, "IPRSCAN", "MV_IPRSCAN")
     cur.close()
     con.close()
