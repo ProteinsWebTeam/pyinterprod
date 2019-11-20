@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import re
+import time
 from typing import List, Optional, Tuple, Union
 
 import cx_Oracle
@@ -9,6 +10,26 @@ from . import logger
 
 
 INSERT_SIZE = 100000
+
+
+def catch_temp_error(cur: cx_Oracle.Cursor, sql: str, max_attempts: int=3,
+                     secs: int=3600):
+    num_attempts = 0
+    while True:
+        try:
+            cur.execute(sql)
+        except cx_Oracle.DatabaseError as exc:
+            error, = exc.args
+            num_attempts += 1
+
+            # ORA-01652: unable to extend temp segment by <int> in tablespace TEMP
+            if error.code != 1652 or num_attempts == max_attempts:
+                raise exc
+            else:
+                logger.warning(exc)
+                time.sleep(secs)
+        else:
+            break
 
 
 def copy_table(user_src: str, user_dst: str, dsn: str, table: dict):

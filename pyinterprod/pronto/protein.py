@@ -430,18 +430,11 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue,
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    cur.execute("SELECT METHOD_AC FROM {}.METHOD".format(owner))
+    cur.execute(f"SELECT METHOD_AC FROM {owner}.METHOD")
     keys = sorted([row[0] for row in cur])
-    keys = [keys[i] for i in range(0, len(keys), bucket_size)]
-
-    proteins2go = {}
-    cur.execute("SELECT PROTEIN_AC, GO_ID FROM {}.PROTEIN2GO".format(owner))
-    for acc, go_id in cur:
-        if acc in proteins2go:
-            proteins2go[acc].add(go_id)
-        else:
-            proteins2go[acc] = {go_id}
     cur.close()
+
+    keys = [keys[i] for i in range(0, len(keys), bucket_size)]
 
     names = utils.Organizer(keys, dir=tmpdir)
     taxa = utils.Organizer(keys, dir=tmpdir)
@@ -454,10 +447,11 @@ def consume_proteins(user: str, dsn: str, task_queue: Queue,
         autocommit=True
     )
     for chunk in iter(task_queue.get, None):
-        for acc, dbcode, length, tax_id, left_n, desc_id, matches in chunk:
-            md5 = _hash_protein(matches)
-            protein_terms = proteins2go.get(acc, [])
+        for obj in chunk:
+            (acc, dbcode, length, tax_id, left_n, desc_id, matches,
+             protein_terms) = obj
 
+            md5 = _hash_protein(matches)
             signatures = comparator.update(matches)
 
             # Update organizers and populate table

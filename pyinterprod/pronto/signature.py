@@ -189,7 +189,6 @@ def _get_matches(user: str, dsn: str, filepath: Optional[str]=None):
 def load_signature2protein(user: str, dsn: str, processes: int=1,
                            tmpdir: Optional[str]=None, chunk_size: int=1000,
                            filepath: Optional[str]=None):
-    logger.info("querying proteins")
     if tmpdir is not None:
         os.makedirs(tmpdir, exist_ok=True)
 
@@ -205,6 +204,17 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
+
+    logger.info("loading GO terms")
+    proteins2go = {}
+    cur.execute("SELECT PROTEIN_AC, GO_ID FROM {}.PROTEIN2GO".format(owner))
+    for acc, go_id in cur:
+        if acc in proteins2go:
+            proteins2go[acc].add(go_id)
+        else:
+            proteins2go[acc] = {go_id}
+
+    logger.info("querying proteins")
     orautils.drop_table(cur, owner, "METHOD2PROTEIN", purge=True)
     cur.execute(
         """
@@ -237,12 +247,20 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
         if protein_acc != _protein_acc:
             if _protein_acc:
-                chunk.append((_protein_acc, dbcode, length, tax_id, left_n,
-                              descid, matches))
+                chunk.append((
+                    _protein_acc,
+                    dbcode,
+                    length,
+                    tax_id,
+                    left_n,
+                    descid,
+                    matches,
+                    proteins2go.get(_protein_acc, []))
+                )
 
                 if len(chunk) == chunk_size:
                     task_queue.put(chunk)
-                    chunk = []
+                    chunk.clear()
 
                 num_proteins += 1
                 if not num_proteins % 1e7:
@@ -257,7 +275,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
             tax_id = row[3]
             left_n = row[4]
             descid = row[5]
-            matches = []
+            matches.clear()
 
         signature_acc = row[6]
         pos_start = row[7]
@@ -280,11 +298,20 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
     if _protein_acc:
         # Last protein
-        chunk.append((_protein_acc, dbcode, length, tax_id, left_n,
-                      descid, matches))
+        chunk.append((
+            _protein_acc,
+            dbcode,
+            length,
+            tax_id,
+            left_n,
+            descid,
+            matches,
+            proteins2go.get(_protein_acc, []))
+        )
+
         task_queue.put(chunk)
-        chunk = []
-        matches = []
+        chunk .clear()
+        matches.clear()
         num_proteins += 1
 
     for _ in pool:
