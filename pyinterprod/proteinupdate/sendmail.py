@@ -28,12 +28,8 @@ def send_mail(to_addrs: list, subject: str, content: str,
         msg["Cc"] = ','.join(set(cc_addrs))
 
     if bcc_addrs:
-        bcc_addrs = set(bcc_addrs)
-        bcc_addrs.add(sender)
-    else:
-        bcc_addrs = {sender}
+        msg["Bcc"] = ','.join(set(bcc_addrs))
 
-    msg["Bcc"] = ','.join(set(bcc_addrs))
     msg["Subject"] = subject
 
     if attachments:
