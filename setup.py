@@ -21,8 +21,9 @@ setup(
     zip_safe=False,
     entry_points={
         "console_scripts": [
-            "ipr-update-proteins = pyinterprod.proteinupdate:main",
-            "ipr-update-pronto = pyinterprod.pronto:main"
+            "ipr-clans = pyinterprod.clan:main"
+            "ipr-pronto = pyinterprod.pronto:main",
+            "ipr-uniprot = pyinterprod.proteinupdate:main"
         ]
     }
 )
