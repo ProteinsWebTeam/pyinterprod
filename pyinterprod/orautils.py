@@ -130,14 +130,18 @@ def get_mviews(cur: cx_Oracle.Cursor, owner: str) -> List[str]:
 
 
 def parse_url(url: str) -> dict:
-    m = re.match(r"(.+)/(.+)@(.+):(\d+)/([a-z]+)", url, re.I)
-    return {
-        "username": m.group(1),
-        "password": m.group(2),
-        "host": m.group(3),
-        "port": int(m.group(4)),
-        "service": m.group(5)
-    }
+    m = re.match(r'([^/]+)/([^@]+)@([^:]+):(\d+)/(\w+)', url)
+
+    if m is None:
+        raise RuntimeError(f"invalid connection string: {url}")
+
+    return dict(
+        user=m.group(1),
+        passwd=m.group(2),
+        host=m.group(3),
+        port=int(m.group(4)),
+        db=m.group(5)
+    )
 
 
 def get_child_tables(cur: cx_Oracle.Cursor, owner: str,
@@ -461,12 +465,14 @@ def refresh_mview(url: str, name: str):
 
 class TablePopulator(object):
     def __init__(self, con: cx_Oracle.Connection, query: str,
-                 buffer_size: int=100000, autocommit: bool=False):
+                 buffer_size: int=100000, autocommit: bool=False,
+                 depends_on=None):
         self.con = con
         self.cur = con.cursor()
         self.query = query
         self.buffer_size = buffer_size
         self.autocommit = autocommit
+        self.depends_on = depends_on
         self.records = []
         self.rowcount = 0
 
@@ -498,6 +504,8 @@ class TablePopulator(object):
     def flush(self):
         if not self.records:
             return
+        elif self.depends_on:
+            self.depends_on.flush()
 
         self.cur.executemany(self.query, self.records)
         self.records = []
