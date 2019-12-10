@@ -326,8 +326,8 @@ def report_to_curators(user: str, dsn: str, dirname: str, notify: bool=True):
     cur = con.cursor()
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     release = cur.fetchone()[0]
-    cur.execute("SELECT CODE, LOWER(ABBREV) FROM INTERPRO.CV_ENTRY_TYPE")
-    types = dict(cur.fetchall())
+    # cur.execute("SELECT CODE, LOWER(ABBREV) FROM INTERPRO.CV_ENTRY_TYPE")
+    # types = dict(cur.fetchall())
     cur.close()
     con.close()
 
@@ -337,14 +337,24 @@ def report_to_curators(user: str, dsn: str, dirname: str, notify: bool=True):
         header = next(ifh)
         for line in ifh:
             type_code = line.split('\t')[1]
+            type_abbr = "family" if type_code == 'F' else "others"
+
             try:
-                path, ofh = files[type_code]
+                path, ofh = files[type_abbr]
             except KeyError:
-                type_abbr = types[type_code]
                 path = os.path.join(dirname, f"swiss_de_{type_abbr}.tsv")
                 ofh = open(path, "wt")
                 ofh.write(header)
                 files[type_code] = (path, ofh)
+
+            # try:
+            #     path, ofh = files[type_code]
+            # except KeyError:
+            #     type_abbr = types[type_code]
+            #     path = os.path.join(dirname, f"swiss_de_{type_abbr}.tsv")
+            #     ofh = open(path, "wt")
+            #     ofh.write(header)
+            #     files[type_code] = (path, ofh)
 
             ofh.write(line)
 
