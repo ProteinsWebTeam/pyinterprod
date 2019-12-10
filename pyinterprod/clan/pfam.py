@@ -7,6 +7,8 @@ import MySQLdb.cursors
 
 from pyinterprod.orautils import parse_url
 
+DBCODE = 'H'
+
 
 def get_clans(url) -> List[dict]:
     con = MySQLdb.connect(**parse_url(url))

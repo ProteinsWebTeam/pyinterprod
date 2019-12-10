@@ -5,6 +5,8 @@ from typing import List
 
 from cx_Oracle import Connection
 
+DBCODE = 'V'
+
 
 def get_clans(con: Connection) -> List[dict]:
     cur = con.cursor()

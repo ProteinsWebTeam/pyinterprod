@@ -6,6 +6,8 @@ from typing import List
 
 from .utils import download
 
+DBCODE = 'U'
+
 
 def get_clans() -> List[dict]:
     filepath = download("ftp://ftp.pir.georgetown.edu/databases/pirsf/pirsfinfo.dat")

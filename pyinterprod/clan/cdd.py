@@ -7,6 +7,8 @@ from typing import List
 
 from .utils import download
 
+DBCODE = 'J'
+
 
 def get_clans() -> List[dict]:
     """
