@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import shutil
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tempfile import mkdtemp
 from typing import Optional, Sequence
@@ -142,7 +143,7 @@ def update_clans(user: str, dsn: str, databases: Sequence[str], pfam_url: str):
 
 
 def align_hmm(user: str, dsn: str, mem_db: str, hmm_db: str, threads: int=1,
-              tmpdir: Optional[str]=None):
+              tmpdir: Optional[str]=None, progress: bool=False):
     if mem_db == "panther":
         dbcode = panther.DBCODE
         x = 7
@@ -205,62 +206,66 @@ def align_hmm(user: str, dsn: str, mem_db: str, hmm_db: str, threads: int=1,
             entries.append((acc, seqfile))
 
     logger.info("querying sequences")
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    t1 = orautils.TablePopulator(con, "UPDATE INTERPRO.CLAN_MEMBER "
-                                      "SET SEQ = :1 WHERE METHOD_AC = :2")
-    t2 = orautils.TablePopulator(con, "INSERT INTO INTERPRO.CLAN_MEMBER_ALN "
-                                      "VALUES (:1, :2, :3, :4)")
-    t2.cur.setinputsizes(25, 25, cx_Oracle.NATIVE_FLOAT, cx_Oracle.CLOB)
     with ThreadPoolExecutor(max_workers=threads) as executor:
-        entries = {
-            executor.submit(utils.hmmscan, seqfile, hmm_db): (acc, seqfile)
-            for acc, seqfile in entries
-        }
+        fs = {}
+        for acc, seqfile in entries:
+            f = executor.submit(utils.hmmscan, seqfile, hmm_db)
+            fs[f] = (acc, seqfile)
 
-        n_done = 0
-        pc_done = 0
-
-        for f in as_completed(entries):
-            acc, seqfile = entries[f]
+        to_persist = []
+        cnt_done = 0
+        for f in as_completed(fs):
+            acc, seqfile = fs[f]
 
             try:
                 outfile, tabfile = f.result()
             except Exception as exc:
                 logger.error(f"{acc}: {exc}")
             else:
-                t1.update((utils.load_sequence(seqfile), acc))
-                os.remove(seqfile)
-
-                targets = utils.load_hmmscan_results(outfile, tabfile)
-                os.remove(outfile)
-                os.remove(tabfile)
-
-                for t in targets:
-                    if acc == t["accession"]:
-                        continue
-
-                    domains = []
-                    for dom in t["domains"]:
-                        domains.append({
-                            "query": dom["sequences"]["query"],
-                            "target": dom["sequences"]["target"],
-                            "ievalue": dom["ievalue"],
-                            "start": dom["coordinates"]["ali"]["start"],
-                            "end": dom["coordinates"]["ali"]["end"],
-                        })
-
-                    t2.insert((
-                        acc,
-                        t["accession"],
-                        t["evalue"],
-                        json.dumps(domains)
-                    ))
+                to_persist.append((acc, seqfile, outfile, tabfile))
             finally:
-                n_done += 1
-                if n_done * 100 // len(entries) > pc_done:
-                    pc_done = n_done * 100 // len(entries)
-                    logger.info(f"progress: {pc_done:>3}%")
+                cnt_done += 1
+                if progress:
+                    sys.stderr.write(f"progress: "
+                                     f"{cnt_done/len(fs)*100:>3.0f}%\r")
 
+    logger.info("persisting data")
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    t1 = orautils.TablePopulator(con, "UPDATE INTERPRO.CLAN_MEMBER "
+                                      "SET SEQ = :1 WHERE METHOD_AC = :2")
+    t2 = orautils.TablePopulator(con, "INSERT INTO INTERPRO.CLAN_MEMBER_ALN "
+                                      "VALUES (:1, :2, :3, :4)")
+    t2.cur.setinputsizes(25, 25, cx_Oracle.NATIVE_FLOAT, cx_Oracle.CLOB)
+
+    cnt_done = 0
+    for acc, seqfile, outfile, tabfile in to_persist:
+        t1.update((utils.load_sequence(seqfile), acc))
+
+        for t in utils.load_hmmscan_results(outfile, tabfile):
+            if acc == t["accession"]:
+                continue
+
+            domains = []
+            for dom in t["domains"]:
+                domains.append({
+                    "query": dom["sequences"]["query"],
+                    "target": dom["sequences"]["target"],
+                    "ievalue": dom["ievalue"],
+                    "start": dom["coordinates"]["ali"]["start"],
+                    "end": dom["coordinates"]["ali"]["end"],
+                })
+
+            t2.insert((
+                acc,
+                t["accession"],
+                t["evalue"],
+                json.dumps(domains)
+            ))
+
+        cnt_done += 1
+        if progress:
+            sys.stderr.write(f"progress: "
+                             f"{cnt_done/len(to_persist)*100:>3.0f}%\r")
 
     t1.close()
     t2.close()
@@ -297,6 +302,8 @@ def main():
     subparser.add_argument("-T", dest="temporary", help="temporary directory")
     subparser.add_argument("-t", dest="threads", help="number of threads",
                            type=int, default=1)
+    subparser.add_argument("--progress", action="store_true",
+                           help="show progress")
 
     args = parser.parse_args()
     if args.command is None:
@@ -326,5 +333,6 @@ def main():
                 parser.error(f"No such file or directory: '{args.hmm}'")
 
             align_hmm(user, dsn, args.database, args.hmm,
-                      threads=args.threads, tmpdir=args.temporary)
+                      threads=args.threads, tmpdir=args.temporary,
+                      progress=args.progress)
 
