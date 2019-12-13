@@ -69,8 +69,8 @@ def _update_database(cur: cx_Oracle.Cursor):
 def _update_protein(cur: cx_Oracle.Cursor):
     logger.info("creating UNIPARC.PROTEIN")
 
-    orautils.drop_table(cur, "UNIPARC", "PROTEIN", purge=True)
     orautils.drop_mview(cur, "UNIPARC", "PROTEIN")
+    orautils.drop_table(cur, "UNIPARC", "PROTEIN", purge=True)
     cur.execute(
         """
         CREATE TABLE UNIPARC.PROTEIN
