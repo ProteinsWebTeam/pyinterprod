@@ -7,7 +7,7 @@ import os
 import shutil
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from tempfile import mkdtemp
+from tempfile import mkdtemp, mkstemp
 from typing import Optional, Sequence
 
 import cx_Oracle
@@ -276,6 +276,99 @@ def align_hmm(user: str, dsn: str, mem_db: str, hmm_db: str, threads: int=1,
     logger.info("done")
 
 
+def align_pssm(user: str, dsn: str, sequences_file: str, threads: int=1,
+               tmpdir: Optional[str]=None, progress: bool=False):
+    dbcode = cdd.DBCODE
+
+    if tmpdir:
+        os.makedirs(tmpdir, exist_ok=True)
+
+    workdir = mkdtemp(dir=tmpdir)
+
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT METHOD_AC FROM INTERPRO.CLAN_MEMBER
+        WHERE CLAN_AC IN (SELECT CLAN_AC FROM INTERPRO.CLAN WHERE DBCODE = :1)
+        """, (dbcode,)
+    )
+    members = {row[0] for row in cur}
+    cur.execute(
+        """
+        DELETE 
+        FROM INTERPRO.CLAN_MEMBER_ALN 
+        WHERE QUERY_AC IN (
+          SELECT METHOD_AC 
+          FROM INTERPRO.METHOD 
+          WHERE DBCODE = :1
+        )
+        """, (dbcode,)
+    )
+    con.commit()
+    cur.close()
+    con.close()
+
+    logger.info("parsing representative sequences")
+    fd, files_list = mkstemp(dir=workdir)
+    os.close(fd)
+
+    entries = {}
+    with open(files_list, "wt") as fh:
+        for identifier, accession, seq in utils.iter_fasta(sequences_file):
+            if accession not in members or accession in entries:
+                continue
+
+            subdir = os.path.join(workdir, accession[:5])
+            try:
+                os.mkdir(subdir)
+            except FileExistsError:
+                pass
+
+            seqfile = os.path.join(subdir, accession) + ".fa"
+            with open(seqfile, "wt") as fh2:
+                fh2.write(seq)
+
+            fh.write(f"{seqfile}\n")
+            entries[accession] = (identifier, seqfile)
+
+    logger.info("building profile database")
+    fd, profile_database = mkstemp(dir=workdir)
+    os.close(fd)
+    os.remove(profile_database)
+    utils.mk_compass_db(files_list, profile_database)
+
+    logger.info("querying sequences")
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        fs = {}
+        for accession, (identifier, seqfile) in entries.items():
+            f = executor.submit(utils.compass_vs_db, seqfile, profile_database)
+            fs[f] = (accession, identifier, seqfile)
+
+        to_persist = []
+        cnt_done = 0
+        for f in as_completed(fs):
+            accession, identifier, seqfile = fs[f]
+
+            try:
+                outfile = f.result()
+            except Exception as exc:
+                logger.error(f"{accession}: {exc}")
+            else:
+                to_persist.append((accession, identifier, seqfile, outfile))
+            finally:
+                cnt_done += 1
+                if progress:
+                    sys.stderr.write(f"progress: "
+                                     f"{cnt_done/len(fs)*100:>3.0f}%\r")
+
+    logger.info("persisting data")
+    # TODO: implement
+
+    shutil.rmtree(workdir)
+    logger.info("done")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Clans/sets update")
     subparsers = parser.add_subparsers(dest="command")
@@ -297,8 +390,10 @@ def main():
     subparser.add_argument("--database", required=True,
                            choices=["cdd", "panther", "pfam", "pirsf"],
                            help="member databases to update")
-    subparser.add_argument("--hmm", help="HMM database "
-                                         "(for PANTHER, Pfam, and PIRSF)")
+    subparser.add_argument("--data", required=True,
+                           help="HMM database (PANTHER, Pfam, PIRSF) or "
+                                "FASTA file containing representative "
+                                "sequences (CDD)")
     subparser.add_argument("-T", dest="temporary", help="temporary directory")
     subparser.add_argument("-t", dest="threads", help="number of threads",
                            type=int, default=1)
@@ -325,14 +420,11 @@ def main():
                          "when passing 'pfam' to --databases")
 
         update_clans(user, dsn, list(set(args.databases)), args.pfam_mysql)
+    elif not os.path.isfile(args.data):
+        parser.error(f"No such file or directory: '{args.data}'")
+    elif args.database == "cdd":
+        align_pssm(user, dsn, args.data, threads=args.threads,
+                   tmpdir=args.temporary, progress=args.progress)
     else:
-        if args.database != "cdd":
-            if args.hmm is None:
-                parser.error("--hmm is required for PANTHER, Pfam, and PIRSF")
-            elif not os.path.isfile(args.hmm):
-                parser.error(f"No such file or directory: '{args.hmm}'")
-
-            align_hmm(user, dsn, args.database, args.hmm,
-                      threads=args.threads, tmpdir=args.temporary,
-                      progress=args.progress)
-
+        align_hmm(user, dsn, args.database, args.data, threads=args.threads,
+                  tmpdir=args.temporary, progress=args.progress)

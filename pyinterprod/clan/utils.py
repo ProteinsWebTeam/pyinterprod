@@ -165,7 +165,8 @@ def load_hmmscan_results(outfile, tabfile):
 
 def hmmemit(hmmfile: str, seqfile: str):
     with open(seqfile, "wt") as fh:
-        Popen(["hmmemit", "-c", hmmfile], stdout=fh, stderr=PIPE).wait()
+        p = Popen(["hmmemit", "-c", hmmfile], stdout=fh, stderr=PIPE)
+        p.wait()
 
 
 def hmmscan(seqfile: str, hmmdb: str):
@@ -204,3 +205,40 @@ def iter_hmm_database(hmmfile: str) -> Generator[tuple, None, None]:
                     yield accession, hmm
 
                 hmm = ""
+
+
+def iter_fasta(seqfile: str) -> Generator[tuple, None, None]:
+    with open(seqfile, "rt") as fh:
+        buffer = ""
+        accession = identifier = None
+        for line in fh:
+            if line[0] == ">":
+                if buffer and identifier:
+                    yield identifier, accession, buffer
+
+                m = re.match(">(gnl\|CDD\|\d+)\s+(cd\d+),", line)
+                if m:
+                    identifier, accession = m.groups()
+                else:
+                    accession = identifier = None
+
+                buffer = ""
+
+            buffer += line
+
+    if buffer and identifier:
+        yield identifier, accession, buffer
+
+
+def mk_compass_db(files_list: str, profile_database: str):
+    p = Popen(["mk_compass_db", "-i", files_list, "-o", profile_database],
+          stderr=DEVNULL, stdout=DEVNULL)
+    p.wait()
+
+
+def compass_vs_db(seqfile: str, database: str) -> str:
+    out_file = seqfile + ".out"
+    p = Popen(["compass_vs_db", "-i", seqfile, "-d", database, "-o", out_file],
+          stderr=DEVNULL, stdout=DEVNULL)
+    p.wait()
+    return out_file
