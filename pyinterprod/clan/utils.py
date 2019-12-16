@@ -4,7 +4,7 @@ import os
 import re
 from subprocess import Popen, PIPE, DEVNULL
 from tempfile import mkstemp
-from typing import Generator
+from typing import Generator, List
 from urllib.request import urlopen
 
 
@@ -91,7 +91,7 @@ def parse_hmmscan_alignments(filepath):
     return domains
 
 
-def load_hmmscan_results(outfile, tabfile):
+def load_hmmscan_results(outfile, tabfile) -> List[dict]:
     alignments = parse_hmmscan_alignments(outfile)
 
     targets = {}
@@ -159,6 +159,113 @@ def load_hmmscan_results(outfile, tabfile):
                 "sequences": alignments[i]
             })
             i += 1
+
+    return list(targets.values())
+
+
+def load_compass_results(outfile) -> List[dict]:
+    # p1 = re.compile(r"length\s*=\s*(\d+)")
+    p2 = re.compile(r"Evalue\s*=\s*([\d.e\-]+)")
+
+    targets = {}
+    block = 0
+    query_id = None
+    query_seq = ""
+    target_id = None
+    target_seq = ""
+    length = None
+    evalue = None
+    evalue_str = None
+    pos_start = None
+
+    with open(outfile, "rt") as fh:
+        for line in fh:
+            line = line.rstrip()
+            if line.startswith("Subject="):
+                """
+                Format:
+                Subject= cd154/cd15468.fa
+                length=413	filtered_length=413	Neff=1.000
+                Smith-Waterman score = 254	Evalue = 3.36e-16
+    
+                (the path after "Subject=" might be truncated)
+                """
+                if target_id:
+                    targets[target_id] = {
+                        "id": target_id,
+                        "evalue": evalue,
+                        "evaluestr": evalue_str,
+                        "length": length,
+                        "start": pos_start,
+                        "end": pos_start + len(query_seq.replace('=', '')) - 1,
+                        "sequences": {
+                            "query": query_seq,
+                            "target": target_seq
+                        }
+                    }
+
+                query_id = None
+                query_seq = None
+                target_id = None
+                target_seq = None
+
+                line = next(fh)
+                # length = int(p1.match(line).group(1))
+
+                line = next(fh)
+                evalue_str = p2.search(line).group(1)
+                try:
+                    evalue = float(evalue_str)
+                except ValueError:
+                    evalue = 0
+
+                block = 1
+            elif line.startswith("Parameters:"):
+                # Footer: end of results
+                break
+            elif not block:
+                continue
+            elif line:
+                """
+                First block:
+                gnl|CDD|271233   1      PSFIPGPT==TPKGCTRIPSFSLSDTHWCYTHNVILSGCQDHSKSNQYLSLGVIKTNSDG
+                CONSENSUS_1      1      PSFIPGPT==TPKGCTRIPSFSLSDTHWCYTHNVILSGCQDHSKSNQYLSLGVIKTNSDG
+                                        P++IP+ T      C+R PSF++S+  + YT+ V  ++CQDH +  +Y+++GVI+ ++ G
+                CONSENSUS_2      1      PNLIPADTGLLSGECVRQPSFAISSGIYAYTYLVRKGSCQDHRSLYRYFEVGVIRDDGLG
+                gnl|CDD|271230   1      PNLIPADTGLLSGECVRQPSFAISSGIYAYTYLVRKGSCQDHRSLYRYFEVGVIRDDGLG
+    
+                (following blocks do not have the start position between the ID and the sequence)
+                """
+                query = line.split()
+                next(fh)
+                next(fh)
+                next(fh)
+                target = next(fh).split()
+
+                if block == 1:
+                    query_id = query[0]
+                    pos_start = int(query[1])
+                    query_seq = query[2]
+                    target_id = target[0]
+                    target_seq = target[2]
+                else:
+                    query_seq += query[1]
+                    target_seq += target[1]
+
+                block += 1
+
+    targets[target_id] = {
+        "id": target_id,
+        "evalue": evalue,
+        "evaluestr": evalue_str,
+        "length": length,
+        "start": pos_start,
+        "end": pos_start + len(query_seq.replace('=', '')) - 1,
+        "sequences": {
+            "query": query_seq,
+            "target": target_seq
+        }
+    }
 
     return list(targets.values())
 

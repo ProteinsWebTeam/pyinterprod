@@ -313,10 +313,11 @@ def align_pssm(user: str, dsn: str, sequences_file: str, threads: int=1,
     fd, files_list = mkstemp(dir=workdir)
     os.close(fd)
 
-    entries = {}
+    seqfiles = {}
+    id2acc = {}
     with open(files_list, "wt") as fh:
         for identifier, accession, seq in utils.iter_fasta(sequences_file):
-            if accession not in members or accession in entries:
+            if accession not in members or identifier in id2acc:
                 continue
 
             subdir = os.path.join(workdir, accession[:5])
@@ -330,7 +331,8 @@ def align_pssm(user: str, dsn: str, sequences_file: str, threads: int=1,
                 fh2.write(seq)
 
             fh.write(f"{seqfile}\n")
-            entries[accession] = (identifier, seqfile)
+            id2acc[identifier] = accession
+            seqfiles[identifier] = seqfile
 
     logger.info("building profile database")
     fd, profile_database = mkstemp(dir=workdir)
@@ -341,21 +343,21 @@ def align_pssm(user: str, dsn: str, sequences_file: str, threads: int=1,
     logger.info("querying sequences")
     with ThreadPoolExecutor(max_workers=threads) as executor:
         fs = {}
-        for accession, (identifier, seqfile) in entries.items():
+        for identifier, seqfile in seqfiles.items():
             f = executor.submit(utils.compass_vs_db, seqfile, profile_database)
-            fs[f] = (accession, identifier, seqfile)
+            fs[f] = identifier
 
         to_persist = []
         cnt_done = 0
         for f in as_completed(fs):
-            accession, identifier, seqfile = fs[f]
+            identifier = fs[f]
 
             try:
                 outfile = f.result()
             except Exception as exc:
-                logger.error(f"{accession}: {exc}")
+                logger.error(f"{identifier}: {exc}")
             else:
-                to_persist.append((accession, identifier, seqfile, outfile))
+                to_persist.append((identifier, outfile))
             finally:
                 cnt_done += 1
                 if progress:
@@ -363,7 +365,47 @@ def align_pssm(user: str, dsn: str, sequences_file: str, threads: int=1,
                                      f"{cnt_done/len(fs)*100:>3.0f}%\r")
 
     logger.info("persisting data")
-    # TODO: implement
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    t1 = orautils.TablePopulator(con, "UPDATE INTERPRO.CLAN_MEMBER "
+                                      "SET SEQ = :1 WHERE METHOD_AC = :2")
+    t2 = orautils.TablePopulator(con, "INSERT INTO INTERPRO.CLAN_MEMBER_ALN "
+                                      "VALUES (:1, :2, :3, :4)")
+    t2.cur.setinputsizes(25, 25, cx_Oracle.NATIVE_FLOAT, cx_Oracle.CLOB)
+
+    cnt_done = 0
+    for identifier, outfile in to_persist:
+        query_acc = id2acc[identifier]
+        seqfile = seqfiles[identifier]
+        t1.update((utils.load_sequence(seqfile), query_acc))
+
+        for t in utils.load_compass_results(outfile):
+            target_acc = id2acc[t["id"]]
+
+            if target_acc == query_acc:
+                continue
+
+            t2.insert((
+                query_acc,
+                target_acc,
+                t["evalue"],
+                json.dumps([{
+                    "query": t["sequences"]["query"],
+                    "target": t["sequences"]["target"],
+                    "ievalue": None,
+                    "start": t["start"],
+                    "end": t["end"],
+                }])
+            ))
+
+        cnt_done += 1
+        if progress:
+            sys.stderr.write(f"progress: "
+                             f"{cnt_done/len(to_persist)*100:>3.0f}%\r")
+
+    t1.close()
+    t2.close()
+    con.commit()
+    con.close()
 
     shutil.rmtree(workdir)
     logger.info("done")
