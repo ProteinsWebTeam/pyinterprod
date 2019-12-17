@@ -339,13 +339,13 @@ def iter_fasta(seqfile: str) -> Generator[tuple, None, None]:
 
 def mk_compass_db(files_list: str, profile_database: str):
     p = Popen(["mk_compass_db", "-i", files_list, "-o", profile_database],
-          stderr=DEVNULL, stdout=DEVNULL)
+              stderr=DEVNULL, stdout=DEVNULL)
     p.wait()
 
 
 def compass_vs_db(seqfile: str, database: str) -> str:
     out_file = seqfile + ".out"
     p = Popen(["compass_vs_db", "-i", seqfile, "-d", database, "-o", out_file],
-          stderr=DEVNULL, stdout=DEVNULL)
+              stderr=DEVNULL, stdout=DEVNULL)
     p.wait()
     return out_file
