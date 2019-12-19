@@ -347,6 +347,12 @@ def load_enzymes(user: str, dsn: str):
         """.format(owner)
     )
 
+    """
+    E.ENTRY_TYPE IN (0, 1)      -> Swiss-Prot/TrEMBL
+    E.MERGE_STATUS != 'R'       -> Not Redundant
+    E.DELETED = 'N'             -> Not deleted
+    E.FIRST_PUBLIC IS NOT NULL  -> is public
+    """
     cur.execute(
         """
         INSERT /*+APPEND*/ INTO {}.ENZYME (PROTEIN_AC, ECNO)
