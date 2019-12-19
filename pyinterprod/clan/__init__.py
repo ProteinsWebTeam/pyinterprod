@@ -234,7 +234,8 @@ def align_hmm(user: str, dsn: str, mem_db: str, hmm_db: str, threads: int=1,
     t1 = orautils.TablePopulator(con, "UPDATE INTERPRO.CLAN_MEMBER "
                                       "SET SEQ = :1 WHERE METHOD_AC = :2")
     t2 = orautils.TablePopulator(con, "INSERT INTO INTERPRO.CLAN_MEMBER_ALN "
-                                      "VALUES (:1, :2, :3, :4)")
+                                      "VALUES (:1, :2, :3, :4)",
+                                 buffer_size=1000)
     t2.cur.setinputsizes(25, 25, cx_Oracle.NATIVE_FLOAT, cx_Oracle.CLOB)
 
     cnt_done = 0
