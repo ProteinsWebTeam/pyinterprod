@@ -8,8 +8,9 @@ from .. import logger, orautils
 def update(user: str, dsn: str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    _update_xref(cur)
     _update_database(cur)
+    _update_protein(cur)
+    _update_xref(cur)
     cur.close()
     con.close()
 
@@ -30,8 +31,8 @@ def _update_database(cur: cx_Oracle.Cursor):
     )
     orautils.grant(cur, "UNIPARC", "CV_DATABASE", "SELECT", "PUBLIC")
 
-    logger.info("analyzing UNIPARC.CV_DATABASE")
-    orautils.gather_stats(cur, "UNIPARC", "CV_DATABASE")
+    # logger.info("analyzing UNIPARC.CV_DATABASE")
+    # orautils.gather_stats(cur, "UNIPARC", "CV_DATABASE")
 
     logger.info("indexing UNIPARC.CV_DATABASE")
     cur.execute(
@@ -65,13 +66,11 @@ def _update_database(cur: cx_Oracle.Cursor):
     logger.info("UNIPARC.CV_DATABASE ready")
 
 
-def _update_protein(user: str, dsn: str):
+def _update_protein(cur: cx_Oracle.Cursor):
     logger.info("creating UNIPARC.PROTEIN")
 
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    orautils.drop_table(cur, "UNIPARC", "PROTEIN", purge=True)
     orautils.drop_mview(cur, "UNIPARC", "PROTEIN")
+    orautils.drop_table(cur, "UNIPARC", "PROTEIN", purge=True)
     cur.execute(
         """
         CREATE TABLE UNIPARC.PROTEIN
@@ -80,13 +79,13 @@ def _update_protein(user: str, dsn: str):
         AS
         SELECT
             UPI, TIMESTAMP, USERSTAMP, CRC64, LEN, SEQ_SHORT, SEQ_LONG, MD5
-        FROM UNIPARC.PROTEIN@UAPRO
+        FROM UNIPARC.PROTEIN@UAREAD
         """
     )
     orautils.grant(cur, "UNIPARC", "PROTEIN", "SELECT", "PUBLIC")
 
-    logger.info("analyzing UNIPARC.PROTEIN")
-    orautils.gather_stats(cur, "UNIPARC", "PROTEIN")
+    # logger.info("analyzing UNIPARC.PROTEIN")
+    # orautils.gather_stats(cur, "UNIPARC", "PROTEIN")
 
     logger.info("indexing UNIPARC.PROTEIN")
     cur.execute(
@@ -96,9 +95,6 @@ def _update_protein(user: str, dsn: str):
         TABLESPACE UNIPARC_IND
         """
     )
-
-    cur.close()
-    con.close()
 
     logger.info("UNIPARC.PROTEIN ready")
 

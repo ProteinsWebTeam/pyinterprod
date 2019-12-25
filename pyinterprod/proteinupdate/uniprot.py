@@ -306,20 +306,15 @@ def export_databases(user: str, dsn: str, dst: str, notify: bool=True):
             # P (PROSITE patterns) -> same file than M (PROSITE profiles)
             dbname, dbkey = dbcodes[dbcode]
 
-            files.append(os.path.join(dst, '.' + dbname.lower() + ".tab"))
-            fh1 = open(files[-1], "wt")
-
-            files.append(os.path.join(dst, dbname + ".dat"))
-            fh2 = open(files[-1], "wt")
-
-            handlers[dbcode] = (fh1, fh2)
+            filepath = os.path.join(dst, dbname + ".dat")
+            files.append(filepath)
+            handlers[dbcode] = open(filepath, "wt")
 
     handlers['P'] = handlers['M']
 
-    files.append(os.path.join(dst, ".interpro.tab"))
-    ifh1 = open(files[-1], "wt")
-    files.append(os.path.join(dst, "InterPro.dat"))
-    ifh2 = open(files[-1], "wt")
+    filepath = os.path.join(dst, "InterPro.dat")
+    files.append(filepath)
+    ifh = open(filepath, "wt")
 
     # starts at -1 because on the first row, `protein_acc != _protein` is True
     cnt = -1
@@ -335,10 +330,7 @@ def export_databases(user: str, dsn: str, dst: str, notify: bool=True):
         num_matches = int(row[6])
 
         dbname, dbkey = dbcodes[dbcode]
-        fh1, fh2 = handlers[dbcode]
-
-        fh1.write(f"{protein_acc}\t{dbkey}\t{signature_acc}\t"
-                  f"{signature_name}\t{num_matches}\n")
+        fh = handlers[dbcode]
 
         if dbcode == 'X':
             """
@@ -346,21 +338,20 @@ def export_databases(user: str, dsn: str, dst: str, notify: bool=True):
               - accession: G3DSA:3.90.1580.10 -> 3.90.1580.10
               - do not print signature's name
             """
-            fh2.write(f"{protein_acc}    DR   {dbname}; {signature_acc[6:]}; "
-                      f"-; {num_matches}.\n")
+            fh.write(f"{protein_acc}    DR   {dbname}; {signature_acc[6:]}; "
+                     f"-; {num_matches}.\n")
         elif dbcode == 'F':
             # PRINTS: do not print match count
-            fh2.write(f"{protein_acc}    DR   {dbname}; {signature_acc}; "
-                      f"{signature_name}.\n")
+            fh.write(f"{protein_acc}    DR   {dbname}; {signature_acc}; "
+                     f"{signature_name}.\n")
         else:
-            fh2.write(f"{protein_acc}    DR   {dbname}; {signature_acc}; "
-                      f"{signature_name}; {num_matches}.\n")
+            fh.write(f"{protein_acc}    DR   {dbname}; {signature_acc}; "
+                     f"{signature_name}; {num_matches}.\n")
 
         if protein_acc != _protein:
             for _entry in sorted(entries):
                 _name = entries[_entry]
-                ifh1.write(f"{_protein}\t{_entry}\t{_name}\n")
-                ifh2.write(f"{_protein}    DR   InterPro; {_entry}; {_name}.\n")
+                ifh.write(f"{_protein}    DR   InterPro; {_entry}; {_name}.\n")
 
             entries = {}
             _protein = protein_acc
@@ -375,15 +366,12 @@ def export_databases(user: str, dsn: str, dst: str, notify: bool=True):
     logger.info(f"  {cnt:,}")
     for _entry in sorted(entries):
         _name = entries[_entry]
-        ifh1.write(f"{_protein}\t{_entry}\t{_name}\n")
-        ifh2.write(f"{_protein}    DR   InterPro; {_entry}; {_name}.\n")
+        ifh.write(f"{_protein}    DR   InterPro; {_entry}; {_name}.\n")
 
-    ifh1.close()
-    ifh2.close()
+    ifh.close()
 
-    for fh1, fh2 in handlers.values():
-        fh1.close()
-        fh2.close()
+    for fh in handlers.values():
+        fh.close()
 
     for path in files:
         os.chmod(path, 0o775)
