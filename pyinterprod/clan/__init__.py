@@ -33,12 +33,12 @@ def create_tables(cur: cx_Oracle.Cursor):
             DBCODE CHAR(1) NOT NULL,
             NAME VARCHAR2(100) DEFAULT NULL,
             DESCRIPTION VARCHAR2(4000) DEFAULT NULL,
-            CONSTRAINT PK_CLAN 
+            CONSTRAINT PK_CLAN
               PRIMARY KEY (CLAN_AC),
             CONSTRAINT FK_CLAN$DBCODE
               FOREIGN KEY (DBCODE)
               REFERENCES INTERPRO.CV_DATABASE (DBCODE)
-              ON DELETE CASCADE 
+              ON DELETE CASCADE
         )
         """
     )
@@ -53,7 +53,7 @@ def create_tables(cur: cx_Oracle.Cursor):
             SEQ CLOB DEFAULT NULL,
             CONSTRAINT PK_CLAN_MEMBER
               PRIMARY KEY (CLAN_AC, METHOD_AC),
-            CONSTRAINT UQ_CLAN_MEMBER$METHOD_AC 
+            CONSTRAINT UQ_CLAN_MEMBER$METHOD_AC
               UNIQUE (METHOD_AC),
             CONSTRAINT FK_CLAN_MEMBER$CLAN_AC
               FOREIGN KEY (CLAN_AC)
@@ -172,11 +172,11 @@ def align_hmm(user: str, dsn: str, mem_db: str, hmm_db: str, threads: int=1,
     members = {row[0] for row in cur}
     cur.execute(
         """
-        DELETE 
-        FROM INTERPRO.CLAN_MEMBER_ALN 
+        DELETE
+        FROM INTERPRO.CLAN_MEMBER_ALN
         WHERE QUERY_AC IN (
-          SELECT METHOD_AC 
-          FROM INTERPRO.METHOD 
+          SELECT METHOD_AC
+          FROM INTERPRO.METHOD
           WHERE DBCODE = :1
         )
         """, (dbcode,)
@@ -232,7 +232,8 @@ def align_hmm(user: str, dsn: str, mem_db: str, hmm_db: str, threads: int=1,
     logger.info("persisting data")
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     t1 = orautils.TablePopulator(con, "UPDATE INTERPRO.CLAN_MEMBER "
-                                      "SET SEQ = :1 WHERE METHOD_AC = :2")
+                                      "SET SEQ = :1 WHERE METHOD_AC = :2",
+                                 buffer_size=1000)
     t2 = orautils.TablePopulator(con, "INSERT INTO INTERPRO.CLAN_MEMBER_ALN "
                                       "VALUES (:1, :2, :3, :4)",
                                  buffer_size=1000)
@@ -297,11 +298,11 @@ def align_pssm(user: str, dsn: str, sequences_file: str, threads: int=1,
     members = {row[0] for row in cur}
     cur.execute(
         """
-        DELETE 
-        FROM INTERPRO.CLAN_MEMBER_ALN 
+        DELETE
+        FROM INTERPRO.CLAN_MEMBER_ALN
         WHERE QUERY_AC IN (
-          SELECT METHOD_AC 
-          FROM INTERPRO.METHOD 
+          SELECT METHOD_AC
+          FROM INTERPRO.METHOD
           WHERE DBCODE = :1
         )
         """, (dbcode,)
