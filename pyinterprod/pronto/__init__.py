@@ -387,7 +387,7 @@ def run(config_path: str, **kwargs):
             fn=prediction.compare,
             args=(user1, dsn, outdir),
             kwargs=dict(job_tmpdir="/scratch/", job_queue=queue),
-            scheduler=dict(queue=queue, cpu=8, mem=16000, scratch=5000),
+            scheduler=dict(queue=queue, cpu=8, mem=16000, scratch=10000),
             requires=["signatures-proteins"]
         ),
         Task(
