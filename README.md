@@ -40,7 +40,7 @@ The `pyinterprod` package include command line tools, which expect a JSON config
 ### Protein update
 
 ```bash
-$ ipr-update-proteins CONFIG.JSON [OPTIONS]
+$ ipr-uniprot CONFIG.JSON [OPTIONS]
 ```
 
 The optional arguments are:
@@ -188,7 +188,7 @@ The optional arguments are:
 ### Pronto
 
 ```bash
-$ ipr-update-pronto CONFIG.JSON [OPTIONS]
+$ ipr-pronto CONFIG.JSON [OPTIONS]
 ```
 
 The optional arguments are:
