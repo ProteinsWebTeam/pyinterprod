@@ -188,10 +188,23 @@ def compare_signatures(user: str, dsn: str, query: str, outdir: str,
             if t.done():
                 start1, stop1, start2, stop2, filepath = tasks[t]
 
-                logger.debug(f"{t.stdout}\n{t.stderr}")
                 if t.successful():
+                    logger.debug(f"""\
+Job {start1}-{stop1}-{start2}-{stop2} completed.
+{t.stdout}
+----------
+{t.stderr}
+----------\
+                    """)
                     queue.put((query, start1, start2, filepath))
                 else:
+                    logger.error(f"""\
+Job {start1}-{stop1}-{start2}-{stop2} failed.
+{t.stdout}
+----------
+{t.stderr}
+----------\
+                    """)
                     queue.put((None, start1, start2, filepath))
             else:
                 _tasks[t] = tasks[t]
