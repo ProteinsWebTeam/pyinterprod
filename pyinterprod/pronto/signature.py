@@ -260,7 +260,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
 
                 if len(chunk) == chunk_size:
                     task_queue.put(chunk)
-                    chunk.clear()
+                    chunk = []
 
                 num_proteins += 1
                 if not num_proteins % 1e7:
@@ -275,7 +275,7 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
             tax_id = row[3]
             left_n = row[4]
             descid = row[5]
-            matches.clear()
+            matches = []
 
         signature_acc = row[6]
         pos_start = row[7]
@@ -310,8 +310,8 @@ def load_signature2protein(user: str, dsn: str, processes: int=1,
         )
 
         task_queue.put(chunk)
-        chunk .clear()
-        matches.clear()
+        chunk = None
+        matches = None
         num_proteins += 1
 
     for _ in pool:
