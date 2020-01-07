@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import os
-import shutil
 import time
 from multiprocessing import Process, Queue
 from tempfile import mkstemp
@@ -89,14 +88,7 @@ def _persist_comparisons(database: str, start1: str, stop1: str, start2: str,
 
 
 def compare_chunk(database: str, start1: str, stop1: str, start2: str,
-                  stop2: str, dst: str, processes: int=8,
-                  tmpdir: Optional[str]=None):
-    fd, _database = mkstemp(dir=tmpdir)
-    os.close(fd)
-    os.remove(_database)
-    shutil.copy(database, _database)
-    database = _database
-
+                  stop2: str, dst: str, processes: int=8):
     task_queue = Queue(maxsize=1)
     done_queue = Queue()
 
@@ -124,17 +116,16 @@ def compare_chunk(database: str, start1: str, stop1: str, start2: str,
 
     done_queue.put(None)
     persister.join()
-    os.remove(database)
 
 
 def compare_signatures(user: str, dsn: str, query: str, outdir: str,
                        queue: Queue, chunk_size: int, processes: int,
-                       tmpdir: Optional[str], job_queue: Optional[str]):
+                       job_queue: Optional[str]):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
-    # Export signatures to local database
-    fd, database = mkstemp(dir=tmpdir)
+    # Export signatures
+    fd, database = mkstemp(dir=outdir)
     os.close(fd)
     os.remove(database)
     with Kvdb(database) as kvdb:
@@ -155,16 +146,6 @@ def compare_signatures(user: str, dsn: str, query: str, outdir: str,
             kvdb[_acc] = values
             values.clear()
 
-    # Move database
-    dst = os.path.join(outdir, os.path.basename(database))
-    try:
-        os.remove(dst)
-    except FileNotFoundError:
-        pass
-    finally:
-        shutil.move(database, dst)
-        database = dst
-
     # Submit all jobs
     owner = user.split('/')[0]
     tasks = {}
@@ -174,7 +155,7 @@ def compare_signatures(user: str, dsn: str, query: str, outdir: str,
         t = Task(
             fn=compare_chunk,
             args=(database, start1, stop1, start2, stop2, filepath),
-            kwargs=dict(processes=processes, tmpdir=tmpdir),
+            kwargs=dict(processes=processes),
             scheduler=dict(queue=job_queue, cpu=processes, mem=4000)
         )
         t.run(workdir=outdir)
@@ -217,12 +198,9 @@ Job {start1}-{stop1}-{start2}-{stop2} failed.
 
 
 def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
-            job_processes: int=8, job_tmpdir: Optional[str]=None,
-            job_queue: Optional[str]=None, load_processes: int=4):
+            job_processes: int=8, job_queue: Optional[str]=None,
+            load_processes: int=4):
     os.makedirs(outdir, exist_ok=True)
-    if job_tmpdir:
-        os.makedirs(job_tmpdir, exist_ok=True)
-
     cmp_queue = Queue()
 
     owner = user.split('/')[0]
@@ -241,8 +219,7 @@ def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
     sources[query] = "desc"
     producers.append(Process(target=compare_signatures,
                              args=(user, dsn, query, outdir, cmp_queue,
-                                   chunk_size, job_processes, job_tmpdir,
-                                   job_queue)))
+                                   chunk_size, job_processes, job_queue)))
 
     query = f"""
         SELECT METHOD_AC, TAX_ID
@@ -252,8 +229,7 @@ def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
     sources[query] = "taxa"
     producers.append(Process(target=compare_signatures,
                              args=(user, dsn, query, outdir, cmp_queue,
-                                   chunk_size, job_processes, job_tmpdir,
-                                   job_queue)))
+                                   chunk_size, job_processes, job_queue)))
 
     query = f"""
         SELECT METHOD_AC, GO_ID
@@ -271,8 +247,7 @@ def compare(user: str, dsn: str, outdir: str, chunk_size: int=10000,
     sources[query] = "terms"
     producers.append(Process(target=compare_signatures,
                              args=(user, dsn, query, outdir, cmp_queue,
-                                   chunk_size, job_processes, job_tmpdir,
-                                   job_queue)))
+                                   chunk_size, job_processes, job_queue)))
 
     for p in producers:
         p.start()
