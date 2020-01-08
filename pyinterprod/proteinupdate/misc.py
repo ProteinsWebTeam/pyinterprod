@@ -345,7 +345,7 @@ def report_to_curators(user: str, dsn: str, dirname: str, notify: bool=True):
                 path = os.path.join(dirname, f"swiss_de_{type_abbr}.tsv")
                 ofh = open(path, "wt")
                 ofh.write(header)
-                files[type_code] = (path, ofh)
+                files[type_abbr] = (path, ofh)
 
             # try:
             #     path, ofh = files[type_code]
