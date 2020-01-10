@@ -22,7 +22,8 @@ setup(
     entry_points={
         "console_scripts": [
             "ipr-update-proteins = pyinterprod.proteinupdate:main",
-            "ipr-update-pronto = pyinterprod.pronto:main"
+            "ipr-update-pronto = pyinterprod.pronto:main",
+            "ipr-update-memberdb = pyinterprod.memberdbupdate:main"
         ]
     }
 )

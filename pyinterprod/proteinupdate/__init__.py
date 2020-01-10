@@ -6,35 +6,23 @@ import json
 import os
 import sys
 
+from mundone import Task, Workflow
 
-def main():
-    from mundone import Task, Workflow
+from . import (interproscan, matches, misc, proteins, signatures,
+               uniparc, uniprot)
+from .. import __version__, pronto
 
-    from . import (interproscan, matches, misc, proteins, signatures,
-                   uniparc, uniprot)
-    from .. import __version__, pronto
 
-    parser = argparse.ArgumentParser(description="InterPro protein update")
-    parser.add_argument("config", metavar="CONFIG.JSON",
-                        help="config JSON file")
-    parser.add_argument("-t", "--tasks", nargs="*",
-                        metavar="TASK", help="tasks to run (default: all)")
-    parser.add_argument("--dry-run", action="store_true", default=False,
-                        help="list tasks to run and exit (default: off)")
-    parser.add_argument("--resume", action="store_true", default=False,
-                        help="skip completed tasks (default: off)")
-    parser.add_argument("--submit", action="store_const",
-                        const=0, default=60,
-                        help="submit tasks to run and exit (default: off)")
-    parser.add_argument("-v", "--version", action="version",
-                        version="%(prog)s {}".format(__version__),
-                        help="show the version and exit")
-    args = parser.parse_args()
+def run(config_path: str, **kwargs):
+    raise_on_error = kwargs.get("raise_on_error", False)
+    args_tasks = kwargs.get("tasks")
+    resume = kwargs.get("resume")
+    dry_run = kwargs.get("dry_run")
+    submit = kwargs.get("submit")
 
-    if not os.path.isfile(args.config):
-        parser.error(f"{args.config}: no such file or directory")
+    exclude = kwargs.get("exclude", [])
 
-    with open(args.config, "rt") as fh:
+    with open(config_path, "rt") as fh:
         config = json.load(fh)
 
     db_info = config["database"]
@@ -207,7 +195,7 @@ def main():
         Task(
             name="pronto",
             fn=pronto.run,
-            args=(args.config,),
+            args=(config_path,),
             kwargs=dict(
                 raise_on_error=True,
                 report=os.path.join(paths["results"], "swiss_de_changes.tsv"),
@@ -220,7 +208,7 @@ def main():
         Task(
             name="pronto-copy",
             fn=pronto.run,
-            args=(args.config,),
+            args=(config_path,),
             kwargs=dict(
                 raise_on_error=True,
                 tasks=["copy"]
@@ -247,21 +235,56 @@ def main():
 
     task_names = [t.name for t in tasks]
 
-    if args.tasks:
-        for arg in args.tasks:
+    if args_tasks:
+        for arg in args_tasks:
             if arg not in task_names:
-                parser.error(
+                print(
                     "argument -t/--tasks: "
                     "invalid choice: '{}' (choose from {})\n".format(
-                        arg, ", ".join(task_names)
+                        arg, ", ".join(args_tasks)
                     )
                 )
+                sys.exit(1)
 
-    wdir = os.path.join(config["workflow"]["dir"], config["release"]["version"])
+    if not args_tasks and exclude:
+        task_names = [t.name for t in tasks if t.name not in exclude]
+
+    wdir = os.path.join(config["workflow"]["dir"],
+                        config["release"]["version"])
     wdb = os.path.join(wdir, "proteinupdate.db")
     wname = "Protein Update"
     with Workflow(tasks, db=wdb, dir=wdir, name=wname) as w:
-        success = w.run(args.tasks, resume=args.resume, dry=args.dry_run,
-                        secs=args.submit)
+        status = w.run(task_names, resume=resume, dry=dry_run,
+                       secs=submit)
+
+    if not status and raise_on_error:
+        raise RuntimeError("one or several tasks failed")
+
+    return status
+
+
+def main():
+
+    parser = argparse.ArgumentParser(description="InterPro protein update")
+    parser.add_argument("config", metavar="CONFIG.JSON",
+                        help="config JSON file")
+    parser.add_argument("-t", "--tasks", nargs="*",
+                        metavar="TASK", help="tasks to run (default: all)")
+    parser.add_argument("--dry-run", action="store_true", default=False,
+                        help="list tasks to run and exit (default: off)")
+    parser.add_argument("--resume", action="store_true", default=False,
+                        help="skip completed tasks (default: off)")
+    parser.add_argument("--submit", action="store_const",
+                        const=0, default=60,
+                        help="submit tasks to run and exit (default: off)")
+    parser.add_argument("-v", "--version", action="version",
+                        version="%(prog)s {}".format(__version__),
+                        help="show the version and exit")
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.error(f"{args.config}: no such file or directory")
+    success = run(args.config, tasks=args.tasks,
+                  dry_run=args.dry_run, resume=args.resume, submit=args.submit)
 
     sys.exit(0 if success else 1)
