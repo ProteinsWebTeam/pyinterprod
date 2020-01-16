@@ -2,6 +2,7 @@
 
 import hashlib
 import math
+import re
 from multiprocessing import Queue
 from typing import List, Optional
 
@@ -347,29 +348,36 @@ def load_enzymes(user: str, dsn: str):
         """.format(owner)
     )
 
-    """
-    E.ENTRY_TYPE IN (0, 1)      -> Swiss-Prot/TrEMBL
-    E.MERGE_STATUS != 'R'       -> Not Redundant
-    E.DELETED = 'N'             -> Not deleted
-    E.FIRST_PUBLIC IS NOT NULL  -> is public
-    """
-    cur.execute(
+    query = f"INSERT /*+APPEND*/ INTO {owner}.ENZYME VALUES (:1, :2)"
+    with orautils.TablePopulator(con, query, autocommit=True) as table:
         """
-        INSERT /*+APPEND*/ INTO {}.ENZYME (PROTEIN_AC, ECNO)
-        SELECT DISTINCT E.ACCESSION, D.DESCR
-        FROM SPTR.DBENTRY@SWPREAD E
-        LEFT OUTER JOIN SPTR.DBENTRY_2_DESC@SWPREAD D
-            ON E.DBENTRY_ID = D.DBENTRY_ID
-        LEFT OUTER JOIN SPTR.CV_DESC@SWPREAD C
-            ON D.DESC_ID = C.DESC_ID
-        WHERE E.ENTRY_TYPE IN (0, 1)
-        AND E.MERGE_STATUS != 'R'
-        AND E.DELETED = 'N'
-        AND E.FIRST_PUBLIC IS NOT NULL
-        AND C.SUBCATG_TYPE='EC'
-        """.format(owner)
-    )
-    con.commit()
+        E.ENTRY_TYPE IN (0, 1)      -> Swiss-Prot/TrEMBL
+        E.MERGE_STATUS != 'R'       -> Not Redundant
+        E.DELETED = 'N'             -> Not deleted
+        E.FIRST_PUBLIC IS NOT NULL  -> is public
+        """
+        cur.execute(
+            """
+            SELECT DISTINCT E.ACCESSION, D.DESCR
+            FROM SPTR.DBENTRY@SWPREAD E
+            INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD D
+                ON E.DBENTRY_ID = D.DBENTRY_ID
+            INNER JOIN SPTR.CV_DESC@SWPREAD C
+                ON D.DESC_ID = C.DESC_ID
+            WHERE E.ENTRY_TYPE IN (0, 1)
+            AND E.MERGE_STATUS != 'R'
+            AND E.DELETED = 'N'
+            AND E.FIRST_PUBLIC IS NOT NULL
+            AND C.SUBCATG_TYPE = 'EC'
+            """
+        )
+
+        # Accepts X.X.X.X or X.X.X.-
+        # Does not accept premiminary EC numbers (e.g. X.X.X.nX)
+        prog = re.compile("(\d\.){3}[\d\-]$")
+        for acc, ecno in cur:
+            if prog.match(ecno):
+                table.insert((acc, ecno))
 
     cur.execute(
         """
