@@ -374,7 +374,7 @@ def load_enzymes(user: str, dsn: str):
 
         # Accepts X.X.X.X or X.X.X.-
         # Does not accept premiminary EC numbers (e.g. X.X.X.nX)
-        prog = re.compile("(\d\.){3}[\d\-]$")
+        prog = re.compile("(\d+\.){3}(\d+|-)$")
         for acc, ecno in cur:
             if prog.match(ecno):
                 table.insert((acc, ecno))
