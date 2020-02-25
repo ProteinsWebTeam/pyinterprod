@@ -86,7 +86,11 @@ def create_tables(cur: cx_Oracle.Cursor):
     )
 
 
-def _insert_clans(con: cx_Oracle.Connection, clans: Sequence[dict], dbcode: str):
+def stderr(string: str):
+    sys.stderr.write(string)
+
+
+def insert_clans(con: cx_Oracle.Connection, clans: Sequence[dict], dbcode: str):
     cur = con.cursor()
     cur.execute("SELECT METHOD_AC FROM INTERPRO.METHOD "
                 "WHERE DBCODE=:1", (dbcode,))
@@ -127,13 +131,13 @@ def update_clans(user: str, dsn: str, databases: Sequence[str], pfam_url: str):
     for mem_db in databases:
         logger.info(f"updating clans for {mem_db.upper()}")
         if mem_db == "cdd":
-            _insert_clans(con, cdd.get_clans(), cdd.DBCODE)
+            insert_clans(con, cdd.get_clans(), cdd.DBCODE)
         elif mem_db == "panther":
-            _insert_clans(con, panther.get_clans(con), panther.DBCODE)
+            insert_clans(con, panther.get_clans(con), panther.DBCODE)
         elif mem_db == "pfam":
-            _insert_clans(con, pfam.get_clans(pfam_url), pfam.DBCODE)
+            insert_clans(con, pfam.get_clans(pfam_url), pfam.DBCODE)
         elif mem_db == "pirsf":
-            _insert_clans(con, pirsf.get_clans(), pirsf.DBCODE)
+            insert_clans(con, pirsf.get_clans(), pirsf.DBCODE)
         else:
             raise ValueError(mem_db)
 
@@ -226,8 +230,7 @@ def align_hmm(user: str, dsn: str, mem_db: str, hmm_db: str, threads: int=1,
             finally:
                 cnt_done += 1
                 if progress:
-                    sys.stderr.write(f"progress: "
-                                     f"{cnt_done/len(fs)*100:>3.0f}%\r")
+                    stderr(f"progress: {cnt_done/len(fs)*100:>3.0f}%\r")
 
     logger.info("persisting data")
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
@@ -266,8 +269,7 @@ def align_hmm(user: str, dsn: str, mem_db: str, hmm_db: str, threads: int=1,
 
         cnt_done += 1
         if progress:
-            sys.stderr.write(f"progress: "
-                             f"{cnt_done/len(to_persist)*100:>3.0f}%\r")
+            stderr(f"progress: {cnt_done/len(to_persist)*100:>3.0f}%\r")
 
     t1.close()
     t2.close()
@@ -280,8 +282,6 @@ def align_hmm(user: str, dsn: str, mem_db: str, hmm_db: str, threads: int=1,
 
 def align_pssm(user: str, dsn: str, sequences_file: str, threads: int=1,
                tmpdir: Optional[str]=None, progress: bool=False):
-    dbcode = cdd.DBCODE
-
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
@@ -293,7 +293,7 @@ def align_pssm(user: str, dsn: str, sequences_file: str, threads: int=1,
         """
         SELECT METHOD_AC FROM INTERPRO.CLAN_MEMBER
         WHERE CLAN_AC IN (SELECT CLAN_AC FROM INTERPRO.CLAN WHERE DBCODE = :1)
-        """, (dbcode,)
+        """, (cdd.DBCODE,)
     )
     members = {row[0] for row in cur}
     cur.execute(
@@ -305,7 +305,7 @@ def align_pssm(user: str, dsn: str, sequences_file: str, threads: int=1,
           FROM INTERPRO.METHOD
           WHERE DBCODE = :1
         )
-        """, (dbcode,)
+        """, (cdd.DBCODE,)
     )
     con.commit()
     cur.close()
@@ -363,8 +363,7 @@ def align_pssm(user: str, dsn: str, sequences_file: str, threads: int=1,
             finally:
                 cnt_done += 1
                 if progress:
-                    sys.stderr.write(f"progress: "
-                                     f"{cnt_done/len(fs)*100:>3.0f}%\r")
+                    stderr(f"progress: {cnt_done/len(fs)*100:>3.0f}%\r")
 
     logger.info("persisting data")
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
@@ -401,8 +400,7 @@ def align_pssm(user: str, dsn: str, sequences_file: str, threads: int=1,
 
         cnt_done += 1
         if progress:
-            sys.stderr.write(f"progress: "
-                             f"{cnt_done/len(to_persist)*100:>3.0f}%\r")
+            stderr(f"progress: {cnt_done/len(to_persist)*100:>3.0f}%\r")
 
     t1.close()
     t2.close()
