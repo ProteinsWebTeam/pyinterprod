@@ -57,50 +57,52 @@ def _export_proteins(url: str, tmpdir: Optional[str]=None) -> Tuple[str, int, in
     os.remove(database)
 
     swissp_cnt = trembl_cnt = 0
-    with sqlite3.connect(database) as con1:
-        con1.execute(
+    con1 = sqlite3.connect(database)
+
+    con1.execute(
+        """
+        CREATE TABLE protein (
+          accession TEXT NOT NULL PRIMARY KEY,
+          identifier TEXT NOT NULL,
+          is_reviewed INTEGER NOT NULL,
+          crc64 TEXT NOT NULL,
+          length INTEGER NOT NULL,
+          is_fragment INTEGER NOT NULL,
+          taxon_id INTEGER NOT NULL
+        )
+        """
+    )
+
+    query = "INSERT INTO protein VALUES (?, ?, ?, ?, ?, ?, ?)"
+    with orautils.TablePopulator(con1, query) as table:
+        con2 = cx_Oracle.connect(url)
+        cur2 = con2.cursor()
+        cur2.execute(
             """
-            CREATE TABLE protein (
-              accession TEXT NOT NULL PRIMARY KEY,
-              identifier TEXT NOT NULL,
-              is_reviewed INTEGER NOT NULL,
-              crc64 TEXT NOT NULL,
-              length INTEGER NOT NULL,
-              is_fragment INTEGER NOT NULL,
-              taxon_id INTEGER NOT NULL
-            )
+            SELECT
+              PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT, TAX_ID
+            FROM INTERPRO.PROTEIN
             """
         )
 
-        query = "INSERT INTO protein VALUES (?, ?, ?, ?, ?, ?, ?)"
-        with orautils.TablePopulator(con1, query) as table:
-            con2 = cx_Oracle.connect(url)
-            cur2 = con2.cursor()
-            cur2.execute(
-                """
-                SELECT
-                  PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT, TAX_ID
-                FROM INTERPRO.PROTEIN
-                """
-            )
+        for row in cur2:
+            if row[2] == 'S':
+                swissp_cnt += 1
+                is_reviewed = 1
+            else:
+                trembl_cnt += 1
+                is_reviewed = 0
 
-            for row in cur2:
-                if row[2] == 'S':
-                    swissp_cnt += 1
-                    is_reviewed = 1
-                else:
-                    trembl_cnt += 1
-                    is_reviewed = 0
+            table.insert((
+                row[0], row[1], is_reviewed, row[3], row[4],
+                1 if row[5] == 'Y' else 0, row[6]
+            ))
 
-                table.insert((
-                    row[0], row[1], is_reviewed, row[3], row[4],
-                    1 if row[5] == 'Y' else 0, row[6]
-                ))
+        cur2.close()
+        con2.close()
 
-            cur2.close()
-            con2.close()
-
-        con1.commit()
+    con1.commit()
+    con1.close()
 
     return database, swissp_cnt, trembl_cnt
 
@@ -110,20 +112,21 @@ def _load_flat_files(swissp_src: str, trembl_src: str, tmpdir: Optional[str]=Non
     os.close(fd)
     os.remove(database)
 
-    with sqlite3.connect(database) as con:
-        con.execute(
-            """
-            CREATE TABLE protein (
-              accession TEXT NOT NULL PRIMARY KEY,
-              identifier TEXT NOT NULL,
-              is_reviewed INTEGER NOT NULL,
-              crc64 TEXT NOT NULL,
-              length INTEGER NOT NULL,
-              is_fragment INTEGER NOT NULL,
-              taxon_id INTEGER NOT NULL
-            )
-            """
+    con = sqlite3.connect(database)
+    con.execute(
+        """
+        CREATE TABLE protein (
+          accession TEXT NOT NULL PRIMARY KEY,
+          identifier TEXT NOT NULL,
+          is_reviewed INTEGER NOT NULL,
+          crc64 TEXT NOT NULL,
+          length INTEGER NOT NULL,
+          is_fragment INTEGER NOT NULL,
+          taxon_id INTEGER NOT NULL
         )
+        """
+    )
+    con.close()
 
     swissp_cnt = sprot.load(swissp_src, database, "protein")
     trembl_cnt = sprot.load(trembl_src, database, "protein")
@@ -185,93 +188,42 @@ def _diff_databases(url: str, database_old: str, database_new: str):
     query = "INSERT INTO INTERPRO.PROTEIN_CHANGES VALUES (:1)"
     all_changes = orautils.TablePopulator(con, query)
 
-    it1 = iter(_iter_proteins(database_old))
-    it2 = iter(_iter_proteins(database_new))
-    row1 = next(it1)
-    row2 = next(it2)
-    is_alive1 = is_alive2 = True
+    current = Entry(database_old)
+    forthcoming = Entry(database_new)
 
-    while is_alive1 or is_alive2:
-        """
-        row:
-            - accession (str)
-            - name (str)
-            - is_reviewed (int: 0/1)
-            - crc64 (str)
-            - length (int)
-            - is_fragment (int: 0/1)
-            - taxon_id (int)
-        """
-        acc1 = row1[0]
-        acc2 = row2[0]
+    while True:
+        if current.ok:
+            if forthcoming.ok:
+                # Still entries in both databases: compare
+                if current == forthcoming:
+                    if current.diff_sequence(forthcoming):
+                        seq_changes.update(forthcoming.sequence)
+                        all_changes.insert((forthcoming.accession,))
+                    elif current.diff_annotation(forthcoming):
+                        ann_changes.update(forthcoming.annotation)
 
-        if acc1 == acc2:
-            if row1[3] == row2[3]:
-                # Same CRC64
-                for i in (1, 2, 4, 5, 6):
-                    if row1[i] != row2[i]:
-                        ann_changes.update((
-                            row2[1],
-                            'S' if row2[2] else 'T',
-                            row2[4],
-                            'Y' if row2[5] else 'N',
-                            row2[6],
-                            acc2
-                        ))
-                        break
+                    current.next()
+                    forthcoming.next()
+                elif current < forthcoming:
+                    # Entry in current but not in forthcoming: deleted
+                    del_changes.insert((del_changes.rowcount, current.accession))
+                    current.next()
+                else:
+                    # Entry in forthcoming but not in current: new
+                    new_proteins.insert(forthcoming.new)
+                    all_changes.insert((forthcoming.accession,))
+                    forthcoming.next()
             else:
-                # Sequence changed
-                seq_changes.update((
-                    row2[1],
-                    'S' if row2[2] else 'T',
-                    row2[3],
-                    row2[4],
-                    'Y' if row2[5] else 'N',
-                    row2[6],
-                    acc2
-                ))
-                all_changes.insert((acc2,))
-
-            try:
-                row1 = next(it1)
-            except StopIteration:
-                is_alive1 = False
-
-            try:
-                row2 = next(it2)
-            except StopIteration:
-                is_alive2 = False
-        elif acc1 < acc2 and is_alive1:
-            del_changes.insert((del_changes.rowcount, acc1))
-            try:
-                row1 = next(it1)
-            except StopIteration:
-                is_alive1 = False
-        elif acc1 > acc2 and is_alive2:
-            new_proteins.insert((
-                acc2,
-                row2[1],
-                'S' if row2[2] else 'T',
-                row2[3],
-                row2[4],
-                'Y' if row2[5] else 'N',
-                row2[6]
-            ))
-            all_changes.insert((acc2,))
-            try:
-                row2 = next(it2)
-            except StopIteration:
-                is_alive2 = False
-        elif is_alive1:
-            try:
-                row1 = next(it1)
-            except StopIteration:
-                is_alive1 = False
-        elif is_alive2:
-            try:
-                row2 = next(it2)
-            except StopIteration:
-                is_alive2 = False
+                # Still entries in current, but not in forthcoming: all deleted
+                del_changes.insert((del_changes.rowcount, current.accession))
+                current.next()
+        elif forthcoming.ok:
+            # Still entries in forthcoming, but not in current: all new
+            new_proteins.insert(forthcoming.new)
+            all_changes.insert((forthcoming.accession,))
+            forthcoming.next()
+        else:
+            break
 
     ann_changes.close()
     seq_changes.close()
@@ -295,10 +247,90 @@ def _diff_databases(url: str, database_old: str, database_new: str):
     logger.info(f"new proteins:       {new_proteins.rowcount:>10}")
 
 
-def _iter_proteins(database: str):
-    with sqlite3.connect(database) as con:
-        for row in con.execute("SELECT * FROM protein ORDER BY accession"):
-            yield row
+class Entry(object):
+    def __init__(self, database):
+        self.gen = self.iter(database)
+        self.record = None
+        self.ok = True
+        self.count = 0
+        self.next()
+
+    @staticmethod
+    def iter(database):
+        con = sqlite3.connect(database)
+
+        try:
+            # accession, identifier, is_reviewed, crc64, length, is_fragment, taxon_id
+            for row in con.execute("SELECT * FROM protein ORDER BY accession"):
+                yield row
+        finally:
+            con.close()
+
+    def next(self):
+        if not self.ok:
+            return
+
+        try:
+            record = next(self.gen)
+        except StopIteration:
+            self.ok = False
+        else:
+            self.record = record
+            self.count += 1
+
+    def __eq__(self, other):
+        return self.record[0] == other.record[0]
+
+    def __lt__(self, other):
+        return self.record[0] < other.record[0]
+
+    def diff_sequence(self, other):
+        return self.record[3] != other.record[3]
+
+    def diff_annotation(self, other):
+        for i in (1, 2, 4, 5 ,6):
+            if self.record[i] != other.record[i]:
+                return True
+        return False
+
+    @property
+    def accession(self):
+        return self.record[0]
+
+    @property
+    def annotation(self):
+        return (
+            self.record[1],
+            'S' if self.record[2] else 'T',
+            self.record[4],
+            'Y' if self.record[5] else 'N',
+            self.record[6],
+            self.record[0]
+        )
+
+    @property
+    def sequence(self):
+        return (
+            self.record[1],
+            'S' if self.record[2] else 'T',
+            self.record[3],
+            self.record[4],
+            'Y' if self.record[5] else 'N',
+            self.record[6],
+            self.record[0]
+        )
+
+    @property
+    def new(self):
+        return (
+            self.record[0],
+            self.record[1],
+            'S' if self.record[2] else 'T',
+            self.record[3],
+            self.record[4],
+            'Y' if self.record[5] else 'N',
+            self.record[6]
+        )
 
 
 def update(user: str, dsn: str, version: str, date: str):
