@@ -506,8 +506,15 @@ def _import_member_db(url: str, owner: str, table_src: str, table_dst: str,
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    upi = _get_max_upi(cur, owner, table_stg)
+    upi = _get_max_upi(cur, owner, "{} partition ({})".format(table_dst, partition))
     max_upi = _get_max_upi(cur, "UNIPARC", "PROTEIN", "UAREAD")
+    if upi >= max_upi:
+        # Nothing to do here
+        cur.close()
+        con.close()
+        return
+
+    upi = _get_max_upi(cur, owner, table_stg)
     if not upi or upi < max_upi:
         # Not the same UPI: import table
         orautils.drop_mview(cur, owner, table_stg)
