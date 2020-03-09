@@ -49,7 +49,7 @@ def run_protein_update():
 
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
-    workflow_dir = config["misc"]["lsf_queue"]
+    workflow_dir = config["misc"]["workflow_dir"]
 
     os.makedirs(data_dir, exist_ok=True)
     tasks = [
