@@ -14,10 +14,10 @@ def update(url: str):
     update_databases(cur)
 
     logger.info("creating UNIPARC.PROTEIN")
-    update_databases(cur)
+    update_proteins(cur)
 
-    logger.info("creating UNIPARC.CV_DATABASE")
-    update_databases(cur)
+    logger.info("creating UNIPARC.XREF")
+    update_xrefs(cur)
 
     cur.close()
     con.close()
@@ -34,7 +34,7 @@ def update_databases(cur: cx_Oracle.Cursor):
         NOLOGGING
         AS
         SELECT *
-        FROM UNIPARC.CV_DATABASE@UAREAD        
+        FROM UNIPARC.CV_DATABASE@UAREAD
         """
     )
     cur.execute("GRANT SELECT ON UNIPARC.CV_DATABASE TO PUBLIC")
