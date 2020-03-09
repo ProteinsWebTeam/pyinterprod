@@ -41,9 +41,9 @@ def run_protein_update():
     config.read(args.config)
 
     dsn = config["oracle"]["dsn"]
-    interpro_url = f"{config['oracle']['interpro']}@{dsn}"
-    iprscan_url = f"{config['oracle']['iprscan']}@{dsn}"
-    uniparc_url = f"{config['oracle']['uniparc']}@{dsn}"
+    interpro_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
+    iprscan_url = f"iprscan/{config['oracle']['iprscan']}@{dsn}"
+    uniparc_url = f"uniparc/{config['oracle']['uniparc']}@{dsn}"
 
     uniprot_version = config["uniprot"]["version"]
 
