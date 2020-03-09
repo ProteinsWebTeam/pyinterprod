@@ -1,7 +1,7 @@
 import logging
 
 
-__version__ = "1.2.0"
+__version__ = "2.0.0"
 
 
 logger = logging.getLogger(__name__)
@@ -12,7 +12,7 @@ if not logger.hasHandlers():
     _ch.setFormatter(
         logging.Formatter(
             fmt='%(asctime)s: %(levelname)s: %(message)s',
-            datefmt='%y-%m-%d %H:%M:%S'
+            datefmt='%Y-%m-%d %H:%M:%S'
         )
     )
     logger.addHandler(_ch)
