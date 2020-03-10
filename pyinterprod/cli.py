@@ -7,8 +7,7 @@ import os
 from mundone import Task, Workflow
 
 from pyinterprod import __version__, iprscan
-from pyinterprod.interpro import protein
-from pyinterprod.uniprot import flatfile
+from pyinterprod.interpro import match, protein
 from pyinterprod import uniparc
 
 
@@ -60,28 +59,13 @@ def run_protein_update():
             scheduler=dict(queue=lsf_queue)
         ),
         Task(
-            fn=protein.export_proteins,
-            args=(interpro_url,
-                  os.path.join(data_dir, "proteins.old.sqlite")),
-            name="export-old-proteins",
-            scheduler=dict(queue=lsf_queue)
-        ),
-        Task(
-            fn=flatfile.load,
-            args=(config["uniprot"]["swiss-prot"],
-                  config["uniprot"]["trembl"],
-                  os.path.join(data_dir, "proteins.new.sqlite")),
-            name="import-new-proteins",
-            scheduler=dict(queue=lsf_queue)
-        ),
-        Task(
             fn=protein.track_changes,
             args=(interpro_url,
-                  os.path.join(data_dir, "proteins.old.sqlite"),
-                  os.path.join(data_dir, "proteins.new.sqlite")),
+                  config["uniprot"]["swiss-prot"],
+                  config["uniprot"]["trembl"]),
+            kwargs=dict(dir="/scratch/"),
             name="update-proteins",
-            scheduler=dict(queue=lsf_queue),
-            requires=["export-old-proteins", "import-new-proteins"]
+            scheduler=dict(cpu=2, queue=lsf_queue),
         ),
         Task(
             fn=protein.delete_obsoletes,
@@ -105,6 +89,13 @@ def run_protein_update():
             name="import-matches",
             scheduler=dict(queue=lsf_queue),
             requires=["update-uniparc"]
+        ),
+        Task(
+            fn=match.update_matches,
+            args=(interpro_url, data_dir),
+            name="update-matches",
+            scheduler=dict(queue=lsf_queue),
+            requires=["check-proteins", "import-matches"]
         ),
     ]
 
