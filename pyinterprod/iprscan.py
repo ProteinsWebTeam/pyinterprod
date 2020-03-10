@@ -443,6 +443,20 @@ def import_matches(url: str, threads: int=1):
     if failed:
         raise RuntimeError(f"{failed} errors")
 
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    logger.info("rebuilding indexes")
+    for idx in oracle.get_indexes(cur, "IPRSCAN", "MV_IPRSCAN"):
+        oracle.catch_temp_error(fn=oracle.rebuild_index,
+                                args=(cur, idx["name"]))
+
+    logger.info("gathering statistics")
+    oracle.gather_stats(cur, "IPRSCAN", "MV_IPRSCAN")
+
+    cur.close()
+    con.close()
+
 
 def import_sites():
     pass

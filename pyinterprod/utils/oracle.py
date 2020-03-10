@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 
-from typing import List, Optional
-
+import time
+from typing import Callable, List, Optional, Sequence
 
 from cx_Oracle import Cursor, DatabaseError
+
+from pyinterprod import logger
 
 
 def drop_mview(cur: Cursor, name: str):
@@ -164,3 +166,22 @@ def truncate_table(cur: Cursor, name: str, reuse_storage: bool=False):
         sql = f"TRUNCATE TABLE {name}"
 
     cur.execute(sql)
+
+
+def catch_temp_error(fn: Callable, args: Sequence, max_attempts: int=3):
+    num_attempts = 0
+    while True:
+        try:
+            fn(*args)
+        except DatabaseError as exc:
+            error, = exc.args
+            num_attempts += 1
+
+            # ORA-01652: unable to extend temp segment by <int> in tablespace TEMP
+            if error.code != 1652 or num_attempts == max_attempts:
+                raise exc
+            else:
+                logger.warning(exc)
+                time.sleep(3600)
+        else:
+            break
