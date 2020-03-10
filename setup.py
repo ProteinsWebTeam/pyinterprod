@@ -13,8 +13,8 @@ setup(
     long_description="",
     packages=find_packages(),
     ext_modules=[
-        Extension(name="pyinterprod.sprot",
-                  sources=["pyinterprod/sprotmodule.c"],
+        Extension(name="pyinterprod.uniprot.sprot",
+                  sources=["pyinterprod/uniprot/sprotmodule.c"],
                   extra_link_args=["-lsqlite3"])
     ],
     install_requires=["cx-Oracle>=7.3", "mundone>=0.4.0"],

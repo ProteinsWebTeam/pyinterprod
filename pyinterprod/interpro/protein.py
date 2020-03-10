@@ -2,22 +2,18 @@
 
 import os
 import sqlite3
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional
+from concurrent import futures
+from tempfile import mkstemp
+from typing import Optional, Tuple
 
 import cx_Oracle
 
 from pyinterprod import logger
 from pyinterprod.utils import Table, oracle as ora
+from pyinterprod.uniprot import flatfile
 
 
-def export_proteins(url: str, database: str):
-    logger.info("loading proteins")
-    try:
-        os.remove(database)
-    except FileNotFoundError:
-        pass
-
+def export_proteins(url: str, database: str) -> Tuple[int, int]:
     con1 = sqlite3.connect(database)
     con1.execute(
         """
@@ -70,8 +66,7 @@ def export_proteins(url: str, database: str):
     con1.commit()
     con1.close()
 
-    logger.info(f"Swiss-Prot: {swissp_cnt} entries")
-    logger.info(f"Swiss-Prot: {trembl_cnt} entries")
+    return swissp_cnt, trembl_cnt
 
 
 class Entry(object):
@@ -160,7 +155,59 @@ class Entry(object):
         )
 
 
-def track_changes(url: str, database_old: str, database_new: str):
+def init_database(dir: Optional[str]=None) -> str:
+    fd, database = mkstemp(suffix=".sqlite", dir=dir)
+    os.close(fd)
+    os.remove(database)
+
+    con = sqlite3.connect(database)
+    con.execute(
+        """
+        CREATE TABLE protein (
+          accession TEXT NOT NULL PRIMARY KEY,
+          identifier TEXT NOT NULL,
+          is_reviewed INTEGER NOT NULL,
+          crc64 TEXT NOT NULL,
+          length INTEGER NOT NULL,
+          is_fragment INTEGER NOT NULL,
+          taxon_id INTEGER NOT NULL
+        )
+        """
+    )
+    con.close()
+
+    return database
+
+
+def track_changes(url: str, swissp: str, trembl: str, dir: Optional[str]=None):
+    logger.info("starting")
+    database_old = init_database(dir=dir)
+    database_new = init_database(dir=dir)
+
+    failed = False
+    with futures.ProcessPoolExecutor(max_workers=2) as executor:
+        fs = {}
+        f = executor.submit(export_proteins, url, database_old)
+        fs[f] = "current"
+
+        f = executor.submit(flatfile.load, swissp, trembl, database_new)
+        fs[f] = "next release"
+
+        for f in futures.as_completed(fs):
+            try:
+                swissp_cnt, trembl_cnt = f.result()
+            except Exception as exc:
+                logger.error(f"{fs[f]}: failed ({exc})")
+                failed = True
+            else:
+                logger.info(f"{fs[f]}: Swiss-Prot: {swissp_cnt}, "
+                            f"TrEMBL: {trembl_cnt}")
+
+    if failed:
+        os.remove(database_old)
+        os.remove(database_new)
+        raise RuntimeError("failed to track changes between UniProt releases")
+
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     ora.truncate_table(cur, "INTERPRO.PROTEIN_CHANGES", reuse_storage=True)
@@ -244,6 +291,9 @@ def track_changes(url: str, database_old: str, database_new: str):
     all_table.close()
     con.commit()
 
+    os.remove(database_old)
+    os.remove(database_new)
+
     logger.info(f"annotations updated: {ann_table.count:>10}")
     logger.info(f"sequences updated:   {seq_table.count:>10}")
     logger.info(f"obsolete entries:    {del_table.count:>10}")
@@ -309,7 +359,7 @@ def delete_obsoletes(url: str, truncate: bool=False, threads: int=8,
     con.close()
 
     logger.info(f"{len(tasks)} tables to update")
-    with ThreadPoolExecutor(max_workers=threads) as executor:
+    with futures.ThreadPoolExecutor(max_workers=threads) as executor:
         fs = {}
 
         for table, partition, column in tasks:
@@ -317,7 +367,7 @@ def delete_obsoletes(url: str, truncate: bool=False, threads: int=8,
             fs[f] = (table, partition)
 
         num_errors = 0
-        for f in as_completed(fs):
+        for f in futures.as_completed(fs):
             table, partition = fs[f]
             if partition:
                 name = f"{table} ({partition})"
