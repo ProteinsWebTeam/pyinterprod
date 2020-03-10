@@ -73,7 +73,7 @@ def get_child_tables(cur: Cursor, schema: str, name: str) -> List[tuple]:
 def get_indexes(cur: Cursor, owner: str, name: str) -> List[dict]:
     cur.execute(
         """
-        SELECT I.OWNER, I.INDEX_NAME, I.UNIQUENESS,  I.TABLESPACE_NAME, 
+        SELECT I.OWNER, I.INDEX_NAME, I.UNIQUENESS, I.TABLESPACE_NAME, 
                I.LOGGING, I.STATUS, IC.COLUMN_NAME, IC.DESCEND
         FROM ALL_INDEXES I
         INNER JOIN ALL_IND_COLUMNS IC
@@ -103,8 +103,8 @@ def get_indexes(cur: Cursor, owner: str, name: str) -> List[dict]:
             }
 
         index["columns"].append({
-            "name": row[7],
-            "order": row[8]
+            "name": row[6],
+            "order": row[7]
         })
 
     return list(indexes.values())
