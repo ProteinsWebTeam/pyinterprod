@@ -206,7 +206,7 @@ class Analysis:
             """
             SELECT MAX(JOB_END)
             FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
-            WHERE ANALYSIS_ID = :1 AND PERSISTED = :2
+            WHERE ANALYSIS_ID = :1 AND PERSISTED >- :2
             """, (self.id, self.persisted)
         )
         row = cur.fetchone()
@@ -398,24 +398,23 @@ def import_matches(url: str, threads: int=1):
         running = []
         failed = 0
 
-        while pending or running:
-            time.sleep(600)
+        while True:
             con = cx_Oracle.connect(url)
             cur = con.cursor()
 
             tmp = []
-            for f, table in running:
+            for f, table, names in running:
                 if not f.done():
-                    tmp.append((f, table))
+                    tmp.append((f, table, names))
                     continue
 
                 try:
                     f.result()
                 except Exception as exc:
-                    logger.error(f"{table}: failed")
+                    logger.error(f"{names}: failed ({exc})")
                     failed += 1
                 else:
-                    logger.info(f"{table}: done")
+                    logger.info(f"{names}: done")
 
             running = tmp
 
@@ -431,14 +430,20 @@ def import_matches(url: str, threads: int=1):
                     tmp[table] = analyses
                     continue
 
-                logger.info(f"{table}: ready")
+                names = ', '.join(e[0].full_name for e in analyses)
+                logger.info(f"{names}: ready")
                 f = executor.submit(_import_matches, url, table, ready)
-                running.append((f, table))
+                running.append((f, table, names))
 
             pending = tmp
 
             cur.close()
             con.close()
+
+            if pending or running:
+                time.sleep(600)
+            else:
+                break
 
     if failed:
         raise RuntimeError(f"{failed} errors")
