@@ -462,6 +462,8 @@ def import_matches(url: str, threads: int=1):
     cur.close()
     con.close()
 
+    logger.info("complete")
+
 
 def import_sites():
     pass
