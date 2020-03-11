@@ -15,20 +15,6 @@ from pyinterprod.uniprot import flatfile
 
 def export_proteins(url: str, database: str) -> Tuple[int, int]:
     con1 = sqlite3.connect(database)
-    con1.execute(
-        """
-        CREATE TABLE protein (
-          accession TEXT NOT NULL PRIMARY KEY,
-          identifier TEXT NOT NULL,
-          is_reviewed INTEGER NOT NULL,
-          crc64 TEXT NOT NULL,
-          length INTEGER NOT NULL,
-          is_fragment INTEGER NOT NULL,
-          taxon_id INTEGER NOT NULL
-        )
-        """
-    )
-
     with Table(con1, "INSERT INTO protein VALUES (?, ?, ?, ?, ?, ?, ?)") as t:
         swissp_cnt = trembl_cnt = 0
 
