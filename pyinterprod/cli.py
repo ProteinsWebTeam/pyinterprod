@@ -65,7 +65,7 @@ def run_protein_update():
                   config["uniprot"]["trembl"]),
             kwargs=dict(dir="/scratch/"),
             name="update-proteins",
-            scheduler=dict(cpu=2, queue=lsf_queue),
+            scheduler=dict(cpu=2, queue=lsf_queue, scratch=40000),
         ),
         Task(
             fn=protein.delete_obsoletes,
@@ -80,7 +80,7 @@ def run_protein_update():
             args=(interpro_url,),
             name="check-proteins",
             scheduler=dict(queue=lsf_queue),
-            requires=["update-proteins", "update-uniparc"]
+            requires=["delete-proteins", "update-uniparc"]
         ),
         Task(
             fn=iprscan.import_matches,
