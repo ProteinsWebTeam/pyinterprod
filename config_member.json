@@ -1,0 +1,49 @@
+{
+    "database": {
+        "dsn": "",
+        "users": {
+            "interpro": "",
+            "iprscan": "",
+            "uniparc": "",
+            "pronto-pri": "",
+            "pronto-sec": ""
+        }
+    },
+    "release": {
+        "version": "",
+        "date": ""
+    },
+    "paths": {
+        "flat-files": {
+            "swissprot": "",
+            "trembl": "",
+            "method_dat": "/ebi/production/interpro/production2/work/members/ibu-xxxx/method.dat"
+        },
+        "results": "",
+        "unirule": "",
+        "xrefs": ""
+    },
+    "email-notifications": true,
+    "workflow": {
+        "lsf-queue": "",
+        "dir": ""
+    },
+    "member_databases": [
+        {
+            "name": "",
+            "version": "",
+            "release-date": "",
+            "incremental": "False",
+            "new": "False",
+            "evidence": ""
+        },
+        {
+            "name": "",
+            "version": "",
+            "release-date": "",
+            "incremental": "False",
+            "new": "False",
+            "evidence": ""
+        }
+    ]
+}
