@@ -13,9 +13,11 @@ setup(
     long_description="",
     packages=find_packages(),
     ext_modules=[
-        Extension("pyinterprod.proteinupdate.sprot",
-                  ["pyinterprod/proteinupdate/sprotmodule.c"],
-                  extra_link_args=["-lsqlite3"])
+        Extension(
+            "pyinterprod.proteinupdate.sprot",
+            ["pyinterprod/proteinupdate/sprotmodule.c"],
+            extra_link_args=["-lsqlite3"],
+        )
     ],
     install_requires=["cx-Oracle>=7.1", "mundone>=0.2.0"],
     zip_safe=False,
@@ -23,7 +25,8 @@ setup(
         "console_scripts": [
             "ipr-clans = pyinterprod.clan:main",
             "ipr-pronto = pyinterprod.pronto:main",
-            "ipr-uniprot = pyinterprod.proteinupdate:main"
+            "ipr-uniprot = pyinterprod.proteinupdate:main",
+            "ipr-memberdb = pyinterprod.memberdbupdate:main",
         ]
-    }
+    },
 )

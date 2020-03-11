@@ -15,7 +15,7 @@ def chunks(l, n):
     """
     for i in range(0, len(l), n):
         # Create an index range for l of n items:
-        yield l[i: i + n]
+        yield l[i : i + n]
 
 
 def populate_method_stg(user: str, dsn: str, dat_file: str, memberdb: list):
@@ -25,11 +25,11 @@ def populate_method_stg(user: str, dsn: str, dat_file: str, memberdb: list):
     data_list = list()
 
     try:
-        with open(dat_file, 'r') as fd:
+        with open(dat_file, "r") as fd:
             for line in fd:
-                line = line.strip(':\n').split('::')
-                line[5] = line[5].replace('|', '')
-                if line[5] == '':
+                line = line.strip(":\n").split("::")
+                line[5] = line[5].replace("|", "")
+                if line[5] == "":
                     line[5] = None
                 print(line)
                 data_list.append(line)
@@ -140,13 +140,17 @@ def update_db_version(user: str, dsn: str, memberdb: list):
             try:
                 query = "INSERT INTO INTERPRO.DB_VERSION(DBCODE,VERSION,ENTRY_COUNT,FILE_DATE) VALUES(:1,:2,:3,:4)"
                 cur.execute(
-                    query, (dbcode, member["version"], countmethod, member["release-date"]))
+                    query,
+                    (dbcode, member["version"], countmethod, member["release-date"]),
+                )
                 print(f"{dbcode} inserted")
             except Exception as e:
                 print("Couldn't insert, trying to update", e)
                 query = "UPDATE INTERPRO.DB_VERSION SET ENTRY_COUNT=:1, VERSION=:2 , FILE_DATE=:3 ,LOAD_DATE=SYSDATE WHERE DBCODE=:4"
                 cur.execute(
-                    query, (countmethod, member["version"], member["release-date"], dbcode))
+                    query,
+                    (countmethod, member["version"], member["release-date"], dbcode),
+                )
 
     con.commit()
 
@@ -161,17 +165,19 @@ def update_iprscan2dbcode(user: str, dsn: str, memberdb: list):
     for member in memberdb:
         try:
             query = "UPDATE INTERPRO.IPRSCAN2DBCODE SET IPRSCAN_SIG_LIB_REL_ID = (SELECT MAX(ID) FROM IPRSCAN.MV_SIGNATURE_LIBRARY_RELEASE WHERE LIBRARY=:1) WHERE DBCODE=:2"
-            cur.execute(
-                query, (member["name"], member["dbcode"]))
+            cur.execute(query, (member["name"], member["dbcode"]))
             if cur.rowcount == 0:
                 raise "Row not found"
-            print(
-                f"\nIPRSCAN2DBCODE for {member['name']} updated")
+            print(f"\nIPRSCAN2DBCODE for {member['name']} updated")
         except:
             print("\nCouldn't update, trying to insert")
             query = "INSERT INTO INTERPRO.IPRSCAN2DBCODE VALUES((SELECT MAX(ID) FROM IPRSCAN.MV_SIGNATURE_LIBRARY_RELEASE WHERE LIBRARY=:name),:dbcode,:evidence,(SELECT MAX(ID) FROM IPRSCAN.MV_SIGNATURE_LIBRARY_RELEASE WHERE LIBRARY=:name))"
             cur.execute(
-                query, name=member["name"], dbcode=member["dbcode"], evidence=member["evidence"])
+                query,
+                name=member["name"],
+                dbcode=member["dbcode"],
+                evidence=member["evidence"],
+            )
             print(f"\n{member['name']} inserted")
 
     con.commit()

@@ -42,8 +42,15 @@ def delete_from_tables(cur, con, dbcode):
     except cx_Oracle.DatabaseError as e:
         print(e)
 
-    tables_list = ["ENTRY2METHOD", "MATCH_NEW", "METHOD2PUB", "MV_METHOD2PROTEIN",
-                   "MV_METHOD_MATCH", "VARSPLIC_MATCH", "METHOD"]
+    tables_list = [
+        "ENTRY2METHOD",
+        "MATCH_NEW",
+        "METHOD2PUB",
+        "MV_METHOD2PROTEIN",
+        "MV_METHOD_MATCH",
+        "VARSPLIC_MATCH",
+        "METHOD",
+    ]
     for table in tables_list:
         try:
             query = f"DELETE FROM {table} WHERE METHOD_AC IN (SELECT METHOD_AC FROM METHODS_TO_DELETE_TEMP_TABLE)"
