@@ -167,6 +167,16 @@ MATCH_PARTITIONS = {
     "tmhmm": "TMHMM"
 }
 
+# Partition in SITE
+SITE_PARITIONS = {
+    "cdd": "CDD",
+    "sfld": "SFLD"
+}
+
+# Columns to select when inserting site matches in SITE
+SITE_SELECT = ['UPI', 'ANALYSIS_ID', 'METHOD_AC', 'LOC_START', 'LOC_END',
+               'NUM_SITES', 'RESIDUE', 'RES_START', 'RES_END', 'DESCRIPTION']
+
 
 @dataclass
 class Analysis:
@@ -245,9 +255,11 @@ def get_analyses(url: str, use_matches: bool=True) -> List[Analysis]:
         if use_matches:
             persisted = 1 if analysis_type in ("cdd", "sfld") else 2
             table = match_table.upper()
-        else:
+        elif site_table:
             persisted = 2
             table = site_table.upper()
+        else:
+            continue
 
         analysis = Analysis(analysis_id, analysis_type, name, table, persisted)
         analyses.append(analysis)
@@ -273,8 +285,8 @@ def get_max_upi(cur: Cursor, sql: str) -> Optional[str]:
         return row[0] if row else None
 
 
-_ToA = Tuple[int, str, Sequence[str]]
-def _import_matches(url: str, table: str, analyses: Sequence[_ToA]):
+def update_analyses(url: str, table: str, partitioned_table: str,
+                    analyses: Sequence[Tuple[int, str, Sequence[str]]]):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
@@ -284,12 +296,12 @@ def _import_matches(url: str, table: str, analyses: Sequence[_ToA]):
     for analysis_id, partition, columns in analyses:
         sql = f"""
             SELECT MAX(UPI)
-            FROM IPRSCAN.MV_IPRSCAN PARTITION ({partition})
+            FROM IPRSCAN.{partitioned_table} PARTITION ({partition})
         """
         upi = get_max_upi(cur, sql)
 
         if upi and upi >= max_upi:
-            # Data in MV_IPRSCAN >= UniParc: no need to refresh data
+            # Data in `partitioned_table` >= UniParc: no need to refresh data
             up_to_date += 1
 
     if up_to_date == len(analyses):
@@ -333,7 +345,7 @@ def _import_matches(url: str, table: str, analyses: Sequence[_ToA]):
         CREATE TABLE {tmp_table}
         AS
         SELECT *
-        FROM IPRSCAN.MV_IPRSCAN
+        FROM IPRSCAN.{partitioned_table}
         WHERE 1=0
         """
     )
@@ -354,10 +366,10 @@ def _import_matches(url: str, table: str, analyses: Sequence[_ToA]):
         )
         con.commit()
 
-        # Brings new data (in the tmp table) online (MV_IPRSCAN)
+        # Brings new data (in the tmp table) online
         cur.execute(
             f"""
-            ALTER TABLE IPRSCAN.MV_IPRSCAN
+            ALTER TABLE IPRSCAN.{partitioned_table}
             EXCHANGE PARTITION {partition}
             WITH TABLE {tmp_table}
             INCLUDING INDEXES
@@ -432,7 +444,10 @@ def import_matches(url: str, threads: int=1):
 
                 names = ', '.join(e[0].full_name for e in analyses)
                 logger.info(f"{names}: ready")
-                f = executor.submit(_import_matches, url, table, ready)
+
+                args = (url, table, "MV_IPRSCAN", ready)
+                f = executor.submit(update_analyses, *args)
+
                 running.append((f, table, names))
 
             pending = tmp
@@ -465,5 +480,80 @@ def import_matches(url: str, threads: int=1):
     logger.info("complete")
 
 
-def import_sites():
-    pass
+def import_sites(url: str, threads: int=1):
+    pending = {}
+    for analysis in get_analyses(url, use_matches=False):
+        try:
+            partition = SITE_PARITIONS[analysis.name]
+        except KeyError:
+            logger.warning(f"ignoring analysis {analysis.full_name}")
+            continue
+
+        try:
+            pending[analysis.table].append((analysis, partition, SITE_SELECT))
+        except KeyError:
+            pending[analysis.table] = [(analysis, partition, SITE_SELECT)]
+
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
+    max_upi, = cur.fetchone()
+    cur.close()
+    con.close()
+
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        running = []
+        failed = 0
+
+        while True:
+            con = cx_Oracle.connect(url)
+            cur = con.cursor()
+
+            tmp = []
+            for f, table, names in running:
+                if not f.done():
+                    tmp.append((f, table, names))
+                    continue
+
+                try:
+                    f.result()
+                except Exception as exc:
+                    logger.error(f"{names}: failed ({exc})")
+                    failed += 1
+                else:
+                    logger.info(f"{names}: done")
+
+            running = tmp
+
+            tmp = {}
+            for table, analyses in pending.items():
+                ready = []
+                for analysis, partition, columns in analyses:
+                    if analysis.is_ready(cur, max_upi):
+                        ready.append((analysis.id, partition, columns))
+
+                if len(ready) < len(analyses):
+                    # Not ready
+                    tmp[table] = analyses
+                    continue
+
+                names = ', '.join(e[0].full_name for e in analyses)
+                logger.info(f"{names}: ready")
+
+                args = (url, table, "SITE", ready)
+                f = executor.submit(update_analyses, *args)
+
+                running.append((f, table, names))
+
+            pending = tmp
+
+            cur.close()
+            con.close()
+
+            if pending or running:
+                time.sleep(600)
+            else:
+                break
+
+    if failed:
+        raise RuntimeError(f"{failed} errors")
