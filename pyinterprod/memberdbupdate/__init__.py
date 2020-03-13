@@ -15,12 +15,12 @@ def main():
     )
 
     from .. import __version__, proteinupdate
+    from ..proteinupdate import proteins
 
-    parser = argparse.ArgumentParser(description="InterPro member database update")
+    parser = argparse.ArgumentParser(
+        description="InterPro member database update")
     parser.add_argument("config", metavar="CONFIG_MEMBER.JSON", help="config JSON file")
-    parser.add_argument(
-        "-t", "--tasks", nargs="*", metavar="TASK", help="tasks to run (default: all)"
-    )
+    parser.add_argument("-t", "--tasks", nargs="*", metavar="TASK", help="tasks to run (default: all)")
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -59,10 +59,12 @@ def main():
 
     os.makedirs(paths["results"], exist_ok=True)
 
-    wdir = os.path.join(config["workflow"]["dir"], config["release"]["version"])
+    wdir = os.path.join(config["workflow"]["dir"],
+                        config["release"]["version"])
 
     memberdb = config["member_databases"]
-    memberdb = methods.get_dbcodes_memberdb(db_users["interpro"], db_dsn, memberdb)
+    memberdb = methods.get_dbcodes_memberdb(
+        db_users["interpro"], db_dsn, memberdb)
     print(memberdb)
 
     tasks = [
@@ -77,7 +79,7 @@ def main():
         #     scheduler=dict(queue=queue, cpu=2, mem=500, scratch=40000)
         # ),
         Task(
-            name="populate-method-stg",
+            name="populate-method-stg", #popukate interpro.method_stg table
             fn=methods.populate_method_stg,
             args=(
                 db_users["interpro"],
@@ -88,35 +90,27 @@ def main():
             scheduler=dict(queue=queue, mem=500),
         ),
         Task(
-            name="generate-report",
+            name="generate-report", #generate old and new stats reports
             fn=generate_old_new_stats.generate_report,
             args=(db_users["interpro"], db_dsn, wdir, memberdb),
             scheduler=dict(queue=queue, mem=500),
             requires=["populate-method-stg"],
         ),
         Task(
-            name="update-iprscan2dbcode",
-            fn=methods.update_iprscan2dbcode,
-            args=(db_users["interpro"], db_dsn, memberdb),
-            scheduler=dict(queue=queue, mem=500),
+            name="check-crc64",#check crc64 before populate_protein_to_scan => not sure it is needed
+            fn=proteins.check_crc64,
+            args=(db_users["interpro"], db_dsn),
+            scheduler=dict(queue=queue, mem=500)
         ),
         Task(
-            name="check-crc64",
-            fn=proteinupdate.main,
-            args=(args.config,),
-            kwargs=dict(raise_on_error=True, tasks=["check-crc64"]),
-            scheduler=dict(queue=queue, mem=500),
-        ),
-        Task(
-            name="proteins2scan",
-            fn=proteinupdate.main,
-            args=(args.config,),
-            kwargs=dict(raise_on_error=True, tasks=["proteins2scan"]),
+            name="proteins2scan", #populate_protein_to_scan
+            fn=methods.update_proteins2scan,
+            args=(db_users["interpro"], db_dsn),
             scheduler=dict(queue=queue, mem=500),
             requires=["check-crc64"],
         ),
         Task(
-            name="delete-dead-signatures",
+            name="delete-dead-signatures", #delete obsoleted signatures,execute only if something returned from generate_new_report function
             fn=delete_dead_signatures.delete_dead_signatures,
             args=(db_users["interpro"], db_dsn, memberdb),
             scheduler=dict(queue=queue, mem=500),
@@ -129,7 +123,13 @@ def main():
             requires=["populate-method-stg"],
         ),
         Task(
-            name="create-match-tmp",
+            name="update-iprscan2dbcode", #update IPRSCAN2DBCODE table
+            fn=methods.update_iprscan2dbcode,
+            args=(db_users["interpro"], db_dsn, memberdb),
+            scheduler=dict(queue=queue, mem=500),
+        ),
+        Task(
+            name="create-match-tmp", #need to add partitions
             fn=match_tmp.create_match_tmp,
             args=(db_users["interpro"], db_dsn, memberdb, wdir),
             scheduler=dict(queue=queue, mem=500),
@@ -174,7 +174,8 @@ def main():
                 )
 
     # methods.update_db_version("interpro", "IPTST", memberdb)
-    wdir = os.path.join(config["workflow"]["dir"], config["release"]["version"])
+    wdir = os.path.join(config["workflow"]["dir"],
+                        config["release"]["version"])
     wdb = os.path.join(wdir, "memberdbupdate.log")
     wname = "Member database Update"
     with Workflow(tasks, db=wdb, dir=wdir, name=wname) as w:

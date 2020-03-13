@@ -65,7 +65,7 @@ def delete_dead_signatures(user: str, dsn: str, memberdb: list):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
-    # create_temp_table(cur, con)
+    create_temp_table(cur, con)
 
     for member in memberdb:
         delete_from_tables(cur, con, member["dbcode"])

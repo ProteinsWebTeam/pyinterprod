@@ -1,4 +1,4 @@
-from .. import orautils
+from .. import orautils,logger
 import cx_Oracle
 
 
@@ -15,7 +15,7 @@ def chunks(l, n):
     """
     for i in range(0, len(l), n):
         # Create an index range for l of n items:
-        yield l[i : i + n]
+        yield l[i: i + n]
 
 
 def populate_method_stg(user: str, dsn: str, dat_file: str, memberdb: list):
@@ -58,7 +58,7 @@ def update_method(user: str, dsn: str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
-    query = """ MERGE
+    query = """MERGE 
                 INTO INTERPRO.METHOD M
                 USING INTERPRO.METHOD_STG S
                 ON (M.METHOD_AC = S.METHOD_AC)
@@ -80,8 +80,7 @@ def incremental_update(user: str, dsn: str, dbcode: str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
-    query = """
-        INSERT INTO INTERPRO.METHOD_STG(METHOD_AC,DBCODE,NAME,DESCRIPTION,SIG_TYPE,ABSTRACT)
+    query = """INSERT INTO INTERPRO.METHOD_STG(METHOD_AC,DBCODE,NAME,DESCRIPTION,SIG_TYPE,ABSTRACT)
         SELECT METHOD_AC,DBCODE,NAME,DESCRIPTION,SIG_TYPE,ABSTRACT
         FROM INTERPRO.METHOD
         WHERE DBCODE=:1 AND METHOD_AC NOT IN (SELECT METHOD_AC FROM INTERPRO.METHOD_STG);
@@ -141,7 +140,8 @@ def update_db_version(user: str, dsn: str, memberdb: list):
                 query = "INSERT INTO INTERPRO.DB_VERSION(DBCODE,VERSION,ENTRY_COUNT,FILE_DATE) VALUES(:1,:2,:3,:4)"
                 cur.execute(
                     query,
-                    (dbcode, member["version"], countmethod, member["release-date"]),
+                    (dbcode, member["version"],
+                     countmethod, member["release-date"]),
                 )
                 print(f"{dbcode} inserted")
             except Exception as e:
@@ -149,7 +149,8 @@ def update_db_version(user: str, dsn: str, memberdb: list):
                 query = "UPDATE INTERPRO.DB_VERSION SET ENTRY_COUNT=:1, VERSION=:2 , FILE_DATE=:3 ,LOAD_DATE=SYSDATE WHERE DBCODE=:4"
                 cur.execute(
                     query,
-                    (countmethod, member["version"], member["release-date"], dbcode),
+                    (countmethod, member["version"],
+                     member["release-date"], dbcode),
                 )
 
     con.commit()
@@ -180,6 +181,41 @@ def update_iprscan2dbcode(user: str, dsn: str, memberdb: list):
             )
             print(f"\n{member['name']} inserted")
 
+    con.commit()
+
+    cur.close()
+    con.close()
+
+def update_proteins2scan(user: str, dsn: str):
+    logger.info("PROTEIN_TO_SCAN: refreshing")
+
+    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
+    cur = con.cursor()
+    orautils.drop_table(cur, "INTERPRO", "PROTEIN_TO_SCAN", purge=True)
+
+    # Assume CRC64 have been checked and that no mismatches were found
+    cur.execute(
+        """ CREATE TABLE INTERPRO.PROTEIN_TO_SCAN NOLOGGING
+        AS
+        SELECT PRO.PROTEIN_AC, UPD.UPI
+        FROM INTERPRO.PROTEIN PRO
+        INNER JOIN(SELECT  /*+ PARALLEL INDEX_JOIN(A1 PK_PROTEIN, I_PROTEIN$CRC64) */ DISTINCT UPX.UPI, UPX.AC, UPP.CRC64
+                        FROM UNIPARC.XREF UPX
+                        JOIN UNIPARC.PROTEIN UPP
+                            ON (UPP.UPI = UPX.UPI)
+                        WHERE UPX.DBID IN (2, 3)) UPD
+        ON (UPD.AC = PRO.PROTEIN_AC AND UPD.CRC64 = PRO.CRC64)
+        """
+    )
+
+    orautils.gather_stats(cur, "INTERPRO", "PROTEIN_TO_SCAN")
+
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX PK_PROTEIN_TO_SCAN
+        ON INTERPRO.PROTEIN_TO_SCAN (PROTEIN_AC) NOLOGGING
+        """
+    )
     con.commit()
 
     cur.close()

@@ -25,24 +25,26 @@ class Recreate_match(object):
             """
         )
 
-        query_insert = f"INSERT /*+ APPEND */ INTO INTERPRO.MATCH_TMP ( \
-          PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, STATUS, \
-          DBCODE, EVIDENCE, \
-          SEQ_DATE, MATCH_DATE, TIMESTAMP, USERSTAMP, \
-          SCORE, MODEL_AC, FRAGMENTS \
-        ) \
-        SELECT \
-          P.PROTEIN_AC, M.METHOD_AC, M.SEQ_START, M.SEQ_END, 'T', \
-          D.DBCODE, D.EVIDENCE, \
-          SYSDATE, SYSDATE, SYSDATE, 'INTERPRO', \
-          M.EVALUE, M.MODEL_AC, M.FRAGMENTS \
-        FROM INTERPRO.PROTEIN_TO_SCAN P \
-        INNER JOIN IPRSCAN.MV_IPRSCAN_MINI M \
-          ON P.UPI = M.UPI \
-        INNER JOIN INTERPRO.IPRSCAN2DBCODE D \
-          ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID \
-        WHERE D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x') AND D.DBCODE IN ('{','.join(dbcode_list)}') \
-        AND M.SEQ_START != M.SEQ_END "
+        query_insert="ALTER SESSION FORCE parallel dml;\
+            INSERT INTO INTERPRO.MATCH_TMP \
+            SELECT /*+ parallel */ PS.PROTEIN_AC PROTEIN_AC, \
+                       IPR.METHOD_AC METHOD_AC, \
+                       IPR.SEQ_START POS_FROM, \
+                       IPR.SEQ_END POS_TO, \
+                       'T' STATUS, \
+                       I2D.DBCODE DBCODE, \
+                       I2D.EVIDENCE EVIDENCE, \
+                       SYSDATE SEQ_DATE, \
+                       SYSDATE MATCH_DATE, \
+                       SYSDATE TIMESTAMP, \
+                       'INTERPRO' USERSTAMP, \
+                       IPR.EVALUE SCORE, \
+                       IPR.MODEL_AC MODEL_AC, \
+                       IPR.FRAGMENTS FRAGMENTS \
+            FROM INTERPRO.PROTEIN_TO_SCAN PS, IPRSCAN.MV_IPRSCAN_MINI IPR, INTERPRO.IPRSCAN2DBCODE I2D \
+            WHERE PS.UPI = IPR.UPI AND I2D.IPRSCAN_SIG_LIB_REL_ID = IPR.ANALYSIS_ID \
+            AND I2D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x') AND I2D.DBCODE IN ('{','.join(dbcode_list)}') \
+            AND IPR.SEQ_START != IPR.SEQ_END "
 
         self.cursor.execute(query_insert)
         self.connection.commit()
@@ -121,24 +123,6 @@ class Recreate_match(object):
                         sqlLine = sqlLine.format(analysis_id)
                         self.cursor.execute(sqlLine)
                         self.connection.commit()
-                        sqlLine = ""
-                    except cx_Oracle.DatabaseError as exception:
-                        logger.info("Failed to execute " + sqlLine)
-                        logger.info(exception)
-                        exit(1)
-
-    def execute_sql_stm(self, file_name):
-        pattern = "--"
-        with open(file_name, "r") as sqlFile:
-            sqlLine = ""
-            for line in sqlFile:
-                if re.search(pattern, line):
-                    continue
-                sqlLine += line
-                if line.strip().endswith(";"):
-                    try:
-                        sqlLine = sqlLine.replace(";", "")
-                        self.cursor.execute(sqlLine)
                         sqlLine = ""
                     except cx_Oracle.DatabaseError as exception:
                         logger.info("Failed to execute " + sqlLine)
