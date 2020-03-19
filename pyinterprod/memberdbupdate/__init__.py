@@ -12,6 +12,8 @@ def main():
         report,
         delete_dead_signatures,
         match_tmp,
+        data_exchange,
+        submit_countsupdate,
     )
 
     from .. import __version__, proteinupdate
@@ -55,6 +57,8 @@ def main():
     paths = config["paths"]
     queue = config["workflow"]["lsf-queue"]
     notify = config["email-notifications"]
+    #email_sender= config["email-sender"]
+    email_receiver=config["email-receiver"]
     iprrelease_date = config["release"]["date"]
 
     os.makedirs(paths["results"], exist_ok=True)
@@ -79,7 +83,7 @@ def main():
         #     scheduler=dict(queue=queue, cpu=2, mem=500, scratch=40000)
         # ),
         Task(
-            name="populate-method-stg", #popukate interpro.method_stg table
+            name="populate-method-stg", #populate interpro.method_stg table => ok
             fn=methods.populate_method_stg,
             args=(
                 db_users["interpro"],
@@ -90,7 +94,7 @@ def main():
             scheduler=dict(queue=queue, mem=500),
         ),
         Task(
-            name="generate-report", #generate old and new stats reports
+            name="generate-old-report", #generate old and new stats reports
             fn=generate_old_new_stats.generate_report,
             args=(db_users["interpro"], db_dsn, wdir, memberdb),
             scheduler=dict(queue=queue, mem=500),
@@ -116,7 +120,7 @@ def main():
             scheduler=dict(queue=queue, mem=500),
         ),
         Task(
-            name="update-method",
+            name="update-method", # => ok
             fn=methods.update_method,
             args=(db_users["interpro"], db_dsn),
             scheduler=dict(queue=queue, mem=500),
@@ -129,13 +133,19 @@ def main():
             scheduler=dict(queue=queue, mem=500),
         ),
         Task(
-            name="create-match-tmp", #need to add partitions
+            name="create-match-tmp", #what if new member db? Need to add count of match and match_tmp? => ok
             fn=match_tmp.create_match_tmp,
             args=(db_users["interpro"], db_dsn, memberdb, wdir),
             scheduler=dict(queue=queue, mem=500),
         ),
         Task(
-            name="update-db-version",
+            name="update-match",
+            fn=data_exchange.exchange_data,
+            args=(db_users["interpro"], db_dsn, memberdb, "MATCH"),
+            scheduler=dict(queue=queue, mem=500),
+        ),
+        Task(
+            name="update-db-version", # => ok
             fn=methods.update_db_version,
             args=(db_users["interpro"], db_dsn, memberdb),
             scheduler=dict(queue=queue, mem=500),
@@ -151,6 +161,12 @@ def main():
             name="drop-match-tmp",
             fn=match_tmp.drop_match_tmp,
             args=(db_users["interpro"], db_dsn),
+            scheduler=dict(queue=queue, mem=500),
+        ),
+        Task(
+            name="generate-counts",
+            fn=submit_countsupdate.generate_counts,
+            args=(db_users["interpro"], db_dsn, memberdb, email_receiver, wdir),
             scheduler=dict(queue=queue, mem=500),
         ),
         Task(

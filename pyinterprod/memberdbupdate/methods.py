@@ -31,10 +31,10 @@ def populate_method_stg(user: str, dsn: str, dat_file: str, memberdb: list):
                 line[5] = line[5].replace("|", "")
                 if line[5] == "":
                     line[5] = None
-                print(line)
+                logger.info(line)
                 data_list.append(line)
     except FileNotFoundError as e:
-        print(e)
+        logger.info(e)
 
     query = "DELETE FROM INTERPRO.METHOD_STG"
     cur.execute(query)
@@ -118,7 +118,7 @@ def get_dbcode(user: str, dsn: str, memberdb: str):
     if result:
         return result[0]
     else:
-        print(f"Member database not found {memberdb}")
+        logger.info(f"Member database not found {memberdb}")
         return None
 
 
@@ -126,12 +126,12 @@ def update_db_version(user: str, dsn: str, memberdb: list):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
-    query_count = """ SELECT COUNT(*) FROM INTERPRO.METHOD WHERE DBCODE=:1"""
+    query_count = "SELECT COUNT(*) FROM INTERPRO.METHOD WHERE DBCODE=:dbcode"
 
     for member in memberdb:
         if member["dbcode"]:
             dbcode = member["dbcode"]
-            cur.execute(query_count, (dbcode,))
+            cur.execute(query_count, dbcode=dbcode)
             countmethod_result = cur.fetchone()
             countmethod = 0
             if countmethod_result:
@@ -143,9 +143,9 @@ def update_db_version(user: str, dsn: str, memberdb: list):
                     (dbcode, member["version"],
                      countmethod, member["release-date"]),
                 )
-                print(f"{dbcode} inserted")
+                logger.info(f"{dbcode} inserted")
             except Exception as e:
-                print("Couldn't insert, trying to update", e)
+                logger.info(f"Couldn't insert, trying to update {e}")
                 query = "UPDATE INTERPRO.DB_VERSION SET ENTRY_COUNT=:1, VERSION=:2 , FILE_DATE=:3 ,LOAD_DATE=SYSDATE WHERE DBCODE=:4"
                 cur.execute(
                     query,
@@ -169,9 +169,9 @@ def update_iprscan2dbcode(user: str, dsn: str, memberdb: list):
             cur.execute(query, (member["name"], member["dbcode"]))
             if cur.rowcount == 0:
                 raise "Row not found"
-            print(f"\nIPRSCAN2DBCODE for {member['name']} updated")
+            logger.info(f"\nIPRSCAN2DBCODE for {member['name']} updated")
         except:
-            print("\nCouldn't update, trying to insert")
+            logger.info("\nCouldn't update, trying to insert")
             query = "INSERT INTO INTERPRO.IPRSCAN2DBCODE VALUES((SELECT MAX(ID) FROM IPRSCAN.MV_SIGNATURE_LIBRARY_RELEASE WHERE LIBRARY=:name),:dbcode,:evidence,(SELECT MAX(ID) FROM IPRSCAN.MV_SIGNATURE_LIBRARY_RELEASE WHERE LIBRARY=:name))"
             cur.execute(
                 query,
@@ -179,7 +179,7 @@ def update_iprscan2dbcode(user: str, dsn: str, memberdb: list):
                 dbcode=member["dbcode"],
                 evidence=member["evidence"],
             )
-            print(f"\n{member['name']} inserted")
+            logger.info(f"\n{member['name']} inserted")
 
     con.commit()
 

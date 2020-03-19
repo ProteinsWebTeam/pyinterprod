@@ -3,7 +3,7 @@ import re
 import cx_Oracle
 import sys
 import traceback
-from .. import orautils
+from .. import orautils,logger
 
 
 class Data_exchanger(object):
@@ -11,9 +11,7 @@ class Data_exchanger(object):
         self.user, self.dsn = user, dsn
 
         if not base_table:
-            print(
-                "Error: base_table input param was empty, 'MATCH' or 'FEATURE_MATCH' is expected in production"
-            )
+            logger.info("Error: base_table input param was empty, 'MATCH' or 'FEATURE_MATCH' is expected in production")
             sys.exit(1)
         base_table = base_table.upper()
         if base_table == "MATCH" or base_table == "FEATURE_MATCH":
@@ -24,91 +22,51 @@ class Data_exchanger(object):
             #     With FEATURE_MATCH_DBCODE_{} partition names, and FEATURE_MATCH_TMP and FEATURE_MATCH_NEW supporting tables
             self.base_table = base_table
         else:
-            print(
-                "base_table of 'MATCH' or 'FEATURE_MATCH' expected in production, but found '{0}' instead".format(
-                    base_table
-                )
-            )
+            logger.info("base_table of 'MATCH' or 'FEATURE_MATCH' expected in production, but found '{0}' instead".format(base_table))
             sys.exit(1)
-        self.connection = cx_Oracle.connect(
-            orautils.make_connect_string(self.user, self.dsn)
-        )
+        self.connection = cx_Oracle.connect(orautils.make_connect_string(self.user, self.dsn))
         self.cursor = self.connection.cursor()
 
     def check_dbcodes(self, dbcodes):
         # Confirm the DBCODEs look sensible
         for dbcode in dbcodes:
-            query = 'select dbcode from {0} partition ("{0}_DBCODE_{1}") where rownum <2'.format(
-                self.base_table, dbcode
-            )
+            query = f"select dbcode from {self.base_table} partition ('{self.base_table}_DBCODE_{dbcode}') where rownum <2"
             self.cursor.execute(query)
             query_result = self.cursor.fetchone()[0]
             if query_result != dbcode:
-                print(
-                    "Error: Base table '{0}' and DB code '{1}' failed validation due to query '{2}'".format(
-                        self.base_table, dbcode, query
-                    )
-                )
-                print("Aborting!")
+                logger.info(f"Error: Base table '{self.base_table}' and DB code '{dbcode}' failed validation due to query '{query}'")
+                logger.info("Aborting!")
                 sys.exit(1)
 
-            if self.base_table == "MATCH" and dbcode in (
-                "g",
-                "j",
-                "n",
-                "q",
-                "s",
-                "v",
-                "x",
-            ):
-                print(
-                    "Error: Match base table '{0}' incompatible with (feature match) database code '{1}'".format(
-                        self.base_table, dbcode
-                    )
-                )
-                print("Aborting!")
+            if self.base_table == "MATCH" and dbcode in ("g", "j", "n", "q", "s", "v", "x",):
+                logger.info(f"Error: Match base table '{self.base_table}' incompatible with (feature match) database code '{dbcode}'")
+                logger.info("Aborting!")
                 sys.exit(1)
-            elif self.base_table == "FEATURE_MATCH" and dbcode not in (
-                "g",
-                "j",
-                "n",
-                "q",
-                "s",
-                "v",
-                "x",
-            ):
-                print(
-                    "Error: Feature match base table '{0}' incompatible with (match) database code '{1}'".format(
-                        self.base_table, dbcode
-                    )
-                )
-                print("Aborting!")
+            elif self.base_table == "FEATURE_MATCH" and dbcode not in ("g", "j", "n", "q", "s", "v", "x",):
+                logger.info(f"Error: Feature match base table '{self.base_table}' incompatible with (match) database code '{dbcode}'")
+                logger.info("Aborting!")
                 sys.exit(1)
 
     def truncate_match_new(self):
-        query = "TRUNCATE TABLE {0}_NEW".format(self.base_table)
+        query = f"TRUNCATE TABLE {self.base_table}_NEW"
 
         try:
             self.cursor.execute(query)
-            print("{0}_NEW truncated.".format(self.base_table))
+            logger.info(f"{self.base_table}_NEW truncated.")
         except cx_Oracle.DatabaseError as exception:
-            print("Failed to execute " + query)
-            print(exception)
+            logger.info(f"Failed to execute {query}")
+            logger.info(exception)
             exit(1)
 
     def exchange_partition(self, partitioned_tbl, dbcode):
-        query = 'ALTER TABLE {0} EXCHANGE PARTITION("{1}_DBCODE_{2}") WITH TABLE {1}_NEW'.format(
-            partitioned_tbl, self.base_table, dbcode
-        )
+        query = f"ALTER TABLE {partitioned_tbl} EXCHANGE PARTITION('{self.base_table}_DBCODE_{dbcode}') WITH TABLE {self.base_table}_NEW"
 
         try:
             self.cursor.execute(query)
-            print(
-                "{0} exchanged with {1}_NEW.".format(partitioned_tbl, self.base_table)
-            )
+            logger.info(f"{partitioned_tbl} exchanged with {self.base_table}_NEW.")
         except cx_Oracle.DatabaseError as exception:
-            print("Failed to execute " + query)
-            print(exception)
+            logger.info(f"Failed to execute {query}")
+            logger.info(exception)
             exit(1)
 
     def finalise_table(self, table_name):
@@ -117,12 +75,10 @@ class Data_exchanger(object):
         self.rebuild_partition(table_name)
 
     def rebuild_all_index(self, table_name):
-        unusable_index = """SELECT index_name FROM user_indexes WHERE table_name = '{0}'
-                            AND status = 'UNUSABLE'""".format(
-            table_name
-        )
+        unusable_index = "SELECT index_name FROM user_indexes WHERE table_name = '{table_name}' AND status = 'UNUSABLE'"
+
         rebuild_index = "ALTER INDEX {0} REBUILD parallel 4"
-        print("Re-building all indexes of " + table_name)
+        logger.info(f"Re-building all indexes of {table_name}")
         self.execute_alter_stm(unusable_index, rebuild_index)
 
     def execute_alter_stm(self, select_stm, alter_stm):
@@ -138,48 +94,38 @@ class Data_exchanger(object):
                         query = alter_stm.format(row[0])
                         self.cursor.execute(query)
             else:
-                print("No unusable indexes or constraints.")
+                logger.info("No unusable indexes or constraints.")
         except cx_Oracle.DatabaseError as exception:
-            print("Failed to execute " + query)
-            print(exception)
+            logger.info(f"Failed to execute {query}")
+            logger.info(exception)
             exit(1)
 
     def reenable_all_constraint(self, table_name):
-        disabled_constraint = """SELECT constraint_name FROM user_constraints WHERE table_name = '{0}'
-                                 AND status = 'DISABLED'""".format(
-            table_name
-        )
-        enable_constraint = "ALTER TABLE {0} ENABLE CONSTRAINT ".format(table_name)
+        disabled_constraint = f"SELECT constraint_name FROM user_constraints WHERE table_name = '{table_name}' AND status = 'DISABLED'"
+        enable_constraint = f"ALTER TABLE {table_name} ENABLE CONSTRAINT "
         enable_constraint = enable_constraint + "{0}"
-        print("Re-enabling all constraints of " + table_name)
+        logger.info("Re-enabling all constraints of {table_name}")
         self.execute_alter_stm(disabled_constraint, enable_constraint)
 
     def rebuild_partition(self, table_name):
-        unusable_partition = """SELECT p.index_name, partition_name FROM user_indexes i, user_ind_partitions p
-                                WHERE  i.index_name = p.index_name and table_name = '{0}'
-                                AND p.status = 'UNUSABLE'""".format(
-            table_name
-        )
+        unusable_partition = f"SELECT p.index_name, partition_name FROM user_indexes i, user_ind_partitions p \
+                                WHERE  i.index_name = p.index_name and table_name = '{table_name}' \
+                                AND p.status = 'UNUSABLE'"
+
         rebuild_partition = 'ALTER INDEX {0} REBUILD PARTITION "{1}" parallel 4'
-        print("Re-building partitions of " + table_name)
+        logger.info("Re-building partitions of " + table_name)
         self.execute_alter_stm(unusable_partition, rebuild_partition)
 
     def get_count(self, dbcode):
         try:
-            sqlLine = "SELECT COUNT(*) FROM {0} PARTITION({0}_DBCODE_{1})".format(
-                self.base_table, dbcode
-            )
+            sqlLine = f"SELECT COUNT(*) FROM {self.base_table} PARTITION({self.base_table}_DBCODE_{dbcode})"
             self.cursor.execute(sqlLine)
             for row in self.cursor:
                 count = row[0]
-            print(
-                "\nTotal count at {0} table for member db {1} is: {2}".format(
-                    self.base_table, dbcode, count
-                )
-            )
+            logger.info(f"\nTotal count at {self.base_table} table for member db {dbcode} is: {count}")
         except cx_Oracle.DatabaseError as exception:
-            print("Failed to execute " + sqlLine)
-            print(exception)
+            logger.info(f"Failed to execute {sqlLine}")
+            logger.info(exception)
             exit(1)
 
     def close(self):
@@ -194,70 +140,49 @@ def exchange_data(user: str, dsn: str, memberdb: list, base_table: str):
     # Now perform the partition exchanges
     for member in memberdb:
         dbcode = member["dbcode"]
-        print("Start exchanging data for member db: " + dbcode)
-        print("---------------------------------------\n")
+        logger.info(f"Start exchanging data for member db: {dbcode}")
 
         # truncate match_new
         start_time = time.time()
         data_exchanger.truncate_match_new()
-        print("Elapsed time in seconds: ")
-        print(time.time() - start_time)
-        print("\n")
+        logger.info(f"Elapsed time in seconds: {time.time() - start_time}")
 
         # rebuilding indexes and contraints of match_new
         start_time = time.time()
-        data_exchanger.finalise_table("{0}_NEW".format(base_table))
-        print("Elapsed time in seconds: ")
-        print(time.time() - start_time)
-        print("\n")
+        data_exchanger.finalise_table(f"{base_table}_NEW")
+        logger.info(f"Elapsed time in seconds: {time.time() - start_time}")
 
         # data exchange between match_tmp and match_new
         start_time = time.time()
-        data_exchanger.exchange_partition("{0}_TMP".format(base_table), dbcode)
-        print("Elapsed time in seconds: ")
-        print(time.time() - start_time)
-        print("\n")
+        data_exchanger.exchange_partition(f"{base_table}_TMP", dbcode)
+        logger.info(f"Elapsed time in seconds: {time.time() - start_time}")
 
         # rebuilding indexes and contraints of match_tmp
         start_time = time.time()
-        data_exchanger.finalise_table("{0}_TMP".format(base_table))
-        print("Elapsed time in seconds: ")
-        print(time.time() - start_time)
-        print("\n")
+        data_exchanger.finalise_table(f"{base_table}_TMP")
+        logger.info(f"Elapsed time in seconds: {time.time() - start_time}")
 
         # rebuilding indexes and contraints of match_new
         start_time = time.time()
-        data_exchanger.finalise_table("{0}_NEW".format(base_table))
-        print("Elapsed time in seconds: ")
-        print(time.time() - start_time)
-        print("\n")
+        data_exchanger.finalise_table(f"{base_table}_NEW")
+        logger.info(f"Elapsed time in seconds: {time.time() - start_time}")
 
         # data exchange between match and match_new
         start_time = time.time()
         data_exchanger.exchange_partition(base_table, dbcode)
-        print("Elapsed time in seconds: ")
-        print(time.time() - start_time)
-        print("\n")
+        logger.info(f"Elapsed time in seconds: {time.time() - start_time}")
 
         # rebuilding indexes and contraints of match
         start_time = time.time()
         data_exchanger.finalise_table(base_table)
-        print("Elapsed time in seconds: ")
-        print(time.time() - start_time)
-        print("\n")
+        logger.info(f"Elapsed time in seconds: {time.time() - start_time}")
 
         # match count
         start_time = time.time()
         data_exchanger.get_count(dbcode)
-        print("Elapsed time in seconds: ")
-        print(time.time() - start_time)
-        print("\n")
+        logger.info(f"Elapsed time in seconds: {time.time() - start_time}")
 
-    print("\n{0} table should have the new data now.".format(base_table))
-    print(
-        "Please compare the counts in this report to the one of {0}_TMP from CREATE_{0}_TMP.OUT to confirm this.".format(
-            base_table
-        )
-    )
+    logger.info(f"\n{base_table} table should have the new data now.")
+    logger.info("Please compare the counts in this report to the one of {base_table}_TMP from CREATE_{base_table}_TMP.OUT to confirm this.")
 
     data_exchanger.close()
