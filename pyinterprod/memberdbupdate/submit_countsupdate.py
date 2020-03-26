@@ -227,7 +227,7 @@ def refresh_tax_tables(user: str, dsn: str):
     con.close()
 
     
-def generate_counts(user: str, dsn: str, memberdb: str, mail_interpro: list, wdir: str):
+def refresh_tables(user: str, dsn: str, memberdb: str, mail_interpro: list, wdir: str):
 
     notify_curators(mail_interpro)
 

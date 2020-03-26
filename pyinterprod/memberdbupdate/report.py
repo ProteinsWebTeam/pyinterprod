@@ -1,8 +1,9 @@
 import cx_Oracle
+import os
 from .. import orautils, logger
 
 
-def report_swissprot_changes(user, dsn, memberdb, prefix="swiss_de_report_"):
+def report_swissprot_changes(user, dsn, memberdb, path, prefix="swiss_de_report_"):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
@@ -147,7 +148,7 @@ def report_swissprot_changes(user, dsn, memberdb, prefix="swiss_de_report_"):
 
         dbshort = dbnames[dbcode]
 
-        with open(prefix + dbshort + ".tsv", "wt") as fh:
+        with open(os.path.join(path, f"{prefix}{dbshort}.tsv"), "wt") as fh:
             fh.write(
                 "Method\tEntry\tName\tType\t# of old descriptions\t# of new descriptions\tChange (%)\t"
                 "Descriptions gained\tDescriptions lost\n"

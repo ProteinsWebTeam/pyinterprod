@@ -16,8 +16,8 @@ def main():
         submit_countsupdate,
     )
 
-    from .. import __version__, proteinupdate
-    from ..proteinupdate import proteins
+    from .. import __version__, proteinupdate, pronto
+    from ..proteinupdate import proteins, signatures
 
     parser = argparse.ArgumentParser(
         description="InterPro member database update")
@@ -164,16 +164,46 @@ def main():
             scheduler=dict(queue=queue, mem=500),
         ),
         Task(
-            name="generate-counts",
-            fn=submit_countsupdate.generate_counts,
+            name="refresh-tables",
+            fn=submit_countsupdate.refresh_tables,
             args=(db_users["interpro"], db_dsn, memberdb, email_receiver, wdir),
             scheduler=dict(queue=queue, mem=500),
         ),
         Task(
-            name="report-changes",
-            fn=report.report_swissprot_changes,
-            args=(db_users["interpro"], db_dsn, memberdb),
+            name="signatures-descriptions", # => ok
+            fn=signatures.update_method2descriptions,
+            args=(db_users["interpro"], db_dsn),
+            scheduler=dict(queue=queue, mem=500)
+        ),
+        Task(
+            name="pronto",
+            fn=pronto.run,
+            args=(args.config,),
+            kwargs=dict(
+                raise_on_error=True,
+                report=os.path.join(paths["results"], "swiss_de_changes.tsv"),
+                exclude=["copy"]
+            ),
             scheduler=dict(queue=queue, mem=500),
+            requires=["update-match", "refresh-tables",
+                      "signatures-descriptions"]
+        ),
+        Task(
+            name="pronto-copy",
+            fn=pronto.run,
+            args=(args.config,),
+            kwargs=dict(
+                raise_on_error=True,
+                tasks=["copy"]
+            ),
+            scheduler=dict(queue=queue, mem=500),
+            requires=["pronto"]
+        ),
+        Task(
+            name="report-curators", # => ok
+            fn=report.report_swissprot_changes,
+            args=(db_users["interpro"], db_dsn, memberdb, paths["results"]),
+            scheduler=dict(queue=queue, mem=500)
         ),
     ]
 
