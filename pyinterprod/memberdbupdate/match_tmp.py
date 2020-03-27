@@ -333,7 +333,7 @@ def create_match_tmp(user: str, dsn: str, memberdb: list, outputdir: str, mail_i
     results_string=""
     for member in memberdb:
         dbcodes.append(member["dbcode"])
-    print(dbcodes)
+    logger.info(dbcodes)
 
     #not working
     logger.info("Creating match_tmp")

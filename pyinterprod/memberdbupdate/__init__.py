@@ -94,30 +94,11 @@ def main():
             scheduler=dict(queue=queue, mem=500),
         ),
         Task(
-            name="generate-old-report", #generate old and new stats reports
+            name="generate-old-report", #generate old and new stats reports => ok
             fn=generate_old_new_stats.generate_report,
             args=(db_users["interpro"], db_dsn, wdir, memberdb),
             scheduler=dict(queue=queue, mem=500),
             requires=["populate-method-stg"],
-        ),
-        Task(
-            name="check-crc64",#check crc64 before populate_protein_to_scan => not sure it is needed
-            fn=proteins.check_crc64,
-            args=(db_users["interpro"], db_dsn),
-            scheduler=dict(queue=queue, mem=500)
-        ),
-        Task(
-            name="proteins2scan", #populate_protein_to_scan
-            fn=methods.update_proteins2scan,
-            args=(db_users["interpro"], db_dsn),
-            scheduler=dict(queue=queue, mem=500),
-            requires=["check-crc64"],
-        ),
-        Task(
-            name="delete-dead-signatures", #delete obsoleted signatures,execute only if something returned from generate_new_report function
-            fn=delete_dead_signatures.delete_dead_signatures,
-            args=(db_users["interpro"], db_dsn, memberdb),
-            scheduler=dict(queue=queue, mem=500),
         ),
         Task(
             name="update-method", # => ok
@@ -127,7 +108,13 @@ def main():
             requires=["populate-method-stg"],
         ),
         Task(
-            name="update-iprscan2dbcode", #update IPRSCAN2DBCODE table
+            name="proteins2scan", #populate_protein_to_scan => ok
+            fn=methods.update_proteins2scan,
+            args=(db_users["interpro"], db_dsn),
+            scheduler=dict(queue=queue, mem=500),
+        ),
+        Task(
+            name="update-iprscan2dbcode", #update IPRSCAN2DBCODE table => ok
             fn=methods.update_iprscan2dbcode,
             args=(db_users["interpro"], db_dsn, memberdb),
             scheduler=dict(queue=queue, mem=500),
@@ -135,14 +122,16 @@ def main():
         Task(
             name="create-match-tmp", #what if new member db? Need to add count of match and match_tmp? => ok
             fn=match_tmp.create_match_tmp,
-            args=(db_users["interpro"], db_dsn, memberdb, wdir),
+            args=(db_users["interpro"], db_dsn, memberdb, wdir, email_receiver),
             scheduler=dict(queue=queue, mem=500),
+            requires=["update-iprscan2dbcode"],
         ),
         Task(
-            name="update-match",
+            name="update-match", # => match_new doesn't exist, need to be tested again with new version of iptst
             fn=data_exchange.exchange_data,
             args=(db_users["interpro"], db_dsn, memberdb, "MATCH"),
             scheduler=dict(queue=queue, mem=500),
+            requires=["create-match-tmp"],
         ),
         Task(
             name="update-db-version", # => ok
@@ -202,7 +191,7 @@ def main():
         Task(
             name="report-curators", # => ok
             fn=report.report_swissprot_changes,
-            args=(db_users["interpro"], db_dsn, memberdb, paths["results"]),
+            args=(db_users["interpro"], db_dsn, memberdb, wdir),
             scheduler=dict(queue=queue, mem=500)
         ),
     ]

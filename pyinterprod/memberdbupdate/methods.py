@@ -1,4 +1,4 @@
-from .. import orautils,logger
+from .. import orautils, logger
 import cx_Oracle
 
 
@@ -31,7 +31,7 @@ def populate_method_stg(user: str, dsn: str, dat_file: str, memberdb: list):
                 line[5] = line[5].replace("|", "")
                 if line[5] == "":
                     line[5] = None
-                logger.info(line)
+                #logger.info(line)
                 data_list.append(line)
     except FileNotFoundError as e:
         logger.info(e)

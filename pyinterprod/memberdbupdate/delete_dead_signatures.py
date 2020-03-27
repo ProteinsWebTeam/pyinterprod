@@ -1,4 +1,4 @@
-from .. import orautils
+from .. import orautils, logger
 import cx_Oracle
 
 
@@ -11,8 +11,7 @@ def create_temp_table(cur, con):
         cur.execute(query)
         con.commit()
     except Exception as e:
-        print(e)
-
+        logger.info(e)
 
 def delete_from_tables(cur, con, dbcode):
 
@@ -27,20 +26,20 @@ def delete_from_tables(cur, con, dbcode):
             """
 
     cur.execute(query_copy, dbcode=dbcode)
-    print("\ninserted rows:", cur.rowcount)
+    logger.info(f"\ninserted rows: + {cur.rowcount}")
     con.commit()
 
     query = "SELECT * FROM INTERPRO.METHODS_TO_DELETE_TEMP_TABLE"
     cur.execute(query)
     results = [row[0] for row in cur]
-    print("rows recovered:", results)
+    logger.info(f"rows recovered: {results}")
 
     try:
         query_partition = f"DELETE FROM MATCH PARTITION (MATCH_DBCODE_{dbcode}) WHERE METHOD_AC IN (SELECT METHOD_AC FROM METHODS_TO_DELETE_TEMP_TABLE)"
         cur.execute(query_partition)
         con.commit()
     except cx_Oracle.DatabaseError as e:
-        print(e)
+        logger.info(e)
 
     tables_list = [
         "ENTRY2METHOD",
@@ -56,9 +55,9 @@ def delete_from_tables(cur, con, dbcode):
             query = f"DELETE FROM {table} WHERE METHOD_AC IN (SELECT METHOD_AC FROM METHODS_TO_DELETE_TEMP_TABLE)"
             cur.execute(query)
             con.commit()
-            print(table, cur.rowcount)
+            logger.info(table, cur.rowcount)
         except cx_Oracle.DatabaseError as e:
-            print(e, table)
+            logger.info(e, table)
 
 
 def delete_dead_signatures(user: str, dsn: str, memberdb: list):
