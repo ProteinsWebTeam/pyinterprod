@@ -199,8 +199,8 @@ def track_changes(url: str, swissp: str, trembl: str, dir: Optional[str]=None):
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    ora.truncate_table(cur, "INTERPRO.PROTEIN_CHANGES", reuse_storage=True)
-    ora.truncate_table(cur, "INTERPRO.PROTEIN_TO_DELETE", reuse_storage=True)
+    ora.truncate_table(cur, "INTERPRO.PROTEIN_CHANGES")
+    ora.truncate_table(cur, "INTERPRO.PROTEIN_TO_DELETE")
     cur.close()
 
     # Annotation changes
@@ -287,6 +287,12 @@ def track_changes(url: str, swissp: str, trembl: str, dir: Optional[str]=None):
     logger.info(f"sequences updated:   {seq_table.count:>10}")
     logger.info(f"obsolete entries:    {del_table.count:>10}")
     logger.info(f"new entries:         {new_table.count:>10}")
+
+    cur = con.cursor()
+    ora.gather_stats(cur, "INTERPRO", "PROTEIN_CHANGES")
+    ora.gather_stats(cur, "INTERPRO", "PROTEIN_TO_DELETE")
+    cur.close()
+    con.close()
 
 
 def delete_obsoletes(url: str, truncate: bool=False, threads: int=8,
@@ -508,12 +514,12 @@ def check_proteins_to_scan(url: str):
 
     logger.info("no error found")
 
-    ora.truncate_table(cur, "INTERPRO.PROTEIN_TO_SCAN", reuse_storage=True)
+    ora.truncate_table(cur, "INTERPRO.PROTEIN_TO_SCAN")
     cur.execute(
         """
         INSERT INTO INTERPRO.PROTEIN_TO_SCAN (PROTEIN_AC, UPI) 
         SELECT P.PROTEIN_AC, X.UPI
-        FROM INTERPRO.PROTEIN P
+        FROM INTERPRO.PROTEIN_CHANGES P
         INNER JOIN UNIPARC.XREF X 
         ON P.PROTEIN_AC = X.AC
         AND X.DBID IN (2, 3)   -- Swiss-Prot/TrEMBL
