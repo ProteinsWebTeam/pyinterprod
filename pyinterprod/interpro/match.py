@@ -378,6 +378,7 @@ def _track_count_changes(con: cx_Oracle.Connection, outdir: str):
     with open(os.path.join(outdir, _DATABASES), "rt") as fh:
         previous = json.load(fh)
 
+    changes = []
     for code, count in _get_databases_matches_count(cur).items():
         prev_count = previous.pop(code, 0)
         changes.append((code, prev_count, count))
