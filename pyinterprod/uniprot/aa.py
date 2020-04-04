@@ -75,8 +75,21 @@ Dear UniProt team,
 
 Please find below the list of recent integration changes.
 
+Description of states:
+  - deleted:                    the signature does not exist any more
+  - entry unchecked:            the signature is integrated in an InterPro \
+entry that has recently been flagged as not ready to be made public
+  - integrated:                 the signature has been integrated in \
+an InterPro entry ready to be made public.
+  - moved:                      the signature has been integrated in \
+an InterPro entry ready to be made public
+  - moved to unchecked:         the signature has been integrated in \
+an InterPro entry not ready to be made public
+  - unintegrated:               the signature has been removed from \
+an InterPro entry
+  
 """
-    content += (f"{'Signature':<30}{'Comment':<30}{'Previous entry':<20}"
+    content += (f"{'Signature':<30}{'Status':<30}{'Previous entry':<20}"
                 f"{'Current entry':<20}\n")
     content += '-' * 100 + '\n'
 
