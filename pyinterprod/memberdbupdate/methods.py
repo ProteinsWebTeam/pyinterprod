@@ -137,21 +137,13 @@ def update_db_version(user: str, dsn: str, memberdb: list):
             if countmethod_result:
                 countmethod = countmethod_result[0]
             try:
-                query = "INSERT INTO INTERPRO.DB_VERSION(DBCODE,VERSION,ENTRY_COUNT,FILE_DATE) VALUES(:1,:2,:3,:4)"
-                cur.execute(
-                    query,
-                    (dbcode, member["version"],
-                     countmethod, member["release-date"]),
-                )
+                query = "INSERT INTO INTERPRO.DB_VERSION(DBCODE, VERSION, ENTRY_COUNT, FILE_DATE) VALUES(:1,:2,:3,:4)"
+                cur.execute(query,(dbcode, member["version"], countmethod, member["release-date"]),)
                 logger.info(f"{dbcode} inserted")
             except Exception as e:
                 logger.info(f"Couldn't insert, trying to update {e}")
                 query = "UPDATE INTERPRO.DB_VERSION SET ENTRY_COUNT=:1, VERSION=:2 , FILE_DATE=:3 ,LOAD_DATE=SYSDATE WHERE DBCODE=:4"
-                cur.execute(
-                    query,
-                    (countmethod, member["version"],
-                     member["release-date"], dbcode),
-                )
+                cur.execute(query, (countmethod, member["version"], member["release-date"], dbcode),)
 
     con.commit()
 
@@ -191,7 +183,10 @@ def update_proteins2scan(user: str, dsn: str):
 
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
-    orautils.drop_table(cur, "INTERPRO", "PROTEIN_TO_SCAN", purge=True)
+    try:
+        orautils.drop_table(cur, "INTERPRO", "PROTEIN_TO_SCAN", purge=True)
+    except:
+        pass
 
     # Assume CRC64 have been checked and that no mismatches were found
     cur.execute(

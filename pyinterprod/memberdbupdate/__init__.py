@@ -13,7 +13,7 @@ def main():
         delete_dead_signatures,
         match_tmp,
         data_exchange,
-        submit_countsupdate,
+        refresh,
     )
 
     from .. import __version__, proteinupdate, pronto
@@ -85,12 +85,7 @@ def main():
         Task(
             name="populate-method-stg", #populate interpro.method_stg table => ok
             fn=methods.populate_method_stg,
-            args=(
-                db_users["interpro"],
-                db_dsn,
-                paths["flat-files"]["method_dat"],
-                memberdb,
-            ),
+            args=(db_users["interpro"], db_dsn, paths["flat-files"]["method_dat"],memberdb),
             scheduler=dict(queue=queue, mem=500),
         ),
         Task(
@@ -98,14 +93,14 @@ def main():
             fn=generate_old_new_stats.generate_report,
             args=(db_users["interpro"], db_dsn, wdir, memberdb),
             scheduler=dict(queue=queue, mem=500),
-            requires=["populate-method-stg"],
+            #requires=["populate-method-stg"],
         ),
         Task(
             name="update-method", # => ok
             fn=methods.update_method,
             args=(db_users["interpro"], db_dsn),
             scheduler=dict(queue=queue, mem=500),
-            requires=["populate-method-stg"],
+            #requires=["populate-method-stg"],
         ),
         Task(
             name="proteins2scan", #populate_protein_to_scan => ok
@@ -124,21 +119,21 @@ def main():
             fn=match_tmp.create_match_tmp,
             args=(db_users["interpro"], db_dsn, memberdb, wdir, email_receiver),
             scheduler=dict(queue=queue, mem=500),
-            requires=["update-iprscan2dbcode"],
+            #requires=["proteins2scan","update-iprscan2dbcode"],
         ),
         Task(
-            name="update-match", # => match_new doesn't exist, need to be tested again with new version of iptst
+            name="update-match", # exhange data between match_tmp <=> match_new and match_new <=> match for each member db updated =>ok
             fn=data_exchange.exchange_data,
             args=(db_users["interpro"], db_dsn, memberdb, "MATCH"),
             scheduler=dict(queue=queue, mem=500),
-            requires=["create-match-tmp"],
+            #requires=["create-match-tmp"],
         ),
         Task(
             name="update-db-version", # => ok
             fn=methods.update_db_version,
             args=(db_users["interpro"], db_dsn, memberdb),
             scheduler=dict(queue=queue, mem=500),
-            requires=["update-method"],
+            #requires=["update-method"],
         ),
         Task(
             name="update-site-match",
@@ -147,14 +142,14 @@ def main():
             scheduler=dict(queue=queue, mem=500),
         ),
         Task(
-            name="drop-match-tmp",
+            name="drop-match-tmp", # => ok
             fn=match_tmp.drop_match_tmp,
             args=(db_users["interpro"], db_dsn),
             scheduler=dict(queue=queue, mem=500),
         ),
         Task(
             name="refresh-tables",
-            fn=submit_countsupdate.refresh_tables,
+            fn=refresh.refresh_tables,
             args=(db_users["interpro"], db_dsn, memberdb, email_receiver, wdir),
             scheduler=dict(queue=queue, mem=500),
         ),
@@ -174,8 +169,7 @@ def main():
                 exclude=["copy"]
             ),
             scheduler=dict(queue=queue, mem=500),
-            requires=["update-match", "refresh-tables",
-                      "signatures-descriptions"]
+            #requires=["update-match", "refresh-tables", "signatures-descriptions"]
         ),
         Task(
             name="pronto-copy",
@@ -186,7 +180,7 @@ def main():
                 tasks=["copy"]
             ),
             scheduler=dict(queue=queue, mem=500),
-            requires=["pronto"]
+            #requires=["pronto"]
         ),
         Task(
             name="report-curators", # => ok

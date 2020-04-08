@@ -4,6 +4,7 @@ import cx_Oracle
 import sys
 import traceback
 from .. import orautils,logger
+from .match_tmp import add_indexes, add_constraints
 
 
 class Data_exchanger(object):
@@ -47,19 +48,50 @@ class Data_exchanger(object):
                 logger.info("Aborting!")
                 sys.exit(1)
 
+    def recreate_match_new(self):
+        table = f"{self.base_table}_NEW"
+        orautils.drop_table(self.cursor, "INTERPRO", table , purge=True)
+        
+        query_create=f"CREATE TABLE {table} AS SELECT * FROM {self.base_table} WHERE 1=0"
+
+        try:
+            self.cursor.execute(query_create)
+            logger.info(f"{table} created.")
+        except cx_Oracle.DatabaseError as exception:
+            logger.info(f"Failed to execute {query_create}")
+            logger.info(exception)
+            sys.exit(1)
+        
+        self.connection.commit()
+
+        # add indexes
+        try:
+            add_indexes(self.cursor, self.connection, table, "MATCHN")
+        except cx_Oracle.DatabaseError as e:
+            logger.info(f"Failed to add indexes to {table} {e}")
+            sys.exit(1)
+
+        # add constraints
+        try:
+            add_constraints(self.cursor, self.connection, table, "MATCHN")
+        except cx_Oracle.DatabaseError as e:
+            logger.info(f"Failed to add constraints to {table} {e}")
+            sys.exit(1)
+
     def truncate_match_new(self):
         query = f"TRUNCATE TABLE {self.base_table}_NEW"
 
         try:
             self.cursor.execute(query)
-            logger.info(f"{self.base_table}_NEW truncated.")
+            logger.info(f"{self.base_table}_NEW truncated")
         except cx_Oracle.DatabaseError as exception:
             logger.info(f"Failed to execute {query}")
             logger.info(exception)
-            exit(1)
+            sys.exit(1)
+        
 
     def exchange_partition(self, partitioned_tbl, dbcode):
-        query = f"ALTER TABLE {partitioned_tbl} EXCHANGE PARTITION('{self.base_table}_DBCODE_{dbcode}') WITH TABLE {self.base_table}_NEW"
+        query = f"ALTER TABLE {partitioned_tbl} EXCHANGE PARTITION({self.base_table}_DBCODE_{dbcode}) WITH TABLE {self.base_table}_NEW"
 
         try:
             self.cursor.execute(query)
@@ -137,6 +169,11 @@ def exchange_data(user: str, dsn: str, memberdb: list, base_table: str):
 
     data_exchanger = Data_exchanger(user, dsn, base_table)
 
+    # truncate match_new
+    start_time = time.time()
+    data_exchanger.recreate_match_new()
+    logger.info(f"Elapsed time in seconds: {time.time() - start_time}")
+
     # Now perform the partition exchanges
     for member in memberdb:
         dbcode = member["dbcode"]
@@ -182,7 +219,7 @@ def exchange_data(user: str, dsn: str, memberdb: list, base_table: str):
         data_exchanger.get_count(dbcode)
         logger.info(f"Elapsed time in seconds: {time.time() - start_time}")
 
-    logger.info(f"\n{base_table} table should have the new data now.")
-    logger.info("Please compare the counts in this report to the one of {base_table}_TMP from CREATE_{base_table}_TMP.OUT to confirm this.")
+    logger.info(f"{base_table} table should have the new data now.")
+    logger.info(f"Please compare the counts in this report to the one of {base_table}_TMP from CREATE_{base_table}_TMP.OUT to confirm this.")
 
     data_exchanger.close()
