@@ -336,7 +336,7 @@ def report_to_curators(user: str, dsn: str, dirname: str, notify: bool=True):
     with open(os.path.join(dirname, "swiss_de_changes.tsv"), "rt") as ifh:
         header = next(ifh)
         for line in ifh:
-            type_code = line.split('\t')[1]
+            type_code = line.split('\t')[2]
             type_abbr = "family" if type_code == 'F' else "others"
 
             try:
@@ -346,15 +346,6 @@ def report_to_curators(user: str, dsn: str, dirname: str, notify: bool=True):
                 ofh = open(path, "wt")
                 ofh.write(header)
                 files[type_abbr] = (path, ofh)
-
-            # try:
-            #     path, ofh = files[type_code]
-            # except KeyError:
-            #     type_abbr = types[type_code]
-            #     path = os.path.join(dirname, f"swiss_de_{type_abbr}.tsv")
-            #     ofh = open(path, "wt")
-            #     ofh.write(header)
-            #     files[type_code] = (path, ofh)
 
             ofh.write(line)
 

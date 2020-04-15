@@ -161,8 +161,8 @@ def report_description_changes(user: str, dsn: str, dst: str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
-    cur.execute("SELECT ENTRY_AC, ENTRY_TYPE, CHECKED FROM INTERPRO.ENTRY")
-    entries = {row[0]: (row[1], row[2]) for row in cur}
+    cur.execute("SELECT ENTRY_AC, NAME, ENTRY_TYPE, CHECKED FROM INTERPRO.ENTRY")
+    entries = {row[0]: row[1:] for row in cur}
 
     cur.execute(
         """
@@ -214,14 +214,15 @@ def report_description_changes(user: str, dsn: str, dst: str):
         changes[acc] = ([], descs_then)
 
     with open(dst, "wt") as fh:
-        fh.write("Accession\tType\tChecked\t# Lost\t# Gained\tLost\tGained\n")
+        fh.write("Accession\tName\tType\tChecked\t# Lost\t# Gained\tLost\t"
+                 "Gained\n")
         for acc in sorted(changes):
             gained, lost = changes[acc]
             if lost or gained:
-                entry_type, is_checked = entries[acc]
-                fh.write(f"{acc}\t{entry_type}\t{is_checked}\t{len(lost)}\t"
-                         f"{len(gained)}\t{' | '.join(lost)}\t"
-                         f"{' | '.join(gained)}\n")
+                name, entry_type, is_checked = entries[acc]
+                fh.write(f"{acc}\t{name}\t{entry_type}\t{is_checked}\t"
+                         f"{len(lost)}\t{len(gained)}\t"
+                         f"{' | '.join(lost)}\t{' | '.join(gained)}\n")
 
 
 def copy_tables(user_src: str, user_dst: str, dsn: str, set_status: bool=False):
