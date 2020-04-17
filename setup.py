@@ -17,7 +17,7 @@ setup(
                   sources=["pyinterprod/uniprot/sprotmodule.c"],
                   extra_link_args=["-lsqlite3"])
     ],
-    install_requires=["cx-Oracle>=7.3", "mundone>=0.4.0"],
+    install_requires=["cx-Oracle>=7.3", "mundone>=0.4.0", "psycopg2>=2.8.4"],
     entry_points={
         "console_scripts": [
             # "ipr-clans = pyinterprod.clan:main",
