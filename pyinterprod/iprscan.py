@@ -13,6 +13,7 @@ from pyinterprod.utils import oracle
 
 
 # Columns to select when inserting matches in MV_IPRSCAN
+# Keys are partitions names
 MATCH_SELECT = {
     "cdd": [
         'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
@@ -140,31 +141,6 @@ MATCH_SELECT = {
         'NULL', 'SEQSCORE', 'SEQSCORE', '0', '0',
         '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
     ],
-}
-
-# Partitions in MV_IPRSCAN
-MATCH_PARTITIONS = {
-    "cdd": "CDD",
-    "coils": "COILS",
-    "gene3d": "GENE3D",
-    "hamap": "HAMAP",
-    "mobidblite": "MOBIDBLITE",
-    "panther": "PANTHER",
-    "pfam": "PFAM",
-    "phobius": "PHOBIUS",
-    "pirsf": "PIRSF",
-    "prints": "PRINTS",
-    # "prodom": "PRODOM",
-    "prosite_patterns": "PROSITE_PATTERNS",
-    "prosite_profiles": "PROSITE_PROFILES",
-    "sfld": "SFLD",
-    "signalp_euk": "SIGNALP_EUK",
-    "signalp_gram_positive": "SIGNALP_GRAM_POSITIVE",
-    "signalp_gram_negative": "SIGNALP_GRAM_NEGATIVE",
-    "smart": "SMART",
-    "superfamily": "SUPERFAMILY",
-    "tigrfam": "TIGRFAM",
-    "tmhmm": "TMHMM"
 }
 
 # Partition in SITE
@@ -386,16 +362,15 @@ def import_matches(url: str, threads: int=1):
     pending = {}
     for analysis in get_analyses(url, use_matches=True):
         try:
-            partition = MATCH_PARTITIONS[analysis.name]
             columns = MATCH_SELECT[analysis.name]
         except KeyError:
             logger.warning(f"ignoring analysis {analysis.full_name}")
             continue
 
         try:
-            pending[analysis.table].append((analysis, partition, columns))
+            pending[analysis.table].append((analysis, analysis.name, columns))
         except KeyError:
-            pending[analysis.table] = [(analysis, partition, columns)]
+            pending[analysis.table] = [(analysis, analysis.name, columns)]
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
