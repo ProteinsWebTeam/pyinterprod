@@ -372,8 +372,6 @@ def update_analyses(url: str, table: str, partitioned_table: str,
             ALTER TABLE IPRSCAN.{partitioned_table}
             EXCHANGE PARTITION {partition}
             WITH TABLE {tmp_table}
-            INCLUDING INDEXES
-            WITHOUT VALIDATION
             """
         )
 
