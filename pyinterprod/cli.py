@@ -137,14 +137,14 @@ def run_protein_update():
             requires=["update-matches"]
         ),
         Task(
-            fn=uniprot.uniprot.report_integration_changes,
+            fn=uniprot.unirule.report_integration_changes,
             args=(interpro_url, send_emails),
             name="report-changes",
             scheduler=dict(mem=2000, queue=lsf_queue),
             requires=["update-matches"]
         ),
         Task(
-            fn=uniprot.uniprot.build_aa_iprscan,
+            fn=uniprot.unirule.build_aa_iprscan,
             args=(iprscan_url,),
             name="aa-iprscan",
             scheduler=dict(queue=lsf_queue),
@@ -152,14 +152,14 @@ def run_protein_update():
             requires=["update-matches"]
         ),
         Task(
-            fn=uniprot.uniprot.build_xref_condensed,
+            fn=uniprot.unirule.build_xref_condensed,
             args=(interpro_url,),
             name="xref-condensed",
             scheduler=dict(queue=lsf_queue),
             requires=["update-matches"]
         ),
         Task(
-            fn=uniprot.uniprot.build_xref_summary,
+            fn=uniprot.unirule.build_xref_summary,
             args=(interpro_url,),
             name="xref-summary",
             scheduler=dict(queue=lsf_queue),
@@ -176,7 +176,7 @@ def run_protein_update():
         ),
 
         Task(
-            fn=uniprot.uniprot.ask_to_snapshot,
+            fn=uniprot.unirule.ask_to_snapshot,
             args=(interpro_url, send_emails),
             name="notify-interpro",
             scheduler=dict(queue=lsf_queue),

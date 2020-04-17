@@ -1,3 +1,3 @@
 # -*- coding: utf-8 -*-
 
-from . import exchange, uniprot
+from . import exchange, unirule
