@@ -176,7 +176,7 @@ def run_protein_update():
         ),
 
         Task(
-            fn=uniprot.aa.ask_to_snapshot,
+            fn=uniprot.uniprot.ask_to_snapshot,
             args=(interpro_url, send_emails),
             name="notify-interpro",
             scheduler=dict(queue=lsf_queue),
