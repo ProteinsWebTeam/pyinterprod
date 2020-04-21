@@ -8,12 +8,10 @@ def main():
     from mundone import Task, Workflow
     from . import (
         methods,
-        generate_old_new_stats,
+        generate_stats,
         report,
-        delete_dead_signatures,
         match_tmp,
-        data_exchange,
-        refresh,
+        exchange,
     )
 
     from .. import __version__, proteinupdate, pronto
@@ -90,7 +88,7 @@ def main():
         ),
         Task(
             name="generate-old-report", #generate old and new stats reports => ok
-            fn=generate_old_new_stats.generate_report,
+            fn=generate_stats.generate_report,
             args=(db_users["interpro"], db_dsn, wdir, memberdb),
             scheduler=dict(queue=queue, mem=500),
             #requires=["populate-method-stg"],
@@ -123,7 +121,7 @@ def main():
         ),
         Task(
             name="update-match", # exhange data between match_tmp <=> match_new and match_new <=> match for each member db updated =>ok
-            fn=data_exchange.exchange_data,
+            fn=exchange.exchange_data,
             args=(db_users["interpro"], db_dsn, memberdb, "MATCH"),
             scheduler=dict(queue=queue, mem=500),
             #requires=["create-match-tmp"],
@@ -148,13 +146,7 @@ def main():
             scheduler=dict(queue=queue, mem=500),
         ),
         Task(
-            name="refresh-tables",
-            fn=refresh.refresh_tables,
-            args=(db_users["interpro"], db_dsn, memberdb, email_receiver, wdir),
-            scheduler=dict(queue=queue, mem=500),
-        ),
-        Task(
-            name="signatures-descriptions", # => ok
+            name="method2descriptions", # => ok
             fn=signatures.update_method2descriptions,
             args=(db_users["interpro"], db_dsn),
             scheduler=dict(queue=queue, mem=500)
@@ -169,7 +161,7 @@ def main():
                 exclude=["copy"]
             ),
             scheduler=dict(queue=queue, mem=500),
-            #requires=["update-match", "refresh-tables", "signatures-descriptions"]
+            #requires=["update-match", "method2descriptions"]
         ),
         Task(
             name="pronto-copy",
@@ -203,8 +195,7 @@ def main():
                 )
 
     # methods.update_db_version("interpro", "IPTST", memberdb)
-    wdir = os.path.join(config["workflow"]["dir"],
-                        config["release"]["version"])
+
     wdb = os.path.join(wdir, "memberdbupdate.log")
     wname = "Member database Update"
     with Workflow(tasks, db=wdb, dir=wdir, name=wname) as w:

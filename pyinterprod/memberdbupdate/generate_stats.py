@@ -1,7 +1,7 @@
 from .. import orautils, logger
 import cx_Oracle
 import os
-from .delete_dead_signatures import delete_from_tables, create_temp_table
+from .delete import delete_from_tables, create_temp_table
 
 
 def execute_query(cur, query):

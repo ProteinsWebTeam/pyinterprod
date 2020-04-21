@@ -165,7 +165,7 @@ def get_count(cursor, sqlLine):
 
 def produce_initial_report(cursor, dbcodes, outputdir):
 
-    query = """SELECT METHOD, NEW_COUNT, OLD_COUNT, IPR, PCENT_CHANGE
+    query = """SELECT METHOD, IPR, OLD_COUNT, NEW_COUNT, PCENT_CHANGE
                 FROM (
                 SELECT PC.MAC METHOD
                     ,CASE WHEN PC.NEW != 0 THEN  TO_CHAR(PC.NEW) ELSE 'DELETED' END NEW_COUNT
@@ -192,8 +192,8 @@ def produce_initial_report(cursor, dbcodes, outputdir):
             cursor.execute(query, dbcode=dbcode)
             lines = []
             for row in cursor:
-                method, new_count, old_count, entry, p_change = row
-                line = "\t".join([method, new_count, old_count, entry, p_change])
+                method, entry, old_count, new_count, p_change = row
+                line = "\t".join([method, entry, old_count, new_count, p_change])
                 lines.append(line)
             write_report(dbcode, lines, outputdir)
         except cx_Oracle.DatabaseError as exception:
@@ -206,7 +206,7 @@ def write_report(dbcode, lines, outputdir):
     Check MATCH_TMP against MATCH table
     """
     file_name = os.path.join(outputdir, f"match_counts_new_{dbcode}.csv")
-    header = "\t".join(["Method", "New_Count", "Old_Count", "Entry", "%_change\n"])
+    header = "\t".join(["Method", "Entry", "Old_Count", "New_Count", "%_change\n"])
     lines = "\n".join(lines)
     with open(file_name, "w") as output:
         output.write(header)
