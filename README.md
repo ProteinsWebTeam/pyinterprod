@@ -332,7 +332,6 @@ The optional arguments are:
 <tr>
     <th>Name</th>
     <th>Description</th>
-    <th>Source</th>
     <th>Dependencies</th>
     </tr>
 </thead>
