@@ -173,7 +173,7 @@ def produce_initial_report(cur, dbcodes:list, outputdir:str):
                         FROM INTERPRO.ENTRY2METHOD E2M
                         WHERE E2M.METHOD_AC = PC.MAC) IPR
                     ,CASE WHEN PC.OLD != 0
-                    THEN TO_CHAR(PC.NEW*100/PC.OLD, '999.99')||'%'
+                    THEN TO_CHAR(PC.NEW*100/PC.OLD, '999.99')
                     ELSE 'NOT DEFINED' END PCENT_CHANGE
                 FROM (SELECT NVL(MN.METHOD_AC,ME.METHOD_AC) MAC, NVL(MN.CNT,'0') NEW, NVL(ME.CNT,'0') OLD
                         FROM (SELECT METHOD_AC,COUNT(DISTINCT PROTEIN_AC) CNT
@@ -190,22 +190,35 @@ def produce_initial_report(cur, dbcodes:list, outputdir:str):
         try:
             cur.execute(query, dbcode=dbcode)
             lines = []
+            lines_partial = []
             for row in cur:
                 method, entry, old_count, new_count, p_change = row
                 line = "\t".join([method, entry, old_count, new_count, p_change])
                 lines.append(line)
-            write_report(dbcode, lines, outputdir)
+                logger.info(line)
+                try:
+                    p_change_float = float(p_change)
+                except:
+                    p_change_float = 0
+                if ((p_change_float > 10 and p_change_float < 90) or p_change_float > 110) and new_count!='DELETED' and entry!='NI':
+                    lines_partial.append(line)
+
+            file_name = os.path.join(outputdir, f"match_counts_all_{dbcode}.tsv")
+            file_name_partial = os.path.join(outputdir, f"match_counts_new_{dbcode}.tsv")
+            write_report(dbcode, lines, file_name)
+            write_report(dbcode, lines_partial, file_name_partial)
+
         except cx_Oracle.DatabaseError as exception:
             logger.info("Failed to execute " + query)
             logger.info(exception)
             exit(1)
 
-def write_report(dbcode, lines:str, outputdir:str):
+def write_report(dbcode, lines:str, file_name:str):
     """
     Check MATCH_TMP against MATCH table
     """
-    file_name = os.path.join(outputdir, f"match_counts_new_{dbcode}.csv")
-    header = "\t".join(["Method", "Entry", "Old_Count", "New_Count", "%_change\n"])
+    
+    header = "\t".join(["Method", "Entry", "Previous_value", "New_value", "Change_(%)\n"])
     lines = "\n".join(lines)
     with open(file_name, "w") as output:
         output.write(header)
@@ -222,7 +235,7 @@ def refresh_site_matches(user: str, dsn: str, memberdb: list):
 
     if len(dbcodes) > 0:
         con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-        cur = con.cur()
+        cur = con.cursor()
 
         logger.info("Refreshing SITE_MATCH_NEW")
         orautils.drop_table(cur, "INTERPRO", "SITE_MATCH_NEW", purge=True)
@@ -296,7 +309,7 @@ def refresh_site_matches(user: str, dsn: str, memberdb: list):
 
 def drop_match_tmp(user: str, dsn: str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cur()
+    cur = con.cursor()
 
     logger.info("dropping MATCH_TMP")
     orautils.drop_table(cur, "INTERPRO", "MATCH_TMP", purge=True)
@@ -308,7 +321,7 @@ def drop_match_tmp(user: str, dsn: str):
 
 def create_match_tmp(user: str, dsn: str, memberdb: list, outputdir: str, mail_interpro):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cur()
+    cur = con.cursor()
 
     dbcodes = []
     results_string=""
@@ -316,7 +329,6 @@ def create_match_tmp(user: str, dsn: str, memberdb: list, outputdir: str, mail_i
         dbcodes.append(member["dbcode"])
     logger.info(dbcodes)
 
-    #not working
     logger.info("Creating match_tmp")
     start_time = time.time()
     prepare_matches(cur, con, dbcodes)
@@ -345,7 +357,7 @@ def create_match_tmp(user: str, dsn: str, memberdb: list, outputdir: str, mail_i
     results_string+='\n'.join(results)
 
     produce_initial_report(cur, dbcodes, outputdir)
-    results_string+=f"\n\nPlease check the {outputdir}/match_counts_new_*.csv files.\n"
+    results_string+=f"\n\nPlease check the {outputdir}/match_counts_new_*.tsv files.\n"
 
     get_match_tmp_count = (
         "SELECT DBCODE, COUNT(*) FROM INTERPRO.MATCH_TMP GROUP BY DBCODE"

@@ -163,7 +163,7 @@ def main():
         ),
         Task(
             name="report-curators",
-            fn=report.report_swissprot_changes,
+            fn=report.report_curators,
             args=(db_users["interpro"], db_dsn, memberdb, wdir, email_receiver, notify),
             scheduler=dict(queue=queue, mem=500),
             requires=["pronto"]

@@ -35,6 +35,26 @@ def filterReport(methods:list, reportDict:dict):
         filtered_report.append(reportDict[method])
     return filtered_report
 
+def filter_match_count(report1File:str, report2File:str, outFileName:str):
+    with open(report1File, 'r') as report1, open(report2File,'r') as report2, open(outFileName, 'w') as outFile:
+        methods = []
+        reportDict = {}
+        filtered_report = []
+
+        print('Start processing...')
+
+        methods = getMethodList(report2)
+        reportDict = generateReportDict(report1)
+        # print(len(reportDict.keys())
+
+        filtered_report = filterReport(methods, reportDict)
+        print('Done processing. Writing out to a file...')
+
+        outFile.write("\t".join(["Method", "Entry", "Previous value", "New value", "Change (%)\n"]))
+        for line in filtered_report:
+            new_line = line[0] + '\n'
+            outFile.write(new_line)
+
 if __name__ == "__main__":
     """ This script filter out overlaps in reports generated from member db update.
     Lines from report1 will be filtered out if they are found in report2. For example:
@@ -51,20 +71,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    with open(args.report1File, 'r') as report1, open(args.report2File,'r') as report2, open(args.outFileName, 'w') as outFile:
-        methods = []
-        reportDict = {}
-        filtered_report = []
+    filter_match_count(args.report1File, args.report2File, args.outFileName)
 
-        print('Start processing...')
 
-        methods = getMethodList(report2)
-        reportDict = generateReportDict(report1)
-        # print(len(reportDict.keys())
 
-        filtered_report = filterReport(methods, reportDict)
-        print('Done processing. Writing out to a file...')
-
-        for line in filtered_report:
-            new_line = line[0] + '\n'
-            outFile.write(new_line)

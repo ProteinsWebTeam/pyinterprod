@@ -1,9 +1,11 @@
 import cx_Oracle
 import os
+from zipfile import ZipFile
 from .. import orautils, logger, proteinupdate
+from .filter_overlapping_methods import filter_match_count
 
 
-def report_swissprot_changes(user:str, dsn:str, memberdb:str, path:str, email_receiver:list, notify: bool=True, prefix="swiss_de_report_"):
+def report_swissprot_changes(user:str, dsn:str, memberdb:str, path:str, prefix:str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
@@ -68,9 +70,7 @@ def report_swissprot_changes(user:str, dsn:str, memberdb:str, path:str, email_re
             WHERE IPR.ANALYSIS_ID IN({})
             AND P.DBCODE='S'
             AND P.FRAGMENT='N'
-            """.format(
-        ",".join(str(item) for item in analyses)
-    )
+            """.format(",".join(str(item) for item in analyses))
 
     cur.execute(query)
 
@@ -106,9 +106,7 @@ def report_swissprot_changes(user:str, dsn:str, memberdb:str, path:str, email_re
         SELECT DBCODE, DBSHORT
         FROM INTERPRO.CV_DATABASE
         WHERE DBCODE IN({})
-        """.format(
-            ",".join(f"'{item}'" for item in databases)
-        )
+        """.format(",".join(f"'{item}'" for item in databases))
     )
 
     dbnames = dict(cur.fetchall())
@@ -148,7 +146,7 @@ def report_swissprot_changes(user:str, dsn:str, memberdb:str, path:str, email_re
 
         dbshort = dbnames[dbcode]
 
-        with open(os.path.join(path, f"{prefix}{dbshort}.tsv"), "wt") as fh:
+        with open(os.path.join(path, f"{prefix}{dbshort}.tsv"), "wt") as fh: #, open(os.path.join(path, f"{prefix}_dom_{dbshort}.tsv"), "wt") as fd, open(os.path.join(path, f"{prefix}_fam{dbshort}.tsv"), "wt") as ff, open(os.path.join(path, f"{prefix}_other_{dbshort}.tsv"), "wt") as fo:
             fh.write(
                 "Method\tEntry\tName\tType\t# of old descriptions\t# of new descriptions\tChange (%)\t"
                 "Descriptions gained\tDescriptions lost\n"
@@ -157,18 +155,43 @@ def report_swissprot_changes(user:str, dsn:str, memberdb:str, path:str, email_re
             for cols in sorted(
                 lines, key=lambda x: (0 if x[3] == "F" else 1, x[3], x[1])
             ):
+                logger.info(cols)
                 fh.write("\t".join(map(str, cols)) + "\n")
+
+
+
+def report_curators(user:str, dsn:str, memberdb:str, path:str, email_receiver:list, notify: bool=True):
+    report_swissprot_changes(user, dsn, memberdb, path, "match_counts_new_")
+
+    zip_files=[]
+    for member in memberdb:
+        dbcode=member["dbcode"]
+        dbname=member["name"]
+        swiss_de_file=os.path.join(path,f"swiss_de_report_{dbname}.tsv")
+        match_count_file=os.path.join(path,f"match_counts_new_{dbcode}.tsv")
+        outputfile = os.path.join(path,f"filtered_match_counts_new_{dbname}.tsv")
+        print(match_count_file,swiss_de_file,outputfile)
+        filter_match_count(match_count_file,swiss_de_file,outputfile)
+
+        #Write ZIP file
+        zipname=f"{member['name']}_{member['version']}"
+        filename = os.path.join(path, f"memberdb_update_{zipname}.zip")
+        zip_files.append(filename)
+        with ZipFile(filename, 'w') as fh:
+            fh.write(outputfile,arcname=os.path.basename(outputfile))
+            fh.write(swiss_de_file,arcname=os.path.basename(swiss_de_file))
 
     if notify:
         proteinupdate.sendmail.send_mail(
             to_addrs=email_receiver,
             subject=f"Member database update completed",
             content="""\
-Dear InterPro production,
+Dear curators,
 
 The Member database update has been completed successfully.
-Kindly run the post-processing step to generate the report for curators.
+Please find attached the corresponding reports.
 
 The InterPro Production Team
 """,
+    attachments=zip_files
         )

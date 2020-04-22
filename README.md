@@ -373,7 +373,7 @@ The optional arguments are:
 </tr>
 <tr>
     <td>create-match-tmp</td>
-    <td>Select the methods and corresponding proteins to be updated</td>
+    <td>Select the methods and corresponding proteins to be updated and generate match_counts_new report for each member database updated</td>
     <td>update-iprscan2dbcode, proteins2scan</td>
 </tr>
 <tr>
@@ -408,7 +408,7 @@ The optional arguments are:
 </tr>
 <tr>
     <td>report-curators</td>
-    <td>Evaluate the gained and lost Swiss-Prot descriptions for InterPro entries between the previous and current member database releases</td>
+    <td>Evaluate the gained and lost Swiss-Prot descriptions for InterPro entries between the previous and current member database releases and send an email containing an archive of the report files</td>
     <td>pronto</td>
 </tr>
 
