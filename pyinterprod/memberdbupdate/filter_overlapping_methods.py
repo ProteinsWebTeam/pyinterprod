@@ -1,4 +1,5 @@
 import sys
+import argparse
 
 def getMethodList(report):
     methods = []
@@ -24,7 +25,7 @@ def generateReportDict(report):
             reportDict[method_ac] = lines
     return reportDict
         
-def filterReport(methods, reportDict):
+def filterReport(methods:list, reportDict:dict):
     methodSet = set(methods)
     reportSet = set(reportDict.keys())
     filtered_methods = reportSet.difference(methodSet)
@@ -43,15 +44,14 @@ if __name__ == "__main__":
 
     This script assumes that your files are tab delimited and the first column is method ac.
     """
-    if len(sys.argv[1:]) != 3:
-        print("Incorrect number of arguments supplied")
-        print("Usage:")
-        print("python filter_overlapping_methods.py REPORT_TO_BE_FILTERED REPORT_NOT_BE_MODIFIED OUTPUT_FILE")
-        sys.exit(1)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("report1File", help="report match_count file")
+    parser.add_argument("report2File", help="report swiss_DE file")
+    parser.add_argument("outFileName", help="Output file name")
 
-    report1File, report2File, outFileName = sys.argv[1:]
+    args = parser.parse_args()
 
-    with open(report1File, 'r') as report1, open(report2File,'r') as report2, open(outFileName, 'w') as outFile:
+    with open(args.report1File, 'r') as report1, open(args.report2File,'r') as report2, open(args.outFileName, 'w') as outFile:
         methods = []
         reportDict = {}
         filtered_report = []

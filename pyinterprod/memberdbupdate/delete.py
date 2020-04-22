@@ -13,7 +13,7 @@ def create_temp_table(cur, con):
     except Exception as e:
         logger.info(e)
 
-def delete_from_tables(cur, con, dbcode):
+def delete_from_tables(cur, con, dbcode:str):
 
     query_copy = """INSERT INTO INTERPRO.METHODS_TO_DELETE_TEMP_TABLE
             (SELECT METHOD_AC

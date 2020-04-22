@@ -1,9 +1,9 @@
 import cx_Oracle
 import os
-from .. import orautils, logger
+from .. import orautils, logger, proteinupdate
 
 
-def report_swissprot_changes(user, dsn, memberdb, path, prefix="swiss_de_report_"):
+def report_swissprot_changes(user:str, dsn:str, memberdb:str, path:str, email_receiver:list, notify: bool=True, prefix="swiss_de_report_"):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
@@ -158,3 +158,17 @@ def report_swissprot_changes(user, dsn, memberdb, path, prefix="swiss_de_report_
                 lines, key=lambda x: (0 if x[3] == "F" else 1, x[3], x[1])
             ):
                 fh.write("\t".join(map(str, cols)) + "\n")
+
+    if notify:
+        proteinupdate.sendmail.send_mail(
+            to_addrs=email_receiver,
+            subject=f"Member database update completed",
+            content="""\
+Dear InterPro production,
+
+The Member database update has been completed successfully.
+Kindly run the post-processing step to generate the report for curators.
+
+The InterPro Production Team
+""",
+        )

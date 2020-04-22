@@ -28,7 +28,7 @@ class Data_exchanger(object):
         self.connection = cx_Oracle.connect(orautils.make_connect_string(self.user, self.dsn))
         self.cursor = self.connection.cursor()
 
-    def check_dbcodes(self, dbcodes):
+    def check_dbcodes(self, dbcodes:list):
         # Confirm the DBCODEs look sensible
         for dbcode in dbcodes:
             query = f"select dbcode from {self.base_table} partition ('{self.base_table}_DBCODE_{dbcode}') where rownum <2"
@@ -90,7 +90,7 @@ class Data_exchanger(object):
             sys.exit(1)
         
 
-    def exchange_partition(self, partitioned_tbl, dbcode):
+    def exchange_partition(self, partitioned_tbl:str, dbcode:str):
         query = f"ALTER TABLE {partitioned_tbl} EXCHANGE PARTITION({self.base_table}_DBCODE_{dbcode}) WITH TABLE {self.base_table}_NEW"
 
         try:
@@ -101,19 +101,19 @@ class Data_exchanger(object):
             logger.info(exception)
             exit(1)
 
-    def finalise_table(self, table_name):
+    def finalise_table(self, table_name:str):
         self.rebuild_all_index(table_name)
         self.reenable_all_constraint(table_name)
         self.rebuild_partition(table_name)
 
-    def rebuild_all_index(self, table_name):
+    def rebuild_all_index(self, table_name:str):
         unusable_index = "SELECT index_name FROM user_indexes WHERE table_name = '{table_name}' AND status = 'UNUSABLE'"
 
         rebuild_index = "ALTER INDEX {0} REBUILD parallel 4"
         logger.info(f"Re-building all indexes of {table_name}")
         self.execute_alter_stm(unusable_index, rebuild_index)
 
-    def execute_alter_stm(self, select_stm, alter_stm):
+    def execute_alter_stm(self, select_stm:str, alter_stm:str):
         try:
             self.cursor.execute(select_stm)
             data = self.cursor.fetchall()
@@ -132,14 +132,14 @@ class Data_exchanger(object):
             logger.info(exception)
             exit(1)
 
-    def reenable_all_constraint(self, table_name):
+    def reenable_all_constraint(self, table_name:str):
         disabled_constraint = f"SELECT constraint_name FROM user_constraints WHERE table_name = '{table_name}' AND status = 'DISABLED'"
         enable_constraint = f"ALTER TABLE {table_name} ENABLE CONSTRAINT "
         enable_constraint = enable_constraint + "{0}"
         logger.info("Re-enabling all constraints of {table_name}")
         self.execute_alter_stm(disabled_constraint, enable_constraint)
 
-    def rebuild_partition(self, table_name):
+    def rebuild_partition(self, table_name:str):
         unusable_partition = f"SELECT p.index_name, partition_name FROM user_indexes i, user_ind_partitions p \
                                 WHERE  i.index_name = p.index_name and table_name = '{table_name}' \
                                 AND p.status = 'UNUSABLE'"
@@ -148,7 +148,7 @@ class Data_exchanger(object):
         logger.info("Re-building partitions of " + table_name)
         self.execute_alter_stm(unusable_partition, rebuild_partition)
 
-    def get_count(self, dbcode):
+    def get_count(self, dbcode:str):
         try:
             sqlLine = f"SELECT COUNT(*) FROM {self.base_table} PARTITION({self.base_table}_DBCODE_{dbcode})"
             self.cursor.execute(sqlLine)

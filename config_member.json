@@ -24,6 +24,10 @@
         "xrefs": ""
     },
     "email-notifications": true,
+    "email-sender": "",
+    "email-receiver": [
+        ""
+    ],
     "workflow": {
         "lsf-queue": "",
         "dir": ""

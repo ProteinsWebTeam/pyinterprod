@@ -4,7 +4,7 @@ import os
 from .delete import delete_from_tables, create_temp_table
 
 
-def execute_query(cur, query):
+def execute_query(cur, query:str):
     results = []
     logger.info(query)
     cur.execute(query)
@@ -23,7 +23,7 @@ def execute_query(cur, query):
     return results
 
 
-def generate_old_report(cur, dbcode, outdir):
+def generate_old_report(cur, dbcode:str, outdir:str):
     filename = os.path.join(outdir, f"oldSigStatsReport.{dbcode}.txt")
     lines = []
 
@@ -66,7 +66,7 @@ def generate_old_report(cur, dbcode, outdir):
         output.write("\n")
 
 
-def get_signatures_to_delete(cur, dbcode):
+def get_signatures_to_delete(cur, dbcode:str):
     query = """SELECT METHOD_AC
        FROM INTERPRO.METHOD
        WHERE DBCODE = '{0}' 
@@ -87,7 +87,7 @@ def get_signatures_to_delete(cur, dbcode):
     return toprint
 
 
-def generate_new_report(cur, dbcode, outdir):
+def generate_new_report(cur, dbcode:str, outdir:str):
     filename = os.path.join(outdir, f"newSigStatsReport.{dbcode}.txt")
     lines = []
     lines.append("Statistics for new data\n")

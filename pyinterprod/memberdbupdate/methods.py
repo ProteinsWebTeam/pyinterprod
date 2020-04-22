@@ -2,7 +2,7 @@ from .. import orautils, logger
 import cx_Oracle
 
 
-def chunks(l, n):
+def chunks(l: list, n: int):
     """Yield chunks of size n from iterable.
 
     Args:

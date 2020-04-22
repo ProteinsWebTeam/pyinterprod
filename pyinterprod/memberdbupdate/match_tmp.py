@@ -5,12 +5,11 @@ import re
 import cx_Oracle
 import sys
 import os
-from .. import logger, orautils
-from .. import proteinupdate
+from .. import logger, orautils, proteinupdate
 
-def prepare_matches(cursor, connection, dbcode_list):
+def prepare_matches(cur, con, dbcode_list:list):
     logger.info("adding matches_tmp")
-    orautils.drop_table(cursor, "INTERPRO", "MATCH_TMP", purge=True)
+    orautils.drop_table(cur, "INTERPRO", "MATCH_TMP", purge=True)
     logger.info("success dropping")
 
     query_part="CREATE TABLE INTERPRO.MATCH_TMP PARTITION BY LIST (DBCODE) \
@@ -53,14 +52,14 @@ def prepare_matches(cursor, connection, dbcode_list):
         AND I2D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x') AND I2D.DBCODE IN ('{','.join(dbcode_list)}') \
         AND IPR.SEQ_START != IPR.SEQ_END"
 
-    cursor.execute(query_part)
-    cursor.execute(query_alter)
+    cur.execute(query_part)
+    cur.execute(query_alter)
 
     logger.info("Inserting data in MATCH_TMP")
-    cursor.execute(query_insert)
-    connection.commit()
+    cur.execute(query_insert)
+    con.commit()
 
-def add_indexes(cursor, connection, table, shorttable):
+def add_indexes(cur, con, table:str, shorttable:str):
     logger.info("building indices")
     for index, val in {
         "DBCODE": f"I_FK_{shorttable}$DBCODE",
@@ -68,30 +67,30 @@ def add_indexes(cursor, connection, table, shorttable):
         "STATUS": f"I_{shorttable}$FK_STATUS",
         "METHOD_AC": f"I_{shorttable}$METHOD_AC",
     }.items():
-        cursor.execute(
+        cur.execute(
             f"CREATE INDEX INTERPRO.{val} ON INTERPRO.{table}({index}) NOLOGGING"
         )
-    connection.commit()
+    con.commit()
 
-def add_constraints(cursor, connection, table, shorttable):
-    cursor.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT CK_{shorttable}$FROM CHECK (pos_from >= 1) PARALLEL")
-    cursor.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT CK_{shorttable}$NEG CHECK (pos_to - pos_from > 0) PARALLEL")
-    cursor.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT CK_{shorttable}$STATUS_N_PROSITE CHECK (status<>'N' OR (status ='N' AND dbcode IN ('P','M','Q'))) PARALLEL")
-    cursor.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT PK_{shorttable}$P$M$TO$FM PRIMARY KEY (PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO) PARALLEL")
-    cursor.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT FK_{shorttable}$DBCODE FOREIGN KEY (DBCODE) REFERENCES INTERPRO.CV_DATABASE (DBCODE) PARALLEL")
-    cursor.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT FK_{shorttable}$EVIDENCE FOREIGN KEY (EVIDENCE) REFERENCES INTERPRO.CV_EVIDENCE (CODE) PARALLEL")
-    cursor.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT FK_{shorttable}$METHOD FOREIGN KEY (METHOD_AC) REFERENCES INTERPRO.METHOD (METHOD_AC) ON DELETE CASCADE PARALLEL")
-    cursor.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT FK_{shorttable}$PROTEIN FOREIGN KEY (PROTEIN_AC) REFERENCES INTERPRO.PROTEIN (PROTEIN_AC) ON  DELETE CASCADE PARALLEL")
-    cursor.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT FK_{shorttable}$STATUS FOREIGN KEY (STATUS) REFERENCES INTERPRO.CV_STATUS (CODE) PARALLEL")
-    cursor.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT CK_{shorttable}$PROTEIN_AC CHECK (PROTEIN_AC IS NOT NULL) PARALLEL")
-    cursor.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT CK_{shorttable}$METHOD_AC CHECK (METHOD_AC IS NOT NULL) PARALLEL")
-    cursor.execute(f"ALTER INDEX PK_{shorttable}$P$M$TO$FM RENAME TO UQ_{shorttable}")
+def add_constraints(cur, con, table:str, shorttable:str):
+    cur.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT CK_{shorttable}$FROM CHECK (pos_from >= 1) PARALLEL")
+    cur.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT CK_{shorttable}$NEG CHECK (pos_to - pos_from > 0) PARALLEL")
+    cur.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT CK_{shorttable}$STATUS_N_PROSITE CHECK (status<>'N' OR (status ='N' AND dbcode IN ('P','M','Q'))) PARALLEL")
+    cur.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT PK_{shorttable}$P$M$TO$FM PRIMARY KEY (PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO) PARALLEL")
+    cur.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT FK_{shorttable}$DBCODE FOREIGN KEY (DBCODE) REFERENCES INTERPRO.CV_DATABASE (DBCODE) PARALLEL")
+    cur.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT FK_{shorttable}$EVIDENCE FOREIGN KEY (EVIDENCE) REFERENCES INTERPRO.CV_EVIDENCE (CODE) PARALLEL")
+    cur.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT FK_{shorttable}$METHOD FOREIGN KEY (METHOD_AC) REFERENCES INTERPRO.METHOD (METHOD_AC) ON DELETE CASCADE PARALLEL")
+    cur.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT FK_{shorttable}$PROTEIN FOREIGN KEY (PROTEIN_AC) REFERENCES INTERPRO.PROTEIN (PROTEIN_AC) ON  DELETE CASCADE PARALLEL")
+    cur.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT FK_{shorttable}$STATUS FOREIGN KEY (STATUS) REFERENCES INTERPRO.CV_STATUS (CODE) PARALLEL")
+    cur.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT CK_{shorttable}$PROTEIN_AC CHECK (PROTEIN_AC IS NOT NULL) PARALLEL")
+    cur.execute(f"ALTER TABLE INTERPRO.{table} ADD CONSTRAINT CK_{shorttable}$METHOD_AC CHECK (METHOD_AC IS NOT NULL) PARALLEL")
+    cur.execute(f"ALTER INDEX PK_{shorttable}$P$M$TO$FM RENAME TO UQ_{shorttable}")
 
-    connection.commit()
+    con.commit()
 
-def delete_duplicate_match(cursor, connection):
+def delete_duplicate_match(cur, con):
     logger.info("SUPERFAMILY: deleting duplicated matches")
-    cursor.execute(
+    cur.execute(
         """DELETE FROM INTERPRO.MATCH_TMP M1
     WHERE EXISTS(
         SELECT 1
@@ -105,17 +104,17 @@ def delete_duplicate_match(cursor, connection):
     )
     """
     )
-    logger.info(f"SUPERFAMILY: {cursor.rowcount} rows deleted")
-    connection.commit()
+    logger.info(f"SUPERFAMILY: {cur.rowcount} rows deleted")
+    con.commit()
 
-def check_match_length(cursor, mail_interpro):
+def check_match_length(cur, mail_interpro:list):
     sqlLine = """SELECT M.METHOD_AC, M.PROTEIN_AC FROM INTERPRO.PROTEIN P, INTERPRO.MATCH_TMP M
                 WHERE P.PROTEIN_AC = M.PROTEIN_AC
                 AND M.POS_TO > P.LEN"""
     try:
-        cursor.execute(sqlLine)
+        cur.execute(sqlLine)
         results = []
-        for row in cursor:
+        for row in cur:
             method_ac, protein_ac = row
             result = ""
             result = ",".join([method_ac, protein_ac])
@@ -135,12 +134,12 @@ def check_match_length(cursor, mail_interpro):
         logger.info(exception)
         exit(1)
 
-def get_count(cursor, sqlLine):
+def get_count(cur, sqlLine:str):
     try:
-        cursor.execute(sqlLine)
+        cur.execute(sqlLine)
         results = []
         dbcodes = []
-        for row in cursor:
+        for row in cur:
             dbcode, count = row
             result = ""
             result = ": ".join([dbcode, str(count)])
@@ -154,16 +153,16 @@ def get_count(cursor, sqlLine):
         logger.info(exception)
         exit(1)
 
-# def get_protein_count(cursor, table, dbcode):
+# def get_protein_count(cur, table, dbcode):
 #     query_count_match=f"select count(distinct mn.protein_ac) from {table} mn, protein p \
 #                     where mn.protein_ac = p.protein_ac \
 #                     and p.dbcode = 'S' \
 #                     and p.fragment = 'N' \
 #                     and mn.method_ac =:dbcode
-#     cursor.execute(query_count_match, dbcode=dbcode)
+#     cur.execute(query_count_match, dbcode=dbcode)
 
 
-def produce_initial_report(cursor, dbcodes, outputdir):
+def produce_initial_report(cur, dbcodes:list, outputdir:str):
 
     query = """SELECT METHOD, IPR, OLD_COUNT, NEW_COUNT, PCENT_CHANGE
                 FROM (
@@ -189,9 +188,9 @@ def produce_initial_report(cursor, dbcodes, outputdir):
             """
     for dbcode in dbcodes:
         try:
-            cursor.execute(query, dbcode=dbcode)
+            cur.execute(query, dbcode=dbcode)
             lines = []
-            for row in cursor:
+            for row in cur:
                 method, entry, old_count, new_count, p_change = row
                 line = "\t".join([method, entry, old_count, new_count, p_change])
                 lines.append(line)
@@ -201,7 +200,7 @@ def produce_initial_report(cursor, dbcodes, outputdir):
             logger.info(exception)
             exit(1)
 
-def write_report(dbcode, lines, outputdir):
+def write_report(dbcode, lines:str, outputdir:str):
     """
     Check MATCH_TMP against MATCH table
     """
@@ -223,7 +222,7 @@ def refresh_site_matches(user: str, dsn: str, memberdb: list):
 
     if len(dbcodes) > 0:
         con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-        cur = con.cursor()
+        cur = con.cur()
 
         logger.info("Refreshing SITE_MATCH_NEW")
         orautils.drop_table(cur, "INTERPRO", "SITE_MATCH_NEW", purge=True)
@@ -297,7 +296,7 @@ def refresh_site_matches(user: str, dsn: str, memberdb: list):
 
 def drop_match_tmp(user: str, dsn: str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
+    cur = con.cur()
 
     logger.info("dropping MATCH_TMP")
     orautils.drop_table(cur, "INTERPRO", "MATCH_TMP", purge=True)
@@ -309,7 +308,7 @@ def drop_match_tmp(user: str, dsn: str):
 
 def create_match_tmp(user: str, dsn: str, memberdb: list, outputdir: str, mail_interpro):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
+    cur = con.cur()
 
     dbcodes = []
     results_string=""
