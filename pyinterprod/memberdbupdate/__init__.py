@@ -42,8 +42,9 @@ def main():
     #email_sender= config["email-sender"]
     email_receiver=config["email-receiver"]
     iprrelease_date = config["release"]["date"]
+    resdir = paths["results"]
 
-    os.makedirs(paths["results"], exist_ok=True)
+    os.makedirs(resdir, exist_ok=True)
 
     wdir = os.path.join(config["workflow"]["dir"],
                         config["release"]["version"])
@@ -73,7 +74,7 @@ def main():
         Task(
             name="generate-old-report", #generate old and new stats reports
             fn=generate_stats.generate_report,
-            args=(db_users["interpro"], db_dsn, wdir, memberdb),
+            args=(db_users["interpro"], db_dsn, resdir, memberdb),
             scheduler=dict(queue=queue, mem=500),
             requires=["populate-method-stg"]
         ),
@@ -99,7 +100,7 @@ def main():
         Task(
             name="create-match-tmp", #what if new member db? Need to add count of match and match_tmp?
             fn=match_tmp.create_match_tmp,
-            args=(db_users["interpro"], db_dsn, memberdb, wdir, email_receiver),
+            args=(db_users["interpro"], db_dsn, memberdb, resdir, email_receiver),
             scheduler=dict(queue=queue, mem=500),
             requires=["proteins2scan","update-iprscan2dbcode"]
         ),
@@ -164,7 +165,7 @@ def main():
         Task(
             name="report-curators",
             fn=report.report_curators,
-            args=(db_users["interpro"], db_dsn, memberdb, wdir, email_receiver, notify),
+            args=(db_users["interpro"], db_dsn, memberdb, resdir, email_receiver, notify),
             scheduler=dict(queue=queue, mem=500),
             requires=["pronto"]
         ),
