@@ -74,7 +74,7 @@ def main():
         Task(
             name="generate-old-report", #generate old and new stats reports
             fn=generate_stats.generate_report,
-            args=(db_users["interpro"], db_dsn, resdir, memberdb),
+            args=(db_users["interpro"], db_dsn, resdir, memberdb, email_receiver, notify),
             scheduler=dict(queue=queue, mem=500),
             requires=["populate-method-stg"]
         ),

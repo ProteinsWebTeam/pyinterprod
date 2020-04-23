@@ -1,7 +1,7 @@
-from .. import orautils, logger
 import cx_Oracle
 import os
 from .delete import delete_from_tables, create_temp_table
+from .. import orautils, logger, proteinupdate
 
 
 def execute_query(cur, query:str):
@@ -24,7 +24,7 @@ def execute_query(cur, query:str):
 
 
 def generate_old_report(cur, dbcode:str, outdir:str):
-    filename = os.path.join(outdir, f"oldSigStatsReport.{dbcode}.txt")
+    filename = os.path.join(outdir, f"oldSigStatsReport_{dbcode}.txt")
     lines = []
 
     sqlqueries = {
@@ -87,9 +87,12 @@ def get_signatures_to_delete(cur, dbcode:str):
     return toprint
 
 
-def generate_new_report(cur, dbcode:str, outdir:str):
-    filename = os.path.join(outdir, f"newSigStatsReport.{dbcode}.txt")
+def generate_new_report(cur, dbcode:str, dbname:str, outdir:str):
+    filename = os.path.join(outdir, f"newSigStatsReport_{dbcode}.txt")
+    filename_curator = os.path.join(outdir, f"newSigStatsReport_cur_{dbname}.txt")
     lines = []
+    lines_curator = []
+
     lines.append("Statistics for new data\n")
     sqlqueries = {
         "Signatures To Be Deleted": """SELECT method_ac
@@ -174,36 +177,64 @@ def generate_new_report(cur, dbcode:str, outdir:str):
         if key == "Signatures To Be Deleted":
             if result[-1] != "no rows selected.":
                 todelete = result[-1].split(" ")[0]
+        if key == "Name Change\nMethod ac	Old name	New name" or key == "Description Change\nMethod ac	Old name	New name" or key == "Signature Type Change\nMethod ac        Old_type        New_type":
+            lines_curator.append(key)
+            lines_curator += result
 
     with open(filename, "w") as output:
         output.write("\n".join(lines))
+        output.write("\n")
+    #report for curators
+    with open(filename_curator, "w") as output:
+        output.write("\n".join(lines_curator))
         output.write("\n")
 
     return todelete
 
 
-def generate_report(user: str, dsn: str, outdir: str, memberdb: list):
+def generate_report(user: str, dsn: str, outdir: str, memberdb: list, email_receiver:list, notify: bool=True):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
     cur = con.cursor()
 
     deleted = dict()
+    filenames = []
     for member in memberdb:
+        dbname = member["name"]
         if member["dbcode"]:
             dbcode = member["dbcode"]
             logger.info(f"\nprocessing dbcode: {dbcode}")
             generate_old_report(cur, dbcode, outdir)
-            dead=int(generate_new_report(cur, dbcode, outdir))
+            dead=int(generate_new_report(cur, dbcode, dbname, outdir))
             if dead > 0:
                 deleted[dbcode] = dead
         else:
-            logger.info(f"Error dbcode not found for {member['name']}")
+            logger.info(f"Error dbcode not found for {dbname}")
 
     if len(deleted) > 0:
         create_temp_table(cur, con)
 
-        for dbcode,val in deleted.keys():
-            logger.info(f"{val} dead signatures found for {dbcode}")
+        email_content = ""
+        for dbcode,val in deleted.items():
+            line=f"{val} dead signatures found for {dbcode}"
+            reportfile=os.path.join(outdir,f"newSigStatsReport_{dbcode}.txt")
+
+            logger.info(line)
+            email_content+=f"{line}\n"
+            filenames.append(reportfile)
+
             delete_from_tables(user, dsn, dbcode)
+
+        content=f"Dear InterPro production,\n\nThe generation of the Signatures report has revealed deleted signatures for the following member databases:\n{email_content}\n\nPlease find attached the corresponding reports.\n\nThe InterPro Production Team"
+    else:
+        content=f"Dear InterPro production,\n\nThe generation of the Signatures report hasn't revealed any deleted signatures.\n\nThe InterPro Production Team"
+    
+    if notify:
+        proteinupdate.sendmail.send_mail(
+            to_addrs=email_receiver,
+            subject=f"Member database update signatures changes notification",
+            content=content,
+            attachments=filenames
+        )
 
     cur.close()
     con.close()

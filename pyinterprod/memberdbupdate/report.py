@@ -167,6 +167,7 @@ def report_curators(user:str, dsn:str, memberdb:str, path:str, email_receiver:li
     for member in memberdb:
         dbcode=member["dbcode"]
         dbname=member["name"]
+        newSigStatsReport=os.path.join(path,f"newSigStatsReport_cur_{dbname}.txt")
         swiss_de_file=os.path.join(path,f"swiss_de_report_{dbname}.tsv")
         match_count_file=os.path.join(path,f"match_counts_new_{dbcode}.tsv")
         outputfile = os.path.join(path,f"filtered_match_counts_new_{dbname}.tsv")
@@ -180,6 +181,8 @@ def report_curators(user:str, dsn:str, memberdb:str, path:str, email_receiver:li
         with ZipFile(filename, 'w') as fh:
             fh.write(outputfile,arcname=os.path.basename(outputfile))
             fh.write(swiss_de_file,arcname=os.path.basename(swiss_de_file))
+            if os.path.isfile(newSigStatsReport):
+                fh.write(newSigStatsReport,arcname=os.path.basename(newSigStatsReport))
 
     if notify:
         proteinupdate.sendmail.send_mail(
