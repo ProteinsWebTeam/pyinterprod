@@ -27,11 +27,6 @@ def iter_lineage(taxa: dict):
             parent_id = node[0]
 
 
-def get_taxon(taxa: dict):
-    for tax_id, (parent_id, name, rank) in taxa.items():
-        yield tax_id, parent_id, name, rank
-
-
 def import_taxonomy(ora_url: str, pg_url: str):
     logger.info("loading taxonomy info")
     ora_con = cx_Oracle.connect(ora_url)
