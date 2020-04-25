@@ -19,12 +19,12 @@ def iter_lineage(taxa: dict):
 
         while parent_id:
             node = taxa[parent_id]
-            rank = node[2]
+            rank = node[1]
 
             if rank in RANKS:
                 yield tax_id, parent_id, rank
 
-            parent_id = node[0]
+            parent_id = node[4]
 
 
 def import_taxonomy(ora_url: str, pg_url: str):
