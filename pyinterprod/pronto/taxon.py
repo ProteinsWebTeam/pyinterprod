@@ -34,7 +34,7 @@ def import_taxonomy(ora_url: str, pg_url: str):
     ora_cur.execute(
         """
         SELECT TAX_ID, SCIENTIFIC_NAME, RANK, LEFT_NUMBER, RIGHT_NUMBER, 
-               PARENT_ID, 
+               PARENT_ID
         FROM INTERPRO.ETAXI
         """
     )
