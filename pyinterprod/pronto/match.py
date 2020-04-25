@@ -285,7 +285,8 @@ def _process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
     outqueue.put((num_proteins, comparisons))
 
 
-def process_complete_sequence_matches(ora_url: str, pg_url: str, **kwargs):
+def process_complete_sequence_matches(ora_url: str, pg_url: str, output: str,
+                                      **kwargs):
     names_db = kwargs.get("names")
     if names_db:
         keep_db = True
@@ -359,6 +360,9 @@ def process_complete_sequence_matches(ora_url: str, pg_url: str, **kwargs):
 
     for p in workers:
         p.join()
+
+    with open(output, "wb") as fh:
+        pickle.dump(num_proteins, fh)
 
     if not keep_db:
         logger.info(f"disk usage: "
