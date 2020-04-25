@@ -28,7 +28,7 @@ DATABASES = [
 
 
 def import_databases(ora_url: str, pg_url: str):
-    logger.info("populating: database")
+    logger.info("populating")
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("TRUNCATE TABLE database RESTART IDENTITY")

@@ -10,7 +10,7 @@ from pyinterprod.utils.pg import url2dict
 
 
 def import_similarity_comments(ora_url: str, pg_url: str):
-    logger.info("populating: protein_similarity")
+    logger.info("populating")
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("TRUNCATE TABLE protein_similarity")
@@ -50,7 +50,7 @@ def import_similarity_comments(ora_url: str, pg_url: str):
 
 
 def import_protein_names(ora_url: str, pg_url: str):
-    logger.info("populating: protein_name/protein2name")
+    logger.info("populating")
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("TRUNCATE TABLE protein_name")
@@ -119,7 +119,7 @@ def import_protein_names(ora_url: str, pg_url: str):
 
 
 def import_proteins(ora_url: str, pg_url: str):
-    logger.info("populating: protein")
+    logger.info("populating")
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("TRUNCATE TABLE protein")
