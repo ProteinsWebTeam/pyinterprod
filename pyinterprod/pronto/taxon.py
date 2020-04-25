@@ -13,7 +13,7 @@ RANKS = {"superkingdom", "kingdom", "phylum", "class", "order", "family",
 
 
 def iter_lineage(taxa: dict):
-    for tax_id, (parent_id, name, rank) in taxa.items():
+    for tax_id, (name, rank, left_num, right_num, parent_id) in taxa.items():
         if rank in RANKS:
             yield tax_id, tax_id, rank
 
@@ -33,12 +33,13 @@ def import_taxonomy(ora_url: str, pg_url: str):
     ora_cur = ora_con.cursor()
     ora_cur.execute(
         """
-        SELECT TAX_ID, PARENT_ID, SCIENTIFIC_NAME, RANK
+        SELECT TAX_ID, SCIENTIFIC_NAME, RANK, LEFT_NUMBER, RIGHT_NUMBER, 
+               PARENT_ID, 
         FROM INTERPRO.ETAXI
         """
     )
     taxa = {}
-    for tax_id, parent_id, name, rank in ora_cur:
+    for tax_id, name, rank, left_num, right_num, parent_id in ora_cur:
         if tax_id in (1, 131567):
             """
             Skip root and meta-superkingdom (131567) which contains:
@@ -51,7 +52,7 @@ def import_taxonomy(ora_url: str, pg_url: str):
             rank = "superkingdom"
             parent_id = None
 
-        taxa[tax_id] = (parent_id, name, rank)
+        taxa[tax_id] = (name, rank, left_num, right_num, parent_id)
 
     ora_cur.close()
     ora_con.close()
@@ -63,8 +64,9 @@ def import_taxonomy(ora_url: str, pg_url: str):
 
         logger.info("populating: taxon")
         execute_values(pg_cur, "INSERT INTO taxon VALUES %s", (
-            (tax_id, parent_id, name, rank)
-            for tax_id, (parent_id, name, rank) in taxa.items()
+            (tax_id, name, rank, left_num, right_num, parent_id)
+            for tax_id, (name, rank, left_num, right_num, parent_id)
+            in taxa.items()
         ), page_size=1000)
 
         logger.info("populating: lineage")

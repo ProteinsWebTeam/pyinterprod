@@ -221,7 +221,6 @@ def _process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
                         protein_acc,
                         length,
                         is_reviewed,
-                        taxon_id,
                         taxon_left_num,
                         name_id
                     ))
@@ -388,6 +387,8 @@ def process_complete_sequence_matches(ora_url: str, pg_url: str, output: str,
 
         logger.info("populating: comparison")
         pg_cur.execute("TRUNCATE TABLE comparison")
+        drop_index(pg_con, "comparison_signature_1_idx")
+        drop_index(pg_con, "comparison_signature_2_idx")
 
         gen = ((signature_acc, other_acc, collocation, overlap)
                for signature_acc, others in comparisons.items()
@@ -401,8 +402,14 @@ def process_complete_sequence_matches(ora_url: str, pg_url: str, output: str,
         pg_cur.execute("ANALYZE comparison")
         pg_cur.execute(
             """
-            CREATE INDEX match_protein_idx
-            ON match (protein_acc)
+            CREATE INDEX comparison_signature_1_idx
+            ON comparison (signature_acc_1)
+            """
+        )
+        pg_cur.execute(
+            """
+            CREATE INDEX comparison_signature_2_idx
+            ON comparison (signature_acc_2)
             """
         )
 
