@@ -66,6 +66,7 @@ def import_matches(ora_url: str, pg_url: str):
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("TRUNCATE TABLE match")
+        pg_con.commit()
 
         drop_index(pg_con, "match_protein_idx")
         # drop_index(pg_con, "match_signature_idx")
@@ -300,9 +301,11 @@ def process_complete_sequence_matches(ora_url: str, pg_url: str, output: str,
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("TRUNCATE TABLE signature2protein")
+        pg_con.commit()
+
         drop_index(pg_con, "signature2protein_signature_idx")
         drop_index(pg_con, "signature2protein_reviewed_signature_idx")
-    pg_con.commit()
+
     pg_con.close()
 
     inqueue = Queue(maxsize=1)
@@ -388,6 +391,7 @@ def process_complete_sequence_matches(ora_url: str, pg_url: str, output: str,
 
         logger.info("populating: comparison")
         pg_cur.execute("TRUNCATE TABLE comparison")
+        pg_con.commit()
         drop_index(pg_con, "comparison_signature_1_idx")
         drop_index(pg_con, "comparison_signature_2_idx")
 
