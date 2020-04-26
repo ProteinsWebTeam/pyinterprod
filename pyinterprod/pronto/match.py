@@ -302,6 +302,7 @@ def process_complete_sequence_matches(ora_url: str, pg_url: str, output: str,
         pg_cur.execute("TRUNCATE TABLE signature2protein")
         drop_index(pg_con, "signature2protein_signature_idx")
         drop_index(pg_con, "signature2protein_reviewed_signature_idx")
+    pg_con.commit()
     pg_con.close()
 
     inqueue = Queue(maxsize=1)
