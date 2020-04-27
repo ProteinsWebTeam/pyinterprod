@@ -69,15 +69,12 @@ def import_matches(ora_url: str, pg_url: str):
         pg_con.commit()
 
         drop_index(pg_con, "match_protein_idx")
-        # drop_index(pg_con, "match_signature_idx")
 
         pg_cur.execute("SELECT name, id FROM database")
         databases = dict(pg_cur.fetchall())
 
         gen = _iter_matches(ora_url, databases)
         pg_cur.copy_from(file=CsvIO(gen, sep='|'), table="match", sep='|')
-
-        pg_con.commit()
 
         logger.info("indexing")
         pg_cur.execute("ANALYZE match")
@@ -87,12 +84,7 @@ def import_matches(ora_url: str, pg_url: str):
             ON match (protein_acc)
             """
         )
-        # pg_cur.execute(
-        #     """
-        #     CREATE INDEX match_signature_idx
-        #     ON match (signature_acc)
-        #     """
-        # )
+        pg_con.commit()
 
     pg_con.close()
     logger.info("complete")
@@ -301,11 +293,13 @@ def process_complete_sequence_matches(ora_url: str, pg_url: str, output: str,
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("TRUNCATE TABLE signature2protein")
+        pg_cur.execute("TRUNCATE TABLE comparison")
         pg_con.commit()
 
         drop_index(pg_con, "signature2protein_signature_idx")
         drop_index(pg_con, "signature2protein_reviewed_signature_idx")
-
+        drop_index(pg_con, "comparison_signature_1_idx")
+        drop_index(pg_con, "comparison_signature_2_idx")
     pg_con.close()
 
     inqueue = Queue(maxsize=1)
@@ -329,7 +323,6 @@ def process_complete_sequence_matches(ora_url: str, pg_url: str, output: str,
         i += 1
         if not i % 10000000:
             logger.info(f"{i:>12,}")
-
     inqueue.put(chunk)
 
     for _ in workers:
@@ -374,6 +367,14 @@ def process_complete_sequence_matches(ora_url: str, pg_url: str, output: str,
 
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
+        logger.info("populating: comparison")
+        gen = ((signature_acc, other_acc, collocation, overlap)
+               for signature_acc, others in comparisons.items()
+               for other_acc, [collocation, overlap] in others.items())
+        pg_cur.copy_from(file=CsvIO(gen, sep='|'),
+                         table="comparison",
+                         sep='|')
+
         logger.info("indexing: signature2protein")
         pg_cur.execute("ANALYZE signature2protein")
         pg_cur.execute(
@@ -389,20 +390,6 @@ def process_complete_sequence_matches(ora_url: str, pg_url: str, output: str,
             """
         )
 
-        logger.info("populating: comparison")
-        pg_cur.execute("TRUNCATE TABLE comparison")
-        pg_con.commit()
-        drop_index(pg_con, "comparison_signature_1_idx")
-        drop_index(pg_con, "comparison_signature_2_idx")
-
-        gen = ((signature_acc, other_acc, collocation, overlap)
-               for signature_acc, others in comparisons.items()
-               for other_acc, [collocation, overlap] in others.items())
-        pg_cur.copy_from(file=CsvIO(gen, sep='|'),
-                         table="comparison",
-                         sep='|')
-        pg_con.commit()
-
         logger.info("indexing: comparison")
         pg_cur.execute("ANALYZE comparison")
         pg_cur.execute(
@@ -417,6 +404,7 @@ def process_complete_sequence_matches(ora_url: str, pg_url: str, output: str,
             ON comparison (signature_acc_2)
             """
         )
+        pg_con.commit()
 
     pg_con.close()
     logger.info("complete")

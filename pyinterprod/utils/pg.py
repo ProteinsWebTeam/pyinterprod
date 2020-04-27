@@ -51,12 +51,13 @@ class CsvIO:
 
 
 def drop_index(con, index: str):
-    with con:  # Use a single transaction
-        with con.cursor() as cur:
-            try:
-                cur.execute(f"DROP INDEX {index}")
-            except UndefinedObject as exc:
-                pass
+    with con.cursor() as cur:
+        try:
+            cur.execute(f"DROP INDEX {index}")
+        except UndefinedObject as exc:
+            con.rollback()
+        else:
+            con.commit()
 
 
 def url2dict(url: str) -> dict:
