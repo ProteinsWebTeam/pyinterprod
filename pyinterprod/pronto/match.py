@@ -102,11 +102,11 @@ def import_matches(ora_url: str, pg_url: str, output: str):
     logger.info("complete")
 
 
-def export_complete_sequence_matches(url: str, filepath: str):
+def export_comp_seq_matches(url: str, filepath: str):
     logger.info("exporting matches")
     with open(filepath, "wb") as fh:
         i = 0
-        for row in _iter_complete_sequence_matches(url):
+        for row in _iter_comp_seq_matches(url):
             pickle.dump(row, fh)
             i += 1
             if not i % 100000000:
@@ -115,7 +115,7 @@ def export_complete_sequence_matches(url: str, filepath: str):
     logger.info(f"{i:>13,}")
 
 
-def _iter_complete_sequence_matches(url: str, filepath: Optional[str]=None):
+def _iter_comp_seq_matches(url: str, filepath: Optional[str]=None):
     if filepath:
         with open(filepath, "rb") as fh:
             while True:
@@ -289,8 +289,7 @@ def _process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
     outqueue.put((num_proteins, comparisons))
 
 
-def process_complete_sequence_matches(ora_url: str, pg_url: str, output: str,
-                                      **kwargs):
+def proc_comp_seq_matches(ora_url: str, pg_url: str, output: str, **kwargs):
     names_db = kwargs.get("names")
     if names_db:
         keep_db = True
@@ -323,7 +322,7 @@ def process_complete_sequence_matches(ora_url: str, pg_url: str, output: str,
         p.start()
         workers.append(p)
 
-    it = _iter_complete_sequence_matches(ora_url, kwargs.get("matches"))
+    it = _iter_comp_seq_matches(ora_url, kwargs.get("matches"))
     chunk = []
     i = 0
     for obj in _group_proteins(it):
