@@ -61,7 +61,7 @@ def _iter_matches(url: str, databases: Dict[str, int]):
     logger.info(f"{i:>13,}")
 
 
-def import_matches(ora_url: str, pg_url: str):
+def import_matches(ora_url: str, pg_url: str, output: str):
     logger.info("populating")
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
@@ -85,6 +85,18 @@ def import_matches(ora_url: str, pg_url: str):
             """
         )
         pg_con.commit()
+
+        logger.info("count proteins per signature")
+        pg_cur.execute(
+            """
+            SELECT signature_acc, COUNT(DISTINCT protein_acc)
+            FROM match
+            GROUP BY signature_acc
+            """
+        )
+
+        with open(output, "wb") as fh:
+            pickle.dump(dict(pg_cur.fetchall()), fh)
 
     pg_con.close()
     logger.info("complete")
