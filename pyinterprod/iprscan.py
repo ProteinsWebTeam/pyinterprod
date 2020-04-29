@@ -192,7 +192,7 @@ class Analysis:
             """
             SELECT MAX(JOB_END)
             FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
-            WHERE ANALYSIS_ID = :1 AND PERSISTED >- :2
+            WHERE ANALYSIS_ID = :1 AND PERSISTED >= :2
             """, (self.id, self.persisted)
         )
         row = cur.fetchone()
