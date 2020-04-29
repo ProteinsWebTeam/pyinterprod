@@ -37,7 +37,7 @@ def import_databases(ora_url: str, pg_url: str):
         ora_cur = ora_con.cursor()
         ora_cur.execute(
             f"""
-            SELECT D.DBCODE, D.DBNAME, V.VERSION, V.FILE_DATE
+            SELECT D.DBCODE D.DBSHORT, D.DBNAME, V.VERSION, V.FILE_DATE
             FROM INTERPRO.CV_DATABASE D
             LEFT OUTER JOIN INTERPRO.DB_VERSION V
               ON D.DBCODE = V.DBCODE
@@ -48,8 +48,8 @@ def import_databases(ora_url: str, pg_url: str):
             if row[0] in DATABASES:
                 pg_cur.execute(
                     """
-                    INSERT INTO database (name, version, updated)
-                    VALUES (%s, %s, %s)
+                    INSERT INTO database (name, name_long, version, updated)
+                    VALUES (%s, %s, %s, %s)
                     """, row[1:]
                 )
 
