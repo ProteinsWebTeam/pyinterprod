@@ -28,12 +28,12 @@ def _iter_matches(url: str, databases: Dict[str, int]):
     cur = con.cursor()
     cur.execute(
         """
-        SELECT M.PROTEIN_AC, M.METHOD_AC, D.DBNAME,
+        SELECT M.PROTEIN_AC, M.METHOD_AC, LOWER(D.DBSHORT),
                M.POS_FROM, M.POS_TO, M.FRAGMENTS
         FROM INTERPRO.MATCH M
         INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
         UNION ALL
-        SELECT FM.PROTEIN_AC, FM.METHOD_AC, D.DBNAME,
+        SELECT FM.PROTEIN_AC, FM.METHOD_AC, LOWER(D.DBSHORT),
                FM.POS_FROM, FM.POS_TO, NULL
         FROM INTERPRO.FEATURE_MATCH FM
         INNER JOIN INTERPRO.CV_DATABASE D ON FM.DBCODE = D.DBCODE
