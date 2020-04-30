@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 
+import heapq
 import os
 import pickle
 from multiprocessing import Process, Queue
-from tempfile import mkstemp
+from tempfile import mkdtemp, mkstemp
 from typing import Dict, Iterator, List, Optional, Sequence
 
 import cx_Oracle
@@ -23,7 +24,17 @@ At least 50% of the residues of the shortest signature
 MIN_OVERLAP = 0.5
 
 
-def _iter_matches(url: str, databases: Dict[str, int]):
+def _dump_signatures(signatures: Dict[str, Sequence], dir: str) -> str:
+    fd, filepath = mkstemp(dir=dir)
+    os.close(fd)
+    with open(filepath, "wb") as fh:
+        for key in sorted(signatures):
+            pickle.dump((key, set(signatures[key])), fh)
+
+    return filepath
+
+
+def _iter_matches(url: str, databases: Dict[str, int], outdir: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
@@ -42,6 +53,7 @@ def _iter_matches(url: str, databases: Dict[str, int]):
     )
 
     i = 0
+    signatures = {}
     for row in cur:
         yield (
             row[0],
@@ -52,16 +64,62 @@ def _iter_matches(url: str, databases: Dict[str, int]):
             row[5] if row[5] else f"{row[3]}-{row[4]}-S"
         )
 
+        try:
+            signatures[row[1]].append(row[0])
+        except KeyError:
+            signatures[row[1]] = [row[0]]
+
         i += 1
+        if not i % 1000000:
+            _dump_signatures(signatures, outdir)
+            signatures = {}
+
         if not i % 100000000:
             logger.info(f"{i:>13,}")
 
     cur.close()
     con.close()
+
+    _dump_signatures(signatures, outdir)
     logger.info(f"{i:>13,}")
 
 
-def import_matches(ora_url: str, pg_url: str, output: str):
+class File:
+    def __init__(self, path):
+        self.path = path
+
+    def __iter__(self):
+        with open(self.path, "rb") as fh:
+            while True:
+                try:
+                    obj = pickle.load(fh)
+                except EOFError:
+                    break
+                else:
+                    yield obj
+
+
+def _agg_signatures(paths: Sequence[str]):
+    files = [File(path) for path in paths]
+    signature = None
+    proteins = set()
+    for key, values in heapq.merge(*files, key=lambda x: x[0]):
+        if key != signature:
+            if signature:
+                yield signature, len(proteins)
+
+            signature = key
+            proteins = set()
+
+        proteins |= values
+
+    if signature:
+        yield signature, len(proteins)
+
+
+def import_matches(ora_url: str, pg_url: str, output: str, dir: Optional[str]=None):
+    tmpdir = mkdtemp(dir=dir)
+
     logger.info("populating")
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
@@ -73,7 +131,7 @@ def import_matches(ora_url: str, pg_url: str, output: str):
         pg_cur.execute("SELECT name, id FROM database")
         databases = dict(pg_cur.fetchall())
 
-        gen = _iter_matches(ora_url, databases)
+        gen = _iter_matches(ora_url, databases, tmpdir)
         pg_cur.copy_from(file=CsvIO(gen, sep='|'), table="match", sep='|')
 
         logger.info("indexing")
@@ -86,19 +144,32 @@ def import_matches(ora_url: str, pg_url: str, output: str):
         )
         pg_con.commit()
 
-        logger.info("count proteins per signature")
-        pg_cur.execute(
-            """
-            SELECT signature_acc, COUNT(DISTINCT protein_acc)
-            FROM match
-            GROUP BY signature_acc
-            """
-        )
-
-        with open(output, "wb") as fh:
-            pickle.dump(dict(pg_cur.fetchall()), fh)
+        # logger.info("count proteins per signature")
+        # pg_cur.execute(
+        #     """
+        #     SELECT signature_acc, COUNT(DISTINCT protein_acc)
+        #     FROM match
+        #     GROUP BY signature_acc
+        #     """
+        # )
+        #
+        # with open(output, "wb") as fh:
+        #     pickle.dump(dict(pg_cur.fetchall()), fh)
 
     pg_con.close()
+
+    logger.info("count proteins per signature")
+    paths = [os.path.join(tmpdir, name) for name in os.listdir(tmpdir)]
+    with open(output, "wb") as fh:
+        pickle.dump(dict(_agg_signatures(paths)), fh)
+
+    size = 0
+    for path in paths:
+        size += os.path.getsize(path)
+        os.remove(path)
+
+    os.remove(tmpdir)
+    logger.info(f"disk usage: {size/1024/1024:,.0f} MB")
     logger.info("complete")
 
 
