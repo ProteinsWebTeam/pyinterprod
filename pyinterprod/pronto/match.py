@@ -144,21 +144,9 @@ def import_matches(ora_url: str, pg_url: str, output: str, dir: Optional[str]=No
         )
         pg_con.commit()
 
-        # logger.info("count proteins per signature")
-        # pg_cur.execute(
-        #     """
-        #     SELECT signature_acc, COUNT(DISTINCT protein_acc)
-        #     FROM match
-        #     GROUP BY signature_acc
-        #     """
-        # )
-        #
-        # with open(output, "wb") as fh:
-        #     pickle.dump(dict(pg_cur.fetchall()), fh)
-
     pg_con.close()
 
-    logger.info("count proteins per signature")
+    logger.info("counting proteins per signature")
     paths = [os.path.join(tmpdir, name) for name in os.listdir(tmpdir)]
     with open(output, "wb") as fh:
         pickle.dump(dict(_agg_signatures(paths)), fh)
@@ -168,7 +156,7 @@ def import_matches(ora_url: str, pg_url: str, output: str, dir: Optional[str]=No
         size += os.path.getsize(path)
         os.remove(path)
 
-    os.remove(tmpdir)
+    os.rmdir(tmpdir)
     logger.info(f"disk usage: {size/1024/1024:,.0f} MB")
     logger.info("complete")
 
