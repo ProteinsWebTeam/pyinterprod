@@ -112,6 +112,7 @@ def import_protein_names(ora_url: str, pg_url: str):
                        page_size=1000)
 
         pg_con.commit()
+        pg_cur.execute("ANALYZE protein2name")
         pg_cur.execute("ANALYZE protein_name")
 
     pg_con.close()
