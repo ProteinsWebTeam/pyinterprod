@@ -7,7 +7,7 @@ import os
 from mundone import Task, Workflow
 
 from pyinterprod import __version__, iprscan
-from pyinterprod import interpro, uniparc, uniprot
+from pyinterprod import interpro, pronto, uniparc, uniprot
 
 
 def run_protein_update():
@@ -209,5 +209,119 @@ def run_protein_update():
     ]
 
     database = os.path.join(workflow_dir, f"{uniprot_version}.sqlite")
+    with Workflow(tasks, dir=workflow_dir, database=database) as wf:
+        wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
+
+
+def update_pronto():
+    parser = argparse.ArgumentParser(description="InterPro Pronto update")
+    parser.add_argument("config",
+                        metavar="config.ini",
+                        help="configuration file")
+    parser.add_argument("-t", "--tasks",
+                        nargs="*",
+                        default=None,
+                        metavar="TASK",
+                        help="tasks to run")
+    parser.add_argument("--dry-run",
+                        action="store_true",
+                        default=False,
+                        help="list tasks to run and exit")
+    parser.add_argument("--detach",
+                        action="store_true",
+                        help="enqueue tasks to run and exit")
+    parser.add_argument("-v", "--version", action="version",
+                        version=f"%(prog)s {__version__}",
+                        help="show the version and exit")
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': no such file or directory")
+
+    config = configparser.ConfigParser()
+    config.read(args.config)
+
+    dsn = config["oracle"]["dsn"]
+    interpro_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
+    pronto_url = config["postgresql"]["pronto"]
+    uniprot_version = config["uniprot"]["version"]
+    data_dir = config["misc"]["data_dir"]
+    lsf_queue = config["misc"]["lsf_queue"]
+    workflow_dir = config["misc"]["workflow_dir"]
+
+    os.makedirs(data_dir, exist_ok=True)
+    tasks = [
+        Task(
+            fn=pronto.database.import_databases,
+            args=(interpro_url, pronto_url),
+            name="databases",
+            scheduler=dict(queue=lsf_queue)
+        ),
+
+        # Data from GOAPRO
+        Task(
+            fn=pronto.goa.import_annotations,
+            args=(interpro_url, pronto_url),
+            name="annotations",
+            scheduler=dict(queue=lsf_queue)
+        ),
+
+        # Data from SWPREAD
+        Task(
+            fn=pronto.protein.import_similarity_comments,
+            args=(interpro_url, pronto_url),
+            name="proteins-similarities",
+            scheduler=dict(mem=4000, queue=lsf_queue),
+        ),
+        Task(
+            fn=pronto.protein.import_protein_names,
+            args=(interpro_url, pronto_url),
+            name="proteins-names",
+            scheduler=dict(mem=8000, queue=lsf_queue),
+        ),
+
+        # Data from IPPRO
+        Task(
+            fn=pronto.protein.import_proteins,
+            args=(interpro_url, pronto_url),
+            name="proteins",
+            scheduler=dict(mem=8000, queue=lsf_queue),
+        ),
+        Task(
+            fn=pronto.match.import_matches,
+            args=(interpro_url, pronto_url,
+                  os.path.join(data_dir, "allseqs.dat")),
+            kwargs=dict(dir="/scratch/"),
+            name="matches",
+            scheduler=dict(mem=8000, scratch=10000, queue=lsf_queue),
+            requires=["databases"]
+        ),
+        Task(
+            fn=pronto.match.proc_comp_seq_matches,
+            args=(interpro_url, pronto_url,
+                  os.path.join(data_dir, "compseqs.dat")),
+            kwargs=dict(dir="/scratch/", processes=8),
+            name="signature2proteins",
+            scheduler=dict(cpu=8, mem=16000, scratch=30000, queue=lsf_queue),
+            requires=["proteins-names"]
+        ),
+        Task(
+            fn=pronto.signature.import_signatures,
+            args=(interpro_url, pronto_url,
+                  os.path.join(data_dir, "allseqs.dat"),
+                  os.path.join(data_dir, "compseqs.dat")),
+            name="signatures",
+            scheduler=dict(mem=4000, queue=lsf_queue),
+            requires=["matches", "signature2proteins"]
+        ),
+        Task(
+            fn=pronto.taxon.import_taxonomy,
+            args=(interpro_url, pronto_url),
+            name="taxonomy",
+            scheduler=dict(mem=4000, queue=lsf_queue),
+        ),
+    ]
+
+    database = os.path.join(workflow_dir, f"{uniprot_version}.pronto.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as wf:
         wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
