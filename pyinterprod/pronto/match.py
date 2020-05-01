@@ -367,7 +367,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, output: str, **kwargs):
         pg_con.commit()
 
         drop_index(pg_con, "signature2protein_signature_idx")
-        drop_index(pg_con, "signature2protein_reviewed_signature_idx")
+        drop_index(pg_con, "signature2protein_composite_idx")
         drop_index(pg_con, "comparison_signature_1_idx")
         drop_index(pg_con, "comparison_signature_2_idx")
     pg_con.close()
@@ -455,8 +455,8 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, output: str, **kwargs):
         )
         pg_cur.execute(
             """
-            CREATE INDEX signature2protein_reviewed_signature_idx
-            ON signature2protein (is_reviewed, signature_acc)
+            CREATE INDEX signature2protein_composite_idx
+            ON signature2protein (signature_acc, is_reviewed, taxon_left_num, name_id)
             """
         )
 
