@@ -349,12 +349,16 @@ def _process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
 
 
 def proc_comp_seq_matches(ora_url: str, pg_url: str, output: str, **kwargs):
+    tmpdir = kwargs.get("dir")
+    matches_dat = kwargs.get("matches")
     names_db = kwargs.get("names")
+    processes = kwargs.get("processes", 4)
+
     if names_db:
         keep_db = True
     else:
         keep_db = False
-        fd, names_db = mkstemp(dir=kwargs.get("dir"))
+        fd, names_db = mkstemp(dir=tmpdir)
         os.close(fd)
         os.remove(names_db)
         export_names(pg_url, names_db)
@@ -375,13 +379,13 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, output: str, **kwargs):
     inqueue = Queue(maxsize=1)
     outqueue = Queue()
     workers = []
-    for _ in range(max(1, kwargs.get("processes", 4)-1)):
+    for _ in range(max(1, processes-1)):
         p = Process(target=_process_chunk,
                     args=(pg_url, names_db, inqueue, outqueue))
         p.start()
         workers.append(p)
 
-    it = _iter_comp_seq_matches(ora_url, kwargs.get("matches"))
+    it = _iter_comp_seq_matches(ora_url, matches_dat)
     chunk = []
     i = 0
     for obj in _group_proteins(it):
