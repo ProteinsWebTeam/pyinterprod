@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
 
+import os
+import shutil
+from tempfile import mkstemp
+from typing import Optional
+
 import cx_Oracle
 import psycopg2
 from psycopg2.extras import execute_values
@@ -49,8 +54,13 @@ def import_similarity_comments(ora_url: str, pg_url: str):
     logger.info("complete")
 
 
-def import_protein_names(ora_url: str, pg_url: str):
-    logger.info("populating")
+def import_protein_names(ora_url: str, pg_url: str, database: str,
+                         dir: Optional[str]=None):
+    logger.info("populating protein2name")
+    fd, tmp_database = mkstemp(dir=dir)
+    os.close(fd)
+    os.remove(tmp_database)
+
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("TRUNCATE TABLE protein_name")
@@ -88,34 +98,63 @@ def import_protein_names(ora_url: str, pg_url: str):
 
         names = {}
         values = []
-        for protein_acc, text in ora_cur:
-            try:
-                name_id = names[text]
-            except KeyError:
-                name_id = names[text] = len(names) + 1
+        i = 0
+        with KVdb(tmp_database, True) as namesdb:
+            for protein_acc, text in ora_cur:
+                try:
+                    name_id = names[text]
+                except KeyError:
+                    name_id = names[text] = len(names) + 1
 
-            values.append((protein_acc, name_id))
-            if len(values) == 1000:
-                execute_values(pg_cur, "INSERT INTO protein2name VALUES %s",
-                               values, page_size=1000)
-                values = []
+                values.append((protein_acc, name_id))
+                namesdb[protein_acc] = name_id
+                i += 1
+
+                if not i % 100000:
+                    namesdb.sync()
+                    execute_values(
+                        cur=pg_url,
+                        sql="INSERT INTO protein2name VALUES %s",
+                        argslist=values,
+                        page_size=1000
+                    )
+                    values = []
+
+                    if not i % 10000000:
+                        logger.info(f"{i:>12,}")
 
         ora_cur.close()
         ora_con.close()
+        logger.info(f"{i:>12,}")
 
         if values:
-            execute_values(pg_cur, "INSERT INTO protein2name VALUES %s",
-                           values, page_size=1000)
+            execute_values(
+                cur=pg_url,
+                sql="INSERT INTO protein2name VALUES %s",
+                argslist=values,
+                page_size=1000
+            )
 
-        execute_values(pg_cur, "INSERT INTO protein_name VALUES %s",
-                       ((name_id, text) for text, name_id in names.items()),
-                       page_size=1000)
+        logger.info("populating protein_name")
+        execute_values(
+            cur=pg_url,
+            sql="INSERT INTO protein_name VALUES %s",
+            argslist=((name_id, text) for text, name_id in names.items()),
+            page_size=1000
+        )
 
         pg_con.commit()
+
+        logger.info("analyzing tables")
         pg_cur.execute("ANALYZE protein2name")
         pg_cur.execute("ANALYZE protein_name")
 
     pg_con.close()
+
+    logger.info("copying database")
+    shutil.copyfile(tmp_database, database)
+    logger.info(f"disk usage: {os.path.getsize(tmp_database)/1024:.0f} MB")
+    os.remove(tmp_database)
     logger.info("complete")
 
 

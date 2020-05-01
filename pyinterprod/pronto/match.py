@@ -3,6 +3,7 @@
 import heapq
 import os
 import pickle
+import shutil
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp, mkstemp
 from typing import Dict, Iterator, List, Optional, Sequence
@@ -13,7 +14,6 @@ import psycopg2
 from pyinterprod import logger
 from pyinterprod.utils.kvdb import KVdb
 from pyinterprod.utils.pg import CsvIO, drop_index, url2dict
-from .protein import export_names
 
 
 """
@@ -348,20 +348,16 @@ def _process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
     outqueue.put((num_proteins, comparisons))
 
 
-def proc_comp_seq_matches(ora_url: str, pg_url: str, output: str, **kwargs):
+def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
+                          output: str, **kwargs):
     tmpdir = kwargs.get("dir")
     matches_dat = kwargs.get("matches")
-    names_db = kwargs.get("names")
     processes = kwargs.get("processes", 4)
 
-    if names_db:
-        keep_db = True
-    else:
-        keep_db = False
-        fd, names_db = mkstemp(dir=tmpdir)
-        os.close(fd)
-        os.remove(names_db)
-        export_names(pg_url, names_db)
+    logger.info("copying database")
+    fd, tmp_database = mkstemp(dir=tmpdir)
+    os.close(fd)
+    shutil.copyfile(database, tmp_database)
 
     logger.info("populating: signature2protein")
     pg_con = psycopg2.connect(**url2dict(pg_url))
@@ -381,7 +377,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, output: str, **kwargs):
     workers = []
     for _ in range(max(1, processes-1)):
         p = Process(target=_process_chunk,
-                    args=(pg_url, names_db, inqueue, outqueue))
+                    args=(pg_url, tmp_database, inqueue, outqueue))
         p.start()
         workers.append(p)
 
@@ -434,10 +430,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, output: str, **kwargs):
     with open(output, "wb") as fh:
         pickle.dump(num_proteins, fh)
 
-    if not keep_db:
-        logger.info(f"disk usage: "
-                    f"{os.path.getsize(names_db)/1024/1024:.0f} MB")
-        os.remove(names_db)
+    os.remove(tmp_database)
 
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:

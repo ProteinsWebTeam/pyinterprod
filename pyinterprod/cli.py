@@ -255,7 +255,7 @@ def run_pronto_update():
             fn=pronto.database.import_databases,
             args=(interpro_url, pronto_url),
             name="databases",
-            scheduler=dict(queue=lsf_queue)
+            scheduler=dict(mem=100, queue=lsf_queue)
         ),
 
         # Data from GOAPRO
@@ -263,7 +263,7 @@ def run_pronto_update():
             fn=pronto.goa.import_annotations,
             args=(interpro_url, pronto_url),
             name="annotations",
-            scheduler=dict(queue=lsf_queue)
+            scheduler=dict(mem=500, queue=lsf_queue)
         ),
 
         # Data from SWPREAD
@@ -271,13 +271,15 @@ def run_pronto_update():
             fn=pronto.protein.import_similarity_comments,
             args=(interpro_url, pronto_url),
             name="proteins-similarities",
-            scheduler=dict(mem=4000, queue=lsf_queue),
+            scheduler=dict(mem=100, queue=lsf_queue),
         ),
         Task(
             fn=pronto.protein.import_protein_names,
-            args=(interpro_url, pronto_url),
+            args=(interpro_url, pronto_url,
+                  os.path.join(data_dir, "names.sqlite")),
+            kwargs=dict(dir="/scratch/"),
             name="proteins-names",
-            scheduler=dict(mem=8000, queue=lsf_queue),
+            scheduler=dict(mem=8000, scratch=30000, queue=lsf_queue),
         ),
 
         # Data from IPPRO
@@ -299,6 +301,7 @@ def run_pronto_update():
         Task(
             fn=pronto.match.proc_comp_seq_matches,
             args=(interpro_url, pronto_url,
+                  os.path.join(data_dir, "names.sqlite"),
                   os.path.join(data_dir, "compseqs.dat")),
             kwargs=dict(dir="/scratch/", processes=8),
             name="signature2proteins",
@@ -318,7 +321,7 @@ def run_pronto_update():
             fn=pronto.taxon.import_taxonomy,
             args=(interpro_url, pronto_url),
             name="taxonomy",
-            scheduler=dict(mem=4000, queue=lsf_queue),
+            scheduler=dict(mem=2000, queue=lsf_queue),
         ),
     ]
 
