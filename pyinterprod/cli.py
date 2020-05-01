@@ -213,7 +213,7 @@ def run_protein_update():
         wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
 
 
-def update_pronto():
+def run_pronto_update():
     parser = argparse.ArgumentParser(description="InterPro Pronto update")
     parser.add_argument("config",
                         metavar="config.ini",
