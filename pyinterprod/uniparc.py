@@ -9,23 +9,16 @@ from pyinterprod.utils import oracle
 def update(url: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-
-    logger.info("creating UNIPARC.CV_DATABASE")
     update_databases(cur)
-
-    logger.info("creating UNIPARC.PROTEIN")
     update_proteins(cur)
-
-    logger.info("creating UNIPARC.XREF")
     update_xrefs(cur)
-
     cur.close()
     con.close()
-
     logger.info("complete")
 
 
 def update_databases(cur: cx_Oracle.Cursor):
+    logger.info("creating table CV_DATABASE")
     oracle.drop_table(cur, "UNIPARC.CV_DATABASE", purge=True)
     cur.execute(
         """
@@ -69,6 +62,7 @@ def update_databases(cur: cx_Oracle.Cursor):
 
 
 def update_proteins(cur: cx_Oracle.Cursor):
+    logger.info("creating table PROTEIN")
     oracle.drop_mview(cur, "UNIPARC.PROTEIN")
     oracle.drop_table(cur, "UNIPARC.PROTEIN", purge=True)
     cur.execute(
@@ -82,6 +76,8 @@ def update_proteins(cur: cx_Oracle.Cursor):
         """
     )
     cur.execute("GRANT SELECT ON UNIPARC.PROTEIN TO PUBLIC")
+
+    logger.info("creating index PK_PROTEIN")
     cur.execute(
         """
         CREATE UNIQUE INDEX PK_PROTEIN
@@ -89,10 +85,13 @@ def update_proteins(cur: cx_Oracle.Cursor):
         TABLESPACE UNIPARC_IND
         """
     )
+
+    logger.info("gathering statistics on table PROTEIN")
     oracle.gather_stats(cur, "UNIPARC", "PROTEIN")
 
 
 def update_xrefs(cur: cx_Oracle.Cursor):
+    logger.info("creating table XREF")
     oracle.drop_table(cur, "UNIPARC.XREF", purge=True)
     oracle.drop_table(cur, "UNIPARC.XREF_OLD", purge=True)
     cur.execute(
@@ -108,6 +107,7 @@ def update_xrefs(cur: cx_Oracle.Cursor):
     cur.execute("GRANT SELECT ON UNIPARC.XREF TO PUBLIC")
 
     for col in ["UPI", "AC", "DBID"]:
+        logger.info(f"creating index I_XREF${col}")
         cur.execute(
             f"""
             CREATE INDEX I_XREF${col}
@@ -115,4 +115,6 @@ def update_xrefs(cur: cx_Oracle.Cursor):
             TABLESPACE UNIPARC_IND
             """
         )
+
+    logger.info("gathering statistics on table XREF")
     oracle.gather_stats(cur, "UNIPARC", "XREF")
