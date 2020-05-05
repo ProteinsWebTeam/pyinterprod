@@ -399,11 +399,11 @@ def import_matches(url: str, threads: int=1):
                     f.result()
                 except Exception as exc:
                     for name in names:
-                        logger.info(f"{name:<35}: failed ({exc})")
+                        logger.info(f"{name:<35} failed ({exc})")
                     failed += 1
                 else:
                     for name in names:
-                        logger.info(f"{name:<35}: done")
+                        logger.info(f"{name:<35} done")
 
             running = tmp
 
@@ -421,7 +421,7 @@ def import_matches(url: str, threads: int=1):
 
                 names = [e[0].full_name for e in analyses]
                 for name in names:
-                    logger.info(f"{name:<35}: ready")
+                    logger.info(f"{name:<35} ready")
 
                 args = (url, table, "MV_IPRSCAN", ready)
                 f = executor.submit(update_analyses, *args)
