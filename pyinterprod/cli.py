@@ -272,7 +272,7 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
             kwargs=dict(dir="/scratch/"),
             name="pronto-matches",
             scheduler=dict(mem=8000, scratch=10000, queue=lsf_queue),
-            requires=["databases"]
+            requires=["pronto-databases"]
         ),
         Task(
             fn=pronto.match.proc_comp_seq_matches,
@@ -282,7 +282,7 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
             kwargs=dict(dir="/scratch/", processes=8),
             name="pronto-signature2proteins",
             scheduler=dict(cpu=8, mem=16000, scratch=30000, queue=lsf_queue),
-            requires=["proteins-names"]
+            requires=["pronto-proteins-names"]
         ),
         Task(
             fn=pronto.signature.import_signatures,
@@ -291,7 +291,7 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
                   os.path.join(data_dir, "compseqs.dat")),
             name="pronto-signatures",
             scheduler=dict(mem=4000, queue=lsf_queue),
-            requires=["matches", "signature2proteins"]
+            requires=["pronto-matches", "pronto-signature2proteins"]
         ),
         Task(
             fn=pronto.taxon.import_taxonomy,
