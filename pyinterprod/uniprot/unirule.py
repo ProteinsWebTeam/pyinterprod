@@ -29,46 +29,46 @@ def report_integration_changes(url: str, send_email: bool=True):
     current_signatures = dict(cur.fetchall())
     cur.execute(
         """
-        SELECT ENTRY_AC, CHECKED
+        SELECT ENTRY_AC
         FROM INTERPRO.ENTRY
+        WHERE CHECKED = 'Y'
         """
     )
-    current_entries = {row[0]: row[1] == 'Y' for row in cur}
+    checked_entries = {row[0] for row in cur}
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     release = cur.fetchone()[0]
     cur.close()
     con.close()
 
     changes = {}
-    for s_acc, e_acc in previous_signatures.items():
-        if s_acc in current_signatures:
-            # Signature still exists
-            ne_acc = current_signatures.pop(s_acc)
-            if ne_acc:
-                # Signature still integrated
-                if e_acc != ne_acc:
-                    # In another entry
-                    if current_entries[ne_acc]:
-                        # The other entry is checked
-                        changes[s_acc] = ("moved", e_acc, ne_acc)
-                    else:
-                        # The other entry is unchecked
-                        changes[s_acc] = ("moved to unchecked", e_acc, ne_acc)
-                elif current_entries[e_acc]:
-                    pass  # No changes
-                else:
-                    # In the same (now unchecked) entry
-                    changes[s_acc] = ("entry unchecked", '', e_acc)
-            else:
-                # Signature unintegrated
-                changes[s_acc] = ("unintegrated", e_acc, '')
-        else:
+    for signature, entry_then in previous_signatures.items():
+        try:
+            entry_now = current_signatures.pop(signature)
+        except KeyError:
             # Signature does not exist any more (member database update)
-            changes[s_acc] = ("deleted", e_acc, '')
+            changes[signature] = ("deleted", entry_then, '')
+            continue
 
-    for s_acc, ne_acc in current_signatures.items():
-        if ne_acc and current_entries[ne_acc]:
-            changes[s_acc] = ("integrated", '', ne_acc)
+        if entry_now:
+            # Signature still integrated
+            if entry_then == entry_now:
+                # Integrated in the same entry
+                if entry_now not in checked_entries:
+                    # Entry has been unchecked
+                    changes[signature] = ("unchecked", entry_then, entry_now)
+            elif entry_now in checked_entries:
+                # Integrated in a different (checked) entry
+                changes[signature] = ("integrated (checked)", entry_then, entry_now)
+            else:
+                # Integrated in a different (unchecked) entry
+                changes[signature] = ("integrated (unchecked)", entry_then, entry_now)
+        else:
+            # Signature unintegrated
+            changes[signature] = ("unintegrated", entry_then, '')
+
+    for signature, entry_now in current_signatures.items():
+        if entry_now and entry_now in checked_entries:
+            changes[signature] = ("integrated (checked)", '', entry_now)
 
     content = """\
 Dear UniProt team,
@@ -76,26 +76,24 @@ Dear UniProt team,
 Please find below the list of recent integration changes.
 
 Description of states:
-  - deleted:                    the signature does not exist any more
-  - entry unchecked:            the signature is integrated in an InterPro \
-entry that has recently been flagged as not ready to be made public
-  - integrated:                 the signature has been integrated in \
-an InterPro entry ready to be made public
-  - moved:                      the signature has been integrated in \
-an InterPro entry ready to be made public
-  - moved to unchecked:         the signature has been integrated in \
-an InterPro entry not ready to be made public
-  - unintegrated:               the signature has been removed from \
-an InterPro entry
-  
+  - integrated (checked):           the signature has been integrated in an \
+InterPro entry ready to be made public
+  - integrated (unchecked):        the signature has been integrated in an \
+InterPro entry not ready to be made public
+  - unchecked:                     the InterPro entry, in which the signature \
+is integrated, has been flagged as not ready to be made public
+  - unintegrated:                  the signature has been removed from an \
+InterPro entry
+  - deleted:                       the signature does not exist any more
+
 """
-    content += (f"{'Signature':<30}{'Status':<30}{'Previous entry':<20}"
+    content += (f"{'Signature':<30}{'Status':<40}{'Previous entry':<20}"
                 f"{'Current entry':<20}\n")
-    content += '-' * 100 + '\n'
+    content += '-' * 110 + '\n'
 
     for acc in sorted(changes, key=lambda k: k.lower()):
         status, prev, curr = changes[acc]
-        content += f"{acc:<30}{status:<30}{prev:<20}{curr:<20}\n"
+        content += f"{acc:<30}{status:<40}{prev:<20}{curr:<20}\n"
 
     content += "\nKind regards,\nThe InterPro Production Team\n"
 
@@ -228,15 +226,14 @@ def build_xref_condensed(url: str):
             POS_TO NUMBER(5) NOT NULL
         )
         PARTITION BY LIST (ENTRY_TYPE) (
-          PARTITION PART_A VALUES ('A'),
-          PARTITION PART_B VALUES ('B'),
-          PARTITION PART_C VALUES ('C'),
-          PARTITION PART_D VALUES ('D'),
-          PARTITION PART_F VALUES ('F'),
-          PARTITION PART_H VALUES ('H'),
-          PARTITION PART_P VALUES ('P'),
-          PARTITION PART_R VALUES ('R'),
-          PARTITION PART_U VALUES ('U')
+          PARTITION PART_A VALUES ('A'),  -- Active_site
+          PARTITION PART_B VALUES ('B'),  -- Binding_site
+          PARTITION PART_C VALUES ('C'),  -- Conserved_site
+          PARTITION PART_D VALUES ('D'),  -- Domain
+          PARTITION PART_F VALUES ('F'),  -- Family
+          PARTITION PART_H VALUES ('H'),  -- Homologous_superfamily
+          PARTITION PART_P VALUES ('P'),  -- PTM
+          PARTITION PART_R VALUES ('R')   -- Repeat
         ) COMPRESS NOLOGGING      
         """
     )
