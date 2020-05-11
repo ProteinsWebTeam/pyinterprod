@@ -113,7 +113,7 @@ def import_protein_names(ora_url: str, pg_url: str, database: str,
                 if not i % 100000:
                     namesdb.sync()
                     execute_values(
-                        cur=pg_url,
+                        cur=pg_cur,
                         sql="INSERT INTO protein2name VALUES %s",
                         argslist=values,
                         page_size=1000
@@ -129,7 +129,7 @@ def import_protein_names(ora_url: str, pg_url: str, database: str,
 
         if values:
             execute_values(
-                cur=pg_url,
+                cur=pg_cur,
                 sql="INSERT INTO protein2name VALUES %s",
                 argslist=values,
                 page_size=1000
@@ -137,7 +137,7 @@ def import_protein_names(ora_url: str, pg_url: str, database: str,
 
         logger.info("populating protein_name")
         execute_values(
-            cur=pg_url,
+            cur=pg_cur,
             sql="INSERT INTO protein_name VALUES %s",
             argslist=((name_id, text) for text, name_id in names.items()),
             page_size=1000
