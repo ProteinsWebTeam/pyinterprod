@@ -157,14 +157,14 @@ def update_iprscan2dbcode(user: str, dsn: str, memberdb: list):
 
     for member in memberdb:
         try:
-            query = "UPDATE INTERPRO.IPRSCAN2DBCODE SET IPRSCAN_SIG_LIB_REL_ID = (SELECT MAX(ID) FROM IPRSCAN.MV_SIGNATURE_LIBRARY_RELEASE WHERE LIBRARY=:1) WHERE DBCODE=:2"
+            query = "UPDATE INTERPRO.IPRSCAN2DBCODE SET IPRSCAN_SIG_LIB_REL_ID = (SELECT MAX(ID) FROM IPRSCAN.MV_SIGNATURE_LIBRARY_RELEASE WHERE UPPER(LIBRARY)=UPPER(:1)) WHERE DBCODE=:2"
             cur.execute(query, (member["name"], member["dbcode"]))
             if cur.rowcount == 0:
                 raise "Row not found"
             logger.info(f"\nIPRSCAN2DBCODE for {member['name']} updated")
         except:
             logger.info("\nCouldn't update, trying to insert")
-            query = "INSERT INTO INTERPRO.IPRSCAN2DBCODE VALUES((SELECT MAX(ID) FROM IPRSCAN.MV_SIGNATURE_LIBRARY_RELEASE WHERE LIBRARY=:name),:dbcode,:evidence,(SELECT MAX(ID) FROM IPRSCAN.MV_SIGNATURE_LIBRARY_RELEASE WHERE LIBRARY=:name))"
+            query = "INSERT INTO INTERPRO.IPRSCAN2DBCODE VALUES((SELECT MAX(ID) FROM IPRSCAN.MV_SIGNATURE_LIBRARY_RELEASE WHERE UPPER(LIBRARY)=UPPER(:name)),:dbcode,:evidence,(SELECT MAX(ID) FROM IPRSCAN.MV_SIGNATURE_LIBRARY_RELEASE WHERE UPPER(LIBRARY)=UPPER(:name)))"
             cur.execute(
                 query,
                 name=member["name"],
