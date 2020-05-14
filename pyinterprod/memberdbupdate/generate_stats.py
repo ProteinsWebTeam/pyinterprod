@@ -1,7 +1,8 @@
 import cx_Oracle
 import os
 from .delete import delete_from_tables, create_temp_table
-from .. import orautils, logger, proteinupdate
+from .. import orautils, logger
+from ..proteinupdate import sendmail
 
 
 def execute_query(cur, query:str):
@@ -229,7 +230,7 @@ def generate_report(user: str, dsn: str, outdir: str, memberdb: list, email_rece
         content=f"Dear InterPro production,\n\nThe generation of the Signatures report hasn't revealed any deleted signatures.\n\nThe InterPro Production Team"
     
     if notify:
-        proteinupdate.sendmail.send_mail(
+        sendmail.send_mail(
             to_addrs=email_receiver,
             subject=f"Member database update signatures changes notification",
             content=content,
