@@ -223,7 +223,7 @@ def generate_report(user: str, dsn: str, outdir: str, memberdb: list, email_rece
             email_content+=f"{line}\n"
             filenames.append(reportfile)
 
-            delete_from_tables(user, dsn, dbcode)
+            delete_from_tables(cur, con, dbcode)
 
         content=f"Dear InterPro production,\n\nThe generation of the Signatures report has revealed deleted signatures for the following member databases:\n{email_content}\n\nPlease find attached the corresponding reports.\n\nThe InterPro Production Team"
     else:

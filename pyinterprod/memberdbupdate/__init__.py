@@ -7,7 +7,6 @@ import sys
 def main():
     from mundone import Task, Workflow
     from . import (
-        delete,
         methods,
         generate_stats,
         report,
@@ -82,19 +81,11 @@ def main():
             requires=["populate-method-stg"]
         ),
         Task(
-            name="delete-methods",
-            fn=delete.delete_dead_signatures,
-            args=(
-            db_users["interpro"], db_dsn, memberdb),
-            scheduler=dict(queue=queue, mem=500),
-            requires=["generate-old-report"]
-        ),
-        Task(
             name="update-method", 
             fn=methods.update_method,
             args=(db_users["interpro"], db_dsn),
             scheduler=dict(queue=queue, mem=500),
-            requires=["delete-methods"]
+            requires=["generate-old-report"]
         ),
         Task(
             name="proteins2scan", #populate_protein_to_scan
