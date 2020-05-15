@@ -34,12 +34,9 @@ def delete_from_tables(cur, con, dbcode:str):
     results = [row[0] for row in cur]
     logger.info(f"rows recovered: {results}")
 
-    try:
-        query_partition = f"DELETE FROM MATCH PARTITION (MATCH_DBCODE_{dbcode}) WHERE METHOD_AC IN (SELECT METHOD_AC FROM METHODS_TO_DELETE_TEMP_TABLE)"
-        cur.execute(query_partition)
-        con.commit()
-    except cx_Oracle.DatabaseError as e:
-        logger.info(e)
+    query_partition = f"DELETE FROM MATCH PARTITION (MATCH_DBCODE_{dbcode}) WHERE METHOD_AC IN (SELECT METHOD_AC FROM METHODS_TO_DELETE_TEMP_TABLE)"
+    cur.execute(query_partition)
+    con.commit()
 
     tables_list = [
         "ENTRY2METHOD",
@@ -51,13 +48,11 @@ def delete_from_tables(cur, con, dbcode:str):
         "METHOD",
     ]
     for table in tables_list:
-        try:
-            query = f"DELETE FROM {table} WHERE METHOD_AC IN (SELECT METHOD_AC FROM METHODS_TO_DELETE_TEMP_TABLE)"
-            cur.execute(query)
-            con.commit()
-            logger.info(table, cur.rowcount)
-        except cx_Oracle.DatabaseError as e:
-            logger.info(e, table)
+        logger.info(table)
+        query = f"DELETE FROM {table} WHERE METHOD_AC IN (SELECT METHOD_AC FROM METHODS_TO_DELETE_TEMP_TABLE)"
+        cur.execute(query)
+        con.commit()
+        logger.info(cur.rowcount)
 
 
 def delete_dead_signatures(user: str, dsn: str, memberdb: list):
