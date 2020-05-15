@@ -120,13 +120,11 @@ def insert_clans(con: cx_Oracle.Connection, clans: Sequence[dict], dbcode: str):
 
     t1.close()
     t2.close()
+    con.commit()
 
 
 def update_clans(user: str, dsn: str, databases: Sequence[str], pfam_url: str):
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    create_tables(cur)
-    cur.close()
 
     for mem_db in databases:
         logger.info(f"updating clans for {mem_db.upper()}")
@@ -141,7 +139,6 @@ def update_clans(user: str, dsn: str, databases: Sequence[str], pfam_url: str):
         else:
             raise ValueError(mem_db)
 
-    con.commit()
     con.close()
     logger.info("done")
 
