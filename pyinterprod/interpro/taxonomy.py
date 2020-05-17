@@ -70,21 +70,19 @@ def refresh_taxonomy(url: str):
     # Dropping temporary table
     oracle.drop_table(cur, "INTERPRO.TAXONOMY_LOAD", purge=True)
 
-    # TODO: stop refreshing the tables below when we stop supporting InterPro6
-
-    logger.info("populating UNIPROT_TAXONOMY")
-    oracle.truncate_table(cur, "INTERPRO.UNIPROT_TAXONOMY", reuse_storage=True)
-    cur.execute(
-        """
-        INSERT INTO INTERPRO.UNIPROT_TAXONOMY
-        SELECT P.PROTEIN_AC, P.TAX_ID, NVL(ET.LEFT_NUMBER, 0) LEFT_NUMBER, 
-               NVL(ET.RIGHT_NUMBER, 0) RIGHT_NUMBER
-        FROM INTERPRO.PROTEIN P
-        LEFT OUTER JOIN INTERPRO.ETAXI ET ON P.TAX_ID = ET.TAX_ID
-        """
-    )
-    con.commit()
-    oracle.gather_stats(cur, "INTERPRO", "UNIPROT_TAXONOMY")
+    # logger.info("populating UNIPROT_TAXONOMY")
+    # oracle.truncate_table(cur, "INTERPRO.UNIPROT_TAXONOMY", reuse_storage=True)
+    # cur.execute(
+    #     """
+    #     INSERT INTO INTERPRO.UNIPROT_TAXONOMY
+    #     SELECT P.PROTEIN_AC, P.TAX_ID, NVL(ET.LEFT_NUMBER, 0) LEFT_NUMBER,
+    #            NVL(ET.RIGHT_NUMBER, 0) RIGHT_NUMBER
+    #     FROM INTERPRO.PROTEIN P
+    #     LEFT OUTER JOIN INTERPRO.ETAXI ET ON P.TAX_ID = ET.TAX_ID
+    #     """
+    # )
+    # con.commit()
+    # oracle.gather_stats(cur, "INTERPRO", "UNIPROT_TAXONOMY")
 
     # logger.info("populating MV_TAX_ENTRY_COUNT")
     # oracle.truncate_table(cur, "INTERPRO.MV_TAX_ENTRY_COUNT", reuse_storage=True)
