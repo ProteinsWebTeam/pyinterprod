@@ -161,7 +161,7 @@ def report_swissprot_changes(user:str, dsn:str, memberdb:str, path:str, prefix:s
 
 
 def report_curators(user:str, dsn:str, memberdb:str, path:str, email_receiver:list, notify: bool=True):
-    report_swissprot_changes(user, dsn, memberdb, path, "match_counts_new_")
+    report_swissprot_changes(user, dsn, memberdb, path, "swiss_de_report_")
 
     zip_files=[]
     for member in memberdb:
