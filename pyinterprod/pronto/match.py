@@ -190,7 +190,7 @@ def _iter_comp_seq_matches(url: str, filepath: Optional[str]=None):
         cur.execute(
             """
             SELECT
-                P.PROTEIN_AC, P.LEN, P.DBCODE, P.TAX_ID, E.LEFT_NUMBER,
+                P.PROTEIN_AC, P.DBCODE, E.LEFT_NUMBER,
                 M.METHOD_AC, M.POS_FROM, M.POS_TO, M.FRAGMENTS
             FROM INTERPRO.PROTEIN P
             INNER JOIN INTERPRO.ETAXI E
@@ -201,37 +201,30 @@ def _iter_comp_seq_matches(url: str, filepath: Optional[str]=None):
             ORDER BY P.PROTEIN_AC
             """
         )
-        yield from cur
+
+        protein_acc = None
+        is_reviewed = None
+        taxon_left_num = None
+        matches = []
+        for row in cur:
+            if row[0] != protein_acc:
+                if protein_acc:
+                    yield protein_acc, is_reviewed, taxon_left_num, matches
+                    
+                protein_acc = row[0]
+                is_reviewed = row[1] == 'S'
+                taxon_left_num = row[2]
+                matches = []
+                
+            matches.append(row[3:])
+        
         cur.close()
         con.close()
 
-
-def _group_proteins(iterator: Iterator):
-    protein_acc = None
-    length = None
-    is_reviewed = None
-    taxon_id = None
-    taxon_left_num = None
-    matches = []
-    for row in iterator:
-        if row[0] != protein_acc:
-            if protein_acc:
-                yield (protein_acc, length, is_reviewed, taxon_id,
-                       taxon_left_num, matches)
-
-            protein_acc = row[0]
-            length = row[1]
-            is_reviewed = row[2] == 'S'
-            taxon_id = row[3]
-            taxon_left_num = row[4]
-            matches = []
-
-        matches.append(row[5:])
-
-    yield protein_acc, length, is_reviewed, taxon_id, taxon_left_num, matches
+        yield protein_acc, is_reviewed, taxon_left_num, matches
 
 
-def _clean_matches(matches: Sequence[tuple]) -> Dict[str, List[tuple]]:
+def _merge_matches(matches: Sequence[tuple]) -> Dict[str, List[tuple]]:
     # Merge matches by signature
     signatures = {}
     for signature_acc, pos_start, pos_end, fragments in matches:
@@ -272,18 +265,15 @@ def _process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
             values = []
             for obj in chunk:
                 protein_acc = obj[0]
-                length = obj[1]
-                is_reviewed = obj[2]
-                taxon_id = obj[3]
-                taxon_left_num = obj[4]
-                matches = _clean_matches(obj[5])
+                is_reviewed = obj[1]
+                taxon_left_num = obj[2]
+                matches = _merge_matches(obj[3])
 
                 name_id = names[protein_acc]
                 for signature_acc in matches:
                     values.append((
                         signature_acc,
                         protein_acc,
-                        length,
                         is_reviewed,
                         taxon_left_num,
                         name_id
@@ -366,8 +356,8 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         pg_cur.execute("TRUNCATE TABLE comparison")
         pg_con.commit()
 
+        drop_index(pg_con, "signature2protein_protein_idx")
         drop_index(pg_con, "signature2protein_signature_idx")
-        drop_index(pg_con, "signature2protein_composite_idx")
         drop_index(pg_con, "comparison_signature_1_idx")
         drop_index(pg_con, "comparison_signature_2_idx")
     pg_con.close()
@@ -381,10 +371,9 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         p.start()
         workers.append(p)
 
-    it = _iter_comp_seq_matches(ora_url, matches_dat)
     chunk = []
     i = 0
-    for obj in _group_proteins(it):
+    for obj in _iter_comp_seq_matches(ora_url, matches_dat):
         chunk.append(obj)
         if len(chunk) == 1000:
             inqueue.put(chunk)
@@ -442,8 +431,14 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
                          table="comparison",
                          sep='|')
 
-        logger.info("indexing: signature2protein")
+        logger.info("optimizing: signature2protein")
         pg_cur.execute("ANALYZE signature2protein")
+        pg_cur.execute(
+            """
+            CREATE INDEX signature2protein_protein_idx
+            ON signature2protein (protein_acc)
+            """
+        )
         pg_cur.execute(
             """
             CREATE INDEX signature2protein_signature_idx
@@ -452,12 +447,12 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         )
         pg_cur.execute(
             """
-            CREATE INDEX signature2protein_composite_idx
-            ON signature2protein (signature_acc, is_reviewed, taxon_left_num, name_id)
+            CLUSTER signature2protein 
+            USING signature2protein_signature_idx
             """
         )
 
-        logger.info("indexing: comparison")
+        logger.info("optimizing: comparison")
         pg_cur.execute("ANALYZE comparison")
         pg_cur.execute(
             """
