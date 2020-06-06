@@ -24,20 +24,26 @@ def import_similarity_comments(ora_url: str, pg_url: str):
         ora_cur = ora_con.cursor()
         ora_cur.execute(
             """
-            SELECT E.ACCESSION, NVL(B.TEXT, SS.TEXT)
-            FROM SPTR.DBENTRY@SWPREAD E
-            INNER JOIN SPTR.COMMENT_BLOCK@SWPREAD B
-              ON E.DBENTRY_ID = B.DBENTRY_ID
-              AND B.COMMENT_TOPICS_ID = 34        -- SIMILARITY comments
-            LEFT OUTER JOIN SPTR.COMMENT_STRUCTURE@SWPREAD S
-              ON B.COMMENT_BLOCK_ID = S.COMMENT_BLOCK_ID
-              AND S.CC_STRUCTURE_TYPE_ID = 1      -- TEXT structure
-            LEFT OUTER JOIN SPTR.COMMENT_SUBSTRUCTURE@SWPREAD SS
-              ON S.COMMENT_STRUCTURE_ID = SS.COMMENT_STRUCTURE_ID
-            WHERE E.ENTRY_TYPE = 0                -- Swiss-Prot
-              AND E.MERGE_STATUS != 'R'           -- not 'Redundant'
-              AND E.DELETED = 'N'                 -- not deleted
-              AND E.FIRST_PUBLIC IS NOT NULL      -- published
+            SELECT 
+                ROW_NUMBER() OVER (PARTITION BY TEXT) ID,
+                TEXT,
+                ACCESSION
+            FROM (
+                SELECT E.ACCESSION, NVL(B.TEXT, SS.TEXT) AS TEXT,
+                FROM SPTR.DBENTRY@SWPREAD E
+                INNER JOIN SPTR.COMMENT_BLOCK@SWPREAD B
+                  ON E.DBENTRY_ID = B.DBENTRY_ID
+                  AND B.COMMENT_TOPICS_ID = 34        -- SIMILARITY comments
+                LEFT OUTER JOIN SPTR.COMMENT_STRUCTURE@SWPREAD S
+                  ON B.COMMENT_BLOCK_ID = S.COMMENT_BLOCK_ID
+                  AND S.CC_STRUCTURE_TYPE_ID = 1      -- TEXT structure
+                LEFT OUTER JOIN SPTR.COMMENT_SUBSTRUCTURE@SWPREAD SS
+                  ON S.COMMENT_STRUCTURE_ID = SS.COMMENT_STRUCTURE_ID
+                WHERE E.ENTRY_TYPE = 0                -- Swiss-Prot
+                  AND E.MERGE_STATUS != 'R'           -- not 'Redundant'
+                  AND E.DELETED = 'N'                 -- not deleted
+                  AND E.FIRST_PUBLIC IS NOT NULL      -- published            
+            )
             """
         )
 
