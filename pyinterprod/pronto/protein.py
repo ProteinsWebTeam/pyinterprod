@@ -25,11 +25,11 @@ def import_similarity_comments(ora_url: str, pg_url: str):
         ora_cur.execute(
             """
             SELECT 
-                ROW_NUMBER() OVER (PARTITION BY TEXT) ID,
+                DENSE_RANK() OVER (ORDER BY TEXT),
                 TEXT,
                 ACCESSION
             FROM (
-                SELECT E.ACCESSION, NVL(B.TEXT, SS.TEXT) AS TEXT,
+                SELECT E.ACCESSION, NVL(B.TEXT, SS.TEXT) AS TEXT
                 FROM SPTR.DBENTRY@SWPREAD E
                 INNER JOIN SPTR.COMMENT_BLOCK@SWPREAD B
                   ON E.DBENTRY_ID = B.DBENTRY_ID
