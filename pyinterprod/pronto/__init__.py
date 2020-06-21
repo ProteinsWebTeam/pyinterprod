@@ -19,6 +19,10 @@ _DATA_PUMP_DIR = "PANDA_DATA_PUMP_DIR"
 _REPORT = "swiss_de_families.tsv"
 
 
+def gen_entry_link(accession: str) -> str:
+    return "http://tsc-mngd-017.ebi.ac.uk:5000/entry/{}/".format(accession)
+
+
 def load_databases(user: str, dsn: str):
     owner = user.split('/')[0]
     con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
@@ -214,14 +218,14 @@ def report_description_changes(user: str, dsn: str, dst: str):
         changes[acc] = ([], descs_then)
 
     with open(dst, "wt") as fh:
-        fh.write("Accession\tName\tType\tChecked\t# Lost\t# Gained\tLost\t"
-                 "Gained\n")
+        fh.write("Accession\tLink\tName\tType\tChecked\t"
+                 "# Lost\t# Gained\tLost\tGained\n")
         for acc in sorted(changes):
             gained, lost = changes[acc]
             if lost or gained:
                 name, entry_type, is_checked = entries[acc]
-                fh.write(f"{acc}\t{name}\t{entry_type}\t{is_checked}\t"
-                         f"{len(lost)}\t{len(gained)}\t"
+                fh.write(f"{acc}\t{gen_entry_link(acc)}\t{name}\t{entry_type}\t"
+                         f"{is_checked}\t{len(lost)}\t{len(gained)}\t"
                          f"{' | '.join(lost)}\t{' | '.join(gained)}\n")
 
 

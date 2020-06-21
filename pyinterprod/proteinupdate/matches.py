@@ -6,6 +6,7 @@ from typing import Tuple
 
 import cx_Oracle
 
+from pyinterprod.pronto import gen_entry_link
 from .. import logger, orautils
 
 
@@ -243,11 +244,12 @@ def track_count_changes(user: str, dsn: str, outdir: str):
                 changes.append((entry_acc, prev_count, new_count, change))
 
     with open(os.path.join(outdir, "entries_changes.tsv"), "wt") as fh:
-        fh.write("# Accession\tPrevious protein count\t"
+        fh.write("# Accession\tLink\tPrevious protein count\t"
                  "New protein count\tChange (%)\n")
 
         for ac, pc, nc, c in sorted(changes, key=lambda e: abs(e[3])):
-            fh.write("{}\t{}\t{}\t{:.0f}\n".format(ac, pc, nc, c))
+            fh.write("{}\t{}\t{}\t{}\t{:.0f}\n".format(ac, gen_entry_link(ac),
+                                                       pc, nc, c))
 
     changes = []
     for dbcode, new_count in databases.items():

@@ -336,7 +336,7 @@ def report_to_curators(user: str, dsn: str, dirname: str, notify: bool=True):
     with open(os.path.join(dirname, "swiss_de_changes.tsv"), "rt") as ifh:
         header = next(ifh)
         for line in ifh:
-            type_code = line.split('\t')[2]
+            type_code = line.split('\t')[3]
             type_abbr = "family" if type_code == 'F' else "others"
 
             try:
