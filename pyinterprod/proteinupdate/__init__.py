@@ -20,8 +20,6 @@ def run(config_path: str, **kwargs):
     dry_run = kwargs.get("dry_run")
     submit = kwargs.get("submit")
 
-    exclude = kwargs.get("exclude", [])
-
     with open(config_path, "rt") as fh:
         config = json.load(fh)
 
@@ -241,20 +239,19 @@ def run(config_path: str, **kwargs):
                 print(
                     "argument -t/--tasks: "
                     "invalid choice: '{}' (choose from {})\n".format(
-                        arg, ", ".join(args_tasks)
+                        arg, ", ".join(task_names)
                     )
                 )
                 sys.exit(1)
-
-    if not args_tasks and exclude:
-        task_names = [t.name for t in tasks if t.name not in exclude]
+    else:
+        args_tasks = task_names
 
     wdir = os.path.join(config["workflow"]["dir"],
                         config["release"]["version"])
     wdb = os.path.join(wdir, "proteinupdate.db")
     wname = "Protein Update"
     with Workflow(tasks, db=wdb, dir=wdir, name=wname) as w:
-        status = w.run(task_names, resume=resume, dry=dry_run,
+        status = w.run(args_tasks, resume=resume, dry=dry_run,
                        secs=submit)
 
     if not status and raise_on_error:
