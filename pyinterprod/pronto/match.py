@@ -23,6 +23,21 @@ At least 50% of the residues of the shortest signature
 """
 MIN_OVERLAP = 0.5
 
+"""
+One of the signatures must hit at least 50% of the proteins hit by the other
+signature 
+"""
+MIN_COLLOCATION = 0.5
+
+# Threshold for Jaccard index/coefficients
+MIN_SIMILARITY = 0.75
+
+FLAG_DISSIMILAR = 0
+FLAG_SIMILAR = 1
+FLAG_PARENT = 2
+FLAG_CHILD = 3
+FLAG_RELATED = 4
+
 
 def _dump_signatures(signatures: Dict[str, Sequence], dir: str) -> str:
     fd, filepath = mkstemp(dir=dir)
@@ -424,9 +439,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         logger.info("populating: comparison")
-        gen = ((signature_acc, other_acc, collocation, overlap)
-               for signature_acc, others in comparisons.items()
-               for other_acc, [collocation, overlap] in others.items())
+        gen = _iter_comparisons(num_proteins, comparisons)
         pg_cur.copy_from(file=CsvIO(gen, sep='|'),
                          table="comparison",
                          sep='|')
@@ -456,17 +469,57 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         pg_cur.execute("ANALYZE comparison")
         pg_cur.execute(
             """
-            CREATE INDEX comparison_signature_1_idx
+            CREATE INDEX comparison_signature_idx
             ON comparison (signature_acc_1)
             """
         )
         pg_cur.execute(
             """
-            CREATE INDEX comparison_signature_2_idx
-            ON comparison (signature_acc_2)
+            CLUSTER comparison 
+            USING comparison_signature_idx
             """
         )
+        # pg_cur.execute(
+        #     """
+        #     CREATE INDEX comparison_signature_2_idx
+        #     ON comparison (signature_acc_2)
+        #     """
+        # )
         pg_con.commit()
 
     pg_con.close()
     logger.info("complete")
+
+
+def _iter_comparisons(signatures: dict, comparisons: dict):
+    for acc1, others in comparisons.items():
+        cnt1 = signatures[acc1]
+
+        for acc2, [collocation, overlap] in others.items():
+            cnt2 = signatures[acc2]
+
+            if collocation / min(cnt1, cnt2) < MIN_COLLOCATION:
+                continue
+
+            """
+            At least one signature hits 50% or more 
+            of the proteins of the other signature
+            """
+            similarity = overlap / (cnt1 + cnt2 - overlap)
+            cont1 = overlap / cnt1
+            cont2 = overlap / cnt2
+
+            if similarity >= MIN_SIMILARITY:
+                flag = FLAG_SIMILAR
+            elif cont1 >= MIN_SIMILARITY:
+                if cont2 >= MIN_SIMILARITY:
+                    flag = FLAG_RELATED
+                else:
+                    flag = FLAG_CHILD
+            elif cont2 >= MIN_SIMILARITY:
+                flag = FLAG_PARENT
+            else:
+                flag = FLAG_DISSIMILAR
+
+            yield acc1, acc2, collocation, overlap, flag
+            yield acc2, acc1, collocation, overlap, flag
