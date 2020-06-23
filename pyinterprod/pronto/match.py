@@ -99,23 +99,19 @@ def _iter_matches(url: str, databases: Dict[str, int], outdir: str):
     logger.info(f"{i:>13,}")
 
 
-class File:
-    def __init__(self, path):
-        self.path = path
-
-    def __iter__(self):
-        with open(self.path, "rb") as fh:
-            while True:
-                try:
-                    obj = pickle.load(fh)
-                except EOFError:
-                    break
-                else:
-                    yield obj
+def iterfile(path: str):
+    with open(path, "rb") as fh:
+        while True:
+            try:
+                obj = pickle.load(fh)
+            except EOFError:
+                break
+            else:
+                yield obj
 
 
 def _agg_signatures(paths: Sequence[str]):
-    files = [File(path) for path in paths]
+    files = [iterfile(path) for path in paths]
     signature = None
     proteins = set()
     for key, values in heapq.merge(*files, key=lambda x: x[0]):
@@ -191,14 +187,7 @@ def export_comp_seq_matches(url: str, filepath: str):
 
 def _iter_comp_seq_matches(url: str, filepath: Optional[str]=None):
     if filepath:
-        with open(filepath, "rb") as fh:
-            while True:
-                try:
-                    row = pickle.load(fh)
-                except EOFError:
-                    break
-                else:
-                    yield row
+        return iterfile(filepath)
     else:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
@@ -368,13 +357,9 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("TRUNCATE TABLE signature2protein")
-        pg_cur.execute("TRUNCATE TABLE comparison")
         pg_con.commit()
-
         drop_index(pg_con, "signature2protein_protein_idx")
         drop_index(pg_con, "signature2protein_signature_idx")
-        drop_index(pg_con, "comparison_signature_1_idx")
-        drop_index(pg_con, "comparison_signature_2_idx")
     pg_con.close()
 
     inqueue = Queue(maxsize=1)
@@ -421,12 +406,12 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
             except KeyError:
                 comparisons[signature_acc] = others
             else:
-                for other_acc, [collocation, overlap] in others.items():
+                for other_acc, [collocations, overlaps] in others.items():
                     if other_acc in cmp:
-                        cmp[other_acc][0] += collocation
-                        cmp[other_acc][1] += overlap
+                        cmp[other_acc][0] += collocations
+                        cmp[other_acc][1] += overlaps
                     else:
-                        cmp[other_acc] = [collocation, overlap]
+                        cmp[other_acc] = [collocations, overlaps]
 
     for p in workers:
         p.join()
@@ -438,11 +423,17 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
 
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
+        pg_cur.execute("TRUNCATE TABLE comparison")
+        pg_con.commit()
+        drop_index(pg_con, "comparison_signature_1_idx")
+        drop_index(pg_con, "comparison_signature_2_idx")
+
         logger.info("populating: comparison")
         gen = _iter_comparisons(num_proteins, comparisons)
         pg_cur.copy_from(file=CsvIO(gen, sep='|'),
                          table="comparison",
                          sep='|')
+        pg_con.commit()
 
         logger.info("optimizing: signature2protein")
         pg_cur.execute("ANALYZE signature2protein")
@@ -495,19 +486,19 @@ def _iter_comparisons(signatures: dict, comparisons: dict):
     for acc1, others in comparisons.items():
         cnt1 = signatures[acc1]
 
-        for acc2, [collocation, overlap] in others.items():
+        for acc2, [collocations, overlaps] in others.items():
             cnt2 = signatures[acc2]
 
-            if collocation / min(cnt1, cnt2) < MIN_COLLOCATION:
+            if collocations / min(cnt1, cnt2) < MIN_COLLOCATION:
                 continue
 
             """
             At least one signature hits 50% or more 
             of the proteins of the other signature
             """
-            similarity = overlap / (cnt1 + cnt2 - overlap)
-            cont1 = overlap / cnt1
-            cont2 = overlap / cnt2
+            similarity = overlaps / (cnt1 + cnt2 - overlaps)
+            cont1 = overlaps / cnt1
+            cont2 = overlaps / cnt2
 
             if similarity >= MIN_SIMILARITY:
                 flag = FLAG_SIMILAR
@@ -521,5 +512,12 @@ def _iter_comparisons(signatures: dict, comparisons: dict):
             else:
                 flag = FLAG_DISSIMILAR
 
-            yield acc1, acc2, collocation, overlap, flag
-            yield acc2, acc1, collocation, overlap, flag
+            yield acc1, acc2, collocations, overlaps, similarity, flag
+
+            # Reverse parent<->child flags
+            if flag == FLAG_PARENT:
+                flag = FLAG_CHILD
+            elif flag == FLAG_CHILD:
+                flag = FLAG_PARENT
+
+            yield acc2, acc1, collocations, overlaps, similarity, flag
