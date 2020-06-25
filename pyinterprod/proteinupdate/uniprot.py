@@ -493,8 +493,7 @@ Please, take a snapshot of IPPRO, and inform UniProt they can refresh IPREADU.
 Recipients
 ----------
 To:  uniprot-database@ebi.ac.uk
-Cc:  automated_annotation@ebi.ac.uk, uniprot-prod@ebi.ac.uk
-Bcc: interpro-team@ebi.ac.uk
+Cc:  automated_annotation@ebi.ac.uk, uniprot-prod@ebi.ac.uk, interpro-team@ebi.ac.uk
 
 Subject
 -------
@@ -627,8 +626,7 @@ Please find below the list of recent integration changes.
     if notify:
         send_mail(
             to_addrs=["aa_dev@ebi.ac.uk"],
-            cc_addrs=["unirule@ebi.ac.uk"],
-            bcc_addrs=["interpro-team@ebi.ac.uk"],
+            cc_addrs=["unirule@ebi.ac.uk", "interpro-team@ebi.ac.uk"],
             subject=f"Protein update {release}: integration changes",
             content=content
         )
