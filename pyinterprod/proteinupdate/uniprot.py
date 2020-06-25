@@ -493,7 +493,7 @@ Please, take a snapshot of IPPRO, and inform UniProt they can refresh IPREADU.
 Recipients
 ----------
 To:  uniprot-database@ebi.ac.uk
-Cc:  automated_annotation@ebi.ac.uk, uniprot-prod@ebi.ac.uk, interpro-team@ebi.ac.uk
+Cc:  automated_annotation@ebi.ac.uk, uniprot-prod@ebi.ac.uk
 
 Subject
 -------
