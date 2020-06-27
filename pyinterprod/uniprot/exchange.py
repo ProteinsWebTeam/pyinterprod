@@ -8,7 +8,7 @@ from pyinterprod import logger
 from pyinterprod.utils import email
 
 
-def export_sib(url: str, send_email: bool=True):
+def export_sib(url: str, emails: dict):
     logger.info("exporting data")
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -32,18 +32,17 @@ def export_sib(url: str, send_email: bool=True):
     cur.close()
     con.close()
 
-    if send_email:
-        email.send(
-            to=[email.INTERPRO],
-            subject=f"Data for SIB ready",
-            content=f"""\
+    email.send(
+        emails,
+        subject=f"Data for SIB ready",
+        content=f"""\
 The data required by SIB was successfully exported.
 
 Please, archive the dump on the FTP, and inform SIB that the archive is ready.
 
 Recipients
 ----------
-To: {email.SIB}
+To: {emails['sib']}
 
 Subject
 -------
@@ -59,10 +58,10 @@ is available at ftp://ftp-private-beta.ebi.ac.uk/interpro/
 Kind regards,
 The InterPro Production Team
 """
-        )
+    )
 
 
-def export_xrefs(url: str, outdir: str, send_email: bool=True):
+def export_xrefs(url: str, outdir: str, emails: dict):
     """
     Format for Uniprot dat files:
       <protein>    DR   <database>; <signature/entry>; <name>; <count>.
@@ -183,13 +182,10 @@ def export_xrefs(url: str, outdir: str, send_email: bool=True):
     for path in files:
         os.chmod(path, 0o775)
 
-    if send_email:
-        email.send(
-            to=[email.UNIPROT_DB],
-            cc=[email.UNIPROT_PROD],
-            bcc=[email.INTERPRO],
-            subject="InterPro XREF files are ready",
-            content=f"""\
+    email.send(
+        emails,
+        subject="InterPro XREF files are ready",
+        content=f"""\
 Dear UniProt team,
 
 The InterPro cross-references files for {release} are available \

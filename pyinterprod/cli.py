@@ -1,14 +1,58 @@
 # -*- coding: utf-8 -*-
 
 import argparse
-import configparser
 import os
-from typing import List
+from configparser import ConfigParser
+from typing import List, Sequence
 
 from mundone import Task, Workflow
 
 from pyinterprod import __version__, iprscan
 from pyinterprod import interpro, pronto, uniparc, uniprot
+
+
+def prep_email(config: ConfigParser, to: Sequence[str], **kwargs) -> dict:
+    email = dict(config["email"])
+    email.update({
+        "Server": email["server"],
+        "Sender": email["sender"],
+        "Port": int(email["port"]),
+        "To": set(),
+        "Cc": set(),
+        "Bcc": set(),
+    })
+
+    _to = []
+    for key in to:
+        try:
+            addr = config["email"][key]
+        except KeyError:
+            continue
+        else:
+            if addr:
+                email["To"].add(addr)
+
+    _cc = []
+    for key in kwargs.get("cc", []):
+        try:
+            addr = config["email"][key]
+        except KeyError:
+            continue
+        else:
+            if addr and addr not in email["To"]:
+                email["Cc"].add(addr)
+
+    _bcc = []
+    for key in kwargs.get("bcc", []):
+        try:
+            addr = config["email"][key]
+        except KeyError:
+            continue
+        else:
+            if addr and addr not in email["To"] and addr not in email["Cc"]:
+                email["Bcc"].add(addr)
+
+    return email
 
 
 def run_protein_update():
@@ -36,7 +80,7 @@ def run_protein_update():
     if not os.path.isfile(args.config):
         parser.error(f"cannot open '{args.config}': no such file or directory")
 
-    config = configparser.ConfigParser()
+    config = ConfigParser()
     config.read(args.config)
 
     dsn = config["oracle"]["dsn"]
@@ -48,9 +92,10 @@ def run_protein_update():
     uniprot_version = config["uniprot"]["version"]
     xrefs_dir = config["uniprot"]["xrefs"]
 
+    emails = config["emails"]
+
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
-    send_emails = config.getboolean("misc", "send_emails")
     workflow_dir = config["misc"]["workflow_dir"]
 
     os.makedirs(data_dir, exist_ok=True)
@@ -133,14 +178,16 @@ def run_protein_update():
         # Data for UniProt
         Task(
             fn=uniprot.exchange.export_sib,
-            args=(interpro_url, send_emails),
+            args=(interpro_url, prep_email(config, to=["interpro"])),
             name="export-sib",
             scheduler=dict(queue=lsf_queue),
             requires=["update-matches"]
         ),
         Task(
             fn=uniprot.unirule.report_integration_changes,
-            args=(interpro_url, send_emails),
+            args=(interpro_url, prep_email(config,
+                                           to=["aa_dev"],
+                                           cc=["unirule", "interpro"])),
             name="report-changes",
             scheduler=dict(mem=2000, queue=lsf_queue),
             requires=["update-matches"]
@@ -171,7 +218,10 @@ def run_protein_update():
         ),
         Task(
             fn=uniprot.exchange.export_xrefs,
-            args=(interpro_url, xrefs_dir, send_emails),
+            args=(interpro_url, xrefs_dir, prep_email(config,
+                                                      to=["uniprot_db"],
+                                                      cc=["uniprot_prod",
+                                                          "interpro"])),
             name="export-xrefs",
             scheduler=dict(queue=lsf_queue),
             requires=["xref-summary"]
@@ -179,7 +229,7 @@ def run_protein_update():
 
         Task(
             fn=uniprot.unirule.ask_to_snapshot,
-            args=(interpro_url, send_emails),
+            args=(interpro_url, prep_email(config, to=["interpro"])),
             name="notify-interpro",
             scheduler=dict(queue=lsf_queue),
             requires=["aa-iprscan", "xref-condensed", "xref-summary",
@@ -201,13 +251,6 @@ def run_protein_update():
             scheduler=dict(queue=lsf_queue),
             requires=["import-sites", "update-matches"]
         ),
-        # Task(
-        #     fn=interpro.legacy.refresh_mviews,
-        #     args=(interpro_url, send_emails),
-        #     name="resfresh-mv",
-        #     scheduler=dict(queue=lsf_queue),
-        #     requires=["update-matches"]
-        # ),
     ]
 
     # Adding Pronto tasks

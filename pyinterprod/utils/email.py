@@ -3,49 +3,26 @@
 import mimetypes
 import os
 from email.message import EmailMessage
-from getpass import getuser
 from smtplib import SMTP
-from typing import Sequence
+from typing import Optional, Sequence
+
+_osos = Optional[Sequence[str]]  # optional sequence of strings
 
 
-# Email addresses constant
-# AA = "automated_annotation@ebi.ac.uk"
-# AA_DEV = "aa_dev@ebi.ac.uk"
-# INTERPRO = "interpro-team@ebi.ac.uk"
-# UNIPROT_DB = "uniprot-database@ebi.ac.uk"
-# UNIPROT_PROD = "uniprot-prod@ebi.ac.uk"
-# UNIRULE = "unirule@ebi.ac.uk"
-# SIB = "uniprot-prod@isb-sib.ch"
-AA = "mblum@ebi.ac.uk"
-AA_DEV = "mblum@ebi.ac.uk"
-INTERPRO = "mblum@ebi.ac.uk"
-UNIPROT_DB = "mblum@ebi.ac.uk"
-UNIPROT_PROD = "mblum@ebi.ac.uk"
-UNIRULE = "mblum@ebi.ac.uk"
-SIB = "mblum@ebi.ac.uk"
-
-# Email server info
-_EBI_EMAIL_SERVER = "outgoing.ebi.ac.uk"
-_EBI_EMAIL_PORT = 587
-_EBI_EMAIL = "@ebi.ac.uk"
-
-
-def send(to: Sequence[str], subject: str, content: str, **kwargs):
-    cc_addrs = kwargs.get("cc")
-    bcc_addrs = kwargs.get("bcc")
-    attachments = kwargs.get("attachments")
-    sender = getuser() + _EBI_EMAIL
+def send(info: dict, subject: str, content: str, attachments: _osos = None):
+    if not info["To"]:
+        return
 
     msg = EmailMessage()
     msg.set_content(content)
-    msg["Sender"] = sender
-    msg["To"] = set(to)
+    msg["Sender"] = info["Sender"]
+    msg["To"] = info["To"]
 
-    if cc_addrs:
-        msg["Cc"] = ','.join(set(cc_addrs))
+    if info["Cc"]:
+        msg["Cc"] = ','.join(info["Cc"])
 
-    if bcc_addrs:
-        msg["Bcc"] = ','.join(set(bcc_addrs))
+    if info["Bcc"]:
+        msg["Bcc"] = ','.join(info["Bcc"])
 
     msg["Subject"] = subject
 
@@ -65,5 +42,5 @@ def send(to: Sequence[str], subject: str, content: str, **kwargs):
                                    subtype=subtype,
                                    filename=os.path.basename(path))
 
-    with SMTP(_EBI_EMAIL_SERVER, port=_EBI_EMAIL_PORT) as s:
+    with SMTP(info["Server"], port=info["Port"]) as s:
         s.send_message(msg)

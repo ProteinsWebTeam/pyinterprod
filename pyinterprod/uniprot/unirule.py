@@ -8,7 +8,7 @@ from pyinterprod import logger
 from pyinterprod.utils import email, oracle, Table
 
 
-def report_integration_changes(url: str, send_email: bool=True):
+def report_integration_changes(url: str, emails: dict):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
@@ -97,14 +97,11 @@ InterPro entry
 
     content += "\nKind regards,\nThe InterPro Production Team\n"
 
-    if send_email:
-        email.send(
-            to=[email.AA_DEV],
-            subject=f"Protein update {release}: integration changes",
-            content=content,
-            cc=[email.UNIRULE],
-            bcc=[email.INTERPRO]
-        )
+    email.send(
+        emails,
+        subject=f"Protein update {release}: integration changes",
+        content=content
+    )
 
 
 def _condense(matches: MutableMapping[str, Sequence[Tuple[int, int]]]):
@@ -441,7 +438,7 @@ def build_xref_summary(url: str):
     logger.info("XREF_SUMMARY ready")
 
 
-def ask_to_snapshot(url: str, send_email: bool=True):
+def ask_to_snapshot(url: str, emails: dict):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
@@ -471,8 +468,8 @@ Please, take a snapshot of IPPRO, and inform UniProt they can refresh IPREADU.
 
 Recipients
 ----------
-To:  {email.UNIPROT_DB}
-Cc:  {email.AA}, {email.UNIPROT_PROD}
+To:  {emails['uniprot_db']}
+Cc:  {emails['aa']}, {emails['uniprot_prod']}
 
 Subject
 -------
@@ -505,12 +502,11 @@ The InterPro Production Team
 """
 
     try:
-        if send_email:
-            email.send(
-                to=[email.INTERPRO],
-                subject=f"Protein update {release}: please snapshot IPPRO",
-                content=content
-            )
+        email.send(
+            emails,
+            subject=f"Protein update {release}: please snapshot IPPRO",
+            content=content
+        )
 
         # Update PREV_ID only if mail sent
         cur.execute(
