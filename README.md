@@ -148,11 +148,6 @@ The optional arguments are:
     <td>xref-summary</td>
 </tr>
 <tr>
-    <td>match-counts</td>
-    <td>Update legacy materialized views</td>
-    <td>update-matches</td>
-</tr>
-<tr>
     <td>export-sib</td>
     <td>Export Oracle tables required by the Swiss-Prot team</td>
     <td>update-matches</td>
