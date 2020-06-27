@@ -12,7 +12,7 @@ from pyinterprod import interpro, pronto, uniparc, uniprot
 
 
 def prep_email(config: ConfigParser, to: Sequence[str], **kwargs) -> dict:
-    email = dict(config["email"])
+    email = dict(config["emails"])
     email.update({
         "Server": email["server"],
         "Sender": email["sender"],
@@ -25,7 +25,7 @@ def prep_email(config: ConfigParser, to: Sequence[str], **kwargs) -> dict:
     _to = []
     for key in to:
         try:
-            addr = config["email"][key]
+            addr = config["emails"][key]
         except KeyError:
             continue
         else:
@@ -35,7 +35,7 @@ def prep_email(config: ConfigParser, to: Sequence[str], **kwargs) -> dict:
     _cc = []
     for key in kwargs.get("cc", []):
         try:
-            addr = config["email"][key]
+            addr = config["emails"][key]
         except KeyError:
             continue
         else:
@@ -45,7 +45,7 @@ def prep_email(config: ConfigParser, to: Sequence[str], **kwargs) -> dict:
     _bcc = []
     for key in kwargs.get("bcc", []):
         try:
-            addr = config["email"][key]
+            addr = config["emails"][key]
         except KeyError:
             continue
         else:
