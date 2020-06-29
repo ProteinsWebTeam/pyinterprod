@@ -134,7 +134,7 @@ def import_annotations(ora_url: str, pg_url: str):
 
 
 def _get_constraints(term_id: str, ancestors: dict, constraints: dict,
-                    final: set=set()) -> set:
+                     final: set = set()) -> set:
     final |= constraints.get(term_id, set())
 
     for parent_id in ancestors.get(term_id, []):

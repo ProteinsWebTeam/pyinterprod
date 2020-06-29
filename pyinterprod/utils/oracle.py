@@ -20,7 +20,7 @@ def drop_mview(cur: Cursor, name: str):
             raise exc
 
 
-def drop_table(cur: Cursor, name: str, purge: bool=False):
+def drop_table(cur: Cursor, name: str, purge: bool = False):
     if purge:
         sql = f"DROP TABLE {name} PURGE"
     else:
@@ -37,7 +37,8 @@ def drop_table(cur: Cursor, name: str, purge: bool=False):
             raise exc
 
 
-def gather_stats(cur: Cursor, schema: str, table: str, partition: Optional[str]=None):
+def gather_stats(cur: Cursor, schema: str, table: str,
+                 partition: Optional[str] = None):
     if partition:
         args = (schema, table, partition)
     else:
@@ -140,7 +141,7 @@ def get_partitions(cur: Cursor, schema: str, name: str) -> List[dict]:
     return sorted(partitions.values(), key=lambda x: x["position"])
 
 
-def rebuild_index(cur: Cursor, name: str, parallel: bool=False):
+def rebuild_index(cur: Cursor, name: str, parallel: bool = False):
     if parallel:
         cur.execute(f"ALTER INDEX {name} REBUILD PARALLEL")
 
@@ -159,7 +160,7 @@ def toggle_constraint(cur: Cursor, table: str, constraint: str, enable: bool):
     cur.execute(sql)
 
 
-def truncate_table(cur: Cursor, name: str, reuse_storage: bool=False):
+def truncate_table(cur: Cursor, name: str, reuse_storage: bool = False):
     if reuse_storage:
         sql = f"TRUNCATE TABLE {name} REUSE STORAGE"
     else:
@@ -168,7 +169,7 @@ def truncate_table(cur: Cursor, name: str, reuse_storage: bool=False):
     cur.execute(sql)
 
 
-def catch_temp_error(fn: Callable, args: Sequence, max_attempts: int=3):
+def catch_temp_error(fn: Callable, args: Sequence, max_attempts: int = 3):
     num_attempts = 0
     while True:
         try:

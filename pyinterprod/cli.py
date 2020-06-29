@@ -370,7 +370,7 @@ def run_pronto_update():
     if not os.path.isfile(args.config):
         parser.error(f"cannot open '{args.config}': no such file or directory")
 
-    config = configparser.ConfigParser()
+    config = ConfigParser()
     config.read(args.config)
 
     dsn = config["oracle"]["dsn"]

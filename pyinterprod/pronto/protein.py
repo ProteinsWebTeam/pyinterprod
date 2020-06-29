@@ -61,7 +61,7 @@ def import_similarity_comments(ora_url: str, pg_url: str):
 
 
 def import_protein_names(ora_url: str, pg_url: str, database: str,
-                         dir: Optional[str]=None):
+                         dir: Optional[str] = None):
     logger.info("populating protein2name")
     fd, tmp_database = mkstemp(dir=dir)
     os.close(fd)

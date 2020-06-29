@@ -128,7 +128,8 @@ def _agg_signatures(paths: Sequence[str]):
         yield signature, len(proteins)
 
 
-def import_matches(ora_url: str, pg_url: str, output: str, dir: Optional[str]=None):
+def import_matches(ora_url: str, pg_url: str, output: str,
+                   dir: Optional[str] = None):
     tmpdir = mkdtemp(dir=dir)
 
     logger.info("populating")
@@ -185,7 +186,7 @@ def export_comp_seq_matches(url: str, filepath: str):
     logger.info(f"{i:>13,}")
 
 
-def _iter_comp_seq_matches(url: str, filepath: Optional[str]=None):
+def _iter_comp_seq_matches(url: str, filepath: Optional[str] = None):
     if filepath:
         return iterfile(filepath)
     else:

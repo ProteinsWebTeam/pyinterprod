@@ -199,7 +199,7 @@ class Analysis:
         return row and row[0] >= max_upi
 
 
-def get_analyses(url: str, use_matches: bool=True) -> List[Analysis]:
+def get_analyses(url: str, use_matches: bool = True) -> List[Analysis]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -360,7 +360,7 @@ def update_analyses(url: str, table: str, partitioned_table: str,
     con.close()
 
 
-def import_matches(url: str, threads: int=1):
+def import_matches(url: str, threads: int = 1):
     pending = {}
     for analysis in get_analyses(url, use_matches=True):
         try:
@@ -458,7 +458,7 @@ def import_matches(url: str, threads: int=1):
     logger.info("complete")
 
 
-def import_sites(url: str, threads: int=1):
+def import_sites(url: str, threads: int = 1):
     pending = {}
     for analysis in get_analyses(url, use_matches=False):
         try:

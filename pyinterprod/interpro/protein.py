@@ -96,7 +96,7 @@ class Entry(object):
         return self.record[3] != other.record[3]
 
     def diff_annotation(self, other):
-        for i in (1, 2, 4, 5 ,6):
+        for i in (1, 2, 4, 5, 6):
             if self.record[i] != other.record[i]:
                 return True
         return False
@@ -141,7 +141,7 @@ class Entry(object):
         )
 
 
-def init_database(dir: Optional[str]=None) -> str:
+def init_database(dir: Optional[str] = None) -> str:
     fd, database = mkstemp(suffix=".sqlite", dir=dir)
     os.close(fd)
     os.remove(database)
@@ -165,7 +165,8 @@ def init_database(dir: Optional[str]=None) -> str:
     return database
 
 
-def track_changes(url: str, swissp: str, trembl: str, dir: Optional[str]=None):
+def track_changes(url: str, swissp: str, trembl: str,
+                  dir: Optional[str] = None):
     logger.info("starting")
     database_old = init_database(dir=dir)
     database_new = init_database(dir=dir)
@@ -295,8 +296,8 @@ def track_changes(url: str, swissp: str, trembl: str, dir: Optional[str]=None):
     con.close()
 
 
-def delete_obsoletes(url: str, truncate: bool=False, threads: int=8,
-                     step: int=10000):
+def delete_obsoletes(url: str, truncate: bool = False, threads: int = 8,
+                     step: int = 10000):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 

@@ -5,7 +5,7 @@ import sqlite3
 
 
 class KVdb:
-    def __init__(self, filepath: str, writeback: bool=False):
+    def __init__(self, filepath: str, writeback: bool = False):
         self.filepath = filepath
         self.writeback = writeback
         self.con = sqlite3.connect(self.filepath)
