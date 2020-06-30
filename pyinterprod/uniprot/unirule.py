@@ -58,10 +58,12 @@ def report_integration_changes(url: str, emails: dict):
                     changes[signature] = ("unchecked", entry_then, entry_now)
             elif entry_now in checked_entries:
                 # Integrated in a different (checked) entry
-                changes[signature] = ("integrated (checked)", entry_then, entry_now)
+                changes[signature] = ("integrated/checked", entry_then,
+                                      entry_now)
             else:
                 # Integrated in a different (unchecked) entry
-                changes[signature] = ("integrated (unchecked)", entry_then, entry_now)
+                changes[signature] = ("integrated/unchecked", entry_then,
+                                      entry_now)
         else:
             # Signature unintegrated
             changes[signature] = ("unintegrated", entry_then, '')
@@ -76,24 +78,24 @@ Dear UniProt team,
 Please find below the list of recent integration changes.
 
 Description of states:
-  - integrated (checked):           the signature has been integrated in an \
+  - integrated/checked:       the signature has been integrated in an \
 InterPro entry ready to be made public
-  - integrated (unchecked):        the signature has been integrated in an \
+  - integrated/unchecked:     the signature has been integrated in an \
 InterPro entry not ready to be made public
-  - unchecked:                     the InterPro entry, in which the signature \
+  - unchecked:                the InterPro entry, in which the signature \
 is integrated, has been flagged as not ready to be made public
-  - unintegrated:                  the signature has been removed from an \
+  - unintegrated:             the signature has been removed from an \
 InterPro entry
-  - deleted:                       the signature does not exist any more
+  - deleted:                  the signature does not exist anymore
 
 """
-    content += (f"{'Signature':<30}{'Status':<40}{'Previous entry':<20}"
-                f"{'Current entry':<20}\n")
-    content += '-' * 110 + '\n'
+    content += (f"{'Signature':<30}{'Status':<30}{'Previous entry':^30}"
+                f"{'Current entry':^30}\n")
+    content += '-' * 120 + '\n'
 
     for acc in sorted(changes, key=lambda k: k.lower()):
         status, prev, curr = changes[acc]
-        content += f"{acc:<30}{status:<40}{prev:<20}{curr:<20}\n"
+        content += f"{acc:<30}{status:<30}{prev:^30}{curr:^30}\n"
 
     content += "\nKind regards,\nThe InterPro Production Team\n"
 
