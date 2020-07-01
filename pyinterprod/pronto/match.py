@@ -426,8 +426,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("TRUNCATE TABLE comparison")
         pg_con.commit()
-        drop_index(pg_con, "comparison_signature_1_idx")
-        drop_index(pg_con, "comparison_signature_2_idx")
+        drop_index(pg_con, "comparison_signature_idx")
 
         logger.info("populating: comparison")
         gen = _iter_comparisons(num_proteins, comparisons)
@@ -471,12 +470,6 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
             USING comparison_signature_idx
             """
         )
-        # pg_cur.execute(
-        #     """
-        #     CREATE INDEX comparison_signature_2_idx
-        #     ON comparison (signature_acc_2)
-        #     """
-        # )
         pg_con.commit()
 
     pg_con.close()
