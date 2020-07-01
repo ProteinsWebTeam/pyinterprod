@@ -11,12 +11,11 @@ from pyinterprod import __version__, iprscan
 from pyinterprod import interpro, pronto, uniparc, uniprot
 
 
-def prep_email(config: ConfigParser, to: Sequence[str], **kwargs) -> dict:
-    email = dict(config["emails"])
-    email.update({
-        "Server": email["server"],
-        "Sender": email["sender"],
-        "Port": int(email["port"]),
+def prep_email(emails: dict, to: Sequence[str], **kwargs) -> dict:
+    emails.update({
+        "Server": emails["server"],
+        "Sender": emails["sender"],
+        "Port": int(emails["port"]),
         "To": set(),
         "Cc": set(),
         "Bcc": set(),
@@ -25,34 +24,34 @@ def prep_email(config: ConfigParser, to: Sequence[str], **kwargs) -> dict:
     _to = []
     for key in to:
         try:
-            addr = config["emails"][key]
+            addr = emails[key]
         except KeyError:
             continue
         else:
             if addr:
-                email["To"].add(addr)
+                emails["To"].add(addr)
 
     _cc = []
     for key in kwargs.get("cc", []):
         try:
-            addr = config["emails"][key]
+            addr = emails[key]
         except KeyError:
             continue
         else:
-            if addr and addr not in email["To"]:
-                email["Cc"].add(addr)
+            if addr and addr not in emails["To"]:
+                emails["Cc"].add(addr)
 
     _bcc = []
     for key in kwargs.get("bcc", []):
         try:
-            addr = config["emails"][key]
+            addr = emails[key]
         except KeyError:
             continue
         else:
-            if addr and addr not in email["To"] and addr not in email["Cc"]:
-                email["Bcc"].add(addr)
+            if addr and addr not in emails["To"] and addr not in emails["Cc"]:
+                emails["Bcc"].add(addr)
 
-    return email
+    return emails
 
 
 def run_protein_update():
@@ -92,7 +91,7 @@ def run_protein_update():
     uniprot_version = config["uniprot"]["version"]
     xrefs_dir = config["uniprot"]["xrefs"]
 
-    emails = config["emails"]
+    emails = dict(config["emails"])
 
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
@@ -178,14 +177,14 @@ def run_protein_update():
         # Data for UniProt
         Task(
             fn=uniprot.exchange.export_sib,
-            args=(interpro_url, prep_email(config, to=["interpro"])),
+            args=(interpro_url, prep_email(emails, to=["interpro"])),
             name="export-sib",
             scheduler=dict(queue=lsf_queue),
             requires=["update-matches"]
         ),
         Task(
             fn=uniprot.unirule.report_integration_changes,
-            args=(interpro_url, prep_email(config,
+            args=(interpro_url, prep_email(emails,
                                            to=["aa_dev"],
                                            cc=["unirule", "interpro"])),
             name="report-changes",
@@ -218,7 +217,7 @@ def run_protein_update():
         ),
         Task(
             fn=uniprot.exchange.export_xrefs,
-            args=(interpro_url, xrefs_dir, prep_email(config,
+            args=(interpro_url, xrefs_dir, prep_email(emails,
                                                       to=["uniprot_db"],
                                                       cc=["uniprot_prod",
                                                           "interpro"])),
@@ -229,7 +228,7 @@ def run_protein_update():
 
         Task(
             fn=uniprot.unirule.ask_to_snapshot,
-            args=(interpro_url, prep_email(config, to=["interpro"])),
+            args=(interpro_url, prep_email(emails, to=["interpro"])),
             name="notify-interpro",
             scheduler=dict(queue=lsf_queue),
             requires=["aa-iprscan", "xref-condensed", "xref-summary",
