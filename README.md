@@ -49,7 +49,7 @@ The optional arguments are:
 - `--dry-run`: do not run tasks, only list those about to be run
 - `--resume`: skip successfully completed tasks. By default all tasks are run, even if already completed in the past. 
 
-<a name="protein-update-tasks"/>
+<a name="protein-update-tasks"></a>
 
 #### Tasks
 
@@ -177,7 +177,7 @@ The optional arguments are:
     <td>Import the InterPro entries and member database signatures used in UniRule</td>
     <td>pronto</td>
 </tr>
-</tobdy>
+</tbody>
 </table>
 
 ### Pronto
@@ -193,7 +193,7 @@ The optional arguments are:
 
 Note that there is not `--resume` argument. When using the `-t, --tasks` option, **only the passed tasks are run**, regardless of the status of their respective dependencies.
 
-<a name="pronto-tasks"/>
+<a name="pronto-tasks"></a>
 
 #### Tasks
 
