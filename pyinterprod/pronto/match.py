@@ -32,12 +32,6 @@ MIN_COLLOCATION = 0.5
 # Threshold for Jaccard index/coefficients
 MIN_SIMILARITY = 0.75
 
-FLAG_DISSIMILAR = 0
-FLAG_SIMILAR = 1
-FLAG_PARENT = 2
-FLAG_CHILD = 3
-FLAG_RELATED = 4
-
 
 def _dump_signatures(signatures: Dict[str, Sequence], dir: str) -> str:
     fd, filepath = mkstemp(dir=dir)
@@ -436,20 +430,20 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         pg_con.commit()
 
         logger.info("optimizing: signature2protein")
-        pg_cur.execute("ANALYZE signature2protein")
-        pg_cur.execute(
+        pg_cur.execute("ANALYZE signature2protein")  # ~15min
+        pg_cur.execute(  # ~45min
             """
             CREATE INDEX signature2protein_protein_idx
             ON signature2protein (protein_acc)
             """
         )
-        pg_cur.execute(
+        pg_cur.execute(  # ~2h
             """
             CREATE INDEX signature2protein_signature_idx
             ON signature2protein (signature_acc)
             """
         )
-        pg_cur.execute(
+        pg_cur.execute(  # ~6h
             """
             CLUSTER signature2protein 
             USING signature2protein_signature_idx
@@ -495,23 +489,23 @@ def _iter_comparisons(signatures: dict, comparisons: dict):
             cont2 = overlaps / cnt2
 
             if similarity >= MIN_SIMILARITY:
-                flag = FLAG_SIMILAR
+                relationship = "similar"
             elif cont1 >= MIN_SIMILARITY:
                 if cont2 >= MIN_SIMILARITY:
-                    flag = FLAG_RELATED
+                    relationship = "related"
                 else:
-                    flag = FLAG_CHILD
+                    relationship = "child"
             elif cont2 >= MIN_SIMILARITY:
-                flag = FLAG_PARENT
+                relationship = "parent"
             else:
-                flag = FLAG_DISSIMILAR
+                relationship = None
 
-            yield acc1, acc2, collocations, overlaps, similarity, flag
+            yield acc1, acc2, collocations, overlaps, similarity, relationship
 
             # Reverse parent<->child flags
-            if flag == FLAG_PARENT:
-                flag = FLAG_CHILD
-            elif flag == FLAG_CHILD:
-                flag = FLAG_PARENT
+            if relationship == "parent":
+                relationship = "child"
+            elif relationship == "child":
+                relationship = "parent"
 
-            yield acc2, acc1, collocations, overlaps, similarity, flag
+            yield acc2, acc1, collocations, overlaps, similarity, relationship
