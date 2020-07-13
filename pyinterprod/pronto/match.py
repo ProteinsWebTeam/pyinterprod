@@ -6,7 +6,7 @@ import pickle
 import shutil
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp, mkstemp
-from typing import Dict, Iterator, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence
 
 import cx_Oracle
 import psycopg2
@@ -422,7 +422,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         pg_cur.execute("TRUNCATE TABLE comparison")
         pg_con.commit()
         drop_index(pg_con, "comparison_idx")
-        gen = _iter_comparisons(num_proteins, comparisons)
+        gen = _iter_comparisons(comparisons)
         pg_cur.copy_from(file=CsvIO(gen, sep='|'),
                          table="comparison",
                          sep='|')
@@ -448,7 +448,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         pg_cur.execute("TRUNCATE TABLE prediction")
         pg_con.commit()
         drop_index(pg_con, "prediction_idx")
-        gen = _iter_predictions(_iter_comparisons(num_proteins, comparisons))
+        gen = _iter_predictions(num_proteins, comparisons)
         pg_cur.copy_from(file=CsvIO(gen, sep='|'),
                          table="prediction",
                          sep='|')
@@ -496,47 +496,48 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
     logger.info("complete")
 
 
-def _iter_comparisons(signatures: dict, comparisons: dict):
+def _iter_comparisons(comparisons: dict):
+    for acc1, others in comparisons.items():
+        for acc2, [collocations, overlaps] in others.items():
+            yield acc1, acc2, collocations, overlaps
+
+
+def _iter_predictions(signatures: dict, comparisons: dict):
     for acc1, others in comparisons.items():
         cnt1 = signatures[acc1]
 
         for acc2, [collocations, overlaps] in others.items():
             cnt2 = signatures[acc2]
 
-            yield acc1, acc2, cnt1, cnt2, collocations, overlaps
+            if collocations / min(cnt1, cnt2) < MIN_COLLOCATION:
+                continue
 
+            """
+            At least one signature hits 50% or more 
+            of the proteins of the other signature
+            """
+            similarity = overlaps / (cnt1 + cnt2 - overlaps)
+            cont1 = overlaps / cnt1
+            cont2 = overlaps / cnt2
 
-def _iter_predictions(comparisons: Iterator):
-    for acc1, acc2, cnt1, cnt2, collocations, overlaps in comparisons:
-        if collocations / min(cnt1, cnt2) < MIN_COLLOCATION:
-            continue
-
-        """
-        At least one signature hits 50% or more 
-        of the proteins of the other signature
-        """
-        similarity = overlaps / (cnt1 + cnt2 - overlaps)
-        cont1 = overlaps / cnt1
-        cont2 = overlaps / cnt2
-
-        if similarity >= MIN_SIMILARITY:
-            relationship = "similar"
-        elif cont1 >= MIN_SIMILARITY:
-            if cont2 >= MIN_SIMILARITY:
-                relationship = "related"
+            if similarity >= MIN_SIMILARITY:
+                relationship = "similar"
+            elif cont1 >= MIN_SIMILARITY:
+                if cont2 >= MIN_SIMILARITY:
+                    relationship = "related"
+                else:
+                    relationship = "child"
+            elif cont2 >= MIN_SIMILARITY:
+                relationship = "parent"
             else:
+                relationship = None
+
+            yield acc1, acc2, collocations, overlaps, similarity, relationship
+
+            # Reverse parent<->child flags
+            if relationship == "parent":
                 relationship = "child"
-        elif cont2 >= MIN_SIMILARITY:
-            relationship = "parent"
-        else:
-            relationship = None
+            elif relationship == "child":
+                relationship = "parent"
 
-        yield acc1, acc2, collocations, overlaps, similarity, relationship
-
-        # Reverse parent<->child flags
-        if relationship == "parent":
-            relationship = "child"
-        elif relationship == "child":
-            relationship = "parent"
-
-        yield acc2, acc1, collocations, overlaps, similarity, relationship
+            yield acc2, acc1, collocations, overlaps, similarity, relationship
