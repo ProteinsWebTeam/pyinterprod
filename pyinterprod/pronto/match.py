@@ -209,14 +209,14 @@ def _iter_comp_seq_matches(url: str, filepath: Optional[str] = None):
             if row[0] != protein_acc:
                 if protein_acc:
                     yield protein_acc, is_reviewed, taxon_left_num, matches
-                    
+
                 protein_acc = row[0]
                 is_reviewed = row[1] == 'S'
                 taxon_left_num = row[2]
                 matches = []
-                
+
             matches.append(row[3:])
-        
+
         cur.close()
         con.close()
 
@@ -418,50 +418,76 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
 
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
+        logger.info("populating: comparison")
         pg_cur.execute("TRUNCATE TABLE comparison")
         pg_con.commit()
-        drop_index(pg_con, "comparison_signature_idx")
-
-        logger.info("populating: comparison")
+        drop_index(pg_con, "comparison_idx")
         gen = _iter_comparisons(num_proteins, comparisons)
         pg_cur.copy_from(file=CsvIO(gen, sep='|'),
                          table="comparison",
                          sep='|')
         pg_con.commit()
 
-        logger.info("optimizing: signature2protein")
-        pg_cur.execute("ANALYZE signature2protein")  # ~15min
-        pg_cur.execute(  # ~45min
-            """
-            CREATE INDEX signature2protein_protein_idx
-            ON signature2protein (protein_acc)
-            """
-        )
-        pg_cur.execute(  # ~2h
-            """
-            CREATE INDEX signature2protein_signature_idx
-            ON signature2protein (signature_acc)
-            """
-        )
-        pg_cur.execute(  # ~6h
-            """
-            CLUSTER signature2protein 
-            USING signature2protein_signature_idx
-            """
-        )
-
         logger.info("optimizing: comparison")
         pg_cur.execute("ANALYZE comparison")
         pg_cur.execute(
             """
-            CREATE INDEX comparison_signature_idx
-            ON comparison (signature_acc_1)
+            CREATE INDEX comparison_idx
+            ON comparison (signature_acc_1, signature_acc_2)
             """
         )
         pg_cur.execute(
             """
             CLUSTER comparison 
-            USING comparison_signature_idx
+            USING comparison_idx
+            """
+        )
+        pg_con.commit()
+
+        logger.info("populating: prediction")
+        pg_cur.execute("TRUNCATE TABLE prediction")
+        pg_con.commit()
+        drop_index(pg_con, "prediction_idx")
+        gen = _iter_predictions(_iter_comparisons(num_proteins, comparisons))
+        pg_cur.copy_from(file=CsvIO(gen, sep='|'),
+                         table="prediction",
+                         sep='|')
+        pg_con.commit()
+
+        logger.info("optimizing: prediction")
+        pg_cur.execute("ANALYZE prediction")
+        pg_cur.execute(
+            """
+            CREATE INDEX prediction_idx
+            ON prediction (signature_acc_1)
+            """
+        )
+        pg_cur.execute(
+            """
+            CLUSTER prediction 
+            USING prediction_idx
+            """
+        )
+        pg_con.commit()
+
+        logger.info("optimizing: signature2protein")
+        pg_cur.execute("ANALYZE signature2protein")
+        pg_cur.execute(
+            """
+            CREATE INDEX signature2protein_protein_idx
+            ON signature2protein (protein_acc)
+            """
+        )
+        pg_cur.execute(
+            """
+            CREATE INDEX signature2protein_signature_idx
+            ON signature2protein (signature_acc)
+            """
+        )
+        pg_cur.execute(
+            """
+            CLUSTER signature2protein 
+            USING signature2protein_signature_idx
             """
         )
         pg_con.commit()
@@ -477,35 +503,40 @@ def _iter_comparisons(signatures: dict, comparisons: dict):
         for acc2, [collocations, overlaps] in others.items():
             cnt2 = signatures[acc2]
 
-            if collocations / min(cnt1, cnt2) < MIN_COLLOCATION:
-                continue
+            yield acc1, acc2, cnt1, cnt2, collocations, overlaps
 
-            """
-            At least one signature hits 50% or more 
-            of the proteins of the other signature
-            """
-            similarity = overlaps / (cnt1 + cnt2 - overlaps)
-            cont1 = overlaps / cnt1
-            cont2 = overlaps / cnt2
 
-            if similarity >= MIN_SIMILARITY:
-                relationship = "similar"
-            elif cont1 >= MIN_SIMILARITY:
-                if cont2 >= MIN_SIMILARITY:
-                    relationship = "related"
-                else:
-                    relationship = "child"
-            elif cont2 >= MIN_SIMILARITY:
-                relationship = "parent"
+def _iter_predictions(comparisons: Iterator):
+    for acc1, acc2, cnt1, cnt2, collocations, overlaps in comparisons:
+        if collocations / min(cnt1, cnt2) < MIN_COLLOCATION:
+            continue
+
+        """
+        At least one signature hits 50% or more 
+        of the proteins of the other signature
+        """
+        similarity = overlaps / (cnt1 + cnt2 - overlaps)
+        cont1 = overlaps / cnt1
+        cont2 = overlaps / cnt2
+
+        if similarity >= MIN_SIMILARITY:
+            relationship = "similar"
+        elif cont1 >= MIN_SIMILARITY:
+            if cont2 >= MIN_SIMILARITY:
+                relationship = "related"
             else:
-                relationship = None
-
-            yield acc1, acc2, collocations, overlaps, similarity, relationship
-
-            # Reverse parent<->child flags
-            if relationship == "parent":
                 relationship = "child"
-            elif relationship == "child":
-                relationship = "parent"
+        elif cont2 >= MIN_SIMILARITY:
+            relationship = "parent"
+        else:
+            relationship = None
 
-            yield acc2, acc1, collocations, overlaps, similarity, relationship
+        yield acc1, acc2, collocations, overlaps, similarity, relationship
+
+        # Reverse parent<->child flags
+        if relationship == "parent":
+            relationship = "child"
+        elif relationship == "child":
+            relationship = "parent"
+
+        yield acc2, acc1, collocations, overlaps, similarity, relationship
