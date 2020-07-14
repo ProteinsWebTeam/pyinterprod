@@ -313,11 +313,11 @@ def _process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
                             if o > 0:
                                 residues += o  # matches overlap
 
-                        # Add collocation/overlap
+                        # Add collocation, protein overlap, residue overlap
                         try:
                             cmp = comparisons[signature_acc][other_acc]
                         except KeyError:
-                            comparisons[signature_acc][other_acc] = [0, 0]
+                            comparisons[signature_acc][other_acc] = [0, 0, 0]
                             cmp = comparisons[signature_acc][other_acc]
 
                         # collocation
@@ -327,6 +327,9 @@ def _process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
                         shortest = min(residues_1, residues_2)
                         if residues >= MIN_OVERLAP * shortest:
                             cmp[1] += 1
+
+                        # Overlapping residues
+                        cmp[2] += residues
 
             cur.copy_from(file=CsvIO(iter(values), sep='|'),
                           table="signature2protein",
@@ -401,12 +404,12 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
             except KeyError:
                 comparisons[signature_acc] = others
             else:
-                for other_acc, [collocations, overlaps] in others.items():
+                for other_acc, values in others.items():
                     if other_acc in cmp:
-                        cmp[other_acc][0] += collocations
-                        cmp[other_acc][1] += overlaps
+                        for i, v in enumerate(values):
+                            cmp[other_acc][i] += v
                     else:
-                        cmp[other_acc] = [collocations, overlaps]
+                        cmp[other_acc] = list(values)
 
     for p in workers:
         p.join()
@@ -471,19 +474,23 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         pg_con.commit()
 
         logger.info("optimizing: signature2protein")
+        logger.debug("\tANALYZE")
         pg_cur.execute("ANALYZE signature2protein")
+        logger.debug("\tsignature2protein_protein_idx")
         pg_cur.execute(
             """
             CREATE INDEX signature2protein_protein_idx
             ON signature2protein (protein_acc)
             """
         )
+        logger.debug("\tsignature2protein_signature_idx")
         pg_cur.execute(
             """
             CREATE INDEX signature2protein_signature_idx
             ON signature2protein (signature_acc)
             """
         )
+        logger.debug("\tCLUSTER")
         pg_cur.execute(
             """
             CLUSTER signature2protein 
@@ -498,46 +505,16 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
 
 def _iter_comparisons(comparisons: dict):
     for acc1, others in comparisons.items():
-        for acc2, [collocations, overlaps] in others.items():
-            yield acc1, acc2, collocations, overlaps
+        for acc2, [collocs, prot_overlaps, res_overlaps] in others.items():
+            yield acc1, acc2, collocs, prot_overlaps, res_overlaps
 
 
 def _iter_predictions(signatures: dict, comparisons: dict):
-    for acc1, others in comparisons.items():
+    gen = _iter_comparisons(comparisons)
+    for acc1, acc2, collocs, prot_overlaps, res_overlaps in gen:
         cnt1 = signatures[acc1]
+        cnt2 = signatures[acc2]
 
-        for acc2, [collocations, overlaps] in others.items():
-            cnt2 = signatures[acc2]
-
-            if collocations / min(cnt1, cnt2) < MIN_COLLOCATION:
-                continue
-
-            """
-            At least one signature hits 50% or more 
-            of the proteins of the other signature
-            """
-            similarity = overlaps / (cnt1 + cnt2 - overlaps)
-            cont1 = overlaps / cnt1
-            cont2 = overlaps / cnt2
-
-            if similarity >= MIN_SIMILARITY:
-                relationship = "similar"
-            elif cont1 >= MIN_SIMILARITY:
-                if cont2 >= MIN_SIMILARITY:
-                    relationship = "related"
-                else:
-                    relationship = "child"
-            elif cont2 >= MIN_SIMILARITY:
-                relationship = "parent"
-            else:
-                relationship = None
-
-            yield acc1, acc2, collocations, overlaps, similarity, relationship
-
-            # Reverse parent<->child flags
-            if relationship == "parent":
-                relationship = "child"
-            elif relationship == "child":
-                relationship = "parent"
-
-            yield acc2, acc1, collocations, overlaps, similarity, relationship
+        if collocs / min(cnt1, cnt2) >= MIN_COLLOCATION:
+            yield acc1, acc2, collocs, prot_overlaps, res_overlaps
+            yield acc2, acc1, collocs, prot_overlaps, res_overlaps
