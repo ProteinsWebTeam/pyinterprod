@@ -38,6 +38,12 @@ def import_signatures(ora_url: str, pg_url: str, allseqs: str, compseqs: str):
     values = []
     for row in ora_cur:
         acc = row[0]
+        num_sequences = allseqs.get(acc, 0)
+        try:
+            num_complete_sequences, num_residues = compseqs[acc]
+        except KeyError:
+            num_complete_sequences = num_residues = 0
+
         values.append((
             acc,
             databases.get(row[1]),
@@ -45,8 +51,9 @@ def import_signatures(ora_url: str, pg_url: str, allseqs: str, compseqs: str):
             row[3],
             row[4],
             row[6].read() if row[6] is not None else row[5],
-            allseqs.get(acc, 0),
-            compseqs.get(acc, 0)
+            num_sequences,
+            num_complete_sequences,
+            num_residues
         ))
     ora_cur.close()
     ora_con.close()

@@ -255,7 +255,7 @@ def _merge_matches(matches: Sequence[tuple]) -> Dict[str, List[tuple]]:
 
 
 def _process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
-    num_proteins = {}  # number of proteins matched per signature
+    signatures = {}  # number of proteins/residues per signature
     comparisons = {}  # collocations/overlaps between signatures
 
     con = psycopg2.connect(**url2dict(url))
@@ -278,15 +278,18 @@ def _process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
                         name_id
                     ))
 
-                    try:
-                        num_proteins[signature_acc] += 1
-                    except KeyError:
-                        num_proteins[signature_acc] = 1
-                        comparisons[signature_acc] = {}
-
                     # Number of residues covered by signature's matches
                     locs_1 = matches[signature_acc]
                     residues_1 = sum(end - start + 1 for start, end in locs_1)
+
+                    try:
+                        obj = signatures[signature_acc]
+                    except KeyError:
+                        signatures[signature_acc] = [1, residues_1]
+                        comparisons[signature_acc] = {}
+                    else:
+                        obj[0] += 1
+                        obj[1] += residues_1
 
                     for other_acc in matches:
                         if other_acc <= signature_acc:
@@ -337,7 +340,7 @@ def _process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
 
     con.commit()
     con.close()
-    outqueue.put((num_proteins, comparisons))
+    outqueue.put((signatures, comparisons))
 
 
 def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
@@ -388,15 +391,18 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
     logger.info(f"{i:>12,}")
 
     logger.info("aggregating signature comparisons")
-    num_proteins = {}
+    signatures = {}
     comparisons = {}
     for _ in workers:
-        _num_proteins, _comparisons = outqueue.get()
-        for signature_acc, count in _num_proteins.items():
+        _signatures, _comparisons = outqueue.get()
+        for signature_acc, [num_proteins, num_residues] in _signatures.items():
             try:
-                num_proteins[signature_acc] += count
+                obj = signatures[signature_acc]
             except KeyError:
-                num_proteins[signature_acc] = count
+                signatures[signature_acc] = [num_proteins, num_residues]
+            else:
+                obj[0] += num_proteins
+                obj[1] += num_residues
 
         for signature_acc, others in _comparisons.items():
             try:
@@ -415,7 +421,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         p.join()
 
     with open(output, "wb") as fh:
-        pickle.dump(num_proteins, fh)
+        pickle.dump(signatures, fh)
 
     os.remove(tmp_database)
 
@@ -451,7 +457,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         pg_cur.execute("TRUNCATE TABLE prediction")
         pg_con.commit()
         drop_index(pg_con, "prediction_idx")
-        gen = _iter_predictions(num_proteins, comparisons)
+        gen = _iter_predictions(signatures, comparisons)
         pg_cur.copy_from(file=CsvIO(gen, sep='|'),
                          table="prediction",
                          sep='|')
@@ -506,15 +512,15 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
 def _iter_comparisons(comparisons: dict):
     for acc1, others in comparisons.items():
         for acc2, [collocs, prot_overlaps, res_overlaps] in others.items():
-            yield acc1, acc2, collocs, prot_overlaps, res_overlaps
+            yield acc1, acc2, collocs, prot_overlaps
 
 
 def _iter_predictions(signatures: dict, comparisons: dict):
-    gen = _iter_comparisons(comparisons)
-    for acc1, acc2, collocs, prot_overlaps, res_overlaps in gen:
-        cnt1 = signatures[acc1]
-        cnt2 = signatures[acc2]
+    for acc1, others in comparisons.items():
+        for acc2, [collocs, prot_overlaps, res_overlaps] in others.items():
+            num_proteins1, num_residues_1 = signatures[acc1]
+            num_proteins2, num_residues_2 = signatures[acc2]
 
-        if collocs / min(cnt1, cnt2) >= MIN_COLLOCATION:
-            yield acc1, acc2, collocs, prot_overlaps, res_overlaps
-            yield acc2, acc1, collocs, prot_overlaps, res_overlaps
+            if collocs / min(num_proteins1, num_proteins2) >= MIN_COLLOCATION:
+                yield acc1, acc2, collocs, prot_overlaps, res_overlaps
+                yield acc2, acc1, collocs, prot_overlaps, res_overlaps
