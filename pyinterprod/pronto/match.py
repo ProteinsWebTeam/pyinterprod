@@ -215,7 +215,10 @@ def _iter_comp_seq_matches(url: str, filepath: Optional[str] = None):
                 taxon_left_num = row[2]
                 matches = []
 
-            matches.append(row[3:])
+            # Format: start-end-type
+            # with type=S (continuous single chain domain)
+            fragments = row[6] if row[6] else f"{row[4]}-{row[5]}-S"
+            matches.append((row[3], fragments))
 
         cur.close()
         con.close()
@@ -226,30 +229,57 @@ def _iter_comp_seq_matches(url: str, filepath: Optional[str] = None):
 def _merge_matches(matches: Sequence[tuple]) -> Dict[str, List[tuple]]:
     # Merge matches by signature
     signatures = {}
-    for signature_acc, pos_start, pos_end, fragments in matches:
+    for signature_acc, fragments in matches:
         try:
             locations = signatures[signature_acc]
         except KeyError:
             locations = signatures[signature_acc] = []
 
-        if fragments:
-            """
-            Format: START-END-TYPE
-            Types:
-                * S: Continuous single chain domain
-                * N: N terminus discontinuous
-                * C: C terminus discontinuous
-                * NC: N and C terminus discontinuous
-            """
-            for frag in fragments.split(','):
-                pos_start, pos_end, pos_type = frag.split('-')
-                locations.append((int(pos_start), int(pos_end)))
-        else:
-            locations.append((pos_start, pos_end))
+        """
+        Format: START-END-TYPE
+        Types:
+            * S: Continuous single chain domain
+            * N: N terminus discontinuous
+            * C: C terminus discontinuous
+            * NC: N and C terminus discontinuous
+        """
+        for frag in fragments.split(','):
+            pos_start, pos_end, pos_type = frag.split('-')
+            locations.append((int(pos_start), int(pos_end)))
 
-    # Sort locations
-    for locations in signatures.values():
-        locations.sort()
+    # Merge overlapping locations
+    for signature_acc in signatures:
+        locations = []
+        pos_start = pos_end = None
+        for start, end in sorted(signatures[signature_acc]):
+            if pos_start is None:
+                # Leftmost match
+                pos_start = start
+                pos_end = end
+            elif start > pos_end:
+                """
+                  pos_end
+                    ----] [----
+                          start
+                          
+                Gap: new location
+                """
+                locations.append((pos_start, pos_end))
+                pos_start = start
+                pos_end = end
+            elif end > pos_end:
+                """
+                        pos_end
+                    ----]
+                      ------]
+                            end
+                            
+                Extend current location
+                """
+                pos_end = end
+
+        locations.append((pos_start, pos_end))
+        signatures[signature_acc] = matches
 
     return signatures
 
