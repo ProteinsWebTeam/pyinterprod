@@ -279,7 +279,7 @@ def _merge_matches(matches: Sequence[tuple]) -> Dict[str, List[tuple]]:
                 pos_end = end
 
         locations.append((pos_start, pos_end))
-        signatures[signature_acc] = matches
+        signatures[signature_acc] = locations
 
     return signatures
 
