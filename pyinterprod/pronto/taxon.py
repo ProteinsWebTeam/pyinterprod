@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import json
+
 import cx_Oracle
 import psycopg2
 from psycopg2.extras import execute_values
@@ -76,7 +78,7 @@ def import_taxonomy(ora_url: str, pg_url: str):
         logger.info("populating: taxon")
         execute_values(pg_cur, "INSERT INTO taxon VALUES %s", (
             (tax_id, name, rank, left_num, right_num, parent_id,
-             get_lineage(taxa, tax_id))
+             json.dumps(get_lineage(taxa, tax_id)))
             for tax_id, (name, rank, left_num, right_num, parent_id)
             in taxa.items()
         ), page_size=1000)
