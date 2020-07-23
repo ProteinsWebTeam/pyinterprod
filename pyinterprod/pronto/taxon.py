@@ -27,6 +27,17 @@ def iter_lineage(taxa: dict):
             parent_id = node[4]
 
 
+def get_lineage(taxa: dict, tax_id: int):
+    path = [tax_id]
+    node_id = taxa[tax_id][4]
+
+    while node_id:
+        path.append(node_id)
+        node_id = taxa[node_id][4]
+
+    return path[::-1]
+
+
 def import_taxonomy(ora_url: str, pg_url: str):
     logger.info("loading taxonomy info")
     ora_con = cx_Oracle.connect(ora_url)
@@ -64,7 +75,8 @@ def import_taxonomy(ora_url: str, pg_url: str):
 
         logger.info("populating: taxon")
         execute_values(pg_cur, "INSERT INTO taxon VALUES %s", (
-            (tax_id, name, rank, left_num, right_num, parent_id)
+            (tax_id, name, rank, left_num, right_num, parent_id,
+             get_lineage(taxa, tax_id))
             for tax_id, (name, rank, left_num, right_num, parent_id)
             in taxa.items()
         ), page_size=1000)
