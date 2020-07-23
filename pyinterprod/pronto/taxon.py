@@ -34,8 +34,12 @@ def get_lineage(taxa: dict, tax_id: int):
     node_id = taxa[tax_id][4]
 
     while node_id:
-        path.append(node_id)
-        node_id = taxa[node_id][4]
+        node = taxa[node_id]
+        rank = node[1]
+        if rank in RANKS:
+            path.append(node_id)
+
+        node_id = node[4]
 
     return path[::-1]
 
