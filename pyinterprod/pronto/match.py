@@ -543,6 +543,7 @@ def _iter_comparisons(comparisons: dict):
     for acc1, others in comparisons.items():
         for acc2, [collocs, prot_overlaps, res_overlaps] in others.items():
             yield acc1, acc2, collocs, prot_overlaps
+            yield acc2, acc1, collocs, prot_overlaps
 
 
 def _iter_predictions(signatures: dict, comparisons: dict):
