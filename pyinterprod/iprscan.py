@@ -153,6 +153,8 @@ SITE_PARITIONS = {
 SITE_SELECT = ['UPI', 'ANALYSIS_ID', 'METHOD_AC', 'LOC_START', 'LOC_END',
                'NUM_SITES', 'RESIDUE', 'RES_START', 'RES_END', 'DESCRIPTION']
 
+TABLE_PREFIX = "MV_"
+
 
 @dataclass
 class Analysis:
@@ -261,8 +263,9 @@ def get_max_upi(cur: Cursor, sql: str) -> Optional[str]:
         return row[0] if row else None
 
 
-def update_analyses(url: str, table: str, partitioned_table: str,
+def update_analyses(url: str, remote_table: str, partitioned_table: str,
                     analyses: Sequence[Tuple[int, str, Sequence[str]]]):
+    local_table = TABLE_PREFIX + remote_table
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
@@ -285,36 +288,36 @@ def update_analyses(url: str, table: str, partitioned_table: str,
         con.close()
         return
 
-    upi_loc = get_max_upi(cur, f"SELECT MAX(UPI) FROM IPRSCAN.{table}")
+    upi_loc = get_max_upi(cur, f"SELECT MAX(UPI) FROM IPRSCAN.{local_table}")
     if not upi_loc or upi_loc < max_upi:
         # No matches for the highest UPI: need to import table from ISPRO
-        oracle.drop_mview(cur, table)
-        oracle.drop_table(cur, table, purge=True)
+        oracle.drop_mview(cur, local_table)
+        oracle.drop_table(cur, local_table, purge=True)
         cur.execute(
             f"""
-            CREATE TABLE IPRSCAN.{table} NOLOGGING
+            CREATE TABLE IPRSCAN.{local_table} NOLOGGING
             AS
             SELECT *
-            FROM IPRSCAN.{table}@ISPRO
+            FROM IPRSCAN.{remote_table}@ISPRO
             """
         )
         cur.execute(
             f"""
-            CREATE INDEX {table}$ID 
-            ON IPRSCAN.{table} (ANALYSIS_ID)
+            CREATE INDEX {local_table}$ID 
+            ON IPRSCAN.{local_table} (ANALYSIS_ID)
             NOLOGGING
             """
         )
         cur.execute(
             f"""
-            CREATE INDEX {table}$UPI 
-            ON IPRSCAN.{table} (UPI)
+            CREATE INDEX {local_table}$UPI 
+            ON IPRSCAN.{local_table} (UPI)
             NOLOGGING
             """
         )
 
     # Create temporary table for the partition exchange
-    tmp_table = f"IPRSCAN.{table}_TMP"
+    tmp_table = f"IPRSCAN.{local_table}_TMP"
     oracle.drop_table(cur, tmp_table, purge=True)
     cur.execute(
         f"""
@@ -336,7 +339,7 @@ def update_analyses(url: str, table: str, partitioned_table: str,
             f"""
             INSERT /*+ APPEND */ INTO {tmp_table}
             SELECT {', '.join(columns)}
-            FROM IPRSCAN.{table}
+            FROM IPRSCAN.{local_table}
             WHERE ANALYSIS_ID = :1
             """, (analysis_id,)
         )
