@@ -201,12 +201,19 @@ class Analysis:
         return row and row[0] >= max_upi
 
 
-def get_analyses(url: str, use_matches: bool = True) -> List[Analysis]:
+def get_analyses(url: str, use_matches: bool = True,
+                 include: Optional[Sequence[int]] = None) -> List[Analysis]:
+    if include:
+        params = [':' + str(i+1) for i in range(len(include))]
+        sql = f"OR A.ANALYSIS_ID IN ({','.join(params)})"
+        params = tuple(include)
+    else:
+        params = tuple()
+
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-
     cur.execute(
-        """
+        f"""
         SELECT
             A.ANALYSIS_ID,
             A.ANALYSIS_NAME,
@@ -216,8 +223,8 @@ def get_analyses(url: str, use_matches: bool = True) -> List[Analysis]:
           FROM IPM_ANALYSIS@ISPRO A
           INNER JOIN IPM_ANALYSIS_MATCH_TABLE@ISPRO B
             ON A.ANALYSIS_MATCH_TABLE_ID = B.ID
-          WHERE A.ACTIVE = 1
-        """
+          WHERE A.ACTIVE = 1 {sql}
+        """, params
     )
 
     analyses = []
