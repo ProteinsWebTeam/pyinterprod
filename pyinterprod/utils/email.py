@@ -10,8 +10,10 @@ _osos = Optional[Sequence[str]]  # optional sequence of strings
 
 
 def send(info: dict, subject: str, content: str, attachments: _osos = None):
-    if not info["To"]:
+    if not info["Server"] or not info["Sender"] or not info["To"]:
         return
+
+    server, port = info["Server"].split(':')
 
     msg = EmailMessage()
     msg.set_content(content)
@@ -42,5 +44,5 @@ def send(info: dict, subject: str, content: str, attachments: _osos = None):
                                    subtype=subtype,
                                    filename=os.path.basename(path))
 
-    with SMTP(info["Server"], port=info["Port"]) as s:
+    with SMTP(server, port=int(port)) as s:
         s.send_message(msg)

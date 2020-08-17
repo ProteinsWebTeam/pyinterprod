@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-import json
 import os
+import pickle
 from typing import Dict
 
 import cx_Oracle
@@ -10,10 +10,10 @@ from pyinterprod import logger
 from pyinterprod.utils import oracle
 
 
-_ENTRIES = "entries_proteins.json"
-_DATABASES = "databases_matches.json"
-ENTRIES = "entries_changes.tsv"
-DATABASES = "databases_changes.tsv"
+_ENTRIES_DAT = "entries_proteins.dat"
+_DATABASES_DAT = "databases_matches.dat"
+ENTRIES_TSV = "entries_changes.tsv"
+DATABASES_TSV = "databases_changes.tsv"
 
 
 def update_matches(url: str, outdir: str):
@@ -311,11 +311,11 @@ def _check_matches(con: cx_Oracle.Connection, outdir: str):
         con.close()
         raise RuntimeError(f"{cnt} invalid matches")
 
-    with open(os.path.join(outdir, _ENTRIES), "wt") as fh:
-        json.dump(_get_entries_proteins_count(cur), fh, indent=4)
+    with open(os.path.join(outdir, _ENTRIES_DAT), "wb") as fh:
+        pickle.dump(_get_entries_proteins_count(cur), fh)
 
-    with open(os.path.join(outdir, _DATABASES), "wt") as fh:
-        json.dump(_get_databases_matches_count(cur), fh, indent=4)
+    with open(os.path.join(outdir, _DATABASES_DAT), "wb") as fh:
+        pickle.dump(_get_databases_matches_count(cur), fh)
 
     cur.close()
 
@@ -352,8 +352,8 @@ def _track_count_changes(con: cx_Oracle.Connection, outdir: str):
     logger.info("tracking changes")
     cur = con.cursor()
 
-    with open(os.path.join(outdir, _ENTRIES), "rt") as fh:
-        previous = json.load(fh)
+    with open(os.path.join(outdir, _ENTRIES_DAT), "rb") as fh:
+        previous = pickle.load(fh)
 
     changes = []
     for accession, count in _get_entries_proteins_count(cur).items():
@@ -368,15 +368,15 @@ def _track_count_changes(con: cx_Oracle.Connection, outdir: str):
             changes.append((accession, prev_count, count, change))
 
     changes.sort(key=lambda x: abs(x[3]))
-    with open(os.path.join(outdir, ENTRIES), "wt") as fh:
+    with open(os.path.join(outdir, ENTRIES_TSV), "wt") as fh:
         fh.write("# Accession\tPrevious protein count\t"
                  "New protein count\tChange (%)\n")
 
         for accession, prev_count, count, change in changes:
             fh.write(f"{accession}\t{prev_count}\t{count}\t{change*100:.0f}\n")
 
-    with open(os.path.join(outdir, _DATABASES), "rt") as fh:
-        previous = json.load(fh)
+    with open(os.path.join(outdir, _ENTRIES_DAT), "rb") as fh:
+        previous = pickle.load(fh)
 
     changes = []
     for code, count in _get_databases_matches_count(cur).items():
@@ -387,7 +387,7 @@ def _track_count_changes(con: cx_Oracle.Connection, outdir: str):
     for code, prev_count in previous.items():
         changes.append((code, prev_count, 0))
 
-    with open(os.path.join(outdir, DATABASES), "wt") as fh:
+    with open(os.path.join(outdir, DATABASES_TSV), "wt") as fh:
         fh.write("# Code\tPrevious match count\tNew match count\n")
 
         for code, prev_count, count in sorted(changes):

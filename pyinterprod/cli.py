@@ -15,7 +15,6 @@ def prep_email(emails: dict, to: Sequence[str], **kwargs) -> dict:
     emails.update({
         "Server": emails["server"],
         "Sender": emails["sender"],
-        "Port": int(emails["port"]),
         "To": set(),
         "Cc": set(),
         "Bcc": set(),
@@ -93,6 +92,7 @@ def run_protein_update():
 
     emails = dict(config["emails"])
 
+    pronto_app = config["misc"]["pronto_url"]
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
     workflow_dir = config["misc"]["workflow_dir"]
@@ -250,6 +250,14 @@ def run_protein_update():
             scheduler=dict(queue=lsf_queue),
             requires=["import-sites", "update-matches"]
         ),
+
+        # Copy SwissProt descriptions
+        Task(
+            fn=interpro.signature.export_swissprot_description,
+            args=(pronto_url, data_dir),
+            name="swissprot-de",
+            scheduler=dict(queue=lsf_queue),
+        )
     ]
 
     # Adding Pronto tasks
@@ -257,9 +265,21 @@ def run_protein_update():
         if not t.requires:
             # Task without dependency:
             # add some so it's submitted at the end of the protein update
-            t.requires |= {"taxonomy", "update-matches", "update-fmatches"}
+            t.requires |= {"swissprot-de", "taxonomy", "update-matches",
+                           "update-fmatches"}
 
         tasks.append(t)
+
+    tasks.append(Task(
+        fn=interpro.signature.send_report,
+        args=(interpro_url, pronto_url, data_dir, pronto_app,
+              prep_email(emails, to=["interpro"])),
+        name="send-report",
+        scheduler=dict(mem=4000, queue=lsf_queue),
+        requires=["pronto-databases", "pronto-annotations",
+                  "pronto-proteins-similarities", "pronto-proteins",
+                  "pronto-signatures", "pronto-taxonomy"]
+    ))
 
     database = os.path.join(workflow_dir, f"{uniprot_version}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as wf:
