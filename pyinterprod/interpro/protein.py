@@ -196,7 +196,7 @@ def track_changes(url: str, swissp: str, trembl: str,
         raise RuntimeError("failed to track changes between UniProt releases")
 
     size = os.path.getsize(database_old) + os.path.getsize(database_new)
-    logger.info(f"disk usage: {size/1024/1024:.0f} MB")
+    logger.info(f"disk usage: {size/1024**2:.0f} MB")
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()

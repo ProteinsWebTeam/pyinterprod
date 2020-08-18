@@ -33,138 +33,147 @@ MIN_COLLOCATION = 0.5
 MIN_SIMILARITY = 0.75
 
 
-def _dump_signatures(signatures: Dict[str, Sequence],
-                     tmpdir: Optional[str]) -> str:
-    fd, filepath = mkstemp(dir=tmpdir)
-    os.close(fd)
-    with open(filepath, "wb") as fh:
-        for key in sorted(signatures):
-            pickle.dump((key, set(signatures[key])), fh)
+class MatchIterator:
+    def __init__(self, url: str, databases: Dict[str, int],
+                 tmpdir: Optional[str] = None):
+        self.url = url
+        self.databases = databases
+        self.tmpdir = tmpdir
+        self.files = []
 
-    return filepath
-
-
-def _iter_matches(url: str, databases: Dict[str, int], outdir: str):
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT M.PROTEIN_AC, M.METHOD_AC, LOWER(D.DBSHORT),
-               M.POS_FROM, M.POS_TO, M.FRAGMENTS
-        FROM INTERPRO.MATCH M
-        INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
-        UNION ALL
-        SELECT FM.PROTEIN_AC, FM.METHOD_AC, LOWER(D.DBSHORT),
-               FM.POS_FROM, FM.POS_TO, NULL
-        FROM INTERPRO.FEATURE_MATCH FM
-        INNER JOIN INTERPRO.CV_DATABASE D ON FM.DBCODE = D.DBCODE
-        WHERE FM.DBCODE = 'g'
-        """
-    )
-
-    i = 0
-    signatures = {}
-    for row in cur:
-        yield (
-            row[0],
-            row[1],
-            databases[row[2]],
-            # Format: start-end-type
-            # with type=S (continuous single chain domain)
-            row[5] if row[5] else f"{row[3]}-{row[4]}-S"
+    def __iter__(self):
+        con = cx_Oracle.connect(self.url)
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT M.PROTEIN_AC, M.METHOD_AC, LOWER(D.DBSHORT),
+                   M.POS_FROM, M.POS_TO, M.FRAGMENTS
+            FROM INTERPRO.MATCH M
+            INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
+            UNION ALL
+            SELECT FM.PROTEIN_AC, FM.METHOD_AC, LOWER(D.DBSHORT),
+                   FM.POS_FROM, FM.POS_TO, NULL
+            FROM INTERPRO.FEATURE_MATCH FM
+            INNER JOIN INTERPRO.CV_DATABASE D ON FM.DBCODE = D.DBCODE
+            WHERE FM.DBCODE = 'g'
+            """
         )
 
-        try:
-            signatures[row[1]].append(row[0])
-        except KeyError:
-            signatures[row[1]] = [row[0]]
+        i = 0
+        signatures = {}
+        for row in cur:
+            yield (
+                row[0],
+                row[1],
+                self.databases[row[2]],
+                # Format: start-end-type
+                # with type=S (continuous single chain domain)
+                row[5] if row[5] else f"{row[3]}-{row[4]}-S"
+            )
 
-        i += 1
-        if not i % 1000000:
-            _dump_signatures(signatures, outdir)
-            signatures = {}
-
-        if not i % 100000000:
-            logger.info(f"{i:>13,}")
-
-    cur.close()
-    con.close()
-
-    _dump_signatures(signatures, outdir)
-    logger.info(f"{i:>13,}")
-
-
-def iterfile(path: str):
-    with open(path, "rb") as fh:
-        while True:
             try:
-                obj = pickle.load(fh)
-            except EOFError:
-                break
-            else:
-                yield obj
+                signatures[row[1]].append(row[0])
+            except KeyError:
+                signatures[row[1]] = [row[0]]
 
+            i += 1
+            if not i % 1000000:
+                self.dump(signatures)
+                signatures = {}
 
-def _agg_signatures(paths: Sequence[str]):
-    files = [iterfile(path) for path in paths]
-    signature = None
-    proteins = set()
-    for key, values in heapq.merge(*files, key=lambda x: x[0]):
-        if key != signature:
-            if signature:
-                yield signature, len(proteins)
+            if not i % 100000000:
+                logger.info(f"{i:>13,}")
 
-            signature = key
-            proteins = set()
+        cur.close()
+        con.close()
 
-        proteins |= values
+        self.dump(signatures)
+        logger.info(f"{i:>13,}")
 
-    if signature:
-        yield signature, len(proteins)
+    def dump(self, signatures: Dict[str, Sequence]):
+        fd, path = mkstemp(dir=self.tmpdir)
+        with open(fd, "wb") as fh:
+            for key in sorted(signatures):
+                pickle.dump((key, set(signatures[key])), fh)
+
+        self.files.append(path)
+
+    @staticmethod
+    def load(path: str):
+        with open(path, "rb") as fh:
+            while True:
+                try:
+                    obj = pickle.load(fh)
+                except EOFError:
+                    break
+                else:
+                    yield obj
+
+    def merge(self) -> Dict[str, int]:
+        counts = {}
+        signature = None
+        proteins = set()
+        iterable = [self.load(path) for path in self.files]
+        for key, values in heapq.merge(*iterable, key=lambda x: x[0]):
+            if key != signature:
+                if signature:
+                    counts[signature] = len(proteins)
+
+                signature = key
+                proteins = set()
+
+            proteins |= values
+
+        if signature:
+            counts[signature] = len(proteins)
+
+        return counts
+
+    @property
+    def size(self) -> int:
+        return sum(map(os.path.getsize, self.files))
+
+    def remove(self):
+        for path in self.files:
+            os.remove(path)
 
 
 def import_matches(ora_url: str, pg_url: str, output: str,
                    tmpdir: Optional[str] = None):
-    tmpdir = mkdtemp(dir=tmpdir)
-
     logger.info("populating")
     pg_con = psycopg2.connect(**url2dict(pg_url))
-    with pg_con.cursor() as pg_cur:
-        pg_cur.execute("TRUNCATE TABLE match")
-        pg_con.commit()
+    pg_cur = pg_con.cursor()
+    pg_cur.execute("TRUNCATE TABLE match")
+    pg_con.commit()
 
-        drop_index(pg_con, "match_protein_idx")
+    drop_index(pg_con, "match_protein_idx")
 
-        pg_cur.execute("SELECT name, id FROM database")
-        databases = dict(pg_cur.fetchall())
+    pg_cur.execute("SELECT name, id FROM database")
+    databases = dict(pg_cur.fetchall())
 
-        gen = _iter_matches(ora_url, databases, tmpdir)
-        pg_cur.copy_from(file=CsvIO(gen, sep='|'), table="match", sep='|')
+    matches = MatchIterator(ora_url, databases, tmpdir)
+    pg_cur.copy_from(file=CsvIO(iter(matches), sep='|'),
+                     table="match",
+                     sep='|')
 
-        logger.info("indexing")
-        pg_cur.execute("ANALYZE match")
-        pg_cur.execute(
-            """
-            CREATE INDEX match_protein_idx
-            ON match (protein_acc)
-            """
-        )
-        pg_con.commit()
-
+    logger.info("indexing")
+    pg_cur.execute("ANALYZE match")
+    pg_cur.execute(
+        """
+        CREATE INDEX match_protein_idx
+        ON match (protein_acc)
+        """
+    )
+    pg_con.commit()
+    pg_cur.close()
     pg_con.close()
 
     logger.info("counting proteins per signature")
-    paths = [os.path.join(tmpdir, name) for name in os.listdir(tmpdir)]
     with open(output, "wb") as fh:
-        pickle.dump(dict(_agg_signatures(paths)), fh)
+        pickle.dump(matches.merge(), fh)
 
-    size = 0
-    for path in paths:
-        size += os.path.getsize(path)
-        os.remove(path)
-
-    os.rmdir(tmpdir)
-    logger.info(f"disk usage: {size/1024/1024:,.0f} MB")
+    logger.info(f"disk usage: {matches.size/1024**2:,.0f} MB")
+    matches.remove()
     logger.info("complete")
 
 
@@ -172,7 +181,7 @@ def export_comp_seq_matches(url: str, filepath: str):
     logger.info("exporting matches")
     with open(filepath, "wb") as fh:
         i = 0
-        for row in _iter_comp_seq_matches(url):
+        for row in iter_comp_seq_matches(url):
             pickle.dump(row, fh)
             i += 1
             if not i % 100000000:
@@ -181,9 +190,9 @@ def export_comp_seq_matches(url: str, filepath: str):
     logger.info(f"{i:>13,}")
 
 
-def _iter_comp_seq_matches(url: str, filepath: Optional[str] = None):
+def iter_comp_seq_matches(url: str, filepath: Optional[str] = None):
     if filepath:
-        return iterfile(filepath)
+        return MatchIterator.load(filepath)
     else:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
@@ -227,7 +236,7 @@ def _iter_comp_seq_matches(url: str, filepath: Optional[str] = None):
         yield protein_acc, is_reviewed, taxon_left_num, matches
 
 
-def _merge_matches(matches: Sequence[tuple]) -> Dict[str, List[tuple]]:
+def merge_matches(matches: Sequence[tuple]) -> Dict[str, List[tuple]]:
     # Merge matches by signature
     signatures = {}
     for signature_acc, fragments in matches:
@@ -285,7 +294,7 @@ def _merge_matches(matches: Sequence[tuple]) -> Dict[str, List[tuple]]:
     return signatures
 
 
-def _process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
+def process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
     signatures = {}  # number of proteins/residues per signature
     comparisons = {}  # collocations/overlaps between signatures
 
@@ -297,7 +306,7 @@ def _process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
                 protein_acc = obj[0]
                 is_reviewed = obj[1]
                 taxon_left_num = obj[2]
-                matches = _merge_matches(obj[3])
+                matches = merge_matches(obj[3])
 
                 name_id = names[protein_acc]
                 for signature_acc in matches:
@@ -398,14 +407,14 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
     outqueue = Queue()
     workers = []
     for _ in range(max(1, processes-1)):
-        p = Process(target=_process_chunk,
+        p = Process(target=process_chunk,
                     args=(pg_url, tmp_database, inqueue, outqueue))
         p.start()
         workers.append(p)
 
     chunk = []
     i = 0
-    for obj in _iter_comp_seq_matches(ora_url, matches_dat):
+    for obj in iter_comp_seq_matches(ora_url, matches_dat):
         chunk.append(obj)
         if len(chunk) == 1000:
             inqueue.put(chunk)
@@ -462,7 +471,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         pg_cur.execute("TRUNCATE TABLE comparison")
         pg_con.commit()
         drop_index(pg_con, "comparison_idx")
-        gen = _iter_comparisons(comparisons)
+        gen = iter_comparisons(comparisons)
         pg_cur.copy_from(file=CsvIO(gen, sep='|'),
                          table="comparison",
                          sep='|')
@@ -488,7 +497,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         pg_cur.execute("TRUNCATE TABLE prediction")
         pg_con.commit()
         drop_index(pg_con, "prediction_idx")
-        gen = _iter_predictions(signatures, comparisons)
+        gen = iter_predictions(signatures, comparisons)
         pg_cur.copy_from(file=CsvIO(gen, sep='|'),
                          table="prediction",
                          sep='|')
@@ -540,14 +549,14 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
     logger.info("complete")
 
 
-def _iter_comparisons(comparisons: dict):
+def iter_comparisons(comparisons: dict):
     for acc1, others in comparisons.items():
         for acc2, [collocs, prot_overlaps, res_overlaps] in others.items():
             yield acc1, acc2, collocs, prot_overlaps
             yield acc2, acc1, collocs, prot_overlaps
 
 
-def _iter_predictions(signatures: dict, comparisons: dict):
+def iter_predictions(signatures: dict, comparisons: dict):
     for acc1, others in comparisons.items():
         for acc2, [collocs, prot_overlaps, res_overlaps] in others.items():
             num_proteins1, num_residues_1 = signatures[acc1]

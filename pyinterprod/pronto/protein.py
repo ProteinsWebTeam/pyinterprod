@@ -159,7 +159,7 @@ def import_protein_names(ora_url: str, pg_url: str, database: str,
 
     logger.info("copying database")
     shutil.copyfile(tmp_database, database)
-    logger.info(f"disk usage: {os.path.getsize(tmp_database)/1024:.0f} MB")
+    logger.info(f"disk usage: {os.path.getsize(tmp_database)/1024**2:.0f} MB")
     os.remove(tmp_database)
     logger.info("complete")
 
@@ -196,20 +196,4 @@ def import_proteins(ora_url: str, pg_url: str):
         pg_cur.execute("ANALYZE protein")
 
     pg_con.close()
-    logger.info("complete")
-
-
-def export_names(url: str, database: str):
-    logger.info("exporting protein names")
-    con = psycopg2.connect(**url2dict(url))
-    with con.cursor(name="names") as cur, KVdb(database, True) as names:
-        cur.itersize = 1000000
-        cur.execute("SELECT protein_acc, name_id FROM protein2name")
-        for i, (key, value) in enumerate(cur):
-            if not i % 1000000:
-                names.sync()
-
-            names[key] = value
-
-    con.close()
     logger.info("complete")
