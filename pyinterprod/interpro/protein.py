@@ -141,8 +141,8 @@ class Entry(object):
         )
 
 
-def init_database(dir: Optional[str] = None) -> str:
-    fd, database = mkstemp(suffix=".sqlite", dir=dir)
+def init_database(tmpdir: Optional[str] = None) -> str:
+    fd, database = mkstemp(suffix=".sqlite", dir=tmpdir)
     os.close(fd)
     os.remove(database)
 
@@ -166,10 +166,10 @@ def init_database(dir: Optional[str] = None) -> str:
 
 
 def track_changes(url: str, swissp: str, trembl: str,
-                  dir: Optional[str] = None):
+                  tmpdir: Optional[str] = None):
     logger.info("starting")
-    database_old = init_database(dir=dir)
-    database_new = init_database(dir=dir)
+    database_old = init_database(dir=tmpdir)
+    database_new = init_database(dir=tmpdir)
 
     failed = False
     with futures.ProcessPoolExecutor(max_workers=2) as executor:

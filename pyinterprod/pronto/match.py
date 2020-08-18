@@ -33,8 +33,9 @@ MIN_COLLOCATION = 0.5
 MIN_SIMILARITY = 0.75
 
 
-def _dump_signatures(signatures: Dict[str, Sequence], dir: str) -> str:
-    fd, filepath = mkstemp(dir=dir)
+def _dump_signatures(signatures: Dict[str, Sequence],
+                     tmpdir: Optional[str]) -> str:
+    fd, filepath = mkstemp(dir=tmpdir)
     os.close(fd)
     with open(filepath, "wb") as fh:
         for key in sorted(signatures):
@@ -123,8 +124,8 @@ def _agg_signatures(paths: Sequence[str]):
 
 
 def import_matches(ora_url: str, pg_url: str, output: str,
-                   dir: Optional[str] = None):
-    tmpdir = mkdtemp(dir=dir)
+                   tmpdir: Optional[str] = None):
+    tmpdir = mkdtemp(dir=tmpdir)
 
     logger.info("populating")
     pg_con = psycopg2.connect(**url2dict(pg_url))
@@ -375,7 +376,7 @@ def _process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
 
 def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
                           output: str, **kwargs):
-    tmpdir = kwargs.get("dir")
+    tmpdir = kwargs.get("tmpdir")
     matches_dat = kwargs.get("matches")
     processes = kwargs.get("processes", 4)
 
