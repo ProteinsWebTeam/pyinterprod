@@ -520,8 +520,6 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         pg_con.commit()
 
         logger.info("optimizing: signature2protein")
-        logger.debug("\tANALYZE")
-        pg_cur.execute("ANALYZE signature2protein")
         logger.debug("\tsignature2protein_protein_idx")
         pg_cur.execute(
             """
@@ -543,6 +541,8 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
             USING signature2protein_signature_idx
             """
         )
+        logger.debug("\tANALYZE")
+        pg_cur.execute("ANALYZE signature2protein")
         pg_con.commit()
 
     pg_con.close()
