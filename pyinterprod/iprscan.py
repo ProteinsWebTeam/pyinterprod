@@ -209,6 +209,7 @@ def get_analyses(url: str, use_matches: bool = True,
         params = tuple(include)
     else:
         params = tuple()
+        sql = ""
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
