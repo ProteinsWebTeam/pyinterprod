@@ -10,10 +10,10 @@ from pyinterprod import logger
 from pyinterprod.utils import oracle
 
 
-_ENTRIES_DAT = "entries_proteins.dat"
-_DATABASES_DAT = "databases_matches.dat"
-ENTRIES_TSV = "entries_changes.tsv"
-DATABASES_TSV = "databases_changes.tsv"
+_ENTRIES_TMP_FILE = "entries_proteins.dat"
+_DATABASES_TMP_FILE = "databases_matches.dat"
+ENTRIES_CHANGES_FILE = "entries_changes.dat"
+DATABASES_CHANGES_FILE = "databases_changes.dat"
 
 
 def update_matches(url: str, outdir: str):
@@ -311,10 +311,10 @@ def _check_matches(con: cx_Oracle.Connection, outdir: str):
         con.close()
         raise RuntimeError(f"{cnt} invalid matches")
 
-    with open(os.path.join(outdir, _ENTRIES_DAT), "wb") as fh:
+    with open(os.path.join(outdir, _ENTRIES_TMP_FILE), "wb") as fh:
         pickle.dump(_get_entries_proteins_count(cur), fh)
 
-    with open(os.path.join(outdir, _DATABASES_DAT), "wb") as fh:
+    with open(os.path.join(outdir, _DATABASES_TMP_FILE), "wb") as fh:
         pickle.dump(_get_databases_matches_count(cur), fh)
 
     cur.close()
@@ -352,7 +352,8 @@ def _track_count_changes(con: cx_Oracle.Connection, outdir: str):
     logger.info("tracking changes")
     cur = con.cursor()
 
-    with open(os.path.join(outdir, _ENTRIES_DAT), "rb") as fh:
+    # Find entries with significant protein count changes
+    with open(os.path.join(outdir, _ENTRIES_TMP_FILE), "rb") as fh:
         previous = pickle.load(fh)
 
     changes = []
@@ -367,15 +368,11 @@ def _track_count_changes(con: cx_Oracle.Connection, outdir: str):
         if abs(change) >= 0.5:
             changes.append((accession, prev_count, count, change))
 
-    changes.sort(key=lambda x: abs(x[3]))
-    with open(os.path.join(outdir, ENTRIES_TSV), "wt") as fh:
-        fh.write("# Accession\tPrevious protein count\t"
-                 "New protein count\tChange (%)\n")
+    with open(os.path.join(outdir, ENTRIES_CHANGES_FILE), "wb") as fh:
+        pickle.dump(changes, fh)
 
-        for accession, prev_count, count, change in changes:
-            fh.write(f"{accession}\t{prev_count}\t{count}\t{change*100:.0f}\n")
-
-    with open(os.path.join(outdir, _ENTRIES_DAT), "rb") as fh:
+    # List the previous/new match counts for all databases
+    with open(os.path.join(outdir, _DATABASES_TMP_FILE), "rb") as fh:
         previous = pickle.load(fh)
 
     changes = []
@@ -387,13 +384,13 @@ def _track_count_changes(con: cx_Oracle.Connection, outdir: str):
     for code, prev_count in previous.items():
         changes.append((code, prev_count, 0))
 
-    with open(os.path.join(outdir, DATABASES_TSV), "wt") as fh:
-        fh.write("# Code\tPrevious match count\tNew match count\n")
-
-        for code, prev_count, count in sorted(changes):
-            fh.write(f"{code}\t{prev_count}\t{count}\n")
+    with open(os.path.join(outdir, DATABASES_CHANGES_FILE), "wb") as fh:
+        pickle.dump(changes, fh)
 
     cur.close()
+
+    os.remove(_DATABASES_TMP_FILE)
+    os.remove(_ENTRIES_TMP_FILE)
 
 
 def _get_entries_proteins_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:

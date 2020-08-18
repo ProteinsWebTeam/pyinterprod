@@ -271,7 +271,7 @@ def run_protein_update():
         tasks.append(t)
 
     tasks.append(Task(
-        fn=interpro.signature.send_report,
+        fn=interpro.report.send_report,
         args=(interpro_url, pronto_url, data_dir, pronto_app,
               prep_email(emails, to=["interpro"])),
         name="send-report",
