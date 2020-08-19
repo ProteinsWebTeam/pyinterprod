@@ -153,8 +153,6 @@ SITE_PARITIONS = {
 SITE_SELECT = ['UPI', 'ANALYSIS_ID', 'METHOD_AC', 'LOC_START', 'LOC_END',
                'NUM_SITES', 'RESIDUE', 'RES_START', 'RES_END', 'DESCRIPTION']
 
-TABLE_PREFIX = "MV_"
-
 
 @dataclass
 class Analysis:
@@ -273,7 +271,7 @@ def get_max_upi(cur: Cursor, sql: str) -> Optional[str]:
 
 def update_analyses(url: str, remote_table: str, partitioned_table: str,
                     analyses: Sequence[Tuple[int, str, Sequence[str]]]):
-    local_table = TABLE_PREFIX + remote_table
+    local_table = "MV_" + remote_table
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
@@ -311,21 +309,21 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
         )
         cur.execute(
             f"""
-            CREATE INDEX {local_table}$ID 
+            CREATE INDEX {local_table}$ID
             ON IPRSCAN.{local_table} (ANALYSIS_ID)
             NOLOGGING
             """
         )
         cur.execute(
             f"""
-            CREATE INDEX {local_table}$UPI 
+            CREATE INDEX {local_table}$UPI
             ON IPRSCAN.{local_table} (UPI)
             NOLOGGING
             """
         )
 
     # Create temporary table for the partition exchange
-    tmp_table = f"IPRSCAN.{local_table}_TMP"
+    tmp_table = f"IPRSCAN.{remote_table}"
     oracle.drop_table(cur, tmp_table, purge=True)
     cur.execute(
         f"""
