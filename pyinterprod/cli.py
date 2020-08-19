@@ -262,11 +262,16 @@ def run_protein_update():
 
     # Adding Pronto tasks
     for t in get_pronto_tasks(interpro_url, pronto_url, data_dir, lsf_queue):
-        if not t.requires:
+        # Adding 'pronto-' prefix
+        t.name = f"pronto-{t.name}"
+        if t.requires:
+            for r in t.requires:
+                t.requires = {f"pronto-{r}" for r in t.requires}
+        else:
             # Task without dependency:
             # add some so it's submitted at the end of the protein update
-            t.requires |= {"swissprot-de", "taxonomy", "update-matches",
-                           "update-fmatches"}
+            t.requires = {"swissprot-de", "taxonomy", "update-matches",
+                          "update-fmatches"}
 
         tasks.append(t)
 
@@ -292,7 +297,7 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
         Task(
             fn=pronto.database.import_databases,
             args=(interpro_url, pronto_url),
-            name="pronto-databases",
+            name="databases",
             scheduler=dict(mem=100, queue=lsf_queue)
         ),
 
@@ -300,7 +305,7 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
         Task(
             fn=pronto.goa.import_annotations,
             args=(interpro_url, pronto_url),
-            name="pronto-annotations",
+            name="annotations",
             scheduler=dict(mem=500, queue=lsf_queue)
         ),
 
@@ -308,7 +313,7 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
         Task(
             fn=pronto.protein.import_similarity_comments,
             args=(interpro_url, pronto_url),
-            name="pronto-proteins-similarities",
+            name="proteins-similarities",
             scheduler=dict(mem=100, queue=lsf_queue),
         ),
         Task(
@@ -316,7 +321,7 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
             args=(interpro_url, pronto_url,
                   os.path.join(data_dir, "names.sqlite")),
             kwargs=dict(tmpdir="/scratch/"),
-            name="pronto-proteins-names",
+            name="proteins-names",
             scheduler=dict(mem=8000, scratch=30000, queue=lsf_queue),
         ),
 
@@ -324,7 +329,7 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
         Task(
             fn=pronto.protein.import_proteins,
             args=(interpro_url, pronto_url),
-            name="pronto-proteins",
+            name="proteins",
             scheduler=dict(mem=8000, queue=lsf_queue),
         ),
         Task(
@@ -332,9 +337,9 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
             args=(interpro_url, pronto_url,
                   os.path.join(data_dir, "allseqs.dat")),
             kwargs=dict(tmpdir="/scratch/"),
-            name="pronto-matches",
+            name="matches",
             scheduler=dict(mem=8000, scratch=10000, queue=lsf_queue),
-            requires=["pronto-databases"]
+            requires=["databases"]
         ),
         Task(
             fn=pronto.match.proc_comp_seq_matches,
@@ -342,23 +347,23 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
                   os.path.join(data_dir, "names.sqlite"),
                   os.path.join(data_dir, "compseqs.dat")),
             kwargs=dict(tmpdir="/scratch/", processes=8),
-            name="pronto-signature2proteins",
+            name="signature2proteins",
             scheduler=dict(cpu=8, mem=16000, scratch=30000, queue=lsf_queue),
-            requires=["pronto-proteins-names"]
+            requires=["proteins-names"]
         ),
         Task(
             fn=pronto.signature.import_signatures,
             args=(interpro_url, pronto_url,
                   os.path.join(data_dir, "allseqs.dat"),
                   os.path.join(data_dir, "compseqs.dat")),
-            name="pronto-signatures",
+            name="signatures",
             scheduler=dict(mem=4000, queue=lsf_queue),
-            requires=["pronto-matches", "pronto-signature2proteins"]
+            requires=["matches", "signature2proteins"]
         ),
         Task(
             fn=pronto.taxon.import_taxonomy,
             args=(interpro_url, pronto_url),
-            name="pronto-taxonomy",
+            name="taxonomy",
             scheduler=dict(mem=2000, queue=lsf_queue),
         ),
     ]
