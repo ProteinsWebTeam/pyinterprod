@@ -17,7 +17,7 @@ from pyinterprod.utils.pg import CsvIO, drop_index, url2dict
 
 
 """
-At least 50% of the residues of the shortest signature 
+At least 50% of the residues of the shortest signature
   must overlap the other signature
 (shorted signature = signature with the least residues in the protein)
 """
@@ -25,7 +25,7 @@ MIN_OVERLAP = 0.5
 
 """
 One of the signatures must hit at least 50% of the proteins hit by the other
-signature 
+signature
 """
 MIN_COLLOCATION = 0.5
 
@@ -204,9 +204,9 @@ def iter_comp_seq_matches(url: str, filepath: Optional[str] = None):
             FROM INTERPRO.PROTEIN P
             INNER JOIN INTERPRO.ETAXI E
               ON P.TAX_ID = E.TAX_ID
-              AND P.FRAGMENT = 'N'
             INNER JOIN INTERPRO.MATCH M
               ON P.PROTEIN_AC = M.PROTEIN_AC
+            WHERE P.FRAGMENT = 'N'
             ORDER BY P.PROTEIN_AC
             """
         )
@@ -271,7 +271,7 @@ def merge_matches(matches: Sequence[tuple]) -> Dict[str, List[tuple]]:
                   pos_end
                     ----] [----
                           start
-                          
+
                 Gap: new location
                 """
                 locations.append((pos_start, pos_end))
@@ -283,7 +283,7 @@ def merge_matches(matches: Sequence[tuple]) -> Dict[str, List[tuple]]:
                     ----]
                       ------]
                             end
-                            
+
                 Extend current location
                 """
                 pos_end = end
@@ -487,7 +487,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         )
         pg_cur.execute(
             """
-            CLUSTER comparison 
+            CLUSTER comparison
             USING comparison_idx
             """
         )
@@ -513,7 +513,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         )
         pg_cur.execute(
             """
-            CLUSTER prediction 
+            CLUSTER prediction
             USING prediction_idx
             """
         )
@@ -537,7 +537,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         logger.debug("\tCLUSTER")
         pg_cur.execute(
             """
-            CLUSTER signature2protein 
+            CLUSTER signature2protein
             USING signature2protein_signature_idx
             """
         )
