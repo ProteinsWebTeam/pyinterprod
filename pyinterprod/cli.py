@@ -265,8 +265,7 @@ def run_protein_update():
         # Adding 'pronto-' prefix
         t.name = f"pronto-{t.name}"
         if t.requires:
-            for r in t.requires:
-                t.requires = {f"pronto-{r}" for r in t.requires}
+            t.requires = {f"pronto-{r}" for r in t.requires}
         else:
             # Task without dependency:
             # add some so it's submitted at the end of the protein update
