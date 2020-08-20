@@ -127,6 +127,7 @@ def run_protein_update():
         Task(
             fn=iprscan.import_sites,
             args=(iprscan_url,),
+            kwargs=dict(threads=8),
             name="import-sites",
             scheduler=dict(queue=lsf_queue),
             requires=["update-uniparc"]
