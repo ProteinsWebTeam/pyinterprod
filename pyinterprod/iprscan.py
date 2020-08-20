@@ -271,7 +271,6 @@ def get_max_upi(cur: Cursor, sql: str) -> Optional[str]:
 
 def update_analyses(url: str, remote_table: str, partitioned_table: str,
                     analyses: Sequence[Tuple[int, str, Sequence[str]]]):
-    local_table = "MV_" + remote_table
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
@@ -294,6 +293,7 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
         con.close()
         return
 
+    local_table = "MV_" + remote_table
     upi_loc = get_max_upi(cur, f"SELECT MAX(UPI) FROM IPRSCAN.{local_table}")
     if not upi_loc or upi_loc < max_upi:
         # No matches for the highest UPI: need to import table from ISPRO
@@ -307,16 +307,21 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
             FROM IPRSCAN.{remote_table}@ISPRO
             """
         )
+
+        """
+        Use remote table name to have fewer characters (no MV_ prefix)
+        as Oracle < 12.2 do not allow object names longer than 30 characters
+        """
         cur.execute(
             f"""
-            CREATE INDEX {local_table}$ID
+            CREATE INDEX {remote_table}$ID
             ON IPRSCAN.{local_table} (ANALYSIS_ID)
             NOLOGGING
             """
         )
         cur.execute(
             f"""
-            CREATE INDEX {local_table}$UPI
+            CREATE INDEX {remote_table}$UPI
             ON IPRSCAN.{local_table} (UPI)
             NOLOGGING
             """
