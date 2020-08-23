@@ -389,8 +389,8 @@ def _track_count_changes(con: cx_Oracle.Connection, outdir: str):
 
     cur.close()
 
-    os.remove(_DATABASES_TMP_FILE)
-    os.remove(_ENTRIES_TMP_FILE)
+    os.remove(os.path.join(outdir, _DATABASES_TMP_FILE))
+    os.remove(os.path.join(outdir, _ENTRIES_TMP_FILE))
 
 
 def _get_entries_proteins_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:
