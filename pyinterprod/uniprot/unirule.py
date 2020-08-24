@@ -70,7 +70,7 @@ def report_integration_changes(url: str, emails: dict):
 
     for signature, entry_now in current_signatures.items():
         if entry_now and entry_now in checked_entries:
-            changes[signature] = ("integrated (checked)", '', entry_now)
+            changes[signature] = ("integrated/checked", '', entry_now)
 
     content = """\
 Dear UniProt team,
