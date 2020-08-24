@@ -9,6 +9,13 @@ from pyinterprod.utils import email, oracle, Table
 
 
 def report_integration_changes(url: str, emails: dict):
+    """Sends a list of integration changes.
+    If a signature is integrated in an unchecked entry, we consider
+    the signature as unintegrated.
+
+    :param url: Oracle connection string
+    :param emails: email info (SMTP server/port, sender, recipients, etc.)
+    """
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
@@ -51,26 +58,21 @@ def report_integration_changes(url: str, emails: dict):
 
         if entry_now:
             # Signature still integrated
-            if entry_then == entry_now:
-                # Integrated in the same entry
-                if entry_now not in checked_entries:
-                    # Entry has been unchecked
-                    changes[signature] = ("unchecked", entry_then, entry_now)
-            elif entry_now in checked_entries:
-                # Integrated in a different (checked) entry
-                changes[signature] = ("integrated/checked", entry_then,
-                                      entry_now)
-            else:
-                # Integrated in a different (unchecked) entry
-                changes[signature] = ("integrated/unchecked", entry_then,
-                                      entry_now)
+            if entry_now not in checked_entries:
+                # Integrated in an unchecked entry: like unintegrated
+                changes[signature] = ("unintegrated", entry_then, '')
+            elif entry_then != entry_now:
+                # Integrated in a different, checked, entry
+                changes[signature] = ("integrated", entry_then, entry_now)
+            # Integrated in the same, checked, entry => no change
         else:
             # Signature unintegrated
             changes[signature] = ("unintegrated", entry_then, '')
 
+    # All new integrations (signature was not integrated before)
     for signature, entry_now in current_signatures.items():
         if entry_now and entry_now in checked_entries:
-            changes[signature] = ("integrated/checked", '', entry_now)
+            changes[signature] = ("integrated", '', entry_now)
 
     content = """\
 Dear UniProt team,
@@ -78,15 +80,9 @@ Dear UniProt team,
 Please find below the list of recent integration changes.
 
 Description of states:
-  - integrated/checked:       the signature has been integrated in an \
-InterPro entry ready to be made public
-  - integrated/unchecked:     the signature has been integrated in an \
-InterPro entry not ready to be made public
-  - unchecked:                the InterPro entry, in which the signature \
-is integrated, has been flagged as not ready to be made public
-  - unintegrated:             the signature has been removed from an \
-InterPro entry
-  - deleted:                  the signature does not exist anymore
+  - integrated:       the signature has been integrated in an InterPro entry
+  - unintegrated:     the signature has been removed from an InterPro entry
+  - deleted:          the signature does not exist anymore
 
 """
     content += (f"{'Signature':<30}{'Status':<30}{'Previous entry':^30}"
