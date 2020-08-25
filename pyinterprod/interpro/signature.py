@@ -243,8 +243,6 @@ def delete_from_table(url: str, table: str, partition: Optional[str],
             """
     )
     num_rows, = cur.fetchone()
-    cur.close()
-    con.close()
 
     if not num_rows:
         cur.close()
