@@ -372,12 +372,12 @@ def delete_obsoletes(url: str, truncate: bool = False, threads: int = 8,
                 name = table
 
             try:
-                f.result()
+                num_deleted = f.result()
             except Exception as exc:
                 logger.info(f"{name}: failed ({exc})")
                 num_errors += 1
             else:
-                logger.info(f"{name}: done")
+                logger.info(f"{name}: {num_deleted} rows deleted")
 
         if num_errors:
             raise RuntimeError(f"{num_errors} tables failed")
@@ -420,7 +420,7 @@ def delete_obsoletes(url: str, truncate: bool = False, threads: int = 8,
 
 
 def iterative_delete(url: str, table: str, partition: Optional[str],
-                     column: str, step: int, stop: int):
+                     column: str, step: int, stop: int) -> int:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -444,7 +444,7 @@ def iterative_delete(url: str, table: str, partition: Optional[str],
     if not num_rows:
         cur.close()
         con.close()
-        return
+        return num_rows
 
     for i in range(1, stop, step):
         cur.execute(
@@ -462,6 +462,7 @@ def iterative_delete(url: str, table: str, partition: Optional[str],
     ora.gather_stats(cur, "INTERPRO", table, partition)
     cur.close()
     con.close()
+    return num_rows
 
 
 def check_proteins(cur: cx_Oracle.Cursor) -> int:
