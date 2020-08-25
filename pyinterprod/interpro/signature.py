@@ -255,7 +255,6 @@ def delete_from_table(url: str, table: str, partition: Optional[str],
 
 def delete_obsolete(url: str, databases: Sequence[str], **kwargs):
     threads = kwargs.get("threads", 8)
-    truncate = kwargs.get("truncate", False)
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -301,11 +300,7 @@ def delete_obsolete(url: str, databases: Sequence[str], **kwargs):
     tables = []
     child_tables = ora.get_child_tables(cur, "INTERPRO", "METHOD")
     for table, constraint, column in child_tables:
-        if truncate and table.startswith("MV_") or table.endswith("_NEW"):
-            logger.info(f"truncating {table}")
-            # ora.truncate_table(cur, table)
-        else:
-            tables.append((table, constraint, column))
+        tables.append((table, constraint, column))
 
     # Add  INTERPRO.METHOD as we want also to delete rows in this table
     tables.append(("METHOD", None, "METHOD_AC"))
