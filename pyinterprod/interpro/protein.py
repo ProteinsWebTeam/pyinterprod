@@ -255,7 +255,7 @@ def track_changes(url: str, swissp: str, trembl: str,
                 elif current < forthcoming:
                     # Entry in current but not in forthcoming: deleted
                     del_table.insert(
-                        (del_table.count, current.accession))
+                        (del_table.count+1, current.accession))
                     current.next()
                 else:
                     # Entry in forthcoming but not in current: new
@@ -264,7 +264,7 @@ def track_changes(url: str, swissp: str, trembl: str,
                     forthcoming.next()
             else:
                 # Still entries in current, but not in forthcoming: all deleted
-                del_table.insert((del_table.count, current.accession))
+                del_table.insert((del_table.count+1, current.accession))
                 current.next()
         elif forthcoming.ok:
             # Still entries in forthcoming, but not in current: all new
@@ -359,7 +359,8 @@ def delete_obsoletes(url: str, truncate: bool = False, threads: int = 8,
         fs = {}
 
         for table, partition, column in tasks:
-            f = executor.submit(iterative_delete, url, table, partition, column, step, stop)
+            f = executor.submit(iterative_delete, url, table, partition,
+                                column, step, stop)
             fs[f] = (table, partition)
 
         num_errors = 0
@@ -445,7 +446,7 @@ def iterative_delete(url: str, table: str, partition: Optional[str],
         con.close()
         return
 
-    for i in range(0, stop, step):
+    for i in range(1, stop, step):
         cur.execute(
             f"""
             DELETE FROM INTERPRO.{_table}
