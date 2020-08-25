@@ -223,7 +223,7 @@ def make_pre_report(url: str, databases: Sequence[str], output: str):
 
 
 def delete_from_table(url: str, table: str, partition: Optional[str],
-                      column: str):
+                      column: str, step: int, stop: int) -> int:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -245,15 +245,33 @@ def delete_from_table(url: str, table: str, partition: Optional[str],
     num_rows, = cur.fetchone()
     cur.close()
     con.close()
-    return num_rows
 
-    # if not num_rows:
-    #     cur.close()
-    #     con.close()
-    #     return
+    if not num_rows:
+        cur.close()
+        con.close()
+        return num_rows
+
+    for i in range(1, stop, step):
+        cur.execute(
+            f"""
+            DELETE FROM INTERPRO.{_table}
+            WHERE {column} IN (
+              SELECT METHOD_AC
+              FROM INTERPRO.METHOD_TO_DELETE
+              WHERE ID BETWEEN :1 and :2
+            )
+            """, (i, i + step - 1)
+        )
+
+    con.commit()
+    ora.gather_stats(cur, "INTERPRO", table, partition)
+    cur.close()
+    con.close()
+    return num_rows
 
 
 def delete_obsolete(url: str, databases: Sequence[str], **kwargs):
+    step = kwargs.get("step", 10000)
     threads = kwargs.get("threads", 8)
 
     con = cx_Oracle.connect(url)
@@ -264,33 +282,44 @@ def delete_obsolete(url: str, databases: Sequence[str], **kwargs):
     ora.drop_table(cur, "METHOD_TO_DELETE")
     cur.execute(
         """
-        CREATE TABLE INTERPRO.METHOD_TO_DELETE
-        AS
-        SELECT METHOD_AC 
-        FROM INTERPRO.METHOD
-        WHERE 1 = 0
+        CREATE TABLE INTERPRO.METHOD_TO_DELETE (
+            ID NUMBER NOT NULL,
+            METHOD_AC VARCHAR2(25) NOT NULL
+        )
         """
     )
 
     for dbcode, dbname in key2db.values():
         cur.execute(
             """
-            INSERT INTO INTERPRO.METHOD_TO_DELETE (METHOD_AC)
-            SELECT METHOD_AC
-            FROM INTERPRO.METHOD
-            WHERE DBCODE = :dbcode
-            MINUS
-            SELECT METHOD_AC
-            FROM INTERPRO.METHOD_STG
-            WHERE DBCODE = :dbcode
+            INSERT INTO INTERPRO.METHOD_TO_DELETE (ID, METHOD_AC)
+            SELECT ROWNUM, METHOD_AC
+            FROM (
+                SELECT METHOD_AC
+                FROM INTERPRO.METHOD
+                WHERE DBCODE = :dbcode
+                MINUS
+                SELECT METHOD_AC
+                FROM INTERPRO.METHOD_STG
+                WHERE DBCODE = :dbcode
+            )
             """, dbcode=dbcode
         )
 
     con.commit()
-    cur.execute("SELECT COUNT(*) FROM INTERPRO.METHOD_TO_DELETE")
-    cnt, = cur.fetchone()
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX UI_METHOD_TO_DELETE
+        ON INTERPRO.METHOD_TO_DELETE (ID)
+        """
+    )
 
-    if not cnt:
+    cur.execute("SELECT COUNT(*) FROM INTERPRO.METHOD_TO_DELETE")
+    stop, = cur.fetchone()
+
+    logger.info(f"{stop:,} signatures to delete")
+
+    if not stop:
         # Nothing to delete
         cur.close()
         con.close()
@@ -302,7 +331,7 @@ def delete_obsolete(url: str, databases: Sequence[str], **kwargs):
     for table, constraint, column in child_tables:
         tables.append((table, constraint, column))
 
-    # Add  INTERPRO.METHOD as we want also to delete rows in this table
+    # Add INTERPRO.METHOD as we want also to delete rows in this table
     tables.append(("METHOD", None, "METHOD_AC"))
 
     logger.info("disabling referential constraints")
@@ -311,11 +340,11 @@ def delete_obsolete(url: str, databases: Sequence[str], **kwargs):
         if not constraint:
             continue
 
-        # try:
-        #     ora.toggle_constraint(cur, table, constraint, False)
-        # except cx_Oracle.DatabaseError as exc:
-        #     logger.error(exc)
-        #     num_errors += 1
+        try:
+            ora.toggle_constraint(cur, table, constraint, False)
+        except cx_Oracle.DatabaseError as exc:
+            logger.error(exc)
+            num_errors += 1
 
     if num_errors:
         cur.close()
@@ -341,7 +370,7 @@ def delete_obsolete(url: str, databases: Sequence[str], **kwargs):
 
         for table, partition, column in tasks:
             f = executor.submit(delete_from_table, url, table, partition,
-                                column)
+                                column, step, stop)
             fs[f] = (table, partition)
 
         num_errors = 0
@@ -362,3 +391,39 @@ def delete_obsolete(url: str, databases: Sequence[str], **kwargs):
 
         if num_errors:
             raise RuntimeError(f"{num_errors} tables failed")
+
+    logger.info("enabling referential constraints")
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    num_errors = 0
+    constraints = set()
+    for table, constraint, column in tables:
+        if not constraint or constraint in constraints:
+            """
+            Either no constraint
+            or prevent the same constrain to be enabled several times
+            """
+            continue
+
+        constraints.add(constraint)
+
+        try:
+            ora.toggle_constraint(cur, table, constraint, True)
+        except cx_Oracle.DatabaseError as exc:
+            logger.error(exc)
+            num_errors += 1
+
+    if num_errors:
+        cur.close()
+        con.close()
+        raise RuntimeError(f"{num_errors} constraints could not be enabled")
+
+    for table, constraint, column in tables:
+        for index in ora.get_indexes(cur, "INTERPRO", table):
+            if index["unusable"]:
+                logger.info(f"rebuilding index {index['name']}")
+                ora.rebuild_index(cur, index["name"])
+
+    cur.close()
+    con.close()
+    logger.info("complete")
