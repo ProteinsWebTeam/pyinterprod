@@ -372,12 +372,12 @@ def delete_obsoletes(url: str, truncate: bool = False, threads: int = 8,
                 name = table
 
             try:
-                num_deleted = f.result()
+                num_rows = f.result()
             except Exception as exc:
                 logger.info(f"{name}: failed ({exc})")
                 num_errors += 1
             else:
-                logger.info(f"{name}: {num_deleted} rows deleted")
+                logger.info(f"{name}: {num_rows:,} rows deleted")
 
         if num_errors:
             raise RuntimeError(f"{num_errors} tables failed")
