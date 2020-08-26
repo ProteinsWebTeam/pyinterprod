@@ -11,6 +11,7 @@ from cx_Oracle import Cursor
 from pyinterprod import logger
 from pyinterprod.utils import oracle
 
+PREFIX = "MV_"
 
 # Columns to select when inserting matches in MV_IPRSCAN
 # Keys are partitions names
@@ -269,6 +270,38 @@ def get_max_upi(cur: Cursor, sql: str) -> Optional[str]:
         return row[0] if row else None
 
 
+def import_from_ispro(cur: Cursor, src: str, dst: str):
+    oracle.drop_mview(cur, dst)
+    oracle.drop_table(cur, dst, purge=True)
+    cur.execute(
+        f"""
+        CREATE TABLE IPRSCAN.{dst} NOLOGGING
+        AS
+        SELECT *
+        FROM IPRSCAN.{src}@ISPRO
+        """
+    )
+
+    """
+    Use remote table name to have fewer characters (no prefix)
+    as Oracle < 12.2 do not allow object names longer than 30 characters
+    """
+    cur.execute(
+        f"""
+        CREATE INDEX {src}$ID
+        ON IPRSCAN.{dst} (ANALYSIS_ID)
+        NOLOGGING
+        """
+    )
+    cur.execute(
+        f"""
+        CREATE INDEX {src}$UPI
+        ON IPRSCAN.{dst} (UPI)
+        NOLOGGING
+        """
+    )
+
+
 def update_analyses(url: str, remote_table: str, partitioned_table: str,
                     analyses: Sequence[Tuple[int, str, Sequence[str]]]):
     con = cx_Oracle.connect(url)
@@ -293,39 +326,11 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
         con.close()
         return
 
-    local_table = "MV_" + remote_table
+    local_table = PREFIX + remote_table
     upi_loc = get_max_upi(cur, f"SELECT MAX(UPI) FROM IPRSCAN.{local_table}")
     if not upi_loc or upi_loc < max_upi:
         # No matches for the highest UPI: need to import table from ISPRO
-        oracle.drop_mview(cur, local_table)
-        oracle.drop_table(cur, local_table, purge=True)
-        cur.execute(
-            f"""
-            CREATE TABLE IPRSCAN.{local_table} NOLOGGING
-            AS
-            SELECT *
-            FROM IPRSCAN.{remote_table}@ISPRO
-            """
-        )
-
-        """
-        Use remote table name to have fewer characters (no MV_ prefix)
-        as Oracle < 12.2 do not allow object names longer than 30 characters
-        """
-        cur.execute(
-            f"""
-            CREATE INDEX {remote_table}$ID
-            ON IPRSCAN.{local_table} (ANALYSIS_ID)
-            NOLOGGING
-            """
-        )
-        cur.execute(
-            f"""
-            CREATE INDEX {remote_table}$UPI
-            ON IPRSCAN.{local_table} (UPI)
-            NOLOGGING
-            """
-        )
+        import_from_ispro(cur, remote_table, local_table)
 
     # Create temporary table for the partition exchange
     tmp_table = f"IPRSCAN.{remote_table}"
