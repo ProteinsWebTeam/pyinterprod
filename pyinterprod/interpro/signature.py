@@ -14,6 +14,25 @@ from . import contrib
 
 
 SIGNATURES_DESCR_FILE = "swissprot_descr.dat"
+MATCH_PARTITIONS = {
+    'B': 'MATCH_DBCODE_B',
+    'F': 'MATCH_DBCODE_F',
+    'H': 'MATCH_DBCODE_H',
+    'J': 'MATCH_DBCODE_J',
+    'M': 'MATCH_DBCODE_M',
+    'N': 'MATCH_DBCODE_N',
+    'P': 'MATCH_DBCODE_P',
+    'Q': 'MATCH_DBCODE_Q',
+    'R': 'MATCH_DBCODE_R',
+    'U': 'MATCH_DBCODE_U',
+    'V': 'MATCH_DBCODE_V',
+    'X': 'MATCH_DBCODE_X',
+    'Y': 'MATCH_DBCODE_Y',
+}
+SITE_PARTITIONS = {
+    'B': 'SFLD',
+    'J': 'CDD',
+}
 
 
 def get_swissprot_descriptions(url: str) -> Dict[str, Set[str]]:
@@ -222,20 +241,14 @@ def make_pre_report(url: str, databases: Sequence[str], output: str):
         pickle.dump(results, fh)
 
 
-def delete_from_table(url: str, table: str, partition: Optional[str],
-                      column: str, step: int, stop: int) -> int:
+def delete_from_table(url: str, table: str, column: str, step: int,
+                      stop: int) -> int:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-
-    if partition:
-        _table = f"{table} PARTITION ({partition})"
-    else:
-        _table = table
-
     cur.execute(
         f"""
             SELECT COUNT(*)
-            FROM {_table}
+            FROM {table}
             WHERE {column} IN (
                 SELECT METHOD_AC 
                 FROM INTERPRO.METHOD_TO_DELETE
@@ -252,7 +265,7 @@ def delete_from_table(url: str, table: str, partition: Optional[str],
     for i in range(1, stop, step):
         cur.execute(
             f"""
-            DELETE FROM INTERPRO.{_table}
+            DELETE FROM INTERPRO.{table}
             WHERE {column} IN (
               SELECT METHOD_AC
               FROM INTERPRO.METHOD_TO_DELETE
@@ -262,7 +275,144 @@ def delete_from_table(url: str, table: str, partition: Optional[str],
         )
 
     con.commit()
-    ora.gather_stats(cur, "INTERPRO", table, partition)
+    ora.gather_stats(cur, "INTERPRO", table)
+    cur.close()
+    con.close()
+    return num_rows
+
+
+def create_and_exchange(url: str, table: str, partition: str, column: str) -> int:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        f"""
+        SELECT COUNT(*)
+        FROM {table} PARTITION ({partition})
+        WHERE {column} IN (
+            SELECT METHOD_AC 
+            FROM INTERPRO.METHOD_TO_DELETE
+        ) 
+        """
+    )
+    num_rows, = cur.fetchone()
+
+    logger.debug(f"{table} ({partition}): {num_rows:,} rows to delete")
+    if not num_rows:
+        cur.close()
+        con.close()
+        return num_rows
+
+    # Create table without obsolete signatures
+    logger.debug(f"{table} ({partition}): creating temporary table")
+    tmp_table = f"{partition}_TMP"
+    ora.drop_table(cur, tmp_table)
+    cur.execute(
+        f"""
+        CREATE TABLE {tmp_table} NOLOGGING
+        AS  
+        SELECT *
+        FROM {table} PARTITION ({partition})
+        WHERE {column} NOT IN (
+            SELECT METHOD_AC
+            FROM INTERPRO.METHOD_TO_DELETE
+        )
+        """
+    )
+
+    # Add constraints/indexes to be able to exchange partition
+    logger.debug(f"{table} ({partition}): creating indexes and constraints")
+    cur.execute(f"CREATE INDEX {tmp_table}$D ON {tmp_table} (DBCODE) NOLOGGING")
+    cur.execute(f"CREATE INDEX {tmp_table}$E ON {tmp_table} (EVIDENCE) NOLOGGING")
+    cur.execute(f"CREATE INDEX {tmp_table}$S ON {tmp_table} (STATUS) NOLOGGING")
+    cur.execute(f"CREATE INDEX {tmp_table}$M ON {tmp_table} (METHOD_AC) NOLOGGING")
+    cur.execute(
+        f"""
+        ALTER TABLE {tmp_table}
+        ADD CONSTRAINT {tmp_table}$CK1 
+        CHECK ( POS_FROM >= 1 ) 
+        """
+    )
+    cur.execute(
+        f"""
+        ALTER TABLE {tmp_table}
+        ADD CONSTRAINT {tmp_table}$CK2
+        CHECK ( POS_TO - POS_FROM > 0 ) 
+        """
+    )
+    cur.execute(
+        f"""
+        ALTER TABLE {tmp_table}
+        ADD CONSTRAINT {tmp_table}$CK3
+        CHECK ( STATUS != 'N' OR (STATUS = 'N' AND DBCODE IN ('P', 'M', 'Q')) )
+        """
+    )
+    cur.execute(
+        f"""
+        ALTER TABLE {tmp_table}
+        ADD CONSTRAINT {tmp_table}$PK
+        PRIMARY KEY (PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO)
+        """
+    )
+    cur.execute(
+        f"""
+        ALTER TABLE {tmp_table}
+        ADD CONSTRAINT {tmp_table}$FK1 FOREIGN KEY (DBCODE) 
+        REFERENCES INTERPRO.CV_DATABASE (DBCODE)
+        """
+    )
+    cur.execute(
+        f"""
+        ALTER TABLE {tmp_table}
+        ADD CONSTRAINT {tmp_table}$FK2 FOREIGN KEY (EVIDENCE) 
+        REFERENCES INTERPRO.CV_EVIDENCE (CODE)
+        """
+    )
+    cur.execute(
+        f"""
+        ALTER TABLE {tmp_table}
+        ADD CONSTRAINT {tmp_table}$FK3 FOREIGN KEY (METHOD_AC) 
+        REFERENCES INTERPRO.METHOD (METHOD_AC)
+        """
+    )
+    cur.execute(
+        f"""
+        ALTER TABLE {tmp_table}
+        ADD CONSTRAINT {tmp_table}$FK4 FOREIGN KEY (PROTEIN_AC) 
+        REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
+        """
+    )
+    cur.execute(
+        f"""
+        ALTER TABLE {tmp_table}
+        ADD CONSTRAINT {tmp_table}$FK5 FOREIGN KEY (STATUS) 
+        REFERENCES INTERPRO.CV_STATUS (CODE)
+        """
+    )
+    cur.execute(
+        f"""
+        ALTER TABLE {tmp_table}
+        ADD CONSTRAINT {tmp_table}$CK4 
+        CHECK (PROTEIN_AC IS NOT NULL )
+        """
+    )
+    cur.execute(
+        f"""
+        ALTER TABLE {tmp_table}
+        ADD CONSTRAINT {tmp_table}$CK5 
+        CHECK (METHOD_AC IS NOT NULL )
+        """
+    )
+
+    logger.debug(f"{table} ({partition}): exchanging partition")
+    cur.execute(
+        f"""
+        ALTER TABLE {table} 
+        EXCHANGE PARTITION ({partition}) 
+        WITH TABLE {tmp_table}
+        """
+    )
+    ora.drop_table(cur, tmp_table, purge=True)
+
     cur.close()
     con.close()
     return num_rows
@@ -349,26 +499,36 @@ def delete_obsolete(url: str, databases: Sequence[str], **kwargs):
         con.close()
         raise RuntimeError(f"{num_errors} constraints could not be disabled")
 
-    # Find partitions to run a DELETE statement for each partition
-    tasks = []
+    # MATCH and SITE_MATCH are too big for DELETE: exchange partitions
+    delete_tasks = []
+    exchange_tasks = []
     for table, constraint, column in tables:
-        partitions = ora.get_partitions(cur, "INTERPRO", table)
-        if partitions:
-            for p in partitions:
-                tasks.append((table, p["name"], column))
+        if table == "MATCH":
+            for dbcode in key2db:
+                partition = MATCH_PARTITIONS[dbcode]
+                exchange_tasks.append((table, partition, column))
+        elif table == "SITE_MATCH":
+            for dbcode in key2db:
+                partition = SITE_PARTITIONS[dbcode]
+                exchange_tasks.append((table, partition, column))
         else:
-            tasks.append((table, None, column))
+            # Normal DELETE statement
+            delete_tasks.append((table, column))
 
     cur.close()
     con.close()
 
-    logger.info(f"{len(tasks)} tables to update")
     with ThreadPoolExecutor(max_workers=threads) as executor:
         fs = {}
 
-        for table, partition, column in tasks:
-            f = executor.submit(delete_from_table, url, table, partition,
-                                column, step, stop)
+        for table, column in delete_tasks:
+            args = (url, table, column, step, stop)
+            f = executor.submit(delete_from_table, *args)
+            fs[f] = (table, None)
+
+        for table, partition, column in exchange_tasks:
+            args = (url, table, partition, column)
+            f = executor.submit(create_and_exchange, *args)
             fs[f] = (table, partition)
 
         num_errors = 0
