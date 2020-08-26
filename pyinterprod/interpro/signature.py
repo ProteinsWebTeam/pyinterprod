@@ -504,11 +504,11 @@ def delete_obsolete(url: str, databases: Sequence[str], **kwargs):
     exchange_tasks = []
     for table, constraint, column in tables:
         if table == "MATCH":
-            for dbcode in key2db:
+            for dbcode, dbname in key2db.values():
                 partition = MATCH_PARTITIONS[dbcode]
                 exchange_tasks.append((table, partition, column))
         elif table == "SITE_MATCH":
-            for dbcode in key2db:
+            for dbcode, dbname in key2db.values():
                 partition = SITE_PARTITIONS[dbcode]
                 exchange_tasks.append((table, partition, column))
         else:
