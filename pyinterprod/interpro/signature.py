@@ -367,13 +367,21 @@ def create_and_exchange(url: str, table: str, partition: str, column: str) -> in
         REFERENCES INTERPRO.CV_EVIDENCE (CODE)
         """
     )
-    cur.execute(
-        f"""
-        ALTER TABLE {tmp_table}
-        ADD CONSTRAINT {tmp_table}$FK3 FOREIGN KEY (METHOD_AC) 
-        REFERENCES INTERPRO.METHOD (METHOD_AC)
-        """
-    )
+    """
+    Do not create a FK to INTERPRO.METHOD as creating one would raise
+        ORA-14128 (FOREIGN KEY constraint mismatch 
+                   in ALTER TABLE EXCHANGE PARTITION)
+    when exchanging partition.
+    INTERPRO.MATCH *has* a FK to INTERPRO.METHOD, but we disabled it before
+    starting to delete obsolete signatures
+    """
+    # cur.execute(
+    #     f"""
+    #     ALTER TABLE {tmp_table}
+    #     ADD CONSTRAINT {tmp_table}$FK3 FOREIGN KEY (METHOD_AC)
+    #     REFERENCES INTERPRO.METHOD (METHOD_AC)
+    #     """
+    # )
     cur.execute(
         f"""
         ALTER TABLE {tmp_table}
