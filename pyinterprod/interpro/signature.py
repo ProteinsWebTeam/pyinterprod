@@ -572,8 +572,8 @@ def delete_obsolete(url: str, databases: Sequence[str], **kwargs):
             """
             continue
 
+        logger.debug(f"enabling: {table}.{constraint}")
         constraints.add(constraint)
-
         try:
             ora.toggle_constraint(cur, table, constraint, True)
         except cx_Oracle.DatabaseError as exc:
