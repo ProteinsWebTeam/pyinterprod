@@ -9,6 +9,7 @@ import cx_Oracle
 from cx_Oracle import Cursor
 
 from pyinterprod import logger
+from pyinterprod.interpro.database import Database
 from pyinterprod.utils import oracle
 
 PREFIX = "MV_"
@@ -158,8 +159,9 @@ SITE_SELECT = ['UPI', 'ANALYSIS_ID', 'METHOD_AC', 'LOC_START', 'LOC_END',
 @dataclass
 class Analysis:
     id: int
+    type: str
     name: str
-    full_name: str
+    is_active: bool
     table: str
     persisted: int
 
@@ -200,35 +202,35 @@ class Analysis:
         return row and row[0] >= max_upi
 
 
-def get_analyses(url: str, use_matches: bool = True,
-                 include: Optional[Sequence[int]] = None) -> List[Analysis]:
-    if include:
-        params = [':' + str(i+1) for i in range(len(include))]
-        sql = f"OR A.ANALYSIS_ID IN ({','.join(params)})"
-        params = tuple(include)
+def get_analyses(cur: Cursor, use_matches: bool = True,
+                 ids: Optional[Sequence[int]] = None) -> List[Analysis]:
+    if ids:
+        params = [':' + str(i+1) for i in range(len(ids))]
+        sql_filter = f"A.ANALYSIS_ID IN ({','.join(params)})"
+        params = tuple(ids)
     else:
+        sql_filter = "A.ACTIVE = 1"
         params = tuple()
-        sql = ""
 
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
     cur.execute(
         f"""
         SELECT
             A.ANALYSIS_ID,
             A.ANALYSIS_NAME,
             A.ANALYSIS_TYPE,
+            A.ACTIVE,
             B.MATCH_TABLE,
             B.SITE_TABLE
           FROM IPM_ANALYSIS@ISPRO A
           INNER JOIN IPM_ANALYSIS_MATCH_TABLE@ISPRO B
             ON A.ANALYSIS_MATCH_TABLE_ID = B.ID
-          WHERE A.ACTIVE = 1 {sql}
+          WHERE {sql_filter}
+          ORDER BY A.ANALYSIS_ID
         """, params
     )
 
     analyses = []
-    for analysis_id, name, analysis_type, match_table, site_table in cur:
+    for a_id, a_name, a_type, a_active, match_table, site_table in cur:
         """
         CDD/SFLD
             - PERSISTED=1 when matches are ready
@@ -238,7 +240,7 @@ def get_analyses(url: str, use_matches: bool = True,
             - PERSISTED=2 when matches are ready
         """
         if use_matches:
-            persisted = 1 if analysis_type in ("cdd", "sfld") else 2
+            persisted = 1 if a_type in ("cdd", "sfld") else 2
             table = match_table.upper()
         elif site_table:
             persisted = 2
@@ -246,11 +248,15 @@ def get_analyses(url: str, use_matches: bool = True,
         else:
             continue
 
-        analysis = Analysis(analysis_id, analysis_type, name, table, persisted)
-        analyses.append(analysis)
+        analyses.append(Analysis(
+            id=a_id,
+            type=a_type,
+            name=a_name,
+            is_active=a_active == 1,
+            table=table,
+            persisted=persisted
+        ))
 
-    cur.close()
-    con.close()
     return analyses
 
 
@@ -329,7 +335,11 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
     local_table = PREFIX + remote_table
     upi_loc = get_max_upi(cur, f"SELECT MAX(UPI) FROM IPRSCAN.{local_table}")
     if not upi_loc or upi_loc < max_upi:
-        # No matches for the highest UPI: need to import table from ISPRO
+        """
+        No matches for the highest UPI: need to import table from ISPRO
+        All analyses for this table are imported
+            (previous versions are not ignored)
+        """
         import_from_ispro(cur, remote_table, local_table)
 
     # Create temporary table for the partition exchange
@@ -337,11 +347,11 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
     oracle.drop_table(cur, tmp_table, purge=True)
     cur.execute(
         f"""
-        CREATE TABLE {tmp_table}
+        CREATE TABLE {tmp_table} NOLOGGING
         AS
         SELECT *
         FROM IPRSCAN.{partitioned_table}
-        WHERE 1=0
+        WHERE 1 = 0
         """
     )
 
@@ -349,8 +359,7 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
         # Truncate table (if several analyses for one table, e.g. SignalP)
         oracle.truncate_table(cur, tmp_table, reuse_storage=True)
 
-        # Insert only the active analysis ID
-        # (i.e. data from previous versions is ignored)
+        # Insert only one analysis ID
         cur.execute(
             f"""
             INSERT /*+ APPEND */ INTO {tmp_table}
@@ -361,7 +370,8 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
         )
         con.commit()
 
-        # Brings new data (in the tmp table) online
+        # Exchange partition to get the data
+        # from the tmp table in the final table
         cur.execute(
             f"""
             ALTER TABLE IPRSCAN.{partitioned_table}
@@ -380,21 +390,22 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
 
 
 def import_matches(url: str, threads: int = 1):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
     pending = {}
-    for analysis in get_analyses(url, use_matches=True):
+    for analysis in get_analyses(cur, use_matches=True):
         try:
-            columns = MATCH_SELECT[analysis.name]
+            columns = MATCH_SELECT[analysis.type]
         except KeyError:
-            logger.warning(f"ignoring analysis {analysis.full_name}")
+            logger.warning(f"ignoring analysis {analysis.name}")
             continue
 
         try:
-            pending[analysis.table].append((analysis, analysis.name, columns))
+            pending[analysis.table].append((analysis, analysis.type, columns))
         except KeyError:
-            pending[analysis.table] = [(analysis, analysis.name, columns)]
+            pending[analysis.table] = [(analysis, analysis.type, columns)]
 
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     max_upi, = cur.fetchone()
     cur.close()
@@ -438,7 +449,7 @@ def import_matches(url: str, threads: int = 1):
                     tmp[table] = analyses
                     continue
 
-                names = [e[0].full_name for e in analyses]
+                names = [e[0].name for e in analyses]
                 for name in names:
                     logger.info(f"{name:<35} ready")
 
@@ -478,12 +489,15 @@ def import_matches(url: str, threads: int = 1):
 
 
 def import_sites(url: str, threads: int = 1):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
     pending = {}
-    for analysis in get_analyses(url, use_matches=False):
+    for analysis in get_analyses(cur, use_matches=False):
         try:
-            partition = SITE_PARITIONS[analysis.name]
+            partition = SITE_PARITIONS[analysis.type]
         except KeyError:
-            logger.warning(f"ignoring analysis {analysis.full_name}")
+            logger.warning(f"ignoring analysis {analysis.name}")
             continue
 
         try:
@@ -491,8 +505,6 @@ def import_sites(url: str, threads: int = 1):
         except KeyError:
             pending[analysis.table] = [(analysis, partition, SITE_SELECT)]
 
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     max_upi, = cur.fetchone()
     cur.close()
@@ -534,7 +546,7 @@ def import_sites(url: str, threads: int = 1):
                     tmp[table] = analyses
                     continue
 
-                names = ', '.join(e[0].full_name for e in analyses)
+                names = ', '.join(e[0].name for e in analyses)
                 logger.info(f"{names}: ready")
 
                 args = (url, table, "SITE", ready)
@@ -554,3 +566,122 @@ def import_sites(url: str, threads: int = 1):
 
     if failed:
         raise RuntimeError(f"{failed} errors")
+
+
+def update_mv_iprscan_mini(url: str, databases: Sequence[Database]):
+    """
+    Import the previous and the new analyses (for one or more member databases)
+    from ISPRO
+
+    :param url: Oracle connection string (IPRSCAN user)
+    :param databases: sequence of member databases
+    """
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
+    max_upi, = cur.fetchone()
+
+    tables = {}
+    for db in databases:
+        """
+        Get up to two most recent analyses
+        We assume that all analyses for a given member database use the same
+        table in ISPRO
+        """
+        cur.execute(
+            f"""
+            SELECT ANALYSIS_ID
+            FROM IPRSCAN.IPM_ANALYSIS@ISPRO
+            WHERE ANALYSIS_MATCH_TABLE_ID = (
+              SELECT ANALYSIS_MATCH_TABLE_ID
+              FROM IPRSCAN.IPM_ANALYSIS@ISPRO
+              WHERE ANALYSIS_ID = :1
+            )
+            ORDER BY ANALYSIS_ID
+            """, (db.analysis_id,)
+        )
+        ids = [analysis_id for analysis_id, in cur][-2:]  # up to two
+        analyses = get_analyses(cur, use_matches=True, ids=ids)
+        if len(analyses) == 2:
+            old_analyse, new_analyse = analyses
+
+            # # Update IPRSCAN2DBCODE
+            # cur.execute(
+            #     """
+            #     UPDATE INTERPRO.IPRSCAN2DBCODE
+            #     SET IPRSCAN_SIG_LIB_REL_ID = :1
+            #     WHERE DBCODE = :2
+            #     """, (new_analyse.id, dbcode)
+            # )
+
+            o_ready = old_analyse.is_ready(cur, max_upi)
+            n_ready = new_analyse.is_ready(cur, max_upi)
+            if not (o_ready and n_ready):
+                cur.close()
+                con.close()
+                raise RuntimeError(f"{db.name}: not ready")
+            elif new_analyse.type in MATCH_SELECT:
+                columns = MATCH_SELECT[new_analyse.type]
+            elif old_analyse.type in MATCH_SELECT:
+                columns = MATCH_SELECT[old_analyse.type]
+            else:
+                cur.close()
+                con.close()
+                raise RuntimeError(f"{db.name}: not supported")
+
+            tab = new_analyse.table  # old_analyse.table should be the same
+            obj = (old_analyse.id, new_analyse.id, columns)
+            try:
+                tables[tab]["analyses"].append(obj)
+            except KeyError:
+                tables[tab] = {
+                    "analyses": [obj],
+                    "name": db.name
+                }
+        else:
+            cur.close()
+            con.close()
+            raise NotImplementedError("new member database")  # todo
+
+    oracle.drop_table(cur, "IPRSCAN.MV_IPRSCAN_MINI", purge=True)
+    cur.execute(
+        f"""
+        CREATE TABLE IPRSCAN.MV_IPRSCAN_MINI NOLOGGING
+        AS
+        SELECT *
+        FROM IPRSCAN.MV_IPRSCAN
+        WHERE 1 = 0
+        """
+    )
+
+    for remote_table, obj in tables.items():
+        logger.info(f"importing {obj['name']}")
+        local_table = PREFIX + remote_table
+
+        # Import data from ISPRO
+        import_from_ispro(cur, remote_table, local_table)
+
+        for old_id, new_id, columns in obj["analyses"]:
+            cur.execute(
+                f"""
+                INSERT /*+ APPEND */ INTO IPRSCAN.MV_IPRSCAN_MINI
+                SELECT {', '.join(columns)}
+                FROM IPRSCAN.{local_table}
+                WHERE ANALYSIS_ID IN (:1, :2)
+                """, (old_id, new_id)
+            )
+            con.commit()
+
+    logger.info("indexing")
+    cur.execute(
+        f"""
+        CREATE INDEX IPRSCAN.MV_IPRSCAN_MINI$ID
+        ON IPRSCAN.MV_IPRSCAN_MINI (ANALYSIS_ID)
+        NOLOGGING
+        """
+    )
+
+    cur.close()
+    con.close()
+    logger.info("complete")
