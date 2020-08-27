@@ -18,6 +18,8 @@ class Database:
 
 def get_databases(url: str, names: Sequence[str]) -> Dict[str, Database]:
     names = set(names)
+    lower2ori = {n.lower(): n for n in names}
+
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -34,11 +36,16 @@ def get_databases(url: str, names: Sequence[str]) -> Dict[str, Database]:
     )
 
     databases = {}
-    for code, key, name, version, date, analysis_id in cur:
+    for code, lower_key, name, version, date, analysis_id in cur:
+        key = lower2ori[lower_key]
         databases[key] = Database(code, name, version, date, analysis_id)
 
     cur.close()
     con.close()
+
+    unknown = names - set(databases.keys())
+    if unknown:
+        raise RuntimeError(f"Unknown databases: {', '.join(unknown)}")
 
     for db in databases.values():
         if db.analysis_id is None:

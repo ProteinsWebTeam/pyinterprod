@@ -3,7 +3,7 @@
 import os
 import pickle
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, Optional, Sequence, Set
+from typing import Dict, Mapping, Sequence, Set, Tuple
 
 import cx_Oracle
 import psycopg2
@@ -11,21 +11,22 @@ import psycopg2
 from pyinterprod import logger
 from pyinterprod.utils import Table, oracle as ora, pg
 from . import contrib
+from .database import Database
 
 
 SIGNATURES_DESCR_FILE = "swissprot_descr.dat"
 MATCH_PARTITIONS = {
-    'B': 'MATCH_DBCODE_B',
+    'B': 'MATCH_DBCODE_B',  # SFLD
     'F': 'MATCH_DBCODE_F',
-    'H': 'MATCH_DBCODE_H',
-    'J': 'MATCH_DBCODE_J',
+    'H': 'MATCH_DBCODE_H',  # Pfam
+    'J': 'MATCH_DBCODE_J',  # CDD
     'M': 'MATCH_DBCODE_M',
     'N': 'MATCH_DBCODE_N',
     'P': 'MATCH_DBCODE_P',
     'Q': 'MATCH_DBCODE_Q',
     'R': 'MATCH_DBCODE_R',
     'U': 'MATCH_DBCODE_U',
-    'V': 'MATCH_DBCODE_V',
+    'V': 'MATCH_DBCODE_V',  # PANTHER
     'X': 'MATCH_DBCODE_X',
     'Y': 'MATCH_DBCODE_Y',
 }
@@ -65,37 +66,10 @@ def export_swissprot_description(url: str, data_dir: str):
         pickle.dump(signatures, fh)
 
 
-def get_key2db(cur: cx_Oracle.Cursor, databases: Sequence[str]) -> dict:
-    cur.execute(
-        """
-        SELECT LOWER(DBSHORT), DBCODE, DBNAME
-        FROM INTERPRO.CV_DATABASE
-        """
-    )
-    all_key2db = {row[0]: row[1:] for row in cur}
-
-    key2db = {}
-    errors = []
-    for dbkey in databases:
-        try:
-            dbcode, dbname = all_key2db[dbkey.lower()]
-        except KeyError:
-            errors.append(dbkey)
-        else:
-            key2db[dbkey.lower()] = (dbcode, dbname)
-
-    if errors:
-        cur.close()
-        cur.connection.close()
-        raise ValueError(f"Unknown database(s): {', '.join(errors)}")
-
-    return key2db
-
-
-def add_staging(url: str, databases: dict):
+def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    key2db = get_key2db(cur, databases)
+
     ora.truncate_table(cur, "METHOD_STG")
 
     sql = """
@@ -104,20 +78,19 @@ def add_staging(url: str, databases: dict):
     """
     with Table(con, sql) as table:
         errors = 0
-        for dbkey, src in databases.items():
-            dbkey = dbkey.lower()
-            dbcode, dbname = key2db[dbkey]
-            if dbkey == "panther":
+        for db, src in update:
+            if db.identifier == 'V':
+                # PANTHER
                 signatures = contrib.panther.parse_signatures(src)
             else:
-                logger.error(f"{dbkey}: unsupported member database")
+                logger.error(f"{db.name}: unsupported member database")
                 errors += 1
                 continue
 
             for m in signatures:
                 table.insert((
                     m.accession,
-                    dbcode,
+                    db.identifier,
                     m.name,
                     m.description,
                     m.sig_type,
@@ -131,7 +104,7 @@ def add_staging(url: str, databases: dict):
 
     con.commit()
 
-    code2name = dict(key2db.values())
+    code2name = {db.identifier: db.name for db, _ in update}
     cur.execute(
         """
         SELECT DBCODE, COUNT(*)
@@ -146,12 +119,11 @@ def add_staging(url: str, databases: dict):
     con.close()
 
 
-def make_pre_report(url: str, databases: Sequence[str], output: str):
+def make_pre_report(url: str, databases: Sequence[Database], output: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    key2db = get_key2db(cur, databases)
     results = {}
-    for dbcode, dbname in key2db.values():
+    for db in databases:
         # cur.execute(
         #     """
         #     SELECT COUNT(*)
@@ -186,7 +158,7 @@ def make_pre_report(url: str, databases: Sequence[str], output: str):
             LEFT OUTER JOIN INTERPRO.ENTRY2METHOD EM 
             ON M.METHOD_AC = EM.METHOD_AC
             WHERE DBCODE = :1
-            """, (dbcode,)
+            """, (db.identifier,)
         )
         old_signatures = {row[0]: row[1:] for row in cur}
 
@@ -195,7 +167,7 @@ def make_pre_report(url: str, databases: Sequence[str], output: str):
             SELECT METHOD_AC, NAME, DESCRIPTION, SIG_TYPE
             FROM INTERPRO.METHOD_STG
             WHERE DBCODE = :1
-            """, (dbcode,)
+            """, (db.identifier,)
         )
         new_signatures = {row[0]: row[1:] for row in cur}
 
@@ -221,7 +193,7 @@ def make_pre_report(url: str, databases: Sequence[str], output: str):
             if old_type != new_type:
                 type_changes.append((acc, old_type, new_type))
 
-        results[dbcode] = {
+        results[db.identifier] = {
             "new": [
                 (acc, *new_signatures[acc])
                 for acc in sorted(new_signatures)
@@ -247,13 +219,13 @@ def delete_from_table(url: str, table: str, column: str, step: int,
     cur = con.cursor()
     cur.execute(
         f"""
-            SELECT COUNT(*)
-            FROM {table}
-            WHERE {column} IN (
-                SELECT METHOD_AC 
-                FROM INTERPRO.METHOD_TO_DELETE
-            ) 
-            """
+        SELECT COUNT(*)
+        FROM {table}
+        WHERE {column} IN (
+            SELECT METHOD_AC 
+            FROM INTERPRO.METHOD_TO_DELETE
+        ) 
+        """
     )
     num_rows, = cur.fetchone()
 
@@ -427,13 +399,12 @@ def create_and_exchange(url: str, table: str, partition: str, column: str) -> in
     return num_rows
 
 
-def delete_obsolete(url: str, databases: Sequence[str], **kwargs):
+def delete_obsolete(url: str, databases: Sequence[Database], **kwargs):
     step = kwargs.get("step", 10000)
     threads = kwargs.get("threads", 8)
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    key2db = get_key2db(cur, databases)
 
     # track signatures that need to be deleted
     ora.drop_table(cur, "METHOD_TO_DELETE")
@@ -446,7 +417,7 @@ def delete_obsolete(url: str, databases: Sequence[str], **kwargs):
         """
     )
 
-    for dbcode, dbname in key2db.values():
+    for db in databases:
         cur.execute(
             """
             INSERT INTO INTERPRO.METHOD_TO_DELETE (ID, METHOD_AC)
@@ -460,7 +431,7 @@ def delete_obsolete(url: str, databases: Sequence[str], **kwargs):
                 FROM INTERPRO.METHOD_STG
                 WHERE DBCODE = :dbcode
             )
-            """, dbcode=dbcode
+            """, dbcode=db.identifier
         )
 
     con.commit()
@@ -513,12 +484,12 @@ def delete_obsolete(url: str, databases: Sequence[str], **kwargs):
     exchange_tasks = []
     for table, constraint, column in tables:
         if table == "MATCH":
-            for dbcode, dbname in key2db.values():
-                partition = MATCH_PARTITIONS[dbcode]
+            for db in databases:
+                partition = MATCH_PARTITIONS[db.identifier]
                 exchange_tasks.append((table, partition, column))
         elif table == "SITE_MATCH":
-            for dbcode, dbname in key2db.values():
-                partition = SITE_PARTITIONS[dbcode]
+            for db in databases:
+                partition = SITE_PARTITIONS[db.identifier]
                 exchange_tasks.append((table, partition, column))
         else:
             # Normal DELETE statement
