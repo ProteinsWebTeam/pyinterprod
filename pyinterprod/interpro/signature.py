@@ -417,6 +417,7 @@ def create_and_exchange(url: str, table: str, partition: str, column: str) -> in
         ALTER TABLE {table} 
         EXCHANGE PARTITION ({partition}) 
         WITH TABLE {tmp_table}
+        WITHOUT VALIDATION
         """
     )
     ora.drop_table(cur, tmp_table, purge=True)
