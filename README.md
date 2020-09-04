@@ -382,11 +382,6 @@ The optional arguments are:
     <td>create-match-tmp</td>
 </tr>
 <tr>
-    <td>update-match</td>
-    <td>Exchange partition between new and old matches</td>
-    <td>create-match-tmp</td>
-</tr>
-<tr>
     <td>update-site-match</td>
     <td>Update site matches (only for CDD and SFLD member databases)</td>
     <td>update-match</td>
