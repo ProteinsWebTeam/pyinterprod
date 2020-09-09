@@ -3,12 +3,12 @@
 import os
 import pickle
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, Optional, Sequence, Set, Tuple
+from typing import Optional, Sequence, Tuple
 
 import cx_Oracle
-import psycopg2
 
 from pyinterprod import logger
+from pyinterprod.pronto.signature import get_swissprot_descriptions
 from pyinterprod.utils import Table, oracle as ora, pg
 from . import contrib
 from .database import Database
@@ -36,34 +36,35 @@ SITE_PARTITIONS = {
 }
 
 
-def get_swissprot_descriptions(url: str) -> Dict[str, Set[str]]:
-    con = psycopg2.connect(**pg.url2dict(url))
-    cur = con.cursor("spdecur")
-    cur.execute(
-        """
-        SELECT DISTINCT s2p.signature_acc, pn.text
-        FROM interpro.signature2protein s2p
-        INNER JOIN interpro.protein_name pn ON s2p.name_id = pn.name_id
-        WHERE s2p.is_reviewed            
-        """
-    )
+def export_swissprot_description(pg_url, data_dir: str):
     signatures = {}
-    for acc, text in cur:
+    for signature_acc, protein_acc, text in get_swissprot_descriptions(pg_url):
         try:
-            signatures[acc].add(text)
+            signatures[signature_acc].add(text)
         except KeyError:
-            signatures[acc] = {text}
-
-    cur.close()
-    con.close()
-    return signatures
-
-
-def export_swissprot_description(url: str, data_dir: str):
-    signatures = get_swissprot_descriptions(url)
+            signatures[signature_acc] = {text}
 
     with open(os.path.join(data_dir, SIGNATURES_DESCR_FILE), "wb") as fh:
         pickle.dump(signatures, fh)
+
+
+def update_method2swiss(ora_url: str, pg_url: str):
+    con = cx_Oracle.connect(ora_url)
+    cur = con.cursor()
+    ora.truncate_table(cur, "INTERPRO.METHOD2SWISS_DE", reuse_storage=True)
+    cur.close()
+
+    sql = """
+        INSERT INTO INTERPRO.METHOD2SWISS_DE
+        VALUES (:1, :2, :3)
+    """
+    with Table(con, sql) as table:
+        iterator = get_swissprot_descriptions(pg_url)
+        for signature_acc, protein_acc, text in iterator:
+            table.insert((signature_acc, protein_acc, text))
+
+    con.commit()
+    con.close()
 
 
 def add_staging(url: str, update: Sequence[Tuple[Database, str]]):

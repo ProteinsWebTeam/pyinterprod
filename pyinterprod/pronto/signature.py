@@ -67,3 +67,20 @@ def import_signatures(ora_url: str, pg_url: str, allseqs: str, compseqs: str):
     pg_con.commit()
     pg_con.close()
     logger.info("complete")
+
+
+def get_swissprot_descriptions(pg_url: str):
+    con = psycopg2.connect(**url2dict(pg_url))
+    with con.cursor() as cur:
+        cur.execute(
+            """
+            SELECT s2p.signature_acc, s2p.protein_acc, pn.text
+            FROM interpro.signature2protein s2p
+            INNER JOIN interpro.protein_name pn ON s2p.name_id = pn.name_id
+            WHERE s2p.is_reviewed            
+            """
+        )
+        for signature_acc, protein_acc, text in cur:
+            yield signature_acc, protein_acc, text
+
+    con.close()

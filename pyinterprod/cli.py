@@ -254,8 +254,8 @@ def run_protein_update():
 
         # Copy SwissProt descriptions
         Task(
-            fn=interpro.signature.export_swissprot_description,
-            args=(pronto_url, data_dir),
+            fn=interpro.signature.update_method2swiss,
+            args=(interpro_url, pronto_url),
             name="swissprot-de",
             scheduler=dict(queue=lsf_queue),
         )
