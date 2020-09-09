@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, Sequence
+from typing import Sequence
 
 import cx_Oracle
 
@@ -16,7 +16,7 @@ class Database:
     analysis_id: int
 
 
-def get_databases(url: str, names: Sequence[str]) -> Dict[str, Database]:
+def get_databases(url: str, names: Sequence[str]) -> Sequence[Database]:
     names = set(names)
     lower2ori = {n.lower(): n for n in names}
 
