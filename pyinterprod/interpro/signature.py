@@ -3,7 +3,7 @@
 import os
 import pickle
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, Mapping, Sequence, Set, Tuple
+from typing import Dict, Optional, Sequence, Set, Tuple
 
 import cx_Oracle
 import psycopg2
@@ -213,14 +213,20 @@ def make_pre_report(url: str, databases: Sequence[Database], output: str):
         pickle.dump(results, fh)
 
 
-def delete_from_table(url: str, table: str, column: str, step: int,
-                      stop: int) -> int:
+def delete_from_table(url: str, table: str, partition: Optional[str],
+                      column: str, step: int, stop: int) -> int:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
+
+    if partition:
+        db_obj = f"{table} PARTITION ({partition})"
+    else:
+        db_obj = table
+
     cur.execute(
         f"""
         SELECT COUNT(*)
-        FROM {table}
+        FROM INTERPRO.{db_obj}
         WHERE {column} IN (
             SELECT METHOD_AC 
             FROM INTERPRO.METHOD_TO_DELETE
@@ -237,7 +243,7 @@ def delete_from_table(url: str, table: str, column: str, step: int,
     for i in range(1, stop, step):
         cur.execute(
             f"""
-            DELETE FROM INTERPRO.{table}
+            DELETE FROM INTERPRO.{db_obj}
             WHERE {column} IN (
               SELECT METHOD_AC
               FROM INTERPRO.METHOD_TO_DELETE
@@ -247,7 +253,7 @@ def delete_from_table(url: str, table: str, column: str, step: int,
         )
 
     con.commit()
-    ora.gather_stats(cur, "INTERPRO", table)
+    ora.gather_stats(cur, "INTERPRO", table, partition)
     cur.close()
     con.close()
     return num_rows
@@ -399,7 +405,7 @@ def create_and_exchange(url: str, table: str, partition: str, column: str) -> in
     return num_rows
 
 
-def delete_obsolete(url: str, databases: Sequence[Database], **kwargs):
+def delete_obsoletes(url: str, databases: Sequence[Database], **kwargs):
     step = kwargs.get("step", 10000)
     threads = kwargs.get("threads", 8)
 
@@ -479,21 +485,21 @@ def delete_obsolete(url: str, databases: Sequence[Database], **kwargs):
         con.close()
         raise RuntimeError(f"{num_errors} constraints could not be disabled")
 
-    # MATCH and SITE_MATCH are too big for DELETE: exchange partitions
     delete_tasks = []
-    exchange_tasks = []
+    # exchange_tasks = []
     for table, constraint, column in tables:
         if table == "MATCH":
             for db in databases:
                 partition = MATCH_PARTITIONS[db.identifier]
-                exchange_tasks.append((table, partition, column))
+                delete_tasks.append((table, partition, column))
+                # exchange_tasks.append((table, partition, column))
         elif table == "SITE_MATCH":
             for db in databases:
                 partition = SITE_PARTITIONS[db.identifier]
-                exchange_tasks.append((table, partition, column))
+                delete_tasks.append((table, partition, column))
+                # exchange_tasks.append((table, partition, column))
         else:
-            # Normal DELETE statement
-            delete_tasks.append((table, column))
+            delete_tasks.append((table, None, column))
 
     cur.close()
     con.close()
@@ -501,15 +507,15 @@ def delete_obsolete(url: str, databases: Sequence[Database], **kwargs):
     with ThreadPoolExecutor(max_workers=threads) as executor:
         fs = {}
 
-        for table, column in delete_tasks:
-            args = (url, table, column, step, stop)
+        for table, partition, column in delete_tasks:
+            args = (url, table, partition, column, step, stop)
             f = executor.submit(delete_from_table, *args)
-            fs[f] = (table, None)
-
-        for table, partition, column in exchange_tasks:
-            args = (url, table, partition, column)
-            f = executor.submit(create_and_exchange, *args)
             fs[f] = (table, partition)
+
+        # for table, partition, column in exchange_tasks:
+        #     args = (url, table, partition, column)
+        #     f = executor.submit(create_and_exchange, *args)
+        #     fs[f] = (table, partition)
 
         num_errors = 0
         for f in as_completed(fs):
