@@ -390,7 +390,7 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
     con.close()
 
 
-def import_matches(url: str, threads: int = 1, databases: OSoD = None):
+def import_matches(url: str, databases: OSoD = None, threads: int = 1):
     if databases:
         databases = {db.analysis_id for db in databases}
 
