@@ -9,11 +9,12 @@ import cx_Oracle
 
 from pyinterprod import logger
 from pyinterprod.pronto.signature import get_swissprot_descriptions
-from pyinterprod.utils import Table, oracle as ora, pg
+from pyinterprod.utils import Table, oracle as ora
 from . import contrib
 from .database import Database
 
 
+PROTEIN_COUNT_FILE = "protein_count.dat"
 SIGNATURES_DESCR_FILE = "swissprot_descr.dat"
 MATCH_PARTITIONS = {
     'B': 'MATCH_DBCODE_B',  # SFLD
@@ -34,6 +35,34 @@ SITE_PARTITIONS = {
     'B': 'SFLD',
     'J': 'CDD',
 }
+
+
+def get_prot_counts(cur: cx_Oracle.Cursor, database: Database) -> dict:
+    partition = MATCH_PARTITIONS[database.identifier]
+    cur.execute(
+        f"""
+        SELECT METHOD_AC, COUNT(DISTINCT PROTEIN_AC)
+        FROM INTERPRO.MATCH PARTITION ({partition})
+        GROUP BY METHOD_AC 
+        """
+    )
+    counts = dict(cur.fetchall())
+    return counts
+
+
+def export_prot_counts(url: str, databases: Sequence[Database], data_dir: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    counts = {}
+    for db in databases:
+        counts[db.identifier] = get_prot_counts(cur, db)
+
+    cur.close()
+    con.close()
+
+    with open(os.path.join(data_dir, PROTEIN_COUNT_FILE), "wb") as fh:
+        pickle.dump(counts, fh)
 
 
 def export_swissprot_description(pg_url, data_dir: str):
@@ -407,6 +436,7 @@ def create_and_exchange(url: str, table: str, partition: str, column: str) -> in
 
 
 def delete_obsoletes(url: str, databases: Sequence[Database], **kwargs):
+    exchange = kwargs.get("exchange", False)
     step = kwargs.get("step", 10000)
     threads = kwargs.get("threads", 8)
 
@@ -487,18 +517,22 @@ def delete_obsoletes(url: str, databases: Sequence[Database], **kwargs):
         raise RuntimeError(f"{num_errors} constraints could not be disabled")
 
     delete_tasks = []
-    # exchange_tasks = []
+    exchange_tasks = []
     for table, constraint, column in tables:
         if table == "MATCH":
             for db in databases:
                 partition = MATCH_PARTITIONS[db.identifier]
-                delete_tasks.append((table, partition, column))
-                # exchange_tasks.append((table, partition, column))
+                if exchange:
+                    exchange_tasks.append((table, partition, column))
+                else:
+                    delete_tasks.append((table, partition, column))
         elif table == "SITE_MATCH":
             for db in databases:
                 partition = SITE_PARTITIONS[db.identifier]
-                delete_tasks.append((table, partition, column))
-                # exchange_tasks.append((table, partition, column))
+                if exchange:
+                    exchange_tasks.append((table, partition, column))
+                else:
+                    delete_tasks.append((table, partition, column))
         else:
             delete_tasks.append((table, None, column))
 
@@ -513,10 +547,10 @@ def delete_obsoletes(url: str, databases: Sequence[Database], **kwargs):
             f = executor.submit(delete_from_table, *args)
             fs[f] = (table, partition)
 
-        # for table, partition, column in exchange_tasks:
-        #     args = (url, table, partition, column)
-        #     f = executor.submit(create_and_exchange, *args)
-        #     fs[f] = (table, partition)
+        for table, partition, column in exchange_tasks:
+            args = (url, table, partition, column)
+            f = executor.submit(create_and_exchange, *args)
+            fs[f] = (table, partition)
 
         num_errors = 0
         for f in as_completed(fs):
