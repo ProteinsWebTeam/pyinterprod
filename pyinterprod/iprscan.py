@@ -399,13 +399,13 @@ def import_matches(url: str, databases: OSoD = None, threads: int = 1):
 
     pending = {}
     for analysis in get_analyses(cur, use_matches=True):
+        if databases and analysis.id not in databases:
+            continue
+
         try:
             columns = MATCH_SELECT[analysis.type]
         except KeyError:
             logger.warning(f"ignoring analysis {analysis.name}")
-            continue
-
-        if databases and analysis.id not in databases:
             continue
 
         try:
