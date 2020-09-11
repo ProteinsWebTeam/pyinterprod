@@ -8,6 +8,7 @@ import cx_Oracle
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
+from .database import Database
 
 
 _ENTRIES_TMP_FILE = "entries_proteins.dat"
@@ -16,7 +17,173 @@ ENTRIES_CHANGES_FILE = "entries_changes.dat"
 DATABASES_CHANGES_FILE = "databases_changes.dat"
 
 
+def update_database_matches(url: str, database: Database, partition: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    oracle.drop_table(cur, "INTERPRO.MATCH_NEW", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.MATCH_NEW NOLOGGING
+        AS SELECT * FROM INTERPRO.MATCH WHERE 1 = 0
+        """
+    )
+    cur.execute(
+        """
+        INSERT /*+ APPEND */ INTO INTERPRO.MATCH_NEW
+        SELECT
+          X.AC, M.METHOD_AC, M.SEQ_START, M.SEQ_END, 'T',
+          D.DBCODE, D.EVIDENCE,
+          SYSDATE, SYSDATE, SYSDATE, 'INTERPRO',
+          M.EVALUE, M.MODEL_AC, M.FRAGMENTS
+        FROM IPRSCAN.MV_IPRSCAN M
+        INNER JOIN UNIPARC.XREF X 
+          ON M.UPI = X.UPI
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE D
+          ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
+        WHERE X.DBID IN (2, 3)  -- Swiss-Prot or TrEMBL
+        AND X.DELETED = 'N'
+        AND M.ANALYSIS_ID = :1 
+        AND M.SEQ_START != M.SEQ_END
+        """, (database.analysis_id,)
+    )
+    con.commit()
+
+    # Add constraints/indexes to be able to exchange partition
+    logger.debug("creating indexes and constraints")
+    cur.execute(
+        """
+        CREATE INDEX MATCH_NEW$D 
+        ON INTERPRO.MATCH_NEW (DBCODE) 
+        NOLOGGING
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX MATCH_NEW$E 
+        ON INTERPRO.MATCH_NEW (EVIDENCE) 
+        NOLOGGING
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX MATCH_NEW$S 
+        ON INTERPRO.MATCH_NEW (STATUS) 
+        NOLOGGING
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX MATCH_NEW$M 
+        ON INTERPRO.MATCH_NEW (METHOD_AC) 
+        NOLOGGING
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE INTERPRO.MATCH_NEW
+        ADD CONSTRAINT MATCH_NEW$CK1 
+        CHECK ( POS_FROM >= 1 ) 
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE INTERPRO.MATCH_NEW
+        ADD CONSTRAINT MATCH_NEW$CK2
+        CHECK ( POS_TO - POS_FROM > 0 ) 
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE INTERPRO.MATCH_NEW
+        ADD CONSTRAINT MATCH_NEW$CK3
+        CHECK ( STATUS != 'N' OR (STATUS = 'N' AND DBCODE IN ('P', 'M', 'Q')) )
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE INTERPRO.MATCH_NEW
+        ADD CONSTRAINT MATCH_NEW$PK
+        PRIMARY KEY (PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO)
+        """
+    )
+    cur.execute(
+        f"""
+        ALTER TABLE INTERPRO.MATCH_NEW
+        ADD CONSTRAINT MATCH_NEW$FK1 FOREIGN KEY (DBCODE) 
+        REFERENCES INTERPRO.CV_DATABASE (DBCODE)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE INTERPRO.MATCH_NEW
+        ADD CONSTRAINT MATCH_NEW$FK2 FOREIGN KEY (EVIDENCE) 
+        REFERENCES INTERPRO.CV_EVIDENCE (CODE)
+        """
+    )
+    cur.execute(
+        f"""
+        ALTER TABLE INTERPRO.MATCH_NEW
+        ADD CONSTRAINT MATCH_NEW$FK3 FOREIGN KEY (METHOD_AC)
+        REFERENCES INTERPRO.METHOD (METHOD_AC)
+        """
+    )
+    cur.execute(
+        f"""
+        ALTER TABLE INTERPRO.MATCH_NEW
+        ADD CONSTRAINT MATCH_NEW$FK4 FOREIGN KEY (PROTEIN_AC) 
+        REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
+        """
+    )
+    cur.execute(
+        f"""
+        ALTER TABLE INTERPRO.MATCH_NEW
+        ADD CONSTRAINT MATCH_NEW$FK5 FOREIGN KEY (STATUS) 
+        REFERENCES INTERPRO.CV_STATUS (CODE)
+        """
+    )
+    cur.execute(
+        f"""
+        ALTER TABLE INTERPRO.MATCH_NEW
+        ADD CONSTRAINT MATCH_NEW$CK4 
+        CHECK (PROTEIN_AC IS NOT NULL )
+        """
+    )
+    cur.execute(
+        f"""
+        ALTER TABLE INTERPRO.MATCH_NEW
+        ADD CONSTRAINT MATCH_NEW$CK5 
+        CHECK (METHOD_AC IS NOT NULL )
+        """
+    )
+
+    cur.execute("SELECT COUNT(*) FROM INTERPRO.MATCH_NEW")
+    cnt, = cur.fetchone()
+    if not cnt:
+        raise RuntimeError(f"no rows inserted "
+                           f"for analysis ID {database.analysis_id}")
+
+    logger.debug(f"exchanging partition")
+    cur.execute(
+        f"""
+        ALTER TABLE INTERPRO.MATCH
+        EXCHANGE PARTITION ({partition}) 
+        WITH TABLE INTERPRO.MATCH_NEW
+        WITHOUT VALIDATION
+        """
+    )
+    oracle.drop_table(cur, "INTERPRO.MATCH_NEW", purge=True)
+
+    cur.close()
+    con.close()
+
+
 def update_matches(url: str, outdir: str):
+    """
+    Add protein matches for recently added/modified sequences
+
+    :param url: Oracle connection string
+    :param outdir: output directory for data files
+    """
     os.makedirs(outdir, exist_ok=True)
 
     con = cx_Oracle.connect(url)
@@ -28,6 +195,11 @@ def update_matches(url: str, outdir: str):
 
 
 def update_feature_matches(url: str):
+    """
+    Add protein feature matches for recently added/modified sequences
+
+    :param url: Oracle connection string
+    """
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     logger.info("updating FEATURE_MATCH")
@@ -65,6 +237,11 @@ def update_feature_matches(url: str):
 
 
 def update_variant_matches(url: str):
+    """
+    Recreate splice-variants table with the most recent data
+
+    :param url: Oracle connection string
+    """
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     logger.info("updating VARSPLIC_MASTER")
@@ -116,6 +293,11 @@ def update_variant_matches(url: str):
 
 
 def update_site_matches(url: str):
+    """
+    Add protein site matches for recently added/modified sequences
+
+    :param url: Oracle connection string
+    """
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -201,6 +383,11 @@ def update_site_matches(url: str):
 
 
 def _prepare_matches(con: cx_Oracle.Connection):
+    """
+    Import protein matches in a staging table
+
+    :param con: Oracle connection object
+    """
     cur = con.cursor()
 
     logger.info("populating MATCH_NEW")
@@ -269,6 +456,12 @@ def _prepare_matches(con: cx_Oracle.Connection):
 
 
 def _check_matches(con: cx_Oracle.Connection, outdir: str):
+    """
+    Check there are not errors in imported matches
+
+    :param con: Oracle connection object
+    :param outdir: output directory for data files
+    """
     cur = con.cursor()
 
     # Matches outside of the protein
@@ -321,6 +514,11 @@ def _check_matches(con: cx_Oracle.Connection, outdir: str):
 
 
 def _insert_matches(con: cx_Oracle.Connection):
+    """
+    Update the MATCH table with data from the staging table
+
+    :param con: Oracle connection object
+    """
     cur = con.cursor()
 
     logger.info("updating MATCH")
@@ -349,6 +547,12 @@ def _insert_matches(con: cx_Oracle.Connection):
 
 
 def _track_count_changes(con: cx_Oracle.Connection, outdir: str):
+    """
+    Evaluate how the protein counts changed between two UniProt versions
+
+    :param con: Oracle connection object
+    :param outdir: directory for data files
+    """
     logger.info("tracking changes")
     cur = con.cursor()
 
@@ -394,6 +598,12 @@ def _track_count_changes(con: cx_Oracle.Connection, outdir: str):
 
 
 def _get_entries_proteins_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:
+    """
+    Return the number of protein matched by each InterPro entry
+
+    :param cur: Oracle cursor object
+    :return: dictionary
+    """
     cur.execute(
         """
         SELECT E.ENTRY_AC, COUNT(DISTINCT M.PROTEIN_AC)
@@ -407,6 +617,11 @@ def _get_entries_proteins_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:
 
 
 def _get_databases_matches_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:
+    """
+    Return the number of matches per member database
+    :param cur: Oracle cursor object
+    :return: dictionary
+    """
     cur.execute(
         """
         SELECT DBCODE, COUNT(*)
