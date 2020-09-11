@@ -12,6 +12,7 @@ from pyinterprod import logger
 from pyinterprod.interpro.database import Database
 from pyinterprod.utils import oracle
 
+OSoD = Optional[Sequence[Database]]
 PREFIX = "MV_"
 
 # Columns to select when inserting matches in MV_IPRSCAN
@@ -389,7 +390,10 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
     con.close()
 
 
-def import_matches(url: str, threads: int = 1):
+def import_matches(url: str, threads: int = 1, databases: OSoD = None):
+    if databases:
+        databases = {db.analysis_id for db in databases}
+
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -399,6 +403,9 @@ def import_matches(url: str, threads: int = 1):
             columns = MATCH_SELECT[analysis.type]
         except KeyError:
             logger.warning(f"ignoring analysis {analysis.name}")
+            continue
+
+        if databases and analysis.id not in databases:
             continue
 
         try:
