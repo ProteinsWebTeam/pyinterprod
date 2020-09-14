@@ -2,12 +2,13 @@
 
 import os
 import pickle
-from typing import Dict
+from typing import Dict, Sequence
 
 import cx_Oracle
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
+from .signature import MATCH_PARTITIONS
 from .database import Database
 
 
@@ -17,164 +18,152 @@ ENTRIES_CHANGES_FILE = "entries_changes.dat"
 DATABASES_CHANGES_FILE = "databases_changes.dat"
 
 
-def update_database_matches(url: str, database: Database, partition: str):
+def update_database_matches(url: str, databases: Sequence[Database]):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    oracle.drop_table(cur, "INTERPRO.MATCH_NEW", purge=True)
-    cur.execute(
-        """
-        CREATE TABLE INTERPRO.MATCH_NEW NOLOGGING
-        AS SELECT * FROM INTERPRO.MATCH WHERE 1 = 0
-        """
-    )
-    cur.execute(
-        """
-        INSERT /*+ APPEND */ INTO INTERPRO.MATCH_NEW
-        SELECT
-          X.AC, M.METHOD_AC, M.SEQ_START, M.SEQ_END, 'T',
-          D.DBCODE, D.EVIDENCE,
-          SYSDATE, SYSDATE, SYSDATE, 'INTERPRO',
-          M.EVALUE, M.MODEL_AC, M.FRAGMENTS
-        FROM IPRSCAN.MV_IPRSCAN M
-        INNER JOIN UNIPARC.XREF X 
-          ON M.UPI = X.UPI
-        INNER JOIN INTERPRO.IPRSCAN2DBCODE D
-          ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
-        WHERE X.DBID IN (2, 3)  -- Swiss-Prot or TrEMBL
-        AND X.DELETED = 'N'
-        AND M.ANALYSIS_ID = :1 
-        AND M.SEQ_START != M.SEQ_END
-        """, (database.analysis_id,)
-    )
-    con.commit()
 
-    # Add constraints/indexes to be able to exchange partition
-    logger.debug("creating indexes and constraints")
-    cur.execute(
-        """
-        CREATE INDEX MATCH_NEW$D 
-        ON INTERPRO.MATCH_NEW (DBCODE) 
-        NOLOGGING
-        """
-    )
-    cur.execute(
-        """
-        CREATE INDEX MATCH_NEW$E 
-        ON INTERPRO.MATCH_NEW (EVIDENCE) 
-        NOLOGGING
-        """
-    )
-    cur.execute(
-        """
-        CREATE INDEX MATCH_NEW$S 
-        ON INTERPRO.MATCH_NEW (STATUS) 
-        NOLOGGING
-        """
-    )
-    cur.execute(
-        """
-        CREATE INDEX MATCH_NEW$M 
-        ON INTERPRO.MATCH_NEW (METHOD_AC) 
-        NOLOGGING
-        """
-    )
-    cur.execute(
-        """
-        ALTER TABLE INTERPRO.MATCH_NEW
-        ADD CONSTRAINT MATCH_NEW$CK1 
-        CHECK ( POS_FROM >= 1 ) 
-        """
-    )
-    cur.execute(
-        """
-        ALTER TABLE INTERPRO.MATCH_NEW
-        ADD CONSTRAINT MATCH_NEW$CK2
-        CHECK ( POS_TO - POS_FROM > 0 ) 
-        """
-    )
-    cur.execute(
-        """
-        ALTER TABLE INTERPRO.MATCH_NEW
-        ADD CONSTRAINT MATCH_NEW$CK3
-        CHECK ( STATUS != 'N' OR (STATUS = 'N' AND DBCODE IN ('P', 'M', 'Q')) )
-        """
-    )
-    cur.execute(
-        """
-        ALTER TABLE INTERPRO.MATCH_NEW
-        ADD CONSTRAINT MATCH_NEW$PK
-        PRIMARY KEY (PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO)
-        """
-    )
-    cur.execute(
-        f"""
-        ALTER TABLE INTERPRO.MATCH_NEW
-        ADD CONSTRAINT MATCH_NEW$FK1 FOREIGN KEY (DBCODE) 
-        REFERENCES INTERPRO.CV_DATABASE (DBCODE)
-        """
-    )
-    cur.execute(
-        """
-        ALTER TABLE INTERPRO.MATCH_NEW
-        ADD CONSTRAINT MATCH_NEW$FK2 FOREIGN KEY (EVIDENCE) 
-        REFERENCES INTERPRO.CV_EVIDENCE (CODE)
-        """
-    )
-    cur.execute(
-        f"""
-        ALTER TABLE INTERPRO.MATCH_NEW
-        ADD CONSTRAINT MATCH_NEW$FK3 FOREIGN KEY (METHOD_AC)
-        REFERENCES INTERPRO.METHOD (METHOD_AC)
-        """
-    )
-    cur.execute(
-        f"""
-        ALTER TABLE INTERPRO.MATCH_NEW
-        ADD CONSTRAINT MATCH_NEW$FK4 FOREIGN KEY (PROTEIN_AC) 
-        REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
-        """
-    )
-    cur.execute(
-        f"""
-        ALTER TABLE INTERPRO.MATCH_NEW
-        ADD CONSTRAINT MATCH_NEW$FK5 FOREIGN KEY (STATUS) 
-        REFERENCES INTERPRO.CV_STATUS (CODE)
-        """
-    )
-    cur.execute(
-        f"""
-        ALTER TABLE INTERPRO.MATCH_NEW
-        ADD CONSTRAINT MATCH_NEW$CK4 
-        CHECK (PROTEIN_AC IS NOT NULL )
-        """
-    )
-    cur.execute(
-        f"""
-        ALTER TABLE INTERPRO.MATCH_NEW
-        ADD CONSTRAINT MATCH_NEW$CK5 
-        CHECK (METHOD_AC IS NOT NULL )
-        """
-    )
+    for database in databases:
+        logger.info(f"{database.name}")
+        oracle.drop_table(cur, "INTERPRO.MATCH_NEW", purge=True)
+        logger.debug(f"\tpopulating MATCH_MEW "
+                     f"(ANALYSIS_ID: {database.analysis_id})")
+        cur.execute(
+            """
+            CREATE TABLE INTERPRO.MATCH_NEW NOLOGGING
+            AS SELECT * FROM INTERPRO.MATCH WHERE 1 = 0
+            """
+        )
+        cur.execute(
+            """
+            INSERT /*+ APPEND */ INTO INTERPRO.MATCH_NEW
+            SELECT
+              X.AC, M.METHOD_AC, M.SEQ_START, M.SEQ_END, 'T',
+              D.DBCODE, D.EVIDENCE,
+              SYSDATE, SYSDATE, SYSDATE, 'INTERPRO',
+              M.EVALUE, M.MODEL_AC, M.FRAGMENTS
+            FROM IPRSCAN.MV_IPRSCAN M
+            INNER JOIN UNIPARC.XREF X 
+              ON M.UPI = X.UPI
+            INNER JOIN INTERPRO.IPRSCAN2DBCODE D
+              ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
+            WHERE X.DBID IN (2, 3)  -- Swiss-Prot or TrEMBL
+            AND X.DELETED = 'N'
+            AND M.ANALYSIS_ID = :1 
+            AND M.SEQ_START != M.SEQ_END
+            """, (database.analysis_id,)
+        )
+        con.commit()
 
-    cur.execute("SELECT COUNT(*) FROM INTERPRO.MATCH_NEW")
-    cnt, = cur.fetchone()
-    if not cnt:
-        raise RuntimeError(f"no rows inserted "
-                           f"for analysis ID {database.analysis_id}")
+        # Add constraints/indexes to be able to exchange partition
+        logger.debug("\tcreating indexes and constraints")
+        for col in ("DBCODE", "EVIDENCE", "STATUS", "METHOD_AC"):
+            cur.execute(
+                f"""
+                CREATE INDEX MATCH_NEW${col[0]}
+                ON INTERPRO.MATCH_NEW ({col}) 
+                NOLOGGING
+                """
+            )
 
-    logger.debug(f"exchanging partition")
-    cur.execute(
-        f"""
-        ALTER TABLE INTERPRO.MATCH
-        EXCHANGE PARTITION ({partition}) 
-        WITH TABLE INTERPRO.MATCH_NEW
-        WITHOUT VALIDATION
-        """
-    )
-    oracle.drop_table(cur, "INTERPRO.MATCH_NEW", purge=True)
+        cur.execute(
+            """
+            ALTER TABLE INTERPRO.MATCH_NEW
+            ADD CONSTRAINT MATCH_NEW$CK1 
+            CHECK ( POS_FROM >= 1 ) 
+            """
+        )
+        cur.execute(
+            """
+            ALTER TABLE INTERPRO.MATCH_NEW
+            ADD CONSTRAINT MATCH_NEW$CK2
+            CHECK ( POS_TO - POS_FROM > 0 ) 
+            """
+        )
+        cur.execute(
+            """
+            ALTER TABLE INTERPRO.MATCH_NEW
+            ADD CONSTRAINT MATCH_NEW$CK3
+            CHECK ( STATUS != 'N' OR (STATUS = 'N' AND DBCODE IN ('P', 'M', 'Q')) )
+            """
+        )
+        cur.execute(
+            """
+            ALTER TABLE INTERPRO.MATCH_NEW
+            ADD CONSTRAINT MATCH_NEW$PK
+            PRIMARY KEY (PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO)
+            """
+        )
+        cur.execute(
+            f"""
+            ALTER TABLE INTERPRO.MATCH_NEW
+            ADD CONSTRAINT MATCH_NEW$FK1 FOREIGN KEY (DBCODE) 
+            REFERENCES INTERPRO.CV_DATABASE (DBCODE)
+            """
+        )
+        cur.execute(
+            """
+            ALTER TABLE INTERPRO.MATCH_NEW
+            ADD CONSTRAINT MATCH_NEW$FK2 FOREIGN KEY (EVIDENCE) 
+            REFERENCES INTERPRO.CV_EVIDENCE (CODE)
+            """
+        )
+        cur.execute(
+            f"""
+            ALTER TABLE INTERPRO.MATCH_NEW
+            ADD CONSTRAINT MATCH_NEW$FK3 FOREIGN KEY (METHOD_AC)
+            REFERENCES INTERPRO.METHOD (METHOD_AC)
+            """
+        )
+        cur.execute(
+            f"""
+            ALTER TABLE INTERPRO.MATCH_NEW
+            ADD CONSTRAINT MATCH_NEW$FK4 FOREIGN KEY (PROTEIN_AC) 
+            REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
+            """
+        )
+        cur.execute(
+            f"""
+            ALTER TABLE INTERPRO.MATCH_NEW
+            ADD CONSTRAINT MATCH_NEW$FK5 FOREIGN KEY (STATUS) 
+            REFERENCES INTERPRO.CV_STATUS (CODE)
+            """
+        )
+        cur.execute(
+            f"""
+            ALTER TABLE INTERPRO.MATCH_NEW
+            ADD CONSTRAINT MATCH_NEW$CK4 
+            CHECK (PROTEIN_AC IS NOT NULL )
+            """
+        )
+        cur.execute(
+            f"""
+            ALTER TABLE INTERPRO.MATCH_NEW
+            ADD CONSTRAINT MATCH_NEW$CK5 
+            CHECK (METHOD_AC IS NOT NULL )
+            """
+        )
+
+        cur.execute("SELECT COUNT(*) FROM INTERPRO.MATCH_NEW")
+        cnt, = cur.fetchone()
+        if not cnt:
+            raise RuntimeError(f"no rows inserted "
+                               f"for analysis ID {database.analysis_id}")
+
+        logger.debug(f"\texchanging partition")
+        partition = MATCH_PARTITIONS[database.identifier]
+        cur.execute(
+            f"""
+            ALTER TABLE INTERPRO.MATCH
+            EXCHANGE PARTITION ({partition}) 
+            WITH TABLE INTERPRO.MATCH_NEW
+            """
+        )
+        oracle.drop_table(cur, "INTERPRO.MATCH_NEW", purge=True)
 
     cur.close()
     con.close()
+
+    logger.info("complete")
 
 
 def update_matches(url: str, outdir: str):
