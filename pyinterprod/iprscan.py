@@ -261,22 +261,6 @@ def get_analyses(cur: Cursor, use_matches: bool = True,
     return analyses
 
 
-def get_max_upi(cur: Cursor, sql: str) -> Optional[str]:
-    try:
-        cur.execute(sql)
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        if error.code in (942, 2149):
-            # ORA-00942: Table or view does not exist
-            # ORA-02149: Specified partition does not exist
-            return None
-        else:
-            raise exc
-    else:
-        row = cur.fetchone()
-        return row[0] if row else None
-
-
 def import_from_ispro(cur: Cursor, src: str, dst: str):
     oracle.drop_mview(cur, dst)
     oracle.drop_table(cur, dst, purge=True)
@@ -316,13 +300,27 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     max_upi, = cur.fetchone()
 
+    part2id = {}
     up_to_date = 0
     for analysis_id, partition, columns in analyses:
-        sql = f"""
+        cur.execute(
+            f"""
+            SELECT MAX(ANALYSIS_ID)
+            FROM IPRSCAN.{partitioned_table} PARTITION ({partition})
+            """
+        )
+        row = cur.fetchone()
+        part2id[partition] = [row[0] if row else None, analysis_id]
+
+        cur.execute(
+            f"""
             SELECT MAX(UPI)
             FROM IPRSCAN.{partitioned_table} PARTITION ({partition})
-        """
-        upi = get_max_upi(cur, sql)
+            WHERE ANALYSIS_ID = :1
+            """, (analysis_id,)
+        )
+        row = cur.fetchone()
+        upi = row[0] if row else None
 
         if upi and upi >= max_upi:
             # Data in `partitioned_table` >= UniParc: no need to refresh data
@@ -334,12 +332,24 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
         return
 
     local_table = PREFIX + remote_table
-    upi_loc = get_max_upi(cur, f"SELECT MAX(UPI) FROM IPRSCAN.{local_table}")
+    try:
+        cur.execute(f"SELECT MAX(UPI) FROM IPRSCAN.{local_table}")
+    except cx_Oracle.DatabaseError as exc:
+        error, = exc.args
+        if error.code == 942:
+            # ORA-00942: Table or view does not exist
+            upi_loc = None
+        else:
+            raise exc
+    else:
+        row = cur.fetchone()
+        upi_loc = row[0] if row else None
+
     if not upi_loc or upi_loc < max_upi:
         """
         No matches for the highest UPI: need to import table from ISPRO
         All analyses for this table are imported
-            (previous versions are not ignored)
+            (i.e. previous versions are not ignored)
         """
         import_from_ispro(cur, remote_table, local_table)
 
@@ -380,6 +390,28 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
             WITH TABLE {tmp_table}
             """
         )
+
+        # Modify the partition if there is a different ANALYSIS_ID (DB update)
+        prev_val, new_val = part2id[partition]
+        if prev_val is not None and prev_val != new_val:
+            # `prev_val` is None if the partition is empty
+            logger.debug(f"{partitioned_table} ({partition}): "
+                         f"{prev_val} -> {new_val}")
+            cur.execute(
+                f"""
+                ALTER TABLE IPRSCAN.{partitioned_table}
+                MODIFY PARTITION {partition}
+                ADD VALUES ({new_val})
+                """
+            )
+
+            cur.execute(
+                f"""
+                ALTER TABLE IPRSCAN.{partitioned_table}
+                MODIFY PARTITION {partition}
+                DROP VALUES ({prev_val})
+                """
+            )
 
         oracle.gather_stats(cur, "IPRSCAN", partitioned_table, partition)
 
