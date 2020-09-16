@@ -381,22 +381,22 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
         )
         con.commit()
 
-        # Exchange partition to get the data
-        # from the tmp table in the final table
-        cur.execute(
-            f"""
-            ALTER TABLE IPRSCAN.{partitioned_table}
-            EXCHANGE PARTITION {partition}
-            WITH TABLE {tmp_table}
-            """
-        )
-
-        # Modify the partition if there is a different ANALYSIS_ID (DB update)
         prev_val, new_val = part2id[partition]
         if prev_val is not None and prev_val != new_val:
-            # `prev_val` is None if the partition is empty
+            """
+            Different ANALYSIS_ID (database uodate):
+            1. TRUNCATE the partition, to remove rows with the old ANALYSIS_ID
+            2. Modify the partition (remove old value)
+            3. Modify the partition (add new value)
+            """
             logger.debug(f"{partitioned_table} ({partition}): "
                          f"{prev_val} -> {new_val}")
+            cur.execute(
+                f"""
+                ALTER TABLE IPRSCAN.{partitioned_table} 
+                TRUNCATE PARTITION {partition}
+                """
+            )
             cur.execute(
                 f"""
                 ALTER TABLE IPRSCAN.{partitioned_table}
@@ -404,7 +404,6 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
                 ADD VALUES ({new_val})
                 """
             )
-
             cur.execute(
                 f"""
                 ALTER TABLE IPRSCAN.{partitioned_table}
@@ -412,6 +411,15 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
                 DROP VALUES ({prev_val})
                 """
             )
+
+        # Exchange partition with temp table
+        cur.execute(
+            f"""
+            ALTER TABLE IPRSCAN.{partitioned_table}
+            EXCHANGE PARTITION {partition}
+            WITH TABLE {tmp_table}
+            """
+        )
 
         oracle.gather_stats(cur, "IPRSCAN", partitioned_table, partition)
 
