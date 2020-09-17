@@ -149,6 +149,30 @@ def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
     con.close()
 
 
+def update_signatures(url: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        MERGE INTO INTERPRO.METHOD M
+        USING INTERPRO.METHOD_STG S
+          ON M.METHOD_AC = S.METHOD_AC
+        WHEN MATCHED THEN 
+          UPDATE SET M.NAME = S.NAME,
+                     M.DESCRITPION = S.DESCRIPTION,
+                     M.SIG_TYPE = S.SIG_TYPE,
+                     M.ABSTRACT = S.ABSTRACT,
+                     M.TIMESTAMP = SYSDATE
+        WHEN NOT MATCHED THEN
+          INSERT (METHOD_AC, NAME, DBCODE, CANDIDATE, DESCRIPTION, SIG_TYPE, ABSTRACT)
+          VALUES (S.METHOD_AC, S.NAME, S.DBCODE, 'Y', S.DESCRIPTION, S.SIG_TYPE, S.ABSTRACT)
+        """
+    )
+    con.commit()
+    cur.close()
+    con.close()
+
+
 def make_pre_report(url: str, databases: Sequence[Database], output: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
