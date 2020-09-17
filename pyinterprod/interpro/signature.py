@@ -156,10 +156,10 @@ def update_signatures(url: str):
         """
         MERGE INTO INTERPRO.METHOD M
         USING INTERPRO.METHOD_STG S
-          ON M.METHOD_AC = S.METHOD_AC
+          ON (M.METHOD_AC = S.METHOD_AC)
         WHEN MATCHED THEN 
           UPDATE SET M.NAME = S.NAME,
-                     M.DESCRITPION = S.DESCRIPTION,
+                     M.DESCRIPTION = S.DESCRIPTION,
                      M.SIG_TYPE = S.SIG_TYPE,
                      M.ABSTRACT = S.ABSTRACT,
                      M.TIMESTAMP = SYSDATE
