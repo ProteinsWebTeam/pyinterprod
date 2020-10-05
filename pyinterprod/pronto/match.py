@@ -44,6 +44,17 @@ class MatchIterator:
     def __iter__(self):
         con = cx_Oracle.connect(self.url)
         cur = con.cursor()
+
+        # Get accession for Swiss-Prot proteins
+        cur.execute(
+            """
+            SELECT PROTEIN_AC 
+            FROM INTERPRO.PROTEIN 
+            WHERE DBCODE = 'S'
+            """
+        )
+        reviewed = {acc for acc, in cur.fetchall()}
+
         cur.execute(
             """
             SELECT M.PROTEIN_AC, M.METHOD_AC, LOWER(D.DBSHORT),
@@ -62,9 +73,12 @@ class MatchIterator:
         i = 0
         signatures = {}
         for row in cur:
+            prot_acc = row[0]
+            sign_acc = row[1]
+
             yield (
-                row[0],
-                row[1],
+                prot_acc,
+                sign_acc,
                 self.databases[row[2]],
                 # Format: start-end-type
                 # with type=S (continuous single chain domain)
@@ -72,9 +86,11 @@ class MatchIterator:
             )
 
             try:
-                signatures[row[1]].append(row[0])
+                matches = signatures[sign_acc]
             except KeyError:
-                signatures[row[1]] = [row[0]]
+                matches = signatures[sign_acc] = []
+
+            matches.append((prot_acc, prot_acc in reviewed))
 
             i += 1
             if not i % 1000000:
@@ -93,8 +109,24 @@ class MatchIterator:
     def dump(self, signatures: Dict[str, Sequence]):
         fd, path = mkstemp(dir=self.tmpdir)
         with open(fd, "wb") as fh:
-            for key in sorted(signatures):
-                pickle.dump((key, set(signatures[key])), fh)
+            for sign_acc in sorted(signatures):
+                reviewed_proteins = set()
+                n_reviewed_matches = 0
+                unreviewed_proteins = set()
+
+                for prot_acc, is_reviewed in signatures[sign_acc]:
+                    if is_reviewed:
+                        reviewed_proteins.add(prot_acc)
+                        n_reviewed_matches += 1
+                    else:
+                        unreviewed_proteins.add(prot_acc)
+
+                pickle.dump((
+                    sign_acc,
+                    reviewed_proteins,
+                    n_reviewed_matches,
+                    unreviewed_proteins
+                ), fh)
 
         self.files.append(path)
 
@@ -109,23 +141,40 @@ class MatchIterator:
                 else:
                     yield obj
 
-    def merge(self) -> Dict[str, int]:
+    def merge(self) -> Dict[str, tuple]:
         counts = {}
         signature = None
-        proteins = set()
+        reviewed_proteins = set()
+        unreviewed_proteins = set()
+        n_reviewed_matches = 0
+
         iterable = [self.load(path) for path in self.files]
-        for key, values in heapq.merge(*iterable, key=lambda x: x[0]):
-            if key != signature:
+        for item in heapq.merge(*iterable, key=lambda x: x[0]):
+            sig_acc, rev_prots, n_rev_matches, unrev_prots = item
+
+            if sig_acc != signature:
                 if signature:
-                    counts[signature] = len(proteins)
+                    counts[signature] = (
+                        len(reviewed_proteins),
+                        n_reviewed_matches,
+                        len(unreviewed_proteins)
+                    )
 
-                signature = key
-                proteins = set()
+                signature = sig_acc
+                reviewed_proteins = set()
+                unreviewed_proteins = set()
+                n_reviewed_matches = 0
 
-            proteins |= values
+            reviewed_proteins |= rev_prots
+            n_reviewed_matches += n_rev_matches
+            unreviewed_proteins |= unrev_prots
 
         if signature:
-            counts[signature] = len(proteins)
+            counts[signature] = (
+                len(reviewed_proteins),
+                n_reviewed_matches,
+                len(unreviewed_proteins)
+            )
 
         return counts
 

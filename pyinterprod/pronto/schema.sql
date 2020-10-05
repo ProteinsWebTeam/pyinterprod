@@ -150,6 +150,8 @@ create table interpro.signature
     type varchar(25) not null,
     abstract text,
     num_sequences integer not null,
+    num_reviewed_sequences integer not null,
+    num_reviewed_matches integer not null,
     num_complete_sequences integer not null,
     num_residues bigint not null
 );

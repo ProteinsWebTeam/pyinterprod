@@ -38,22 +38,28 @@ def import_signatures(ora_url: str, pg_url: str, allseqs: str, compseqs: str):
     values = []
     for row in ora_cur:
         acc = row[0]
-        num_sequences = allseqs.get(acc, 0)
+        try:
+            n_rev_seqs, n_rev_matches, n_unrev_seqs = allseqs[acc]
+        except KeyError:
+            n_rev_seqs = n_rev_matches = n_unrev_seqs = 0
+
         try:
             num_complete_sequences, num_residues = compseqs[acc]
         except KeyError:
             num_complete_sequences = num_residues = 0
 
         values.append((
-            acc,
-            databases.get(row[1]),
-            row[2],
-            row[3],
-            row[4],
-            row[6].read() if row[6] is not None else row[5],
-            num_sequences,
-            num_complete_sequences,
-            num_residues
+            acc,                        # accession
+            databases.get(row[1]),      # database_id
+            row[2],                     # name
+            row[3],                     # description
+            row[4],                     # type
+            row[6].read() if row[6] is not None else row[5],    # abstract
+            n_rev_seqs + n_unrev_seqs,  # num_sequences
+            n_rev_seqs,                 # num_reviewed_sequences
+            n_rev_matches,              # num_reviewed_matches
+            num_complete_sequences,     # num_complete_sequences
+            num_residues                # num_residues
         ))
     ora_cur.close()
     ora_con.close()
