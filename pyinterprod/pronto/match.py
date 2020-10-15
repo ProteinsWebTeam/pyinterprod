@@ -569,28 +569,34 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         pg_con.commit()
 
         logger.info("optimizing: signature2protein")
-        logger.debug("\tsignature2protein_protein_idx")
+        logger.info("\tsignature2protein_protein_idx")
         pg_cur.execute(
             """
             CREATE INDEX signature2protein_protein_idx
             ON signature2protein (protein_acc)
             """
         )
-        logger.debug("\tsignature2protein_signature_idx")
+        pg_con.commit()
+
+        logger.info("\tsignature2protein_signature_idx")
         pg_cur.execute(
             """
             CREATE INDEX signature2protein_signature_idx
             ON signature2protein (signature_acc)
             """
         )
-        logger.debug("\tCLUSTER")
+        pg_con.commit()
+
+        logger.info("\tCLUSTER")
         pg_cur.execute(
             """
             CLUSTER signature2protein
             USING signature2protein_signature_idx
             """
         )
-        logger.debug("\tANALYZE")
+        pg_con.commit()
+
+        logger.info("\tANALYZE")
         pg_cur.execute("ANALYZE signature2protein")
         pg_con.commit()
 
