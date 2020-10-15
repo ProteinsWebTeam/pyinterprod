@@ -68,7 +68,7 @@ class Entry(object):
         con = sqlite3.connect(database)
 
         try:
-            # accession, identifier, is_reviewed, crc64, length, is_fragment, taxon_id
+            # acc, ID, is_reviewed, crc64, length, is_fragment, taxID
             for row in con.execute("SELECT * FROM protein ORDER BY accession"):
                 yield row
         finally:
@@ -168,8 +168,8 @@ def init_database(tmpdir: Optional[str] = None) -> str:
 def track_changes(url: str, swissp: str, trembl: str,
                   tmpdir: Optional[str] = None):
     logger.info("starting")
-    database_old = init_database(dir=tmpdir)
-    database_new = init_database(dir=tmpdir)
+    database_old = init_database(tmpdir=tmpdir)
+    database_new = init_database(tmpdir=tmpdir)
 
     failed = False
     with futures.ProcessPoolExecutor(max_workers=2) as executor:
