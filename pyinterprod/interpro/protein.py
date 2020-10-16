@@ -55,7 +55,7 @@ def export_proteins(url: str, database: str) -> Tuple[int, int]:
     return swissp_cnt, trembl_cnt
 
 
-class Entry(object):
+class Entry:
     def __init__(self, database):
         self.gen = self.iter(database)
         self.record = None
@@ -254,8 +254,7 @@ def track_changes(url: str, swissp: str, trembl: str,
                     forthcoming.next()
                 elif current < forthcoming:
                     # Entry in current but not in forthcoming: deleted
-                    del_table.insert(
-                        (del_table.count+1, current.accession))
+                    del_table.insert((del_table.count+1, current.accession))
                     current.next()
                 else:
                     # Entry in forthcoming but not in current: new

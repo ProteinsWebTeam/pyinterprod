@@ -3,7 +3,7 @@
 from typing import Union
 
 
-class Table(object):
+class Table:
     def __init__(self, con, query: str, autocommit: bool = False,
                  buffer_size: int = 100000, depends_on=None):
         self.con = con
