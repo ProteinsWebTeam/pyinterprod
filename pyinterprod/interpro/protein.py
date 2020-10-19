@@ -165,13 +165,14 @@ def init_database(tmpdir: Optional[str] = None) -> str:
     return database
 
 
-def track_changes(url: str, swissp: str, trembl: str,
+def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
                   tmpdir: Optional[str] = None):
     logger.info("starting")
     database_old = init_database(tmpdir=tmpdir)
     database_new = init_database(tmpdir=tmpdir)
 
     failed = False
+    new_swissp_cnt = new_trembl_cnt = 0
     with futures.ProcessPoolExecutor(max_workers=2) as executor:
         fs = {}
         f = executor.submit(export_proteins, url, database_old)
@@ -189,6 +190,9 @@ def track_changes(url: str, swissp: str, trembl: str,
             else:
                 logger.info(f"{fs[f]}: Swiss-Prot: {swissp_cnt}, "
                             f"TrEMBL: {trembl_cnt}")
+                if fs[f] == "current":
+                    new_swissp_cnt = swissp_cnt
+                    new_trembl_cnt = trembl_cnt
 
     if failed:
         os.remove(database_old)
@@ -200,6 +204,23 @@ def track_changes(url: str, swissp: str, trembl: str,
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
+    cur.executemany(
+        """
+        UPDATE INTERPRO.DB_VERSION
+        SET
+          VERSION = :1,
+          ENTRY_COUNT = :2,
+          FILE_DATE = TO_DATE(:3, 'DD-Mon-YYYY'),
+          LOAD_DATE = SYSDATE
+          WHERE DBCODE = :4
+        """, [
+            (version, new_swissp_cnt, date, 'S'),
+            (version, new_trembl_cnt, date, 'T'),
+            (version, new_swissp_cnt + new_trembl_cnt, date, 'u')
+        ]
+    )
+    con.commit()
+
     ora.truncate_table(cur, "INTERPRO.PROTEIN_CHANGES")
     ora.truncate_table(cur, "INTERPRO.PROTEIN_TO_DELETE")
     cur.close()
