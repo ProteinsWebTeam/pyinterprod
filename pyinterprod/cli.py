@@ -330,7 +330,7 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
             fn=pronto.protein.import_proteins,
             args=(interpro_url, pronto_url),
             name="proteins",
-            scheduler=dict(mem=8000, queue=lsf_queue),
+            scheduler=dict(mem=100, queue=lsf_queue),
         ),
         Task(
             fn=pronto.match.import_matches,
@@ -338,7 +338,7 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
                   os.path.join(data_dir, "allseqs.dat")),
             kwargs=dict(tmpdir="/scratch/"),
             name="matches",
-            scheduler=dict(mem=8000, scratch=10000, queue=lsf_queue),
+            scheduler=dict(mem=10000, scratch=20000, queue=lsf_queue),
             requires=["databases"]
         ),
         Task(
