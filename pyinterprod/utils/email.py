@@ -13,7 +13,13 @@ def send(info: dict, subject: str, content: str, attachments: _osos = None):
     if not info["Server"] or not info["Sender"] or not info["To"]:
         return
 
-    server, port = info["Server"].split(':')
+    try:
+        host, port = info["Server"].split(':')
+    except ValueError:
+        host = info["Server"]
+        port = 0
+    else:
+        port = int(port)
 
     msg = EmailMessage()
     msg.set_content(content)
@@ -44,5 +50,5 @@ def send(info: dict, subject: str, content: str, attachments: _osos = None):
                                    subtype=subtype,
                                    filename=os.path.basename(path))
 
-    with SMTP(server, port=int(port)) as s:
+    with SMTP(host=host, port=port) as s:
         s.send_message(msg)
