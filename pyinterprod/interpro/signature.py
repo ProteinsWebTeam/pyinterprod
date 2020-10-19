@@ -65,35 +65,9 @@ def export_prot_counts(url: str, databases: Sequence[Database], data_dir: str):
         pickle.dump(counts, fh)
 
 
-def export_swissprot_description(pg_url, data_dir: str):
-    signatures = {}
-    for signature_acc, protein_acc, text in get_swissprot_descriptions(pg_url):
-        try:
-            signatures[signature_acc].add(text)
-        except KeyError:
-            signatures[signature_acc] = {text}
-
+def export_swissprot_descriptions(pg_url, data_dir: str):
     with open(os.path.join(data_dir, SIGNATURES_DESCR_FILE), "wb") as fh:
-        pickle.dump(signatures, fh)
-
-
-def update_method2swiss(ora_url: str, pg_url: str):
-    con = cx_Oracle.connect(ora_url)
-    cur = con.cursor()
-    ora.truncate_table(cur, "INTERPRO.METHOD2SWISS_DE", reuse_storage=True)
-    cur.close()
-
-    sql = """
-        INSERT INTO INTERPRO.METHOD2SWISS_DE
-        VALUES (:1, :2, :3)
-    """
-    with Table(con, sql) as table:
-        iterator = get_swissprot_descriptions(pg_url)
-        for signature_acc, protein_acc, text in iterator:
-            table.insert((signature_acc, protein_acc, text))
-
-    con.commit()
-    con.close()
+        pickle.dump(get_swissprot_descriptions(pg_url), fh)
 
 
 def add_staging(url: str, update: Sequence[Tuple[Database, str]]):

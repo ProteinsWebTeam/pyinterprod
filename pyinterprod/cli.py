@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-import argparse
 import os
+from argparse import ArgumentParser
 from configparser import ConfigParser
 from typing import List, Sequence
 
@@ -9,6 +9,84 @@ from mundone import Task, Workflow
 
 from pyinterprod import __version__, iprscan
 from pyinterprod import interpro, pronto, uniparc, uniprot
+
+
+def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
+                     lsf_queue: str) -> List[Task]:
+    return [
+        Task(
+            fn=pronto.database.import_databases,
+            args=(interpro_url, pronto_url),
+            name="databases",
+            scheduler=dict(mem=100, queue=lsf_queue)
+        ),
+
+        # Data from GOAPRO
+        Task(
+            fn=pronto.goa.import_annotations,
+            args=(interpro_url, pronto_url),
+            name="annotations",
+            scheduler=dict(mem=500, queue=lsf_queue)
+        ),
+
+        # Data from SWPREAD
+        Task(
+            fn=pronto.protein.import_similarity_comments,
+            args=(interpro_url, pronto_url),
+            name="proteins-similarities",
+            scheduler=dict(mem=100, queue=lsf_queue),
+        ),
+        Task(
+            fn=pronto.protein.import_protein_names,
+            args=(interpro_url, pronto_url,
+                  os.path.join(data_dir, "names.sqlite")),
+            kwargs=dict(tmpdir="/scratch/"),
+            name="proteins-names",
+            scheduler=dict(mem=8000, scratch=30000, queue=lsf_queue),
+        ),
+
+        # Data from IPPRO
+        Task(
+            fn=pronto.protein.import_proteins,
+            args=(interpro_url, pronto_url),
+            name="proteins",
+            scheduler=dict(mem=100, queue=lsf_queue),
+        ),
+        Task(
+            fn=pronto.match.import_matches,
+            args=(interpro_url, pronto_url,
+                  os.path.join(data_dir, "allseqs.dat")),
+            kwargs=dict(tmpdir="/scratch/"),
+            name="matches",
+            scheduler=dict(mem=10000, scratch=20000, queue=lsf_queue),
+            requires=["databases"]
+        ),
+        Task(
+            fn=pronto.match.proc_comp_seq_matches,
+            args=(interpro_url, pronto_url,
+                  os.path.join(data_dir, "names.sqlite"),
+                  os.path.join(data_dir, "compseqs.dat")),
+            kwargs=dict(tmpdir="/scratch/", processes=8),
+            name="signature2proteins",
+            scheduler=dict(cpu=8, mem=16000, scratch=30000, queue=lsf_queue),
+            requires=["proteins-names"]
+        ),
+        Task(
+            fn=pronto.signature.import_signatures,
+            args=(interpro_url, pronto_url,
+                  os.path.join(data_dir, "allseqs.dat"),
+                  os.path.join(data_dir, "compseqs.dat")),
+            name="signatures",
+            scheduler=dict(mem=4000, queue=lsf_queue),
+            requires=["matches", "signature2proteins"]
+        ),
+        Task(
+            fn=pronto.taxon.import_taxonomy,
+            args=(interpro_url, pronto_url),
+            name="taxonomy",
+            scheduler=dict(mem=2000, queue=lsf_queue),
+        ),
+    ]
 
 
 def prep_email(emails: dict, to: Sequence[str], **kwargs) -> dict:
@@ -54,7 +132,7 @@ def prep_email(emails: dict, to: Sequence[str], **kwargs) -> dict:
 
 
 def run_protein_update():
-    parser = argparse.ArgumentParser(description="InterPro protein update")
+    parser = ArgumentParser(description="InterPro protein update")
     parser.add_argument("config",
                         metavar="config.ini",
                         help="configuration file")
@@ -218,15 +296,14 @@ def run_protein_update():
         ),
         Task(
             fn=uniprot.exchange.export_xrefs,
-            args=(interpro_url, xrefs_dir, prep_email(emails,
-                                                      to=["uniprot_db"],
-                                                      cc=["uniprot_prod",
-                                                          "interpro"])),
+            args=(interpro_url, xrefs_dir,
+                  prep_email(emails, to=["uniprot_db"],
+                             cc=["uniprot_prod", "interpro"])
+                  ),
             name="export-xrefs",
             scheduler=dict(queue=lsf_queue),
             requires=["xref-summary"]
         ),
-
         Task(
             fn=uniprot.unirule.ask_to_snapshot,
             args=(interpro_url, prep_email(emails, to=["interpro"])),
@@ -236,26 +313,10 @@ def run_protein_update():
                       "update-fmatches"]
         ),
 
-        # Not urgent tasks (can be run after everything else)
-        Task(
-            fn=interpro.match.update_variant_matches,
-            args=(interpro_url,),
-            name="update-varsplic",
-            scheduler=dict(queue=lsf_queue),
-            requires=["import-matches"]
-        ),
-        Task(
-            fn=interpro.match.update_site_matches,
-            args=(interpro_url,),
-            name="update-sites",
-            scheduler=dict(queue=lsf_queue),
-            requires=["import-sites", "update-matches"]
-        ),
-
         # Copy SwissProt descriptions
         Task(
-            fn=interpro.signature.update_method2swiss,
-            args=(interpro_url, pronto_url),
+            fn=interpro.signature.export_swissprot_descriptions,
+            args=(pronto_url, data_dir),
             name="swissprot-de",
             scheduler=dict(queue=lsf_queue),
         )
@@ -275,102 +336,41 @@ def run_protein_update():
 
         tasks.append(t)
 
+    # Generate and send report to curators
     tasks.append(Task(
         fn=interpro.report.send_report,
         args=(interpro_url, pronto_url, data_dir, pronto_app,
               prep_email(emails, to=["interpro"])),
         name="send-report",
         scheduler=dict(mem=4000, queue=lsf_queue),
-        requires=["pronto-databases", "pronto-annotations",
-                  "pronto-proteins-similarities", "pronto-proteins",
-                  "pronto-signatures", "pronto-taxonomy"]
+        requires=["pronto-annotations", "pronto-proteins-similarities",
+                  "pronto-proteins", "pronto-signatures",
+                  "pronto-taxonomy"]
     ))
+
+    # Not urgent tasks (can be run after everything else)
+    Task(
+        fn=interpro.match.update_variant_matches,
+        args=(interpro_url,),
+        name="update-varsplic",
+        scheduler=dict(queue=lsf_queue),
+        requires=["import-matches"]
+    ),
+    Task(
+        fn=interpro.match.update_site_matches,
+        args=(interpro_url,),
+        name="update-sites",
+        scheduler=dict(queue=lsf_queue),
+        requires=["import-sites", "update-matches"]
+    ),
 
     database = os.path.join(workflow_dir, f"{uniprot_version}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as wf:
         wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
 
 
-def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
-                     lsf_queue: str) -> List[Task]:
-    return [
-        Task(
-            fn=pronto.database.import_databases,
-            args=(interpro_url, pronto_url),
-            name="databases",
-            scheduler=dict(mem=100, queue=lsf_queue)
-        ),
-
-        # Data from GOAPRO
-        Task(
-            fn=pronto.goa.import_annotations,
-            args=(interpro_url, pronto_url),
-            name="annotations",
-            scheduler=dict(mem=500, queue=lsf_queue)
-        ),
-
-        # Data from SWPREAD
-        Task(
-            fn=pronto.protein.import_similarity_comments,
-            args=(interpro_url, pronto_url),
-            name="proteins-similarities",
-            scheduler=dict(mem=100, queue=lsf_queue),
-        ),
-        Task(
-            fn=pronto.protein.import_protein_names,
-            args=(interpro_url, pronto_url,
-                  os.path.join(data_dir, "names.sqlite")),
-            kwargs=dict(tmpdir="/scratch/"),
-            name="proteins-names",
-            scheduler=dict(mem=8000, scratch=30000, queue=lsf_queue),
-        ),
-
-        # Data from IPPRO
-        Task(
-            fn=pronto.protein.import_proteins,
-            args=(interpro_url, pronto_url),
-            name="proteins",
-            scheduler=dict(mem=100, queue=lsf_queue),
-        ),
-        Task(
-            fn=pronto.match.import_matches,
-            args=(interpro_url, pronto_url,
-                  os.path.join(data_dir, "allseqs.dat")),
-            kwargs=dict(tmpdir="/scratch/"),
-            name="matches",
-            scheduler=dict(mem=10000, scratch=20000, queue=lsf_queue),
-            requires=["databases"]
-        ),
-        Task(
-            fn=pronto.match.proc_comp_seq_matches,
-            args=(interpro_url, pronto_url,
-                  os.path.join(data_dir, "names.sqlite"),
-                  os.path.join(data_dir, "compseqs.dat")),
-            kwargs=dict(tmpdir="/scratch/", processes=8),
-            name="signature2proteins",
-            scheduler=dict(cpu=8, mem=16000, scratch=30000, queue=lsf_queue),
-            requires=["proteins-names"]
-        ),
-        Task(
-            fn=pronto.signature.import_signatures,
-            args=(interpro_url, pronto_url,
-                  os.path.join(data_dir, "allseqs.dat"),
-                  os.path.join(data_dir, "compseqs.dat")),
-            name="signatures",
-            scheduler=dict(mem=4000, queue=lsf_queue),
-            requires=["matches", "signature2proteins"]
-        ),
-        Task(
-            fn=pronto.taxon.import_taxonomy,
-            args=(interpro_url, pronto_url),
-            name="taxonomy",
-            scheduler=dict(mem=2000, queue=lsf_queue),
-        ),
-    ]
-
-
 def run_pronto_update():
-    parser = argparse.ArgumentParser(description="InterPro Pronto update")
+    parser = ArgumentParser(description="InterPro Pronto update")
     parser.add_argument("config",
                         metavar="config.ini",
                         help="configuration file")
