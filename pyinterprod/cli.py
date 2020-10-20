@@ -217,8 +217,8 @@ def run_member_db_update():
         ),
         Task(
             fn=iprscan.import_matches,
-            args=(ora_iprscan_url, databases),
-            kwargs=dict(threads=8),
+            args=(ora_iprscan_url,),
+            kwargs=dict(databases=databases, threads=8),
             name="import-matches",
             scheduler=dict(queue=lsf_queue)
         ),
