@@ -202,16 +202,18 @@ class Analysis:
         return row and row[0] >= max_upi
 
 
-def get_analyses(cur: Cursor, **kwargs) -> List[Analysis]:
-    active = kwargs.get("active", True)
+def get_analyses(cur: Cursor, mode: str, **kwargs) -> List[Analysis]:
     ids = kwargs.get("ids", [])
-    use_matches = kwargs.get("use_matches", True)
+    updated = kwargs.get("updated", True)
+
+    if mode not in ("matches", "sites"):
+        raise ValueError("supported modes: matches, sites")
 
     if ids:
         params = [':' + str(i+1) for i in range(len(ids))]
         sql_filter = f"A.ANALYSIS_ID IN ({','.join(params)})"
         params = tuple(ids)
-    elif active:
+    elif updated:
         sql_filter = "A.ACTIVE = 1"
         params = tuple()
     else:
@@ -246,7 +248,7 @@ def get_analyses(cur: Cursor, **kwargs) -> List[Analysis]:
         Others:
             - PERSISTED=2 when matches are ready
         """
-        if use_matches:
+        if mode == "matches":
             persisted = 1 if a_type in ("cdd", "sfld") else 2
             table = match_table.upper()
         elif site_table:
@@ -439,6 +441,7 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
 def import_matches(url: str, **kwargs):
     databases = kwargs.get("databases", [])
     threads = kwargs.get("threads", 1)
+    updated = kwargs.get("updated", True)
 
     if databases:  # expects a sequence of Database objects
         databases = {db.analysis_id for db in databases}
@@ -447,7 +450,7 @@ def import_matches(url: str, **kwargs):
     cur = con.cursor()
 
     pending = {}
-    for analysis in get_analyses(cur, use_matches=True):
+    for analysis in get_analyses(cur, mode="matches", updated=updated):
         if databases and analysis.id not in databases:
             continue
 
@@ -544,12 +547,12 @@ def import_matches(url: str, **kwargs):
     logger.info("complete")
 
 
-def import_sites(url: str, threads: int = 1):
+def import_sites(url: str, threads: int = 1, updated: bool = True):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
     pending = {}
-    for analysis in get_analyses(cur, use_matches=False):
+    for analysis in get_analyses(cur, mode="sites", updated=updated):
         try:
             partition = SITE_PARITIONS[analysis.type]
         except KeyError:
@@ -624,120 +627,121 @@ def import_sites(url: str, threads: int = 1):
         raise RuntimeError(f"{failed} errors")
 
 
-def update_mv_iprscan_mini(url: str, databases: Sequence[Database]):
-    """
-    Import the previous and the new analyses (for one or more member databases)
-    from ISPRO
-
-    :param url: Oracle connection string (IPRSCAN user)
-    :param databases: sequence of member databases
-    """
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-
-    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
-    max_upi, = cur.fetchone()
-
-    tables = {}
-    for db in databases:
-        """
-        Get up to two most recent analyses
-        We assume that all analyses for a given member database use the same
-        table in ISPRO
-        """
-        cur.execute(
-            f"""
-            SELECT ANALYSIS_ID
-            FROM IPRSCAN.IPM_ANALYSIS@ISPRO
-            WHERE ANALYSIS_MATCH_TABLE_ID = (
-              SELECT ANALYSIS_MATCH_TABLE_ID
-              FROM IPRSCAN.IPM_ANALYSIS@ISPRO
-              WHERE ANALYSIS_ID = :1
-            )
-            ORDER BY ANALYSIS_ID
-            """, (db.analysis_id,)
-        )
-        ids = [analysis_id for analysis_id, in cur][-2:]  # up to two
-        analyses = get_analyses(cur, use_matches=True, ids=ids)
-        if len(analyses) == 2:
-            old_analyse, new_analyse = analyses
-
-            # # Update IPRSCAN2DBCODE
-            # cur.execute(
-            #     """
-            #     UPDATE INTERPRO.IPRSCAN2DBCODE
-            #     SET IPRSCAN_SIG_LIB_REL_ID = :1
-            #     WHERE DBCODE = :2
-            #     """, (new_analyse.id, dbcode)
-            # )
-
-            o_ready = old_analyse.is_ready(cur, max_upi)
-            n_ready = new_analyse.is_ready(cur, max_upi)
-            if not (o_ready and n_ready):
-                cur.close()
-                con.close()
-                raise RuntimeError(f"{db.name}: not ready")
-            elif new_analyse.type in MATCH_SELECT:
-                columns = MATCH_SELECT[new_analyse.type]
-            elif old_analyse.type in MATCH_SELECT:
-                columns = MATCH_SELECT[old_analyse.type]
-            else:
-                cur.close()
-                con.close()
-                raise RuntimeError(f"{db.name}: not supported")
-
-            tab = new_analyse.table  # old_analyse.table should be the same
-            obj = (old_analyse.id, new_analyse.id, columns)
-            try:
-                tables[tab]["analyses"].append(obj)
-            except KeyError:
-                tables[tab] = {
-                    "analyses": [obj],
-                    "name": db.name
-                }
-        else:
-            cur.close()
-            con.close()
-            raise NotImplementedError("new member database")  # todo
-
-    oracle.drop_table(cur, "IPRSCAN.MV_IPRSCAN_MINI", purge=True)
-    cur.execute(
-        f"""
-        CREATE TABLE IPRSCAN.MV_IPRSCAN_MINI NOLOGGING
-        AS
-        SELECT *
-        FROM IPRSCAN.MV_IPRSCAN
-        WHERE 1 = 0
-        """
-    )
-
-    for remote_table, obj in tables.items():
-        logger.info(f"importing {obj['name']}")
-        local_table = PREFIX + remote_table
-
-        # Import data from ISPRO
-        import_from_ispro(cur, remote_table, local_table)
-
-        for old_id, new_id, columns in obj["analyses"]:
-            cur.execute(
-                f"""
-                INSERT /*+ APPEND */ INTO IPRSCAN.MV_IPRSCAN_MINI
-                SELECT {', '.join(columns)}
-                FROM IPRSCAN.{local_table}
-                WHERE ANALYSIS_ID IN (:1, :2)
-                """, (old_id, new_id)
-            )
-            con.commit()
-
-    logger.info("indexing")
-    cur.execute(
-        f"""
-        CREATE INDEX IPRSCAN.MV_IPRSCAN_MINI$ID
-        ON IPRSCAN.MV_IPRSCAN_MINI (ANALYSIS_ID)
-        NOLOGGING
-        """
-    )
-
-    cur.close()
-    con.close()
-    logger.info("complete")
+# # TODO: check if function can be deleted
+# def update_mv_iprscan_mini(url: str, databases: Sequence[Database]):
+#     """
+#     Import the previous and the new analyses (for one or more member databases)
+#     from ISPRO
+#
+#     :param url: Oracle connection string (IPRSCAN user)
+#     :param databases: sequence of member databases
+#     """
+#     con = cx_Oracle.connect(url)
+#     cur = con.cursor()
+#
+#     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
+#     max_upi, = cur.fetchone()
+#
+#     tables = {}
+#     for db in databases:
+#         """
+#         Get up to two most recent analyses
+#         We assume that all analyses for a given member database use the same
+#         table in ISPRO
+#         """
+#         cur.execute(
+#             f"""
+#             SELECT ANALYSIS_ID
+#             FROM IPRSCAN.IPM_ANALYSIS@ISPRO
+#             WHERE ANALYSIS_MATCH_TABLE_ID = (
+#               SELECT ANALYSIS_MATCH_TABLE_ID
+#               FROM IPRSCAN.IPM_ANALYSIS@ISPRO
+#               WHERE ANALYSIS_ID = :1
+#             )
+#             ORDER BY ANALYSIS_ID
+#             """, (db.analysis_id,)
+#         )
+#         ids = [analysis_id for analysis_id, in cur][-2:]  # up to two
+#         analyses = get_analyses(cur, use_matches=True, ids=ids)
+#         if len(analyses) == 2:
+#             old_analyse, new_analyse = analyses
+#
+#             # # Update IPRSCAN2DBCODE
+#             # cur.execute(
+#             #     """
+#             #     UPDATE INTERPRO.IPRSCAN2DBCODE
+#             #     SET IPRSCAN_SIG_LIB_REL_ID = :1
+#             #     WHERE DBCODE = :2
+#             #     """, (new_analyse.id, dbcode)
+#             # )
+#
+#             o_ready = old_analyse.is_ready(cur, max_upi)
+#             n_ready = new_analyse.is_ready(cur, max_upi)
+#             if not (o_ready and n_ready):
+#                 cur.close()
+#                 con.close()
+#                 raise RuntimeError(f"{db.name}: not ready")
+#             elif new_analyse.type in MATCH_SELECT:
+#                 columns = MATCH_SELECT[new_analyse.type]
+#             elif old_analyse.type in MATCH_SELECT:
+#                 columns = MATCH_SELECT[old_analyse.type]
+#             else:
+#                 cur.close()
+#                 con.close()
+#                 raise RuntimeError(f"{db.name}: not supported")
+#
+#             tab = new_analyse.table  # old_analyse.table should be the same
+#             obj = (old_analyse.id, new_analyse.id, columns)
+#             try:
+#                 tables[tab]["analyses"].append(obj)
+#             except KeyError:
+#                 tables[tab] = {
+#                     "analyses": [obj],
+#                     "name": db.name
+#                 }
+#         else:
+#             cur.close()
+#             con.close()
+#             raise NotImplementedError("new member database")  # todo
+#
+#     oracle.drop_table(cur, "IPRSCAN.MV_IPRSCAN_MINI", purge=True)
+#     cur.execute(
+#         f"""
+#         CREATE TABLE IPRSCAN.MV_IPRSCAN_MINI NOLOGGING
+#         AS
+#         SELECT *
+#         FROM IPRSCAN.MV_IPRSCAN
+#         WHERE 1 = 0
+#         """
+#     )
+#
+#     for remote_table, obj in tables.items():
+#         logger.info(f"importing {obj['name']}")
+#         local_table = PREFIX + remote_table
+#
+#         # Import data from ISPRO
+#         import_from_ispro(cur, remote_table, local_table)
+#
+#         for old_id, new_id, columns in obj["analyses"]:
+#             cur.execute(
+#                 f"""
+#                 INSERT /*+ APPEND */ INTO IPRSCAN.MV_IPRSCAN_MINI
+#                 SELECT {', '.join(columns)}
+#                 FROM IPRSCAN.{local_table}
+#                 WHERE ANALYSIS_ID IN (:1, :2)
+#                 """, (old_id, new_id)
+#             )
+#             con.commit()
+#
+#     logger.info("indexing")
+#     cur.execute(
+#         f"""
+#         CREATE INDEX IPRSCAN.MV_IPRSCAN_MINI$ID
+#         ON IPRSCAN.MV_IPRSCAN_MINI (ANALYSIS_ID)
+#         NOLOGGING
+#         """
+#     )
+#
+#     cur.close()
+#     con.close()
+#     logger.info("complete")
