@@ -8,14 +8,47 @@ import cx_Oracle
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
-from .signature import MATCH_PARTITIONS
 from .database import Database
 
 
-_ENTRIES_TMP_FILE = "entries_proteins.dat"
-_DATABASES_TMP_FILE = "databases_matches.dat"
-ENTRIES_CHANGES_FILE = "entries_changes.dat"
-DATABASES_CHANGES_FILE = "databases_changes.dat"
+FILE_SIG_PROT_COUNTS = "signatures.prot.counts.pickle"
+FILE_ENTRY_PROT_COUNTS = "entries.prot.counts.pickle"
+MATCH_PARTITIONS = {
+    'B': 'MATCH_DBCODE_B',  # SFLD
+    'F': 'MATCH_DBCODE_F',
+    'H': 'MATCH_DBCODE_H',  # Pfam
+    'J': 'MATCH_DBCODE_J',  # CDD
+    'M': 'MATCH_DBCODE_M',
+    'N': 'MATCH_DBCODE_N',
+    'P': 'MATCH_DBCODE_P',
+    'Q': 'MATCH_DBCODE_Q',
+    'R': 'MATCH_DBCODE_R',
+    'U': 'MATCH_DBCODE_U',
+    'V': 'MATCH_DBCODE_V',  # PANTHER
+    'X': 'MATCH_DBCODE_X',
+    'Y': 'MATCH_DBCODE_Y',
+}
+SITE_PARTITIONS = {
+    'B': 'SFLD',
+    'J': 'CDD',
+}
+
+
+def export_sig_prot_counts(url: str, databases: Sequence[Database],
+                           data_dir: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    counts = {}
+    for db in databases:
+        partition = MATCH_PARTITIONS[db.identifier]
+        counts[db.identifier] = _get_sig_proteins_count(cur, partition)
+
+    cur.close()
+    con.close()
+
+    with open(os.path.join(data_dir, FILE_SIG_PROT_COUNTS), "wb") as fh:
+        pickle.dump(counts, fh)
 
 
 def update_database_matches(url: str, databases: Sequence[Database]):
@@ -160,26 +193,31 @@ def update_database_matches(url: str, databases: Sequence[Database]):
         )
         oracle.drop_table(cur, "INTERPRO.MATCH_NEW", purge=True)
 
+        logger.info("\tgathering statistics")
+        oracle.gather_stats(cur, "INTERPRO", "MATCH", partition)
+
+    for index in oracle.get_indexes(cur, "INTERPRO", "MATCH"):
+        if index["unusable"]:
+            logger.info(f"rebuilding index {index['name']}")
+            oracle.rebuild_index(cur, index["name"])
+
     cur.close()
     con.close()
 
     logger.info("complete")
 
 
-def update_matches(url: str, outdir: str):
+def update_matches(url: str, data_dir: str):
     """
     Add protein matches for recently added/modified sequences
 
     :param url: Oracle connection string
-    :param outdir: output directory for data files
+    :param data_dir: output directory for data files
     """
-    os.makedirs(outdir, exist_ok=True)
-
     con = cx_Oracle.connect(url)
     _prepare_matches(con)
-    _check_matches(con, outdir)
+    _check_matches(con, os.path.join(data_dir, FILE_ENTRY_PROT_COUNTS))
     _insert_matches(con)
-    _track_count_changes(con, outdir)
     con.close()
 
 
@@ -444,12 +482,12 @@ def _prepare_matches(con: cx_Oracle.Connection):
     cur.close()
 
 
-def _check_matches(con: cx_Oracle.Connection, outdir: str):
+def _check_matches(con: cx_Oracle.Connection, output: str):
     """
     Check there are not errors in imported matches
 
     :param con: Oracle connection object
-    :param outdir: output directory for data files
+    :param output: output file to store the number of protein matches per entry
     """
     cur = con.cursor()
 
@@ -493,11 +531,8 @@ def _check_matches(con: cx_Oracle.Connection, outdir: str):
         con.close()
         raise RuntimeError(f"{cnt} invalid matches")
 
-    with open(os.path.join(outdir, _ENTRIES_TMP_FILE), "wb") as fh:
+    with open(output, "wb") as fh:
         pickle.dump(_get_entries_proteins_count(cur), fh)
-
-    with open(os.path.join(outdir, _DATABASES_TMP_FILE), "wb") as fh:
-        pickle.dump(_get_databases_matches_count(cur), fh)
 
     cur.close()
 
@@ -535,18 +570,17 @@ def _insert_matches(con: cx_Oracle.Connection):
     cur.close()
 
 
-def _track_count_changes(con: cx_Oracle.Connection, outdir: str):
+def track_entry_changes(cur: cx_Oracle.Cursor, data_dir: str) -> list:
     """
-    Evaluate how the protein counts changed between two UniProt versions
+    Find entries with significant protein count changes
 
-    :param con: Oracle connection object
-    :param outdir: directory for data files
+    :param cur: Oracle cursor object
+    :param data_dir: directory containing the file for protein counts
+                     before the update
+    :return: list of entries with a significant changes in proteins count
     """
-    logger.info("tracking changes")
-    cur = con.cursor()
 
-    # Find entries with significant protein count changes
-    with open(os.path.join(outdir, _ENTRIES_TMP_FILE), "rb") as fh:
+    with open(os.path.join(data_dir, FILE_ENTRY_PROT_COUNTS), "rb") as fh:
         previous = pickle.load(fh)
 
     changes = []
@@ -561,29 +595,38 @@ def _track_count_changes(con: cx_Oracle.Connection, outdir: str):
         if abs(change) >= 0.5:
             changes.append((accession, prev_count, count, change))
 
-    with open(os.path.join(outdir, ENTRIES_CHANGES_FILE), "wb") as fh:
-        pickle.dump(changes, fh)
+    changes.sort(key=lambda x: x[0])  # sort by accession
+    return changes
 
-    # List the previous/new match counts for all databases
-    with open(os.path.join(outdir, _DATABASES_TMP_FILE), "rb") as fh:
-        previous = pickle.load(fh)
 
-    changes = []
-    for code, count in _get_databases_matches_count(cur).items():
-        prev_count = previous.pop(code, 0)
-        changes.append((code, prev_count, count))
+def track_sig_changes(cur: cx_Oracle.Cursor, databases: Sequence[Database],
+                      data_dir: str) -> Dict[str, list]:
+    with open(os.path.join(data_dir, FILE_SIG_PROT_COUNTS), "rb") as fh:
+        old_counts = pickle.load(fh)
 
-    # Only if a database does not have any matches any more
-    for code, prev_count in previous.items():
-        changes.append((code, prev_count, 0))
+    new_counts = {}
+    for db in databases:
+        partition = MATCH_PARTITIONS[db.identifier]
+        new_counts[db.identifier] = _get_sig_proteins_count(cur, partition)
 
-    with open(os.path.join(outdir, DATABASES_CHANGES_FILE), "wb") as fh:
-        pickle.dump(changes, fh)
+    changes = {}
+    for db_id, old_sigs in old_counts.items():
+        new_sigs = new_counts[db_id]
+        changes[db_id] = []
 
-    cur.close()
+        for sig_acc, old_cnt in old_sigs.items():
+            try:
+                new_cnt = new_sigs[sig_acc]
+            except KeyError:
+                continue  # deleted signature
+            else:
+                change = (new_cnt - old_cnt) / old_cnt
+                if abs(change) >= 0.1:
+                    changes[db_id].append((sig_acc, old_cnt, new_cnt, change))
 
-    os.remove(os.path.join(outdir, _DATABASES_TMP_FILE))
-    os.remove(os.path.join(outdir, _ENTRIES_TMP_FILE))
+        changes[db_id].sort(key=lambda x: x[0])  # sort by accession
+
+    return changes
 
 
 def _get_entries_proteins_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:
@@ -605,17 +648,29 @@ def _get_entries_proteins_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:
     return dict(cur.fetchall())
 
 
-def _get_databases_matches_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:
-    """
-    Return the number of matches per member database
-    :param cur: Oracle cursor object
-    :return: dictionary
-    """
+def _get_sig_proteins_count(cur: cx_Oracle.Cursor, partition: str) -> dict:
     cur.execute(
-        """
-        SELECT DBCODE, COUNT(*)
-        FROM INTERPRO.MATCH
-        GROUP BY DBCODE
+        f"""
+        SELECT METHOD_AC, COUNT(DISTINCT PROTEIN_AC)
+        FROM INTERPRO.MATCH PARTITION ({partition})
+        GROUP BY METHOD_AC 
         """
     )
-    return dict(cur.fetchall())
+    counts = dict(cur.fetchall())
+    return counts
+
+
+# def _get_databases_matches_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:
+#     """
+#     Return the number of matches per member database
+#     :param cur: Oracle cursor object
+#     :return: dictionary
+#     """
+#     cur.execute(
+#         """
+#         SELECT DBCODE, COUNT(*)
+#         FROM INTERPRO.MATCH
+#         GROUP BY DBCODE
+#         """
+#     )
+#     return dict(cur.fetchall())

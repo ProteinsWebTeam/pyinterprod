@@ -12,7 +12,6 @@ from pyinterprod import logger
 from pyinterprod.interpro.database import Database
 from pyinterprod.utils import oracle
 
-OSoD = Optional[Sequence[Database]]
 PREFIX = "MV_"
 
 # Columns to select when inserting matches in MV_IPRSCAN
@@ -430,8 +429,11 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
     con.close()
 
 
-def import_matches(url: str, databases: OSoD = None, threads: int = 1):
-    if databases:
+def import_matches(url: str, **kwargs):
+    databases = kwargs.get("databases", [])
+    threads = kwargs.get("threads", 1)
+
+    if databases:  # expects a sequence of Database objects
         databases = {db.analysis_id for db in databases}
 
     con = cx_Oracle.connect(url)

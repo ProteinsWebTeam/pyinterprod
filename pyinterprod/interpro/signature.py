@@ -12,61 +12,15 @@ from pyinterprod.pronto.signature import get_swissprot_descriptions
 from pyinterprod.utils import Table, oracle as ora
 from . import contrib
 from .database import Database
+from .match import MATCH_PARTITIONS, SITE_PARTITIONS
 
 
-PROTEIN_COUNT_FILE = "protein_count.dat"
-SIGNATURES_DESCR_FILE = "swissprot_descr.dat"
-MATCH_PARTITIONS = {
-    'B': 'MATCH_DBCODE_B',  # SFLD
-    'F': 'MATCH_DBCODE_F',
-    'H': 'MATCH_DBCODE_H',  # Pfam
-    'J': 'MATCH_DBCODE_J',  # CDD
-    'M': 'MATCH_DBCODE_M',
-    'N': 'MATCH_DBCODE_N',
-    'P': 'MATCH_DBCODE_P',
-    'Q': 'MATCH_DBCODE_Q',
-    'R': 'MATCH_DBCODE_R',
-    'U': 'MATCH_DBCODE_U',
-    'V': 'MATCH_DBCODE_V',  # PANTHER
-    'X': 'MATCH_DBCODE_X',
-    'Y': 'MATCH_DBCODE_Y',
-}
-SITE_PARTITIONS = {
-    'B': 'SFLD',
-    'J': 'CDD',
-}
-
-
-def get_prot_counts(cur: cx_Oracle.Cursor, database: Database) -> dict:
-    partition = MATCH_PARTITIONS[database.identifier]
-    cur.execute(
-        f"""
-        SELECT METHOD_AC, COUNT(DISTINCT PROTEIN_AC)
-        FROM INTERPRO.MATCH PARTITION ({partition})
-        GROUP BY METHOD_AC 
-        """
-    )
-    counts = dict(cur.fetchall())
-    return counts
-
-
-def export_prot_counts(url: str, databases: Sequence[Database], data_dir: str):
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-
-    counts = {}
-    for db in databases:
-        counts[db.identifier] = get_prot_counts(cur, db)
-
-    cur.close()
-    con.close()
-
-    with open(os.path.join(data_dir, PROTEIN_COUNT_FILE), "wb") as fh:
-        pickle.dump(counts, fh)
+FILE_DB_SIG_DIFF = "signatures.anno.changes.pickle"
+FILE_SIG_DESCR = "signatures.descr.pickle"
 
 
 def export_swissprot_descriptions(pg_url, data_dir: str):
-    with open(os.path.join(data_dir, SIGNATURES_DESCR_FILE), "wb") as fh:
+    with open(os.path.join(data_dir, FILE_SIG_DESCR), "wb") as fh:
         pickle.dump(get_swissprot_descriptions(pg_url), fh)
 
 
@@ -123,31 +77,7 @@ def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
     con.close()
 
 
-def update_signatures(url: str):
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        MERGE INTO INTERPRO.METHOD M
-        USING INTERPRO.METHOD_STG S
-          ON (M.METHOD_AC = S.METHOD_AC)
-        WHEN MATCHED THEN 
-          UPDATE SET M.NAME = S.NAME,
-                     M.DESCRIPTION = S.DESCRIPTION,
-                     M.SIG_TYPE = S.SIG_TYPE,
-                     M.ABSTRACT = S.ABSTRACT,
-                     M.TIMESTAMP = SYSDATE
-        WHEN NOT MATCHED THEN
-          INSERT (METHOD_AC, NAME, DBCODE, CANDIDATE, DESCRIPTION, SIG_TYPE, ABSTRACT)
-          VALUES (S.METHOD_AC, S.NAME, S.DBCODE, 'Y', S.DESCRIPTION, S.SIG_TYPE, S.ABSTRACT)
-        """
-    )
-    con.commit()
-    cur.close()
-    con.close()
-
-
-def make_pre_report(url: str, databases: Sequence[Database], output: str):
+def track_signature_changes(url: str, databases: Sequence[Database], data_dir: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     results = {}
@@ -237,7 +167,7 @@ def make_pre_report(url: str, databases: Sequence[Database], output: str):
     cur.close()
     con.close()
 
-    with open(output, "wb") as fh:
+    with open(os.path.join(data_dir, FILE_DB_SIG_DIFF), "wb") as fh:
         pickle.dump(results, fh)
 
 
@@ -287,154 +217,7 @@ def delete_from_table(url: str, table: str, partition: Optional[str],
     return num_rows
 
 
-def create_and_exchange(url: str, table: str, partition: str, column: str) -> int:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        f"""
-        SELECT COUNT(*)
-        FROM {table} PARTITION ({partition})
-        WHERE {column} IN (
-            SELECT METHOD_AC 
-            FROM INTERPRO.METHOD_TO_DELETE
-        ) 
-        """
-    )
-    num_rows, = cur.fetchone()
-
-    logger.debug(f"{table} ({partition}): {num_rows:,} rows to delete")
-    if not num_rows:
-        cur.close()
-        con.close()
-        return num_rows
-
-    # Create table without obsolete signatures
-    logger.debug(f"{table} ({partition}): creating temporary table")
-    tmp_table = f"{partition}_TMP"
-    ora.drop_table(cur, tmp_table)
-    cur.execute(
-        f"""
-        CREATE TABLE {tmp_table} NOLOGGING
-        AS  
-        SELECT *
-        FROM {table} PARTITION ({partition})
-        WHERE {column} NOT IN (
-            SELECT METHOD_AC
-            FROM INTERPRO.METHOD_TO_DELETE
-        )
-        """
-    )
-
-    # Add constraints/indexes to be able to exchange partition
-    logger.debug(f"{table} ({partition}): creating indexes and constraints")
-    cur.execute(f"CREATE INDEX {tmp_table}$D ON {tmp_table} (DBCODE) NOLOGGING")
-    cur.execute(f"CREATE INDEX {tmp_table}$E ON {tmp_table} (EVIDENCE) NOLOGGING")
-    cur.execute(f"CREATE INDEX {tmp_table}$S ON {tmp_table} (STATUS) NOLOGGING")
-    cur.execute(f"CREATE INDEX {tmp_table}$M ON {tmp_table} (METHOD_AC) NOLOGGING")
-    cur.execute(
-        f"""
-        ALTER TABLE {tmp_table}
-        ADD CONSTRAINT {tmp_table}$CK1 
-        CHECK ( POS_FROM >= 1 ) 
-        """
-    )
-    cur.execute(
-        f"""
-        ALTER TABLE {tmp_table}
-        ADD CONSTRAINT {tmp_table}$CK2
-        CHECK ( POS_TO - POS_FROM > 0 ) 
-        """
-    )
-    cur.execute(
-        f"""
-        ALTER TABLE {tmp_table}
-        ADD CONSTRAINT {tmp_table}$CK3
-        CHECK ( STATUS != 'N' OR (STATUS = 'N' AND DBCODE IN ('P', 'M', 'Q')) )
-        """
-    )
-    cur.execute(
-        f"""
-        ALTER TABLE {tmp_table}
-        ADD CONSTRAINT {tmp_table}$PK
-        PRIMARY KEY (PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO)
-        """
-    )
-    cur.execute(
-        f"""
-        ALTER TABLE {tmp_table}
-        ADD CONSTRAINT {tmp_table}$FK1 FOREIGN KEY (DBCODE) 
-        REFERENCES INTERPRO.CV_DATABASE (DBCODE)
-        """
-    )
-    cur.execute(
-        f"""
-        ALTER TABLE {tmp_table}
-        ADD CONSTRAINT {tmp_table}$FK2 FOREIGN KEY (EVIDENCE) 
-        REFERENCES INTERPRO.CV_EVIDENCE (CODE)
-        """
-    )
-    """
-    Do not create a FK to INTERPRO.METHOD as creating one would raise
-        ORA-14128 (FOREIGN KEY constraint mismatch 
-                   in ALTER TABLE EXCHANGE PARTITION)
-    when exchanging partition.
-    INTERPRO.MATCH *has* a FK to INTERPRO.METHOD, but we disabled it before
-    starting to delete obsolete signatures
-    """
-    # cur.execute(
-    #     f"""
-    #     ALTER TABLE {tmp_table}
-    #     ADD CONSTRAINT {tmp_table}$FK3 FOREIGN KEY (METHOD_AC)
-    #     REFERENCES INTERPRO.METHOD (METHOD_AC)
-    #     """
-    # )
-    cur.execute(
-        f"""
-        ALTER TABLE {tmp_table}
-        ADD CONSTRAINT {tmp_table}$FK4 FOREIGN KEY (PROTEIN_AC) 
-        REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
-        """
-    )
-    cur.execute(
-        f"""
-        ALTER TABLE {tmp_table}
-        ADD CONSTRAINT {tmp_table}$FK5 FOREIGN KEY (STATUS) 
-        REFERENCES INTERPRO.CV_STATUS (CODE)
-        """
-    )
-    cur.execute(
-        f"""
-        ALTER TABLE {tmp_table}
-        ADD CONSTRAINT {tmp_table}$CK4 
-        CHECK (PROTEIN_AC IS NOT NULL )
-        """
-    )
-    cur.execute(
-        f"""
-        ALTER TABLE {tmp_table}
-        ADD CONSTRAINT {tmp_table}$CK5 
-        CHECK (METHOD_AC IS NOT NULL )
-        """
-    )
-
-    logger.debug(f"{table} ({partition}): exchanging partition")
-    cur.execute(
-        f"""
-        ALTER TABLE {table} 
-        EXCHANGE PARTITION ({partition}) 
-        WITH TABLE {tmp_table}
-        WITHOUT VALIDATION
-        """
-    )
-    ora.drop_table(cur, tmp_table, purge=True)
-
-    cur.close()
-    con.close()
-    return num_rows
-
-
 def delete_obsoletes(url: str, databases: Sequence[Database], **kwargs):
-    exchange = kwargs.get("exchange", False)
     step = kwargs.get("step", 10000)
     threads = kwargs.get("threads", 8)
 
@@ -514,25 +297,18 @@ def delete_obsoletes(url: str, databases: Sequence[Database], **kwargs):
         con.close()
         raise RuntimeError(f"{num_errors} constraints could not be disabled")
 
-    delete_tasks = []
-    exchange_tasks = []
+    tasks = []
     for table, constraint, column in tables:
         if table == "MATCH":
             for db in databases:
                 partition = MATCH_PARTITIONS[db.identifier]
-                if exchange:
-                    exchange_tasks.append((table, partition, column))
-                else:
-                    delete_tasks.append((table, partition, column))
+                tasks.append((table, partition, column))
         elif table == "SITE_MATCH":
             for db in databases:
                 partition = SITE_PARTITIONS[db.identifier]
-                if exchange:
-                    exchange_tasks.append((table, partition, column))
-                else:
-                    delete_tasks.append((table, partition, column))
+                tasks.append((table, partition, column))
         else:
-            delete_tasks.append((table, None, column))
+            tasks.append((table, None, column))
 
     cur.close()
     con.close()
@@ -540,14 +316,9 @@ def delete_obsoletes(url: str, databases: Sequence[Database], **kwargs):
     with ThreadPoolExecutor(max_workers=threads) as executor:
         fs = {}
 
-        for table, partition, column in delete_tasks:
+        for table, partition, column in tasks:
             args = (url, table, partition, column, step, stop)
             f = executor.submit(delete_from_table, *args)
-            fs[f] = (table, partition)
-
-        for table, partition, column in exchange_tasks:
-            args = (url, table, partition, column)
-            f = executor.submit(create_and_exchange, *args)
             fs[f] = (table, partition)
 
         num_errors = 0
@@ -604,3 +375,27 @@ def delete_obsoletes(url: str, databases: Sequence[Database], **kwargs):
     cur.close()
     con.close()
     logger.info("complete")
+
+
+def update_signatures(url: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        MERGE INTO INTERPRO.METHOD M
+        USING INTERPRO.METHOD_STG S
+          ON (M.METHOD_AC = S.METHOD_AC)
+        WHEN MATCHED THEN 
+          UPDATE SET M.NAME = S.NAME,
+                     M.DESCRIPTION = S.DESCRIPTION,
+                     M.SIG_TYPE = S.SIG_TYPE,
+                     M.ABSTRACT = S.ABSTRACT,
+                     M.TIMESTAMP = SYSDATE
+        WHEN NOT MATCHED THEN
+          INSERT (METHOD_AC, NAME, DBCODE, CANDIDATE, DESCRIPTION, SIG_TYPE, ABSTRACT)
+          VALUES (S.METHOD_AC, S.NAME, S.DBCODE, 'Y', S.DESCRIPTION, S.SIG_TYPE, S.ABSTRACT)
+        """
+    )
+    con.commit()
+    cur.close()
+    con.close()

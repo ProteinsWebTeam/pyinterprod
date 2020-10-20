@@ -2,18 +2,190 @@
 
 import os
 import pickle
+import shutil
+from datetime import datetime
+from tempfile import mkdtemp
+from typing import Sequence
 from zipfile import ZipFile, ZIP_DEFLATED
 
 import cx_Oracle
 
-from .match import ENTRIES_CHANGES_FILE
-from .signature import SIGNATURES_DESCR_FILE, get_swissprot_descriptions
 from pyinterprod.utils import email
+from pyinterprod.pronto.signature import get_swissprot_descriptions
+from .database import Database
+from .match import track_entry_changes, track_sig_changes
+from .signature import FILE_DB_SIG_DIFF, FILE_SIG_DESCR
 
 
-def send_report(ora_url: str, pg_url: str, data_dir: str, pronto_url: str,
-                emails: dict):
-    pronto_url = pronto_url.rstrip('/')
+def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
+                          data_dir: str, pronto_link: str, emails: dict):
+    pronto_link = pronto_link.rstrip('/')
+
+    con = cx_Oracle.connect(ora_url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT EM.METHOD_AC, E.ENTRY_AC, E.ENTRY_TYPE, E.NAME
+        FROM INTERPRO.ENTRY2METHOD EM
+        INNER JOIN INTERPRO.ENTRY E ON EM.ENTRY_AC = E.ENTRY_AC
+        """
+    )
+    integrated = {}
+    for sig_acc, entry_acc, entry_type, entry_name in cur:
+        integrated[sig_acc] = (entry_acc, entry_type, entry_name)
+
+    cur.execute("SELECT METHOD_AC, DBCODE FROM INTERPRO.METHOD")
+    acc2dbid = dict(cur.fetchall())
+    cur.close()
+    con.close()
+
+    tmpdir = mkdtemp()
+    id2dst = {}
+    for db in dbs:
+        name = db.name.replace(' ', '_')
+        id2dst[db.identifier] = os.path.join(tmpdir, name)
+        os.mkdir(id2dst[db.identifier])
+
+    # Annotation changes
+    with open(os.path.join(data_dir, FILE_DB_SIG_DIFF), "rb") as fh:
+        for db_id, db_changes in pickle.load(fh).items():
+            dst = id2dst[db_id]
+
+            with open(os.path.join(dst, "name_changes.tsv"), "wt") as fh2:
+                fh2.write("Signature\tEntry\tLink\tPrevious name\tNew name\n")
+
+                changes = db_changes["changes"]["names"]
+                for sig_acc, old_val, new_val in sorted(changes):
+                    try:
+                        entry_acc = integrated[sig_acc][0]
+                    except KeyError:
+                        continue
+
+                    link = f"{pronto_link}/entry/{entry_acc}/"
+                    fh2.write(f"{sig_acc}\t{entry_acc}\t{link}\t{old_val}"
+                              f"\t{new_val}\n")
+
+            with open(os.path.join(dst, "descr_changes.tsv"), "wt") as fh2:
+                fh2.write("Signature\tEntry\tLink\tPrevious description"
+                          "\tNew description\n")
+
+                changes = db_changes["changes"]["descriptions"]
+                for sig_acc, old_val, new_val in sorted(changes):
+                    try:
+                        entry_acc = integrated[sig_acc][0]
+                    except KeyError:
+                        continue
+
+                    link = f"{pronto_link}/entry/{entry_acc}/"
+                    fh2.write(f"{sig_acc}\t{entry_acc}\t{link}\t{old_val}"
+                              f"\t{new_val}\n")
+
+            with open(os.path.join(dst, "type_changes.tsv"), "wt") as fh2:
+                fh2.write("Signature\tEntry\tLink\tPrevious type\tNew type\n")
+
+                changes = db_changes["changes"]["types"]
+                for sig_acc, old_val, new_val in sorted(changes):
+                    try:
+                        entry_acc = integrated[sig_acc][0]
+                    except KeyError:
+                        continue
+
+                    link = f"{pronto_link}/entry/{entry_acc}/"
+                    fh2.write(f"{sig_acc}\t{entry_acc}\t{link}\t{old_val}"
+                              f"\t{new_val}\n")
+
+    # Protein counts changes
+    for db_id, db_changes in track_sig_changes(cur, dbs, data_dir).items():
+        dst = id2dst[db_id]
+
+        with open(os.path.join(dst, "protein_counts.tsv"), "wt") as fh:
+            fh.write("Signature\tLink\tEntry\tPrevious count"
+                     "\tNew count\tChange (%)\n")
+
+            for sig_acc, old_cnt, new_cnt, change in db_changes:
+                try:
+                    entry_acc = integrated[sig_acc]
+                except KeyError:
+                    continue
+
+                link = f"{pronto_link}/signature/{sig_acc}/"
+                fh.write(f"{sig_acc}\t{link}\t{entry_acc}\t{old_cnt}"
+                         f"\t{new_cnt}\t{change*100:.0f}\n")
+
+    # Swiss-Prot DE
+    new_sigs = get_swissprot_descriptions(pg_url)
+    changes = []
+    with open(os.path.join(data_dir, FILE_SIG_DESCR), "rb") as fh:
+        for sig_acc, old_descrs in pickle.load(fh).items():
+            new_descrs = new_sigs.pop(sig_acc, set())
+
+            try:
+                entry_acc, entry_type, entry_name = integrated[sig_acc]
+                db_id = acc2dbid[sig_acc]
+            except KeyError:
+                # signature is unintegrated, or deleted
+                continue
+
+            changes.append((sig_acc, db_id, entry_acc, entry_name,
+                            entry_type, old_descrs - new_descrs,
+                            new_descrs - old_descrs))
+
+    for sig_acc, new_descrs in new_sigs:
+        try:
+            entry_acc, entry_type, entry_name = integrated[sig_acc]
+            db_id = acc2dbid[sig_acc]
+        except KeyError:
+            # signature is unintegrated, or deleted
+            continue
+
+        changes.append((sig_acc, db_id, entry_acc, entry_name,
+                        entry_type, [], new_descrs))
+
+    files_descr = {}
+    changes.sort(key=lambda x: x[0])
+    for sig_acc, db_id, e_acc, e_name, e_type, lost, gained in changes:
+        try:
+            dst = id2dst[db_id]
+        except KeyError:
+            continue  # signature not from updated member database
+
+        if e_type == 'F':
+            label = "families"
+        elif e_type == 'D':
+            label = "domains"
+        else:
+            label = "others"
+
+        file = os.path.join(dst, f"swiss_de_{label}.tsv")
+        try:
+            fh = files_descr[file]
+        except KeyError:
+            fh = files_descr[file] = open(file, "wt")
+            fh.write(f"Signature\tLink\tEntry\tName\tType\t# Lost"
+                     f"\t# Gained\tLost\tGained\n")
+
+        link = f"{pronto_link}/signatures/{sig_acc}/descriptions/?reviewed"
+        fh.write(f"{sig_acc}\t{link}\t{e_acc}\t{e_name}\t{e_type}\t{len(lost)}"
+                 f"\t{len(gained)}\t{' | '.join(sorted(lost))}"
+                 f"\t{' | '.join(sorted(gained))}\n")
+
+    for fh in files_descr.values():
+        fh.close()
+
+    date = datetime.today().strftime("%Y%m%d")
+    filename = os.path.join(data_dir, f"member_database_update_{date}.zip")
+    with ZipFile(filename, 'w', compression=ZIP_DEFLATED) as fh:
+        for root, dirs, files in os.walk(tmpdir):
+            for file in files:
+                path = os.path.join(root, file)
+                fh.write(path, arcname=os.path.relpath(path, tmpdir))
+
+    shutil.rmtree(tmpdir)
+
+
+def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
+                            pronto_link: str, emails: dict):
+    pronto_link = pronto_link.rstrip('/')
 
     con = cx_Oracle.connect(ora_url)
     cur = con.cursor()
@@ -35,7 +207,7 @@ def send_report(ora_url: str, pg_url: str, data_dir: str, pronto_url: str,
 
     # Load entry -> descriptions BEFORE UniProt update
     entries_then = {}
-    with open(os.path.join(data_dir, SIGNATURES_DESCR_FILE), "rb") as fh:
+    with open(os.path.join(data_dir, FILE_SIG_DESCR), "rb") as fh:
         for signature_acc, descriptions in pickle.load(fh).items():
             try:
                 entry_acc = integrated[signature_acc]
@@ -96,7 +268,7 @@ def send_report(ora_url: str, pg_url: str, data_dir: str, pronto_url: str,
                 fh.write(header)
                 files[entry_type] = (fh, path)
             finally:
-                fh.write(f"{entry_acc}\t{pronto_url}/entry/{entry_acc}/\t"
+                fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
                          f"{name}\t{type_code}\t{checked_flag}\t{len(lost)}\t"
                          f"{len(gained)}\t{' | '.join(lost)}\t"
                          f"{' | '.join(gained)}\n")
@@ -104,17 +276,13 @@ def send_report(ora_url: str, pg_url: str, data_dir: str, pronto_url: str,
     # Write entries with protein count changes
     path = os.path.join(data_dir, "entries_count_changes.tsv")
     with open(path, "wt") as ofh:
-        with open(os.path.join(data_dir, ENTRIES_CHANGES_FILE), "rb") as ifh:
-            changes = pickle.load(ifh)
-
         ofh.write("# Accession\tLink\tName\tType\tChecked\t"
                   "Previous count\tNew count\tChange (%)\n")
 
-        # Sort by change
-        changes.sort(key=lambda x: abs(x[3]))
+        changes = track_entry_changes(cur, data_dir)
         for entry_acc, prev_count, count, change in changes:
             name, type_code, checked_flag = entries[entry_acc]
-            ofh.write(f"{entry_acc}\t{pronto_url}/entry/{entry_acc}/\t{name}\t"
+            ofh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t{name}\t"
                       f"{type_code}\t{checked_flag}\t"
                       f"{prev_count}\t{count}\t{change*100:.0f}\n")
 
@@ -133,7 +301,7 @@ def send_report(ora_url: str, pg_url: str, data_dir: str, pronto_url: str,
 Dear curators,
 
 Pronto has been refreshed. Please find attached a ZIP archive containing \
-the report files for this month's protein update.
+the report files for this protein update.
 
 The InterPro Production Team
 """,
