@@ -131,7 +131,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                             entry_type, old_descrs - new_descrs,
                             new_descrs - old_descrs))
 
-    for sig_acc, new_descrs in new_sigs:
+    for sig_acc, new_descrs in new_sigs.items():
         try:
             entry_acc, entry_type, entry_name = integrated[sig_acc]
             db_id = acc2dbid[sig_acc]
