@@ -131,6 +131,128 @@ def prep_email(emails: dict, to: Sequence[str], **kwargs) -> dict:
     return emails
 
 
+def run_member_db_update():
+    parser = ArgumentParser(description="InterPro member database update")
+    parser.add_argument("config",
+                        metavar="config.ini",
+                        help="configuration file")
+    parser.add_argument("-t", "--tasks",
+                        nargs="*",
+                        default=None,
+                        metavar="TASK",
+                        help="tasks to run")
+    parser.add_argument("--dry-run",
+                        action="store_true",
+                        default=False,
+                        help="list tasks to run and exit")
+    parser.add_argument("--detach",
+                        action="store_true",
+                        help="enqueue tasks to run and exit")
+    parser.add_argument("-v", "--version", action="version",
+                        version=f"%(prog)s {__version__}",
+                        help="show the version and exit")
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': no such file or directory")
+
+    config = ConfigParser()
+    config.read(args.config)
+
+    dsn = config["oracle"]["dsn"]
+    interpro_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
+    iprscan_url = f"iprscan/{config['oracle']['iprscan']}@{dsn}"
+    pronto_url = config["postgresql"]["pronto"]
+
+    emails = dict(config["emails"])
+
+    pronto_link = config["misc"]["pronto_url"]
+    data_dir = config["misc"]["data_dir"]
+    lsf_queue = config["misc"]["lsf_queue"]
+    workflow_dir = config["misc"]["workflow_dir"]
+
+    # TODO: do not hardcode this (either config or CLI args)
+    # TODO: key: member DB (panther), value: path to signature file
+    update = {}
+
+    # TODO: update IPRSCAN2DBCODE
+    databases = interpro.database.get_databases(interpro_url, update)
+    updates = [(db, update[key]) for key, db in databases.items()]
+    databases = list(databases.values())
+
+    tasks = [
+        Task(
+            fn=interpro.signature.add_staging,
+            args=(interpro_url, updates),
+            name="load-signatures",
+            scheduler=dict(queue=lsf_queue)
+        ),
+        Task(
+            fn=interpro.signature.track_signature_changes,
+            args=(interpro_url, databases, data_dir),
+            name="track-changes",
+            scheduler=dict(queue=lsf_queue),
+            requires=["load-signatures"]
+        ),
+        Task(
+            fn=interpro.signature.delete_obsoletes,
+            args=(interpro_url, databases),
+            name="delete-obsoletes",
+            scheduler=dict(queue=lsf_queue),
+            requires=["track-changes"]
+        ),
+        Task(
+            fn=interpro.signature.update_signatures,
+            args=(interpro_url,),
+            name="update-signatures",
+            scheduler=dict(queue=lsf_queue),
+            requires=["delete-obsoletes"]
+        ),
+        Task(
+            fn=interpro.match.export_sig_prot_counts,
+            args=(interpro_url, databases, data_dir),
+            name="pre-update-matches",
+            scheduler=dict(queue=lsf_queue),
+            requires=["update-signatures"]
+        ),
+        Task(
+            fn=iprscan.import_matches,
+            args=(iprscan_url, databases),
+            kwargs=dict(threads=8),
+            name="import-matches",
+            scheduler=dict(queue=lsf_queue)
+        ),
+        Task(
+            fn=interpro.match.update_database_matches,
+            args=(interpro_url, databases),
+            name="update-matches",
+            scheduler=dict(queue=lsf_queue),
+            requires=["import-matches", "pre-update-matches"]
+        ),
+
+        Task(
+            fn=interpro.signature.export_swissprot_descriptions,
+            args=(pronto_url, data_dir),
+            name="swissprot-de",
+            scheduler=dict(queue=lsf_queue),
+        ),
+    ]
+
+    # Adding Pronto tasks
+    for t in get_pronto_tasks(interpro_url, pronto_url, data_dir, lsf_queue):
+        # Adding 'pronto-' prefix
+        t.name = f"pronto-{t.name}"
+        if t.requires:
+            t.requires = {f"pronto-{r}" for r in t.requires}
+        else:
+            # Task without dependency:
+            # add some so it's submitted at the end of the protein update
+            t.requires = {"swissprot-de", "update-matches"}
+
+        tasks.append(t)
+
+
+
 def run_protein_update():
     parser = ArgumentParser(description="InterPro protein update")
     parser.add_argument("config",
@@ -170,7 +292,7 @@ def run_protein_update():
 
     emails = dict(config["emails"])
 
-    pronto_app = config["misc"]["pronto_url"]
+    pronto_link = config["misc"]["pronto_url"]
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
     workflow_dir = config["misc"]["workflow_dir"]
@@ -340,8 +462,8 @@ def run_protein_update():
 
     # Generate and send report to curators
     tasks.append(Task(
-        fn=interpro.report.send_report,
-        args=(interpro_url, pronto_url, data_dir, pronto_app,
+        fn=interpro.report.send_prot_update_report,
+        args=(interpro_url, pronto_url, data_dir, pronto_link,
               prep_email(emails, to=["interpro"])),
         name="send-report",
         scheduler=dict(mem=4000, queue=lsf_queue),
