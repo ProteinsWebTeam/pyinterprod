@@ -11,12 +11,12 @@ from pyinterprod import __version__, iprscan
 from pyinterprod import interpro, pronto, uniparc, uniprot
 
 
-def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
+def get_pronto_tasks(ora_url: str, pg_url: str, data_dir: str,
                      lsf_queue: str) -> List[Task]:
     return [
         Task(
             fn=pronto.database.import_databases,
-            args=(interpro_url, pronto_url),
+            args=(ora_url, pg_url),
             name="databases",
             scheduler=dict(mem=100, queue=lsf_queue)
         ),
@@ -24,7 +24,7 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
         # Data from GOAPRO
         Task(
             fn=pronto.goa.import_annotations,
-            args=(interpro_url, pronto_url),
+            args=(ora_url, pg_url),
             name="annotations",
             scheduler=dict(mem=500, queue=lsf_queue)
         ),
@@ -32,13 +32,13 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
         # Data from SWPREAD
         Task(
             fn=pronto.protein.import_similarity_comments,
-            args=(interpro_url, pronto_url),
+            args=(ora_url, pg_url),
             name="proteins-similarities",
             scheduler=dict(mem=100, queue=lsf_queue),
         ),
         Task(
             fn=pronto.protein.import_protein_names,
-            args=(interpro_url, pronto_url,
+            args=(ora_url, pg_url,
                   os.path.join(data_dir, "names.sqlite")),
             kwargs=dict(tmpdir="/scratch/"),
             name="proteins-names",
@@ -48,13 +48,13 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
         # Data from IPPRO
         Task(
             fn=pronto.protein.import_proteins,
-            args=(interpro_url, pronto_url),
+            args=(ora_url, pg_url),
             name="proteins",
             scheduler=dict(mem=100, queue=lsf_queue),
         ),
         Task(
             fn=pronto.match.import_matches,
-            args=(interpro_url, pronto_url,
+            args=(ora_url, pg_url,
                   os.path.join(data_dir, "allseqs.dat")),
             kwargs=dict(tmpdir="/scratch/"),
             name="matches",
@@ -63,7 +63,7 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
         ),
         Task(
             fn=pronto.match.proc_comp_seq_matches,
-            args=(interpro_url, pronto_url,
+            args=(ora_url, pg_url,
                   os.path.join(data_dir, "names.sqlite"),
                   os.path.join(data_dir, "compseqs.dat")),
             kwargs=dict(tmpdir="/scratch/", processes=8),
@@ -73,7 +73,7 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
         ),
         Task(
             fn=pronto.signature.import_signatures,
-            args=(interpro_url, pronto_url,
+            args=(ora_url, pg_url,
                   os.path.join(data_dir, "allseqs.dat"),
                   os.path.join(data_dir, "compseqs.dat")),
             name="signatures",
@@ -82,7 +82,7 @@ def get_pronto_tasks(interpro_url: str, pronto_url: str, data_dir: str,
         ),
         Task(
             fn=pronto.taxon.import_taxonomy,
-            args=(interpro_url, pronto_url),
+            args=(ora_url, pg_url),
             name="taxonomy",
             scheduler=dict(mem=2000, queue=lsf_queue),
         ),
@@ -160,13 +160,13 @@ def run_member_db_update():
     config.read(args.config)
 
     dsn = config["oracle"]["dsn"]
-    interpro_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
-    iprscan_url = f"iprscan/{config['oracle']['iprscan']}@{dsn}"
-    pronto_url = config["postgresql"]["pronto"]
+    ora_interpro_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
+    ora_iprscan_url = f"iprscan/{config['oracle']['iprscan']}@{dsn}"
+    pg_url = config["postgresql"]["pronto"]
 
     emails = dict(config["emails"])
 
-    pronto_link = config["misc"]["pronto_url"]
+    pronto_url = config["misc"]["pronto_url"]
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
     workflow_dir = config["misc"]["workflow_dir"]
@@ -176,55 +176,55 @@ def run_member_db_update():
     update = {}
 
     # TODO: update IPRSCAN2DBCODE
-    databases = interpro.database.get_databases(interpro_url, update)
+    databases = interpro.database.get_databases(ora_interpro_url, update)
     updates = [(db, update[key]) for key, db in databases.items()]
     databases = list(databases.values())
 
     tasks = [
         Task(
             fn=interpro.signature.add_staging,
-            args=(interpro_url, updates),
+            args=(ora_interpro_url, updates),
             name="load-signatures",
             scheduler=dict(queue=lsf_queue)
         ),
         Task(
             fn=interpro.signature.track_signature_changes,
-            args=(interpro_url, databases, data_dir),
+            args=(ora_interpro_url, databases, data_dir),
             name="track-changes",
             scheduler=dict(queue=lsf_queue),
             requires=["load-signatures"]
         ),
         Task(
             fn=interpro.signature.delete_obsoletes,
-            args=(interpro_url, databases),
+            args=(ora_interpro_url, databases),
             name="delete-obsoletes",
             scheduler=dict(queue=lsf_queue),
             requires=["track-changes"]
         ),
         Task(
             fn=interpro.signature.update_signatures,
-            args=(interpro_url,),
+            args=(ora_interpro_url,),
             name="update-signatures",
             scheduler=dict(queue=lsf_queue),
             requires=["delete-obsoletes"]
         ),
         Task(
             fn=interpro.match.export_sig_prot_counts,
-            args=(interpro_url, databases, data_dir),
+            args=(ora_interpro_url, databases, data_dir),
             name="pre-update-matches",
             scheduler=dict(queue=lsf_queue),
             requires=["update-signatures"]
         ),
         Task(
             fn=iprscan.import_matches,
-            args=(iprscan_url, databases),
+            args=(ora_iprscan_url, databases),
             kwargs=dict(threads=8),
             name="import-matches",
             scheduler=dict(queue=lsf_queue)
         ),
         Task(
             fn=interpro.match.update_database_matches,
-            args=(interpro_url, databases),
+            args=(ora_interpro_url, databases),
             name="update-matches",
             scheduler=dict(queue=lsf_queue),
             requires=["import-matches", "pre-update-matches"]
@@ -232,14 +232,14 @@ def run_member_db_update():
 
         Task(
             fn=interpro.signature.export_swissprot_descriptions,
-            args=(pronto_url, data_dir),
+            args=(pg_url, data_dir),
             name="swissprot-de",
             scheduler=dict(queue=lsf_queue),
         ),
     ]
 
     # Adding Pronto tasks
-    for t in get_pronto_tasks(interpro_url, pronto_url, data_dir, lsf_queue):
+    for t in get_pronto_tasks(ora_interpro_url, pg_url, data_dir, lsf_queue):
         # Adding 'pronto-' prefix
         t.name = f"pronto-{t.name}"
         if t.requires:
@@ -282,17 +282,17 @@ def run_protein_update():
     config.read(args.config)
 
     dsn = config["oracle"]["dsn"]
-    interpro_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
-    iprscan_url = f"iprscan/{config['oracle']['iprscan']}@{dsn}"
-    uniparc_url = f"uniparc/{config['oracle']['uniparc']}@{dsn}"
-    pronto_url = config["postgresql"]["pronto"]
+    ora_interpro_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
+    ora_iprscan_url = f"iprscan/{config['oracle']['iprscan']}@{dsn}"
+    ora_uniparc_url = f"uniparc/{config['oracle']['uniparc']}@{dsn}"
+    pg_url = config["postgresql"]["pronto"]
 
     uniprot_version = config["uniprot"]["version"]
     xrefs_dir = config["uniprot"]["xrefs"]
 
     emails = dict(config["emails"])
 
-    pronto_link = config["misc"]["pronto_url"]
+    pronto_url = config["misc"]["pronto_url"]
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
     workflow_dir = config["misc"]["workflow_dir"]
@@ -302,7 +302,7 @@ def run_protein_update():
         # Data from UAREAD
         Task(
             fn=uniparc.update,
-            args=(uniparc_url,),
+            args=(ora_uniparc_url,),
             name="update-uniparc",
             scheduler=dict(queue=lsf_queue)
         ),
@@ -310,7 +310,7 @@ def run_protein_update():
         # Data from SWPREAD
         Task(
             fn=interpro.taxonomy.refresh_taxonomy,
-            args=(interpro_url,),
+            args=(ora_interpro_url,),
             name="taxonomy",
             scheduler=dict(queue=lsf_queue)
         ),
@@ -318,7 +318,7 @@ def run_protein_update():
         # Data from ISPRO
         Task(
             fn=iprscan.import_matches,
-            args=(iprscan_url,),
+            args=(ora_iprscan_url,),
             kwargs=dict(threads=8),
             name="import-matches",
             scheduler=dict(queue=lsf_queue),
@@ -326,7 +326,7 @@ def run_protein_update():
         ),
         Task(
             fn=iprscan.import_sites,
-            args=(iprscan_url,),
+            args=(ora_iprscan_url,),
             kwargs=dict(threads=8),
             name="import-sites",
             scheduler=dict(queue=lsf_queue),
@@ -336,7 +336,7 @@ def run_protein_update():
         # Data from flat files
         Task(
             fn=interpro.protein.track_changes,
-            args=(interpro_url,
+            args=(ora_interpro_url,
                   config["uniprot"]["swiss-prot"],
                   config["uniprot"]["trembl"],
                   uniprot_version,
@@ -349,7 +349,7 @@ def run_protein_update():
         # Update IPPRO
         Task(
             fn=interpro.protein.delete_obsoletes,
-            args=(interpro_url,),
+            args=(ora_interpro_url,),
             kwargs=dict(truncate=True),
             name="delete-proteins",
             scheduler=dict(queue=lsf_queue),
@@ -357,21 +357,21 @@ def run_protein_update():
         ),
         Task(
             fn=interpro.protein.check_proteins_to_scan,
-            args=(interpro_url,),
+            args=(ora_interpro_url,),
             name="check-proteins",
             scheduler=dict(queue=lsf_queue),
             requires=["delete-proteins", "update-uniparc"]
         ),
         Task(
             fn=interpro.match.update_matches,
-            args=(interpro_url, data_dir),
+            args=(ora_interpro_url, data_dir),
             name="update-matches",
             scheduler=dict(queue=lsf_queue),
             requires=["check-proteins", "import-matches"]
         ),
         Task(
             fn=interpro.match.update_feature_matches,
-            args=(interpro_url,),
+            args=(ora_interpro_url,),
             name="update-fmatches",
             scheduler=dict(queue=lsf_queue),
             requires=["check-proteins", "import-matches"]
@@ -380,14 +380,14 @@ def run_protein_update():
         # Data for UniProt
         Task(
             fn=uniprot.exchange.export_sib,
-            args=(interpro_url, prep_email(emails, to=["interpro"])),
+            args=(ora_interpro_url, prep_email(emails, to=["interpro"])),
             name="export-sib",
             scheduler=dict(queue=lsf_queue),
             requires=["update-matches"]
         ),
         Task(
             fn=uniprot.unirule.report_integration_changes,
-            args=(interpro_url, prep_email(emails,
+            args=(ora_interpro_url, prep_email(emails,
                                            to=["aa_dev"],
                                            cc=["unirule", "interpro"])),
             name="report-changes",
@@ -396,7 +396,7 @@ def run_protein_update():
         ),
         Task(
             fn=uniprot.unirule.build_aa_iprscan,
-            args=(iprscan_url,),
+            args=(ora_iprscan_url,),
             name="aa-iprscan",
             scheduler=dict(queue=lsf_queue),
             # Actually depends on impart-matches
@@ -404,14 +404,14 @@ def run_protein_update():
         ),
         Task(
             fn=uniprot.unirule.build_xref_condensed,
-            args=(interpro_url,),
+            args=(ora_interpro_url,),
             name="xref-condensed",
             scheduler=dict(queue=lsf_queue),
             requires=["update-matches"]
         ),
         Task(
             fn=uniprot.unirule.build_xref_summary,
-            args=(interpro_url,),
+            args=(ora_interpro_url,),
             name="xref-summary",
             scheduler=dict(queue=lsf_queue),
             # `report-changes` uses XREF_SUMMARY so we need to wait
@@ -420,7 +420,7 @@ def run_protein_update():
         ),
         Task(
             fn=uniprot.exchange.export_xrefs,
-            args=(interpro_url, xrefs_dir,
+            args=(ora_interpro_url, xrefs_dir,
                   prep_email(emails, to=["uniprot_db"],
                              cc=["uniprot_prod", "interpro"])
                   ),
@@ -430,7 +430,7 @@ def run_protein_update():
         ),
         Task(
             fn=uniprot.unirule.ask_to_snapshot,
-            args=(interpro_url, prep_email(emails, to=["interpro"])),
+            args=(ora_interpro_url, prep_email(emails, to=["interpro"])),
             name="notify-interpro",
             scheduler=dict(queue=lsf_queue),
             requires=["aa-iprscan", "xref-condensed", "xref-summary",
@@ -440,14 +440,14 @@ def run_protein_update():
         # Copy SwissProt descriptions
         Task(
             fn=interpro.signature.export_swissprot_descriptions,
-            args=(pronto_url, data_dir),
+            args=(pg_url, data_dir),
             name="swissprot-de",
             scheduler=dict(queue=lsf_queue),
         )
     ]
 
     # Adding Pronto tasks
-    for t in get_pronto_tasks(interpro_url, pronto_url, data_dir, lsf_queue):
+    for t in get_pronto_tasks(ora_interpro_url, pg_url, data_dir, lsf_queue):
         # Adding 'pronto-' prefix
         t.name = f"pronto-{t.name}"
         if t.requires:
@@ -463,7 +463,7 @@ def run_protein_update():
     # Generate and send report to curators
     tasks.append(Task(
         fn=interpro.report.send_prot_update_report,
-        args=(interpro_url, pronto_url, data_dir, pronto_link,
+        args=(ora_interpro_url, pg_url, data_dir, pronto_url,
               prep_email(emails, to=["interpro"])),
         name="send-report",
         scheduler=dict(mem=4000, queue=lsf_queue),
@@ -475,14 +475,14 @@ def run_protein_update():
     # Not urgent tasks (can be run after everything else)
     Task(
         fn=interpro.match.update_variant_matches,
-        args=(interpro_url,),
+        args=(ora_interpro_url,),
         name="update-varsplic",
         scheduler=dict(queue=lsf_queue),
         requires=["import-matches"]
     ),
     Task(
         fn=interpro.match.update_site_matches,
-        args=(interpro_url,),
+        args=(ora_interpro_url,),
         name="update-sites",
         scheduler=dict(queue=lsf_queue),
         requires=["import-sites", "update-matches"]
