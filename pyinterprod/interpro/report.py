@@ -21,6 +21,13 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                           data_dir: str, pronto_link: str, emails: dict):
     pronto_link = pronto_link.rstrip('/')
 
+    tmpdir = mkdtemp()
+    id2dst = {}
+    for db in dbs:
+        name = db.name.replace(' ', '_')
+        id2dst[db.identifier] = os.path.join(tmpdir, name)
+        os.mkdir(id2dst[db.identifier])
+
     con = cx_Oracle.connect(ora_url)
     cur = con.cursor()
     cur.execute(
@@ -36,15 +43,27 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
 
     cur.execute("SELECT METHOD_AC, DBCODE FROM INTERPRO.METHOD")
     acc2dbid = dict(cur.fetchall())
+
+    # Protein counts changes
+    for db_id, db_changes in track_sig_changes(cur, dbs, data_dir).items():
+        dst = id2dst[db_id]
+
+        with open(os.path.join(dst, "protein_counts.tsv"), "wt") as fh:
+            fh.write("Signature\tLink\tEntry\tPrevious count"
+                     "\tNew count\tChange (%)\n")
+
+            for sig_acc, old_cnt, new_cnt, change in db_changes:
+                try:
+                    entry_acc = integrated[sig_acc]
+                except KeyError:
+                    continue
+
+                link = f"{pronto_link}/signature/{sig_acc}/"
+                fh.write(f"{sig_acc}\t{link}\t{entry_acc}\t{old_cnt}"
+                         f"\t{new_cnt}\t{change * 100:.0f}\n")
+
     cur.close()
     con.close()
-
-    tmpdir = mkdtemp()
-    id2dst = {}
-    for db in dbs:
-        name = db.name.replace(' ', '_')
-        id2dst[db.identifier] = os.path.join(tmpdir, name)
-        os.mkdir(id2dst[db.identifier])
 
     # Annotation changes
     with open(os.path.join(data_dir, FILE_DB_SIG_DIFF), "rb") as fh:
@@ -93,24 +112,6 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                     link = f"{pronto_link}/entry/{entry_acc}/"
                     fh2.write(f"{sig_acc}\t{entry_acc}\t{link}\t{old_val}"
                               f"\t{new_val}\n")
-
-    # Protein counts changes
-    for db_id, db_changes in track_sig_changes(cur, dbs, data_dir).items():
-        dst = id2dst[db_id]
-
-        with open(os.path.join(dst, "protein_counts.tsv"), "wt") as fh:
-            fh.write("Signature\tLink\tEntry\tPrevious count"
-                     "\tNew count\tChange (%)\n")
-
-            for sig_acc, old_cnt, new_cnt, change in db_changes:
-                try:
-                    entry_acc = integrated[sig_acc]
-                except KeyError:
-                    continue
-
-                link = f"{pronto_link}/signature/{sig_acc}/"
-                fh.write(f"{sig_acc}\t{link}\t{entry_acc}\t{old_cnt}"
-                         f"\t{new_cnt}\t{change*100:.0f}\n")
 
     # Swiss-Prot DE
     new_sigs = get_swissprot_descriptions(pg_url)
