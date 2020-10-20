@@ -3,7 +3,7 @@
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Sequence, Tuple
 
 import cx_Oracle
 from cx_Oracle import Cursor
@@ -202,14 +202,21 @@ class Analysis:
         return row and row[0] >= max_upi
 
 
-def get_analyses(cur: Cursor, use_matches: bool = True,
-                 ids: Optional[Sequence[int]] = None) -> List[Analysis]:
+def get_analyses(cur: Cursor, **kwargs) -> List[Analysis]:
+    active = kwargs.get("active", True)
+    ids = kwargs.get("ids", [])
+    use_matches = kwargs.get("use_matches", True)
+
     if ids:
         params = [':' + str(i+1) for i in range(len(ids))]
         sql_filter = f"A.ANALYSIS_ID IN ({','.join(params)})"
         params = tuple(ids)
-    else:
+    elif active:
         sql_filter = "A.ACTIVE = 1"
+        params = tuple()
+    else:
+        sql_filter = ("A.ANALYSIS_ID IN (SELECT IPRSCAN_SIG_LIB_REL_ID "
+                      "FROM INTERPRO.IPRSCAN2DBCODE)")
         params = tuple()
 
     cur.execute(
