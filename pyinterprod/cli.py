@@ -228,7 +228,13 @@ def run_member_db_update():
             name="import-matches",
             scheduler=dict(queue=lsf_queue)
         ),
-        # TODO: import/update sites
+        Task(
+            fn=iprscan.import_sites,
+            args=(ora_iprscan_url,),
+            kwargs=dict(databases=databases, threads=2),
+            name="import-sites",
+            scheduler=dict(queue=lsf_queue)
+        ),
         Task(
             fn=interpro.match.update_database_matches,
             args=(ora_interpro_url, databases),
@@ -236,6 +242,7 @@ def run_member_db_update():
             scheduler=dict(queue=lsf_queue),
             requires=["import-matches", "pre-update-matches"]
         ),
+        # TODO: update sites, following import-sites
 
         Task(
             fn=interpro.signature.export_swissprot_descriptions,
@@ -345,7 +352,7 @@ def run_uniprot_update():
         Task(
             fn=iprscan.import_sites,
             args=(ora_iprscan_url,),
-            kwargs=dict(threads=8),
+            kwargs=dict(threads=2),
             name="import-sites",
             scheduler=dict(queue=lsf_queue),
             requires=["update-uniparc"]
