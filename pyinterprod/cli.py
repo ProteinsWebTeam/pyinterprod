@@ -252,8 +252,7 @@ def run_member_db_update():
         tasks.append(t)
 
 
-
-def run_protein_update():
+def run_uniprot_update():
     parser = ArgumentParser(description="InterPro protein update")
     parser.add_argument("config",
                         metavar="config.ini",
@@ -377,7 +376,7 @@ def run_protein_update():
             requires=["check-proteins", "import-matches"]
         ),
 
-        # Data for UniProt
+        # Data for UniProt/SIB
         Task(
             fn=uniprot.exchange.export_sib,
             args=(ora_interpro_url, prep_email(emails, to=["interpro"])),
@@ -388,8 +387,8 @@ def run_protein_update():
         Task(
             fn=uniprot.unirule.report_integration_changes,
             args=(ora_interpro_url, prep_email(emails,
-                                           to=["aa_dev"],
-                                           cc=["unirule", "interpro"])),
+                                               to=["aa_dev"],
+                                               cc=["unirule", "interpro"])),
             name="report-changes",
             scheduler=dict(mem=2000, queue=lsf_queue),
             requires=["update-matches"]
@@ -399,7 +398,7 @@ def run_protein_update():
             args=(ora_iprscan_url,),
             name="aa-iprscan",
             scheduler=dict(queue=lsf_queue),
-            # Actually depends on impart-matches
+            # Actually depends on import-matches
             requires=["update-matches"]
         ),
         Task(
@@ -460,33 +459,35 @@ def run_protein_update():
 
         tasks.append(t)
 
-    # Generate and send report to curators
-    tasks.append(Task(
-        fn=interpro.report.send_prot_update_report,
-        args=(ora_interpro_url, pg_url, data_dir, pronto_url,
-              prep_email(emails, to=["interpro"])),
-        name="send-report",
-        scheduler=dict(mem=4000, queue=lsf_queue),
-        requires=["pronto-annotations", "pronto-proteins-similarities",
-                  "pronto-proteins", "pronto-signatures",
-                  "pronto-taxonomy"]
-    ))
+    tasks += [
+        # Generate and send report to curators
+        Task(
+            fn=interpro.report.send_prot_update_report,
+            args=(ora_interpro_url, pg_url, data_dir, pronto_url,
+                  prep_email(emails, to=["interpro"])),
+            name="send-report",
+            scheduler=dict(mem=4000, queue=lsf_queue),
+            requires=["pronto-annotations", "pronto-proteins-similarities",
+                      "pronto-proteins", "pronto-signatures",
+                      "pronto-taxonomy"]
+        ),
 
-    # Not urgent tasks (can be run after everything else)
-    Task(
-        fn=interpro.match.update_variant_matches,
-        args=(ora_interpro_url,),
-        name="update-varsplic",
-        scheduler=dict(queue=lsf_queue),
-        requires=["import-matches"]
-    ),
-    Task(
-        fn=interpro.match.update_site_matches,
-        args=(ora_interpro_url,),
-        name="update-sites",
-        scheduler=dict(queue=lsf_queue),
-        requires=["import-sites", "update-matches"]
-    ),
+        # Not urgent tasks (can be run after everything else)
+        Task(
+            fn=interpro.match.update_variant_matches,
+            args=(ora_interpro_url,),
+            name="update-varsplic",
+            scheduler=dict(queue=lsf_queue),
+            requires=["import-matches"]
+        ),
+        Task(
+            fn=interpro.match.update_site_matches,
+            args=(ora_interpro_url,),
+            name="update-sites",
+            scheduler=dict(queue=lsf_queue),
+            requires=["import-sites", "update-matches"]
+        ),
+    ]
 
     database = os.path.join(workflow_dir, f"{uniprot_version}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as wf:

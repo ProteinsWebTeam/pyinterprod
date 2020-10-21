@@ -22,7 +22,7 @@ setup(
         "console_scripts": [
             # "ipr-clans = pyinterprod.clan:main",
             "ipr-pronto = pyinterprod.cli:run_pronto_update",
-            "ipr-uniprot = pyinterprod.cli:run_protein_update"
+            "ipr-uniprot = pyinterprod.cli:run_uniprot_update"
         ]
     }
 )
