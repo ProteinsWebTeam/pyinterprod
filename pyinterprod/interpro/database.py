@@ -17,9 +17,6 @@ class Database:
 
 
 def get_databases(url: str, names: Sequence[str]) -> Dict[str, Database]:
-    names = set(names)
-    lower2ori = {n.lower(): n for n in names}
-
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -27,7 +24,7 @@ def get_databases(url: str, names: Sequence[str]) -> Dict[str, Database]:
     cur.execute(
         f"""
         SELECT D.DBCODE, LOWER(D.DBSHORT), D.DBNAME, V.VERSION, V.FILE_DATE, 
-               I2C.IPRSCAN_SIG_LIB_REL_ID
+               I2C.IPRSCAN_SIG_LIB_REL_ID, I2C.PREV_ID
         FROM INTERPRO.CV_DATABASE D
         INNER JOIN INTERPRO.DB_VERSION V ON D.DBCODE = V.DBCODE
         INNER JOIN INTERPRO.IPRSCAN2DBCODE I2C ON D.DBCODE = I2C.DBCODE 
@@ -36,16 +33,21 @@ def get_databases(url: str, names: Sequence[str]) -> Dict[str, Database]:
     )
 
     databases = {}
-    for code, lower_key, name, version, date, analysis_id in cur:
-        key = lower2ori[lower_key]
+    outdated = []
+    for code, key, name, version, date, analysis_id, prev_id in cur:
         databases[key] = Database(code, name, version, date, analysis_id)
+
+        if analysis_id == prev_id:
+            outdated.append(name)
 
     cur.close()
     con.close()
 
-    unknown = names - set(databases.keys())
+    unknown = set(names) - set(databases.keys())
     if unknown:
         raise RuntimeError(f"Unknown databases: {', '.join(unknown)}")
+    elif outdated:
+        raise RuntimeError(f"Database(s) not ready: {', '.join(outdated)}")
 
     return databases
 

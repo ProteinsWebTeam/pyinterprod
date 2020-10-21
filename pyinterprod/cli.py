@@ -136,6 +136,8 @@ def run_member_db_update():
     parser.add_argument("config",
                         metavar="config.ini",
                         help="configuration file")
+    parser.add_argument("-d", "--databases", required=True, nargs='+',
+                        help="database(s) to update (format: NAME:FILE)")
     parser.add_argument("-t", "--tasks",
                         nargs="*",
                         default=None,
@@ -164,19 +166,23 @@ def run_member_db_update():
     ora_iprscan_url = f"iprscan/{config['oracle']['iprscan']}@{dsn}"
     pg_url = config["postgresql"]["pronto"]
 
+    uniprot_version = config["uniprot"]["version"]
     emails = dict(config["emails"])
-
     pronto_url = config["misc"]["pronto_url"]
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
     workflow_dir = config["misc"]["workflow_dir"]
 
-    # TODO: do not hardcode this (either config or CLI args)
-    # TODO: key: member DB (panther), value: path to signature file
     update = {}
+    for db in args.databases:
+        try:
+            name, file = db.split(':', 1)
+        except ValueError:
+            parser.error(f"invalid format: {db}")
+        else:
+            update[name.lower()] = file
 
-    # TODO: update IPRSCAN2DBCODE
-    databases = interpro.database.get_databases(ora_interpro_url, update)
+    databases = interpro.database.get_databases(ora_interpro_url, list(update))
     updates = [(db, update[key]) for key, db in databases.items()]
     databases = list(databases.values())
 
@@ -222,6 +228,7 @@ def run_member_db_update():
             name="import-matches",
             scheduler=dict(queue=lsf_queue)
         ),
+        # TODO: import/update sites
         Task(
             fn=interpro.match.update_database_matches,
             args=(ora_interpro_url, databases),
@@ -250,6 +257,18 @@ def run_member_db_update():
             t.requires = {"swissprot-de", "update-matches"}
 
         tasks.append(t)
+
+    # TODO: send report
+
+    # Base Mundone database on UniProt version and on the name/version
+    # of updated member databases
+    versions = [uniprot_version]
+    for db in databases:
+        versions.append(f"{db.name.lower().replace(' ', '')}{db.version}")
+
+    database = os.path.join(workflow_dir, f"{'.'.join(versions)}.sqlite")
+    with Workflow(tasks, dir=workflow_dir, database=database) as wf:
+        wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
 
 
 def run_uniprot_update():
