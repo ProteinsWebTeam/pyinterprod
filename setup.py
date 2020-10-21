@@ -21,6 +21,8 @@ setup(
     entry_points={
         "console_scripts": [
             # "ipr-clans = pyinterprod.clan:main",
+            "ipr-pre-memdb = pyinterprod.cli:update_database",
+            "ipr-memdb = pyinterprod.cli:run_member_db_update",
             "ipr-pronto = pyinterprod.cli:run_pronto_update",
             "ipr-uniprot = pyinterprod.cli:run_uniprot_update"
         ]

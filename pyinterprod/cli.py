@@ -536,3 +536,33 @@ def run_pronto_update():
     database = os.path.join(workflow_dir, f"{uniprot_version}.pronto.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as wf:
         wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
+
+
+def update_database():
+    parser = ArgumentParser(description="InterPro Pronto update")
+    parser.add_argument("config", metavar="config.ini",
+                        help="Configuration file.")
+    parser.add_argument("-n", "--name", required=True,
+                        help="Name of member database.")
+    parser.add_argument("-d", "--date", required=True,
+                        help="Release version of member database.")
+    parser.add_argument("-v", "--version", required=True,
+                        help="Release date of member database "
+                             "(format: YYYY-MM-DD).")
+    parser.add_argument("-y", "--yes", dest="confirm", action="store_false",
+                        help="Do not ask for confirmation.")
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': no such file or directory")
+
+    config = ConfigParser()
+    config.read(args.config)
+
+    dsn = config["oracle"]["dsn"]
+    url = f"interpro/{config['oracle']['interpro']}@{dsn}"
+    interpro.database.update_database(url=url,
+                                      name=args.name,
+                                      version=args.version,
+                                      date=args.date,
+                                      confirm=args.confirm)
