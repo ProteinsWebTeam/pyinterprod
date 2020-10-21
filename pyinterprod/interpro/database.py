@@ -86,6 +86,7 @@ def update_database(url: str, name: str, version: str, date: str,
         AND ACTIVE = 1
         """, (current_id,)
     )
+    row = cur.fetchone()
     active_id, = row
 
     print(f"Updating {name}")
