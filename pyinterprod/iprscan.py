@@ -204,7 +204,7 @@ class Analysis:
 
 def get_analyses(cur: Cursor, mode: str, **kwargs) -> List[Analysis]:
     ids = kwargs.get("ids", [])
-    updated = kwargs.get("updated", True)
+    stable = kwargs.get("stable", True)
 
     if mode not in ("matches", "sites"):
         raise ValueError("supported modes: matches, sites")
@@ -213,12 +213,12 @@ def get_analyses(cur: Cursor, mode: str, **kwargs) -> List[Analysis]:
         params = [':' + str(i+1) for i in range(len(ids))]
         sql_filter = f"A.ANALYSIS_ID IN ({','.join(params)})"
         params = tuple(ids)
-    elif updated:
-        sql_filter = "A.ACTIVE = 1"
-        params = tuple()
-    else:
+    elif stable:
         sql_filter = ("A.ANALYSIS_ID IN (SELECT IPRSCAN_SIG_LIB_REL_ID "
                       "FROM INTERPRO.IPRSCAN2DBCODE)")
+        params = tuple()
+    else:
+        sql_filter = "A.ACTIVE = 1"
         params = tuple()
 
     cur.execute(
@@ -234,7 +234,7 @@ def get_analyses(cur: Cursor, mode: str, **kwargs) -> List[Analysis]:
           INNER JOIN IPM_ANALYSIS_MATCH_TABLE@ISPRO B
             ON A.ANALYSIS_MATCH_TABLE_ID = B.ID
           WHERE {sql_filter}
-          ORDER BY A.ANALYSIS_ID
+          ORDER BY A.ANALYSIS_NAME
         """, params
     )
 
@@ -450,7 +450,7 @@ def import_matches(url: str, **kwargs):
     cur = con.cursor()
 
     pending = {}
-    for analysis in get_analyses(cur, mode="matches", updated=updated):
+    for analysis in get_analyses(cur, mode="matches"):
         if databases and analysis.id not in databases:
             continue
 
@@ -552,7 +552,7 @@ def import_sites(url: str, threads: int = 1, updated: bool = True):
     cur = con.cursor()
 
     pending = {}
-    for analysis in get_analyses(cur, mode="sites", updated=updated):
+    for analysis in get_analyses(cur, mode="sites"):
         try:
             partition = SITE_PARITIONS[analysis.type]
         except KeyError:
