@@ -318,7 +318,7 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
             """
         )
         row = cur.fetchone()
-        part2id[partition] = [row[0] if row else None, analysis_id]
+        part2id[partition] = (row[0] if row else None, analysis_id)
 
         cur.execute(
             f"""
@@ -392,7 +392,7 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
         prev_val, new_val = part2id[partition]
         if prev_val is not None and prev_val != new_val:
             """
-            Different ANALYSIS_ID (database uodate):
+            Different ANALYSIS_ID (database update):
             1. TRUNCATE the partition, to remove rows with the old ANALYSIS_ID
             2. Modify the partition (remove old value)
             3. Modify the partition (add new value)
