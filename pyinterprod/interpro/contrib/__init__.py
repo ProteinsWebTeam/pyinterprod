@@ -1,3 +1,3 @@
 # -*- coding: utf-8 -*-
 
-from . import panther
+from . import hamap, panther

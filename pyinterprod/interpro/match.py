@@ -21,7 +21,7 @@ MATCH_PARTITIONS = {
     'M': 'MATCH_DBCODE_M',
     'N': 'MATCH_DBCODE_N',
     'P': 'MATCH_DBCODE_P',
-    'Q': 'MATCH_DBCODE_Q',
+    'Q': 'MATCH_DBCODE_Q',  # HAMAP
     'R': 'MATCH_DBCODE_R',
     'U': 'MATCH_DBCODE_U',
     'V': 'MATCH_DBCODE_V',  # PANTHER
