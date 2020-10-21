@@ -441,7 +441,6 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
 def import_matches(url: str, **kwargs):
     databases = kwargs.get("databases", [])
     threads = kwargs.get("threads", 1)
-    updated = kwargs.get("updated", True)
 
     if databases:  # expects a sequence of Database objects
         databases = {db.analysis_id for db in databases}
@@ -547,7 +546,7 @@ def import_matches(url: str, **kwargs):
     logger.info("complete")
 
 
-def import_sites(url: str, threads: int = 1, updated: bool = True):
+def import_sites(url: str, threads: int = 1):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
