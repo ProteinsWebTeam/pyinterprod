@@ -469,6 +469,10 @@ def import_matches(url: str, **kwargs):
     cur.close()
     con.close()
 
+    if not pending:
+        logger.info("No databases to import")
+        return
+
     with ThreadPoolExecutor(max_workers=threads) as executor:
         running = []
         failed = 0
@@ -532,10 +536,11 @@ def import_matches(url: str, **kwargs):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
-    logger.info("rebuilding indexes")
-    for idx in oracle.get_indexes(cur, "IPRSCAN", "MV_IPRSCAN"):
-        oracle.catch_temp_error(fn=oracle.rebuild_index,
-                                args=(cur, idx["name"]))
+    for index in oracle.get_indexes(cur, "IPRSCAN", "MV_IPRSCAN"):
+        if index["unusable"]:
+            logger.info(f"rebuilding index {index['name']}")
+            oracle.catch_temp_error(fn=oracle.rebuild_index,
+                                    args=(cur, index["name"]))
 
     logger.info("gathering statistics")
     oracle.gather_stats(cur, "IPRSCAN", "MV_IPRSCAN")
@@ -546,12 +551,21 @@ def import_matches(url: str, **kwargs):
     logger.info("complete")
 
 
-def import_sites(url: str, threads: int = 1):
+def import_sites(url: str, **kwargs):
+    databases = kwargs.get("databases", [])
+    threads = kwargs.get("threads", 1)
+
+    if databases:  # expects a sequence of Database objects
+        databases = {db.analysis_id for db in databases}
+
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
     pending = {}
     for analysis in get_analyses(cur, mode="sites"):
+        if databases and analysis.id not in databases:
+            continue
+
         try:
             partition = SITE_PARITIONS[analysis.type]
         except KeyError:
@@ -567,6 +581,10 @@ def import_sites(url: str, threads: int = 1):
     max_upi, = cur.fetchone()
     cur.close()
     con.close()
+
+    if not pending:
+        logger.info("No databases to import")
+        return
 
     with ThreadPoolExecutor(max_workers=threads) as executor:
         running = []
@@ -624,6 +642,23 @@ def import_sites(url: str, threads: int = 1):
 
     if failed:
         raise RuntimeError(f"{failed} errors")
+
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    for index in oracle.get_indexes(cur, "IPRSCAN", "SITE"):
+        if index["unusable"]:
+            logger.info(f"rebuilding index {index['name']}")
+            oracle.catch_temp_error(fn=oracle.rebuild_index,
+                                    args=(cur, index["name"]))
+
+    logger.info("gathering statistics")
+    oracle.gather_stats(cur, "IPRSCAN", "SITE")
+
+    cur.close()
+    con.close()
+
+    logger.info("complete")
 
 
 # # TODO: check if function can be deleted
