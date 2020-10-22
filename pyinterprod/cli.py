@@ -224,14 +224,14 @@ def run_member_db_update():
         Task(
             fn=iprscan.import_matches,
             args=(ora_iprscan_url,),
-            kwargs=dict(databases=databases, threads=8),
+            kwargs=dict(databases=databases, force_import=True, threads=8),
             name="import-matches",
             scheduler=dict(queue=lsf_queue)
         ),
         Task(
             fn=iprscan.import_sites,
             args=(ora_iprscan_url,),
-            kwargs=dict(databases=databases, threads=2),
+            kwargs=dict(databases=databases, force_import=True, threads=2),
             name="import-sites",
             scheduler=dict(queue=lsf_queue)
         ),

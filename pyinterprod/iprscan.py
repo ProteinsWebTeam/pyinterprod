@@ -302,7 +302,17 @@ def import_from_ispro(cur: Cursor, src: str, dst: str):
 
 
 def update_analyses(url: str, remote_table: str, partitioned_table: str,
-                    analyses: Sequence[Tuple[int, str, Sequence[str]]]):
+                    analyses: Sequence[Tuple[int, str, Sequence[str]]],
+                    force_import: bool = False):
+    """
+    Update matches for member database analyses.
+    :param url: Oracle connection string
+    :param remote_table: Match table in ISPRO
+    :param partitioned_table: Partitioned table in production database
+    :param analyses: Sequence of analyses (analysis ID, partition name
+                     in `partitioned_table`, columns to select)
+    :param force_import: If True, import data from ISPRO regardless of the UPI
+    """
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
@@ -356,7 +366,7 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
         row = cur.fetchone()
         upi_loc = row[0] if row else None
 
-    if not upi_loc or upi_loc < max_upi:
+    if not upi_loc or upi_loc < max_upi or force_import:
         """
         No matches for the highest UPI: need to import table from ISPRO
         All analyses for this table are imported
@@ -446,6 +456,7 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
 
 def import_matches(url: str, **kwargs):
     databases = kwargs.get("databases", [])
+    force_import = kwargs.get("force_import", False)
     threads = kwargs.get("threads", 1)
 
     if databases:  # expects a sequence of Database objects
@@ -521,7 +532,7 @@ def import_matches(url: str, **kwargs):
                 for name in names:
                     logger.info(f"{name:<35} ready")
 
-                args = (url, table, "MV_IPRSCAN", ready)
+                args = (url, table, "MV_IPRSCAN", ready, force_import)
                 f = executor.submit(update_analyses, *args)
 
                 running.append((f, table, names))
@@ -559,6 +570,7 @@ def import_matches(url: str, **kwargs):
 
 def import_sites(url: str, **kwargs):
     databases = kwargs.get("databases", [])
+    force_import = kwargs.get("force_import", False)
     threads = kwargs.get("threads", 1)
 
     if databases:  # expects a sequence of Database objects
@@ -631,7 +643,7 @@ def import_sites(url: str, **kwargs):
                 names = ', '.join(e[0].name for e in analyses)
                 logger.info(f"{names}: ready")
 
-                args = (url, table, "SITE", ready)
+                args = (url, table, "SITE", ready, force_import)
                 f = executor.submit(update_analyses, *args)
 
                 running.append((f, table, names))
