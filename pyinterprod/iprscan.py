@@ -445,8 +445,6 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
             """
         )
 
-        oracle.gather_stats(cur, "IPRSCAN", partitioned_table, partition)
-
     # Drop temporary table
     oracle.drop_table(cur, tmp_table, purge=True)
 
