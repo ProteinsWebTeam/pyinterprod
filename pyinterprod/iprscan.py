@@ -332,7 +332,10 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
 
         if upi and upi >= max_upi:
             # Data in `partitioned_table` >= UniParc: no need to refresh data
+            logger.debug(f"{partition} ({analysis_id}): up-to-date")
             up_to_date += 1
+        else:
+            logger.debug(f"{partition} ({analysis_id}): outdated")
 
     if up_to_date == len(analyses):
         cur.close()
@@ -359,6 +362,7 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
         All analyses for this table are imported
             (i.e. previous versions are not ignored)
         """
+        logger.debug(f"importing {remote_table}@ISPRO -> {local_table}")
         import_from_ispro(cur, remote_table, local_table)
 
     # Create temporary table for the partition exchange
@@ -375,6 +379,8 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
     )
 
     for analysis_id, partition, columns in analyses:
+        logger.debug(f"{partition} ({analysis_id}): updating")
+
         # Truncate table (if several analyses for one table, e.g. SignalP)
         oracle.truncate_table(cur, tmp_table, reuse_storage=True)
 
