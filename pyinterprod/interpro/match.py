@@ -79,10 +79,10 @@ def update_database_matches(url: str, databases: Sequence[Database]):
               ON M.UPI = X.UPI
             INNER JOIN INTERPRO.IPRSCAN2DBCODE D
               ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
-            WHERE X.DBID IN (2, 3)  -- Swiss-Prot or TrEMBL
-            AND X.DELETED = 'N'
-            AND M.ANALYSIS_ID = :1 
-            AND M.SEQ_START != M.SEQ_END
+            WHERE M.ANALYSIS_ID = :1
+            AND M.SEQ_START != M.SEQ_END 
+            AND X.DBID IN (2, 3)  -- Swiss-Prot or TrEMBL
+            AND X.DELETED = 'N'            
             """, (database.analysis_id,)
         )
         con.commit()
