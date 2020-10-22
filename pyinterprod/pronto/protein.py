@@ -98,7 +98,7 @@ def import_protein_names(ora_url: str, pg_url: str, database: str,
                 AND E.DELETED = 'N'                 -- not deleted
                 AND E.FIRST_PUBLIC IS NOT NULL      -- published
             )
-            WHERE R = 1                             -- one name per protein                            --
+            WHERE R = 1                             -- one name per protein
             """
         )
 
