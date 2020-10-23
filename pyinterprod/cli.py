@@ -253,6 +253,7 @@ def run_member_db_update():
     ]
 
     # Adding Pronto tasks
+    after_pronto = set()
     for t in get_pronto_tasks(ora_interpro_url, pg_url, data_dir, lsf_queue):
         # Adding 'pronto-' prefix
         t.name = f"pronto-{t.name}"
@@ -264,8 +265,18 @@ def run_member_db_update():
             t.requires = {"swissprot-de", "update-matches"}
 
         tasks.append(t)
+        after_pronto.add(t.name)
 
-    # TODO: send report
+    tasks += [
+        Task(
+            fn=interpro.report.send_db_update_report,
+            args=(ora_interpro_url, pg_url, databases, data_dir, pronto_url,
+                  prep_email(emails, to=["interpro"])),
+            name="send-report",
+            scheduler=dict(mem=4000, queue=lsf_queue),
+            requires=after_pronto
+        ),
+    ]
 
     # Base Mundone database on UniProt version and on the name/version
     # of updated member databases

@@ -183,6 +183,21 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
 
     shutil.rmtree(tmpdir)
 
+    names = [f"{db.name} {db.version}" for db in dbs]
+    email.send(
+        emails,
+        subject=f"Member database update report: {', '.join(names)}",
+        content="""\
+    Dear curators,
+
+    Pronto has been refreshed. Please find attached a ZIP archive containing \
+    the report files for this member database update.
+
+    The InterPro Production Team
+    """,
+        attachments=[filename]
+    )
+
 
 def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                             pronto_link: str, emails: dict):
