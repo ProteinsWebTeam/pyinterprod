@@ -91,10 +91,17 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
                   tmpdir: Optional[str] = None):
     workdir = mkdtemp(dir=tmpdir)
 
-    logger.info("dumping previous UniProt proteins")
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
+    old_version, = cur.fetchone()
+    cur.close()
+    con.close()
+
+    logger.info(f"dumping UniProt {old_version} proteins")
     files = export_proteins(url, workdir)
 
-    logger.info("loading new UniProt proteins")
+    logger.info(f"loading UniProt {version} proteins")
     fd, database = mkstemp(dir=workdir)
     os.close(fd)
     os.remove(database)
