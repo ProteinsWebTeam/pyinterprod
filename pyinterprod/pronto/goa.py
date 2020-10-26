@@ -11,9 +11,43 @@ from pyinterprod.utils.pg import url2dict
 def import_annotations(ora_url: str, pg_url: str):
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
-        pg_cur.execute("TRUNCATE TABLE protein2go")
-        pg_cur.execute("TRUNCATE TABLE publication")
-        pg_cur.execute("TRUNCATE TABLE term")
+        for name in ("protein2go", "publication", "term"):
+            pg_cur.execute(f"DROP TABLE IF EXISTS {name}")
+
+        pg_cur.execute(
+            """
+            CREATE TABLE protein2go (
+                protein_acc VARCHAR(15) NOT NULL,
+                term_id VARCHAR(10) NOT NULL,
+                ref_db_code VARCHAR(10) NOT NULL,
+                ref_db_id VARCHAR(60) NOT NULL
+            )
+            """
+        )
+        pg_cur.execute(
+            """
+            CREATE TABLE publication (
+                id VARCHAR(25) NOT NULL 
+                    CONSTRAINT publication_pkey PRIMARY KEY,
+                title VARCHAR(1500) NOT NULL,
+                published DATE NOT NULL
+            )
+            """
+        )
+        pg_cur.execute(
+            """
+            CREATE TABLE term (
+                id VARCHAR(10) NOT NULL 
+                    CONSTRAINT term_pkey PRIMARY KEY,
+                name VARCHAR(200) NOT NULL,
+                category VARCHAR(25) NOT NULL,
+                num_constraints INTEGER NOT NULL,
+                is_obsolete BOOLEAN NOT NULL,
+                definition VARCHAR NOT NULL,
+                replaced_id VARCHAR(10)
+            )
+            """
+        )
 
         ora_con = cx_Oracle.connect(ora_url)
         ora_cur = ora_con.cursor()
@@ -123,11 +157,21 @@ def import_annotations(ora_url: str, pg_url: str):
         ora_cur.close()
         ora_con.close()
 
-        pg_con.commit()
-
-        pg_cur.execute("ANALYZE protein2go")
+        pg_cur.execute(
+            """
+            CREATE INDEX protein2go_protein_idx
+            ON protein2go (protein_acc)
+            """
+        )
+        pg_cur.execute(
+            """
+            CREATE INDEX protein2go_term_idx
+            ON protein2go (term_id)
+            """
+        )
         pg_cur.execute("ANALYZE publication")
         pg_cur.execute("ANALYZE term")
+        pg_con.commit()
 
     pg_con.close()
     logger.info("complete")

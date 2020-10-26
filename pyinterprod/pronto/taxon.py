@@ -76,8 +76,31 @@ def import_taxonomy(ora_url: str, pg_url: str):
 
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
-        pg_cur.execute("TRUNCATE TABLE taxon")
-        pg_cur.execute("TRUNCATE TABLE lineage")
+        pg_cur.execute("DROP TABLE IF EXISTS taxon")
+        pg_cur.execute("DROP TABLE IF EXISTS lineage")
+        pg_cur.execute(
+            """
+            CREATE TABLE taxon (
+                id INTEGER NOT NULL 
+                    CONSTRAINT taxon_id_pkey PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                rank VARCHAR(50) NOT NULL,
+                left_number INTEGER NOT NULL,
+                right_number INTEGER NOT NULL,
+                parent_id INTEGER,
+                lineage TEXT NOT NULL
+            )
+            """
+        )
+        pg_cur.execute(
+            """
+            CREATE TABLE lineage (
+                child_id INTEGER NOT NULL,
+                parent_id INTEGER NOT NULL,
+                parent_rank VARCHAR(255) NOT NULL
+            )
+            """
+        )
 
         logger.info("populating: taxon")
         execute_values(pg_cur, "INSERT INTO taxon VALUES %s", (
@@ -87,15 +110,32 @@ def import_taxonomy(ora_url: str, pg_url: str):
             in taxa.items()
         ), page_size=1000)
 
+        pg_cur.execute(
+            """
+            CREATE INDEX taxon_left_number_idx
+            ON taxon (left_number)
+            """
+        )
+
         logger.info("populating: lineage")
         execute_values(pg_cur, "INSERT INTO lineage VALUES %s",
                        iter_lineage(taxa),
                        page_size=1000)
 
-        pg_con.commit()
+        pg_cur.execute(
+            """
+            CREATE UNIQUE INDEX lineage_child_parent_uidx
+            ON lineage (child_id, parent_id)
+            """
+        )
+        pg_cur.execute(
+            """
+            CREATE INDEX lineage_child_rank_idx
+            ON lineage (child_id, parent_rank)
+            """
+        )
 
-        pg_cur.execute("ANALYZE taxon")
-        pg_cur.execute("ANALYZE lineage")
+        pg_con.commit()
 
     pg_con.close()
     logger.info("complete")

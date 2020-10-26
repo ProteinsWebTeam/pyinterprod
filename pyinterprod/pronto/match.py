@@ -13,7 +13,7 @@ import psycopg2
 
 from pyinterprod import logger
 from pyinterprod.utils.kvdb import KVdb
-from pyinterprod.utils.pg import CsvIO, drop_index, url2dict
+from pyinterprod.utils.pg import CsvIO, url2dict
 
 
 """
@@ -192,10 +192,17 @@ def import_matches(ora_url: str, pg_url: str, output: str,
     logger.info("populating")
     pg_con = psycopg2.connect(**url2dict(pg_url))
     pg_cur = pg_con.cursor()
-    pg_cur.execute("TRUNCATE TABLE match")
-    pg_con.commit()
-
-    drop_index(pg_con, "match_protein_idx")
+    pg_cur.execute("DROP TABLE IF EXISTS match")
+    pg_cur.execute(
+        """
+        CREATE TABLE match (
+            protein_acc VARCHAR(15) NOT NULL,
+            signature_acc VARCHAR(25) NOT NULL,
+            database_id INTEGER NOT NULL,
+            fragments TEXT NOT NULL
+        )
+        """
+    )
 
     pg_cur.execute("SELECT name, id FROM database")
     databases = dict(pg_cur.fetchall())
@@ -206,7 +213,6 @@ def import_matches(ora_url: str, pg_url: str, output: str,
                      sep='|')
 
     logger.info("indexing")
-    pg_cur.execute("ANALYZE match")
     pg_cur.execute(
         """
         CREATE INDEX match_protein_idx
@@ -446,10 +452,20 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
     logger.info("populating: signature2protein")
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
-        pg_cur.execute("TRUNCATE TABLE signature2protein")
+        pg_cur.execute("DROP TABLE IF EXISTS signature2protein")
+        pg_cur.execute(
+            """
+            CREATE TABLE signature2protein (
+                signature_acc VARCHAR(25) NOT NULL,
+                protein_acc VARCHAR(15) NOT NULL,
+                is_reviewed BOOLEAN NOT NULL,
+                taxon_left_num INTEGER NOT NULL,
+                name_id INTEGER NOT NULL
+            )
+            """
+        )
         pg_con.commit()
-        drop_index(pg_con, "signature2protein_protein_idx")
-        drop_index(pg_con, "signature2protein_signature_idx")
+
     pg_con.close()
 
     inqueue = Queue(maxsize=1)
@@ -517,55 +533,63 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         logger.info("populating: comparison")
-        pg_cur.execute("TRUNCATE TABLE comparison")
-        pg_con.commit()
-        drop_index(pg_con, "comparison_idx")
+        pg_cur.execute("DROP TABLE IF EXISTS comparison")
+        pg_cur.execute(
+            """
+            CREATE TABLE comparison (
+                signature_acc_1 VARCHAR(25) NOT NULL,
+                signature_acc_2 VARCHAR(25) NOT NULL,
+                num_collocations INTEGER NOT NULL,
+                num_overlaps INTEGER NOT NULL
+            )
+            """
+        )
+
         gen = iter_comparisons(comparisons)
         pg_cur.copy_from(file=CsvIO(gen, sep='|'),
                          table="comparison",
                          sep='|')
-        pg_con.commit()
 
         logger.info("optimizing: comparison")
-        pg_cur.execute("ANALYZE comparison")
         pg_cur.execute(
             """
-            CREATE INDEX comparison_idx
+            CREATE UNIQUE INDEX comparison_idx
             ON comparison (signature_acc_1, signature_acc_2)
             """
         )
-        pg_cur.execute(
-            """
-            CLUSTER comparison
-            USING comparison_idx
-            """
-        )
+        pg_con.commit()
+
+        pg_cur.execute("CLUSTER comparison USING comparison_idx")
         pg_con.commit()
 
         logger.info("populating: prediction")
-        pg_cur.execute("TRUNCATE TABLE prediction")
-        pg_con.commit()
-        drop_index(pg_con, "prediction_idx")
+        pg_cur.execute("DROP TABLE IF EXISTS prediction")
+        pg_cur.execute(
+            """
+            CREATE TABLE prediction (
+                signature_acc_1 VARCHAR(25) NOT NULL,
+                signature_acc_2 VARCHAR(25) NOT NULL,
+                num_collocations INTEGER NOT NULL,
+                num_protein_overlaps INTEGER NOT NULL,
+                num_residue_overlaps INTEGER NOT NULL
+            )
+            """
+        )
+
         gen = iter_predictions(signatures, comparisons)
         pg_cur.copy_from(file=CsvIO(gen, sep='|'),
                          table="prediction",
                          sep='|')
-        pg_con.commit()
 
         logger.info("optimizing: prediction")
-        pg_cur.execute("ANALYZE prediction")
         pg_cur.execute(
             """
             CREATE INDEX prediction_idx
             ON prediction (signature_acc_1)
             """
         )
-        pg_cur.execute(
-            """
-            CLUSTER prediction
-            USING prediction_idx
-            """
-        )
+        pg_con.commit()
+        pg_cur.execute("CLUSTER prediction USING prediction_idx")
         pg_con.commit()
 
         logger.info("optimizing: signature2protein")
@@ -576,8 +600,6 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
             ON signature2protein (protein_acc)
             """
         )
-        pg_con.commit()
-
         logger.info("\tsignature2protein_signature_idx")
         pg_cur.execute(
             """
@@ -594,10 +616,6 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
             USING signature2protein_signature_idx
             """
         )
-        pg_con.commit()
-
-        logger.info("\tANALYZE")
-        pg_cur.execute("ANALYZE signature2protein")
         pg_con.commit()
 
     pg_con.close()

@@ -3,8 +3,6 @@
 import re
 from typing import Any, Iterator
 
-from psycopg2.errors import UndefinedObject
-
 
 class CsvIO:
     def __init__(self, records: Iterator, sep: str="\t", null="\\N"):
@@ -48,16 +46,6 @@ class CsvIO:
             return self.null
         else:
             return str(value).replace('\n', '\\n')
-
-
-def drop_index(con, index: str):
-    with con.cursor() as cur:
-        try:
-            cur.execute(f"DROP INDEX {index}")
-        except UndefinedObject as exc:
-            con.rollback()
-        else:
-            con.commit()
 
 
 def url2dict(url: str) -> dict:

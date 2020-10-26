@@ -18,7 +18,16 @@ def import_similarity_comments(ora_url: str, pg_url: str):
     logger.info("populating")
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
-        pg_cur.execute("TRUNCATE TABLE protein_similarity")
+        pg_cur.execute("DROP TABLE IF EXISTS protein_similarity")
+        pg_cur.execute(
+            """
+            CREATE TABLE protein_similarity (
+                comment_id INTEGER NOT NULL,
+                comment_text TEXT NOT NULL,
+                protein_acc VARCHAR(15) NOT NULL
+            )
+            """
+        )
 
         ora_con = cx_Oracle.connect(ora_url)
         ora_cur = ora_con.cursor()
@@ -53,8 +62,19 @@ def import_similarity_comments(ora_url: str, pg_url: str):
         ora_cur.close()
         ora_con.close()
 
+        pg_cur.execute(
+            """
+            CREATE INDEX protein_similarity_comment_idx
+            ON protein_similarity (comment_id)
+            """
+        )
+        pg_cur.execute(
+            """
+            CREATE INDEX protein_similarity_protein_idx
+            ON protein_similarity (protein_acc)
+            """
+        )
         pg_con.commit()
-        pg_cur.execute("ANALYZE protein_similarity")
 
     pg_con.close()
     logger.info("complete")
@@ -69,8 +89,26 @@ def import_protein_names(ora_url: str, pg_url: str, database: str,
 
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
-        pg_cur.execute("TRUNCATE TABLE protein_name")
-        pg_cur.execute("TRUNCATE TABLE protein2name")
+        pg_cur.execute("DROP TABLE IF EXISTS protein_name")
+        pg_cur.execute("DROP TABLE IF EXISTS protein2name")
+        pg_cur.execute(
+            """
+            CREATE TABLE protein_name (
+                name_id INTEGER NOT NULL 
+                    CONSTRAINT protein_name_pkey PRIMARY KEY,
+                text TEXT NOT NULL
+            )
+            """
+        )
+        pg_cur.execute(
+            """
+            CREATE TABLE protein2name (
+                protein_acc VARCHAR(15) NOT NULL 
+                    CONSTRAINT protein2name_pkey PRIMARY KEY,
+                name_id INTEGER NOT NULL
+            )
+            """
+        )
 
         ora_con = cx_Oracle.connect(ora_url)
         ora_cur = ora_con.cursor()
@@ -149,11 +187,10 @@ def import_protein_names(ora_url: str, pg_url: str, database: str,
             page_size=1000
         )
 
-        pg_con.commit()
-
         logger.info("analyzing tables")
         pg_cur.execute("ANALYZE protein2name")
         pg_cur.execute("ANALYZE protein_name")
+        pg_con.commit()
 
     pg_con.close()
 
@@ -168,7 +205,20 @@ def import_proteins(ora_url: str, pg_url: str):
     logger.info("populating")
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
-        pg_cur.execute("TRUNCATE TABLE protein")
+        pg_cur.execute("DROP TABLE IF EXISTS protein")
+        pg_cur.execute(
+            """
+            CREATE TABLE protein (
+                accession VARCHAR(15) NOT NULL
+                    CONSTRAINT protein_pkey PRIMARY KEY,
+                identifier VARCHAR(16) NOT NULL,
+                length INTEGER NOT NULL,
+                taxon_id INTEGER NOT NULL,
+                is_fragment BOOLEAN NOT NULL,
+                is_reviewed BOOLEAN NOT NULL
+            )
+            """
+        )
 
         ora_con = cx_Oracle.connect(ora_url)
         ora_cur = ora_con.cursor()
@@ -192,8 +242,19 @@ def import_proteins(ora_url: str, pg_url: str):
         ora_cur.close()
         ora_con.close()
 
+        pg_cur.execute(
+            """
+            CREATE UNIQUE INDEX protein_identifier_uidx
+            ON protein (identifier)
+            """
+        )
+        pg_cur.execute(
+            """
+            CREATE INDEX protein_reviewed_idx
+            ON protein (is_reviewed)
+            """
+        )
         pg_con.commit()
-        pg_cur.execute("ANALYZE protein")
 
     pg_con.close()
     logger.info("complete")

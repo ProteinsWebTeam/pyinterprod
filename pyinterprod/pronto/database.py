@@ -31,7 +31,19 @@ def import_databases(ora_url: str, pg_url: str):
     logger.info("populating")
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
-        pg_cur.execute("TRUNCATE TABLE database RESTART IDENTITY")
+        pg_cur.execute("DROP TABLE IF EXISTS database")
+        pg_cur.execute(
+            """
+            CREATE TABLE database (
+                id SERIAL NOT NULL 
+                    CONSTRAINT database_pkey PRIMARY KEY,
+                name VARCHAR(50) NOT NULL,
+                name_long VARCHAR(50) NOT NULL,
+                version VARCHAR(50) NOT NULL,
+                updated DATE NOT NULL
+            )
+            """
+        )
 
         ora_con = cx_Oracle.connect(ora_url)
         ora_cur = ora_con.cursor()
@@ -56,8 +68,13 @@ def import_databases(ora_url: str, pg_url: str):
         ora_cur.close()
         ora_con.close()
 
+        pg_cur.execute(
+            """
+            CREATE UNIQUE INDEX database_name_idx
+            ON database (name)
+            """
+        )
         pg_con.commit()
-        pg_cur.execute("ANALYZE database")
 
     pg_con.close()
     logger.info("complete")

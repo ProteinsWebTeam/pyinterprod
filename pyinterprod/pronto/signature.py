@@ -65,12 +65,36 @@ def import_signatures(ora_url: str, pg_url: str, allseqs: str, compseqs: str):
     ora_con.close()
 
     with pg_con.cursor() as pg_cur:
-        pg_cur.execute("TRUNCATE TABLE signature")
+        pg_cur.execute("DROP TABLE IF EXISTS signature")
+        pg_cur.execute(
+            """
+            CREATE TABLE signature (
+                accession VARCHAR(25) NOT NULL 
+                    CONSTRAINT signature_pkey PRIMARY KEY,
+                database_id INTEGER NOT NULL,
+                name VARCHAR(100) NOT NULL,
+                description VARCHAR(400),
+                type VARCHAR(25) NOT NULL,
+                abstract TEXT,
+                num_sequences INTEGER NOT NULL,
+                num_reviewed_sequences INTEGER NOT NULL,
+                num_reviewed_matches INTEGER NOT NULL,
+                num_complete_sequences INTEGER NOT NULL,
+                num_residues BIGINT NOT NULL
+            )
+            """
+        )
         execute_values(pg_cur, "INSERT INTO signature VALUES %s", values,
                        page_size=1000)
-        pg_cur.execute("ANALYZE signature")
 
-    pg_con.commit()
+        pg_cur.execute(
+            """
+            CREATE INDEX signature_database_idx
+            ON signature (database_id)
+            """
+        )
+        pg_con.commit()
+
     pg_con.close()
     logger.info("complete")
 
