@@ -1,151 +1,103 @@
 # -*- coding: utf-8 -*-
 
 import os
+import pickle
 import sqlite3
 from concurrent import futures
-from tempfile import mkstemp
-from typing import Optional, Tuple
+from dataclasses import dataclass
+from tempfile import mkdtemp, mkstemp
+from typing import List, Optional
 
 import cx_Oracle
 
 from pyinterprod import logger
 from pyinterprod.utils import Table, oracle as ora
-from pyinterprod.uniprot import flatfile
+from pyinterprod.uniprot import sprot
 
 
-def export_proteins(url: str, database: str) -> Tuple[int, int]:
-    con1 = sqlite3.connect(database)
-    with Table(con1, "INSERT INTO protein VALUES (?, ?, ?, ?, ?, ?, ?)") as t:
-        swissp_cnt = trembl_cnt = 0
+@dataclass
+class Sequence:
+    accession: str
+    identifier: str
+    is_reviewed: bool
+    crc64: str
+    length: int
+    is_fragment: bool
+    taxon_id: int
 
-        con2 = cx_Oracle.connect(url)
-        cur2 = con2.cursor()
-        cur2.execute(
-            """
-            SELECT
-              PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT, TAX_ID
-            FROM INTERPRO.PROTEIN
-            """
-        )
+    def __post_init__(self):
+        if not isinstance(self.is_reviewed, bool):
+            self.is_reviewed = self.is_reviewed in (1, 'S')
 
-        for row in cur2:
-            if row[2] == 'S':
-                swissp_cnt += 1
-                is_reviewed = 1
-            else:
-                trembl_cnt += 1
-                is_reviewed = 0
-
-            t.insert((
-                row[0],
-                row[1],
-                is_reviewed,
-                row[3],
-                row[4],
-                1 if row[5] == 'Y' else 0,
-                row[6]
-            ))
-
-        cur2.close()
-        con2.close()
-
-    con1.commit()
-    con1.close()
-
-    return swissp_cnt, trembl_cnt
-
-
-class Entry:
-    def __init__(self, database):
-        self.gen = self.iter(database)
-        self.record = None
-        self.ok = True
-        self.count = 0
-        self.next()
-
-    @staticmethod
-    def iter(database):
-        con = sqlite3.connect(database)
-
-        try:
-            # acc, ID, is_reviewed, crc64, length, is_fragment, taxID
-            for row in con.execute("SELECT * FROM protein ORDER BY accession"):
-                yield row
-        finally:
-            con.close()
-
-    def next(self):
-        if not self.ok:
-            return
-
-        try:
-            record = next(self.gen)
-        except StopIteration:
-            self.ok = False
-        else:
-            self.record = record
-            self.count += 1
-
-    def __eq__(self, other):
-        return self.record[0] == other.record[0]
-
-    def __lt__(self, other):
-        return self.record[0] < other.record[0]
-
-    def diff_sequence(self, other):
-        return self.record[3] != other.record[3]
-
-    def diff_annotation(self, other):
-        for i in (1, 2, 4, 5, 6):
-            if self.record[i] != other.record[i]:
-                return True
-        return False
-
-    @property
-    def accession(self):
-        return self.record[0]
+        if not isinstance(self.is_fragment, bool):
+            self.is_fragment = self.is_fragment in (1, 'Y')
 
     @property
     def annotation(self):
-        return (
-            self.record[1],
-            'S' if self.record[2] else 'T',
-            self.record[4],
-            'Y' if self.record[5] else 'N',
-            self.record[6],
-            self.record[0]
-        )
+        return (self.identifier, self.is_reviewed, self.length,
+                self.is_fragment, self.taxon_id)
 
-    @property
-    def sequence(self):
+    def astuple(self):
         return (
-            self.record[1],
-            'S' if self.record[2] else 'T',
-            self.record[3],
-            self.record[4],
-            'Y' if self.record[5] else 'N',
-            self.record[6],
-            self.record[0]
-        )
-
-    @property
-    def new(self):
-        return (
-            self.record[0],
-            self.record[1],
-            'S' if self.record[2] else 'T',
-            self.record[3],
-            self.record[4],
-            'Y' if self.record[5] else 'N',
-            self.record[6]
+            self.accession,
+            self.identifier,
+            'S' if self.is_reviewed else 'T',
+            self.crc64,
+            self.length,
+            'Y' if self.is_fragment else 'N',
+            self.taxon_id
         )
 
 
-def init_database(tmpdir: Optional[str] = None) -> str:
-    fd, database = mkstemp(suffix=".sqlite", dir=tmpdir)
+def export_proteins(url: str, outdir: str, buffer_size: int = 1000000) -> List[str]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT PROTEIN_AC, NAME, DBCODE, CRC64, LEN, FRAGMENT, TAX_ID
+        FROM INTERPRO.PROTEIN
+        ORDER BY PROTEIN_AC
+        """
+    )
+
+    buffer = {}
+    files = []
+    for row in cur:
+        seq = Sequence(*row)
+        buffer[seq.accession] = seq
+
+        if len(buffer) == buffer_size:
+            fd, file = mkstemp(dir=outdir)
+            with open(fd, "wb") as fh:
+                pickle.dump(buffer, fh)
+
+            buffer = {}
+            files.append(file)
+
+    if buffer:
+        fd, file = mkstemp(dir=outdir)
+        with open(fd, "wb") as fh:
+            pickle.dump(buffer, fh)
+
+        files.append(file)
+
+    cur.close()
+    con.close()
+
+    return files
+
+
+def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
+                  tmpdir: Optional[str] = None):
+    workdir = mkdtemp(dir=tmpdir)
+
+    logger.info("dumping previous UniProt proteins")
+    files = export_proteins(url, workdir)
+
+    logger.info("loading new UniProt proteins")
+    fd, database = mkstemp(dir=workdir)
     os.close(fd)
     os.remove(database)
-
     con = sqlite3.connect(database)
     con.execute(
         """
@@ -162,47 +114,143 @@ def init_database(tmpdir: Optional[str] = None) -> str:
     )
     con.close()
 
-    return database
+    sprot.load(swissp, database, "protein")
+    sprot.load(trembl, database, "protein")
 
+    size = os.path.getsize(database) + sum(map(os.path.getsize, files))
 
-def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
-                  tmpdir: Optional[str] = None):
-    logger.info("starting")
-    database_old = init_database(tmpdir=tmpdir)
-    database_new = init_database(tmpdir=tmpdir)
-
-    failed = False
-    new_swissp_cnt = new_trembl_cnt = 0
-    with futures.ProcessPoolExecutor(max_workers=2) as executor:
-        fs = {}
-        f = executor.submit(export_proteins, url, database_old)
-        fs[f] = "current"
-
-        f = executor.submit(flatfile.load, swissp, trembl, database_new)
-        fs[f] = "next release"
-
-        for f in futures.as_completed(fs):
-            try:
-                swissp_cnt, trembl_cnt = f.result()
-            except Exception as exc:
-                logger.error(f"{fs[f]}: failed ({exc})")
-                failed = True
-            else:
-                logger.info(f"{fs[f]}: Swiss-Prot: {swissp_cnt}, "
-                            f"TrEMBL: {trembl_cnt}")
-                if fs[f] == "current":
-                    new_swissp_cnt = swissp_cnt
-                    new_trembl_cnt = trembl_cnt
-
-    if failed:
-        os.remove(database_old)
-        os.remove(database_new)
-        raise RuntimeError("failed to track changes between UniProt releases")
-
-    size = os.path.getsize(database_old) + os.path.getsize(database_new)
-    logger.info(f"disk usage: {size/1024**2:.0f} MB")
-
+    logger.info("tracking changes")
     con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    ora.truncate_table(cur, "INTERPRO.PROTEIN_CHANGES")
+    ora.truncate_table(cur, "INTERPRO.PROTEIN_TO_DELETE")
+    cur.close()
+
+    # New proteins
+    sql = """
+        INSERT INTO INTERPRO.PROTEIN
+        VALUES (:1, :2, :3, :4, :5, SYSDATE, USER, :6, 'N', :7)
+    """
+    new_proteins = Table(con, sql)
+
+    # Annotation/sequence changes
+    sql = """
+        UPDATE INTERPRO.PROTEIN
+        SET NAME = :2, DBCODE = :3, CRC64 = :4, LEN = :5, TIMESTAMP = SYSDATE, 
+            USERSTAMP = USER, FRAGMENT = :6, TAX_ID = :7
+        WHERE PROTEIN_AC = :1
+    """
+    existing_proteins = Table(con, sql)
+
+    # Obsolete proteins
+    sql = "INSERT INTO INTERPRO.PROTEIN_TO_DELETE VALUES (:1, :2)"
+    obsolete_proteins = Table(con, sql)
+
+    # Proteins to track
+    sql = "INSERT INTO INTERPRO.PROTEIN_CHANGES VALUES (:1)"
+    track_proteins = Table(con, sql)
+
+    old_reviewed = old_unreviewed = 0
+    new_reviewed = new_unreviewed = 0
+
+    min_acc = max_acc = None
+
+    con2 = sqlite3.connect(database)
+    cur2 = con2.cursor()
+    for file in files:
+        with open(file, "rb") as fh:
+            old_proteins = pickle.load(fh)
+
+        os.remove(file)
+
+        start = min(old_proteins)
+        stop = max(old_proteins)
+        if min_acc is None:
+            min_acc = start
+        max_acc = stop
+
+        cur2.execute(
+            """
+            SELECT * 
+            FROM protein 
+            WHERE accession BETWEEN ? AND ?
+            """, (start, stop)
+        )
+
+        for row in cur2:
+            new_seq = Sequence(*row)
+
+            if new_seq.is_reviewed:
+                new_reviewed += 1
+            else:
+                new_unreviewed += 1
+
+            try:
+                old_seq = old_proteins.pop(new_seq.accession)
+            except KeyError:
+                new_proteins.insert(new_seq.astuple())
+                track_proteins.insert((new_seq.accession,))
+                continue
+
+            if old_seq.is_reviewed:
+                old_reviewed += 1
+            else:
+                old_unreviewed += 1
+
+            if new_seq.crc64 != old_seq.crc64:
+                # Sequence update
+                existing_proteins.update(new_seq.astuple())
+
+                # Track the protein (sequence change -> match changes)
+                track_proteins.insert((new_seq.accession,))
+            elif new_seq.annotation != old_seq.annotation:
+                # Annotation update
+                existing_proteins.update(new_seq.astuple())
+
+        for old_seq in old_proteins.values():
+            obsolete_proteins.insert((
+                obsolete_proteins.count + 1,
+                old_seq.accession
+            ))
+
+            if old_seq.is_reviewed:
+                old_reviewed += 1
+            else:
+                old_unreviewed += 1
+
+    """
+    If there is a new protein with an accession lower than the lowest accession 
+    of the old proteins, or with an an accession greater than the greatest 
+    accession of the old proteins, it has not been considered until now
+    """
+    cur2.execute(
+        """
+        SELECT * 
+        FROM protein 
+        WHERE accession < ? OR accession > ?
+        """, (min_acc, max_acc)
+    )
+    for row in cur2:
+        new_seq = Sequence(*row)
+
+        if new_seq.is_reviewed:
+            new_reviewed += 1
+        else:
+            new_unreviewed += 1
+
+        new_proteins.insert(new_seq.astuple())
+        track_proteins.insert((new_seq.accession,))
+
+    cur2.close()
+    con2.close()
+    os.remove(database)
+    os.rmdir(workdir)
+
+    new_proteins.close()
+    existing_proteins.close()
+    obsolete_proteins.close()
+    track_proteins.close()
+
     cur = con.cursor()
     cur.executemany(
         """
@@ -214,106 +262,26 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
           LOAD_DATE = SYSDATE
           WHERE DBCODE = :4
         """, [
-            (version, new_swissp_cnt, date, 'S'),
-            (version, new_trembl_cnt, date, 'T'),
-            (version, new_swissp_cnt + new_trembl_cnt, date, 'u')
+            (version, new_reviewed, date, 'S'),
+            (version, new_unreviewed, date, 'T'),
+            (version, new_reviewed + new_unreviewed, date, 'u')
         ]
     )
     con.commit()
 
-    ora.truncate_table(cur, "INTERPRO.PROTEIN_CHANGES")
-    ora.truncate_table(cur, "INTERPRO.PROTEIN_TO_DELETE")
-    cur.close()
-
-    # Annotation changes
-    sql = """
-        UPDATE INTERPRO.PROTEIN
-        SET NAME = :1, DBCODE = :2, LEN = :3, TIMESTAMP = SYSDATE, 
-            USERSTAMP = USER, FRAGMENT = :4, TAX_ID = :5
-        WHERE PROTEIN_AC = :6
-    """
-    ann_table = Table(con, sql)
-
-    # Sequence changes
-    sql = """
-        UPDATE INTERPRO.PROTEIN
-        SET NAME = :1, DBCODE = :2, CRC64 = :3, LEN = :4, TIMESTAMP = SYSDATE, 
-            USERSTAMP = USER, FRAGMENT = :5, TAX_ID = :6
-        WHERE PROTEIN_AC = :7
-    """
-    seq_table = Table(con, sql)
-
-    # Obsolete proteins
-    sql = "INSERT INTO INTERPRO.PROTEIN_TO_DELETE VALUES (:1, :2)"
-    del_table = Table(con, sql)
-
-    # New proteins
-    sql = """
-        INSERT INTO INTERPRO.PROTEIN
-        VALUES (:1, :2, :3, :4, :5, SYSDATE, USER, :6, 'N', :7)
-    """
-    new_table = Table(con, sql)
-
-    # All changes
-    all_table = Table(con, "INSERT INTO INTERPRO.PROTEIN_CHANGES VALUES (:1)")
-
-    current = Entry(database_old)
-    forthcoming = Entry(database_new)
-
-    while True:
-        if current.ok:
-            if forthcoming.ok:
-                # Still entries in both databases: compare
-                if current == forthcoming:
-                    if current.diff_sequence(forthcoming):
-                        seq_table.update(forthcoming.sequence)
-                        all_table.insert((forthcoming.accession,))
-                    elif current.diff_annotation(forthcoming):
-                        ann_table.update(forthcoming.annotation)
-
-                    current.next()
-                    forthcoming.next()
-                elif current < forthcoming:
-                    # Entry in current but not in forthcoming: deleted
-                    del_table.insert((del_table.count+1, current.accession))
-                    current.next()
-                else:
-                    # Entry in forthcoming but not in current: new
-                    new_table.insert(forthcoming.new)
-                    all_table.insert((forthcoming.accession,))
-                    forthcoming.next()
-            else:
-                # Still entries in current, but not in forthcoming: all deleted
-                del_table.insert((del_table.count+1, current.accession))
-                current.next()
-        elif forthcoming.ok:
-            # Still entries in forthcoming, but not in current: all new
-            new_table.insert(forthcoming.new)
-            all_table.insert((forthcoming.accession,))
-            forthcoming.next()
-        else:
-            break
-
-    ann_table.close()
-    seq_table.close()
-    del_table.close()
-    new_table.close()
-    all_table.close()
-    con.commit()
-
-    os.remove(database_old)
-    os.remove(database_new)
-
-    logger.info(f"annotations updated: {ann_table.count:>10}")
-    logger.info(f"sequences updated:   {seq_table.count:>10}")
-    logger.info(f"obsolete entries:    {del_table.count:>10}")
-    logger.info(f"new entries:         {new_table.count:>10}")
-
-    cur = con.cursor()
     ora.gather_stats(cur, "INTERPRO", "PROTEIN_CHANGES")
     ora.gather_stats(cur, "INTERPRO", "PROTEIN_TO_DELETE")
     cur.close()
     con.close()
+
+    logger.info(f"Reviewed (before):     {old_reviewed:>12}")
+    logger.info(f"Unreviewed (before):   {old_unreviewed:>12}")
+    logger.info(f"Reviewed (now):        {new_reviewed:>12}")
+    logger.info(f"Uneviewed (now):       {new_unreviewed:>12}")
+    logger.info(f"New proteins:          {new_proteins.count:>12}")
+    logger.info(f"Updated proteins:      {existing_proteins.count:>12}")
+    logger.info(f"Obsolete sequences:    {obsolete_proteins.count:>12}")
+    logger.info(f"disk usage:            {size / 1024 ** 2:.0f} MB")
 
 
 def delete_obsoletes(url: str, truncate: bool = False, threads: int = 8,

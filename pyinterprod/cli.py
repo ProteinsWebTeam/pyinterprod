@@ -379,7 +379,7 @@ def run_uniprot_update():
                   config["uniprot"]["date"]),
             kwargs=dict(tmpdir="/scratch/"),
             name="update-proteins",
-            scheduler=dict(cpu=2, queue=lsf_queue, scratch=40000),
+            scheduler=dict(mem=2000, queue=lsf_queue, scratch=40000),
         ),
 
         # Update IPPRO
