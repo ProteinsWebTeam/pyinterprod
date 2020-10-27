@@ -37,16 +37,14 @@ class Sequence:
         return (self.identifier, self.is_reviewed, self.length,
                 self.is_fragment, self.taxon_id)
 
-    def astuple(self):
-        return (
-            self.accession,
-            self.identifier,
-            'S' if self.is_reviewed else 'T',
-            self.crc64,
-            self.length,
-            'Y' if self.is_fragment else 'N',
-            self.taxon_id
-        )
+    def asdict(self):
+        return dict(acc=self.accession,
+                    identifer=self.identifier,
+                    dbcode='S' if self.is_reviewed else 'T',
+                    crc64=self.crc64,
+                    length=self.length,
+                    fragment='Y' if self.is_fragment else 'N',
+                    taxid=self.taxon_id)
 
 
 def export_proteins(url: str, outdir: str, buffer_size: int = 1000000) -> List[str]:
@@ -136,16 +134,18 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
     # New proteins
     sql = """
         INSERT INTO INTERPRO.PROTEIN
-        VALUES (:1, :2, :3, :4, :5, SYSDATE, USER, :6, 'N', :7)
+        VALUES (:acc, :identifer, :dbcode, :crc64, :length, SYSDATE, USER, 
+                :fragment, 'N', :taxid)
     """
     new_proteins = Table(con, sql)
 
     # Annotation/sequence changes
     sql = """
         UPDATE INTERPRO.PROTEIN
-        SET NAME = :2, DBCODE = :3, CRC64 = :4, LEN = :5, TIMESTAMP = SYSDATE, 
-            USERSTAMP = USER, FRAGMENT = :6, TAX_ID = :7
-        WHERE PROTEIN_AC = :1
+        SET NAME = :identifer, DBCODE = :dbcode, CRC64 = :crc64, LEN = :length, 
+            TIMESTAMP = SYSDATE, USERSTAMP = USER, FRAGMENT = :fragment, 
+            TAX_ID = :taxid
+        WHERE PROTEIN_AC = :acc
     """
     existing_proteins = Table(con, sql)
 
@@ -195,7 +195,7 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
             try:
                 old_seq = old_proteins.pop(new_seq.accession)
             except KeyError:
-                new_proteins.insert(new_seq.astuple())
+                new_proteins.insert(new_seq.asdict())
                 track_proteins.insert((new_seq.accession,))
                 continue
 
@@ -206,13 +206,13 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
 
             if new_seq.crc64 != old_seq.crc64:
                 # Sequence update
-                existing_proteins.update(new_seq.astuple())
+                existing_proteins.update(new_seq.asdict())
 
                 # Track the protein (sequence change -> match changes)
                 track_proteins.insert((new_seq.accession,))
             elif new_seq.annotation != old_seq.annotation:
                 # Annotation update
-                existing_proteins.update(new_seq.astuple())
+                existing_proteins.update(new_seq.asdict())
 
         for old_seq in old_proteins.values():
             obsolete_proteins.insert((
