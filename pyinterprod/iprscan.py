@@ -226,13 +226,16 @@ def get_analyses(cur: Cursor, mode: str, **kwargs) -> List[Analysis]:
         SELECT
             A.ANALYSIS_ID,
             A.ANALYSIS_NAME,
-            A.ANALYSIS_TYPE,
+            B.ANALYSIS_TYPE,
             A.ACTIVE,
-            B.MATCH_TABLE,
-            B.SITE_TABLE
-          FROM IPM_ANALYSIS@ISPRO A
-          INNER JOIN IPM_ANALYSIS_MATCH_TABLE@ISPRO B
-            ON A.ANALYSIS_MATCH_TABLE_ID = B.ID
+            C.MATCH_TABLE,
+            C.SITE_TABLE
+        FROM IPM_ANALYSIS@ISPRO A
+            INNER JOIN IPM_ANALYSIS@ISPRO B 
+                ON A.ANALYSIS_MATCH_TABLE_ID = B.ANALYSIS_MATCH_TABLE_ID 
+                AND B.ACTIVE = 1
+            INNER JOIN IPM_ANALYSIS_MATCH_TABLE@ISPRO C
+                ON A.ANALYSIS_MATCH_TABLE_ID = C.ID
           WHERE {sql_filter}
           ORDER BY A.ANALYSIS_NAME
         """, params
