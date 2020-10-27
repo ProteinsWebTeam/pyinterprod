@@ -127,9 +127,10 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                 # signature is unintegrated, or deleted
                 continue
 
-            changes.append((sig_acc, db_id, entry_acc, entry_name,
-                            entry_type, old_descrs - new_descrs,
-                            new_descrs - old_descrs))
+            if old_descrs != new_descrs:
+                changes.append((sig_acc, db_id, entry_acc, entry_name,
+                                entry_type, old_descrs - new_descrs,
+                                new_descrs - old_descrs))
 
     for sig_acc, new_descrs in new_sigs.items():
         try:
@@ -251,12 +252,9 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
     changes = {}  # key: entry accession, value: (gained, lost)
     for entry_acc, descs_now in entries_now.items():
-        try:
-            descs_then = entries_then.pop(entry_acc)
-        except KeyError:
-            # This entry did not have descriptions before the update
-            changes[entry_acc] = (descs_now, [])
-        else:
+        descs_then = entries_then.pop(entry_acc, set())
+
+        if descs_now != descs_then:
             changes[entry_acc] = (
                 descs_now - descs_then,
                 descs_then - descs_now
@@ -272,22 +270,21 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
               "Lost\tGained\n")
     for entry_acc in sorted(changes):
         gained, lost = changes[entry_acc]
-        if gained or lost:
-            name, type_code, checked_flag = entries[entry_acc]
-            entry_type = "families" if type_code == 'F' else "others"
+        name, type_code, checked_flag = entries[entry_acc]
+        entry_type = "families" if type_code == 'F' else "others"
 
-            try:
-                fh, path = files[entry_type]
-            except KeyError:
-                path = os.path.join(data_dir, f"swiss_de_{entry_type}.tsv")
-                fh = open(path, "wt")
-                fh.write(header)
-                files[entry_type] = (fh, path)
-            finally:
-                fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
-                         f"{name}\t{type_code}\t{checked_flag}\t{len(lost)}\t"
-                         f"{len(gained)}\t{' | '.join(lost)}\t"
-                         f"{' | '.join(gained)}\n")
+        try:
+            fh, path = files[entry_type]
+        except KeyError:
+            path = os.path.join(data_dir, f"swiss_de_{entry_type}.tsv")
+            fh = open(path, "wt")
+            fh.write(header)
+            files[entry_type] = (fh, path)
+        finally:
+            fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
+                     f"{name}\t{type_code}\t{checked_flag}\t{len(lost)}\t"
+                     f"{len(gained)}\t{' | '.join(sorted(lost))}\t"
+                     f"{' | '.join(sorted(gained))}\n")
 
     # Write entries with protein count changes
     path = os.path.join(data_dir, "entries_count_changes.tsv")
