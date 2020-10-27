@@ -54,7 +54,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
 
             for sig_acc, old_cnt, new_cnt, change in db_changes:
                 try:
-                    entry_acc = integrated[sig_acc]
+                    entry_acc, entry_type, entry_name = integrated[sig_acc]
                 except KeyError:
                     continue
 
