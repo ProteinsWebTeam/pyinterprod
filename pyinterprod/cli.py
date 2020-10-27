@@ -582,10 +582,10 @@ def update_database():
     parser.add_argument("-n", "--name", required=True,
                         help="Name of member database.")
     parser.add_argument("-d", "--date", required=True,
-                        help="Release version of member database.")
-    parser.add_argument("-v", "--version", required=True,
                         help="Release date of member database "
                              "(format: YYYY-MM-DD).")
+    parser.add_argument("-v", "--version", required=True,
+                        help="Release version of member database.")
     parser.add_argument("-y", "--yes", dest="confirm", action="store_false",
                         help="Do not ask for confirmation.")
     args = parser.parse_args()
