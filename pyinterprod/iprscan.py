@@ -226,16 +226,24 @@ def get_analyses(cur: Cursor, mode: str, **kwargs) -> List[Analysis]:
         SELECT
             A.ANALYSIS_ID,
             A.ANALYSIS_NAME,
-            B.ANALYSIS_TYPE,
+            NVL(P.ANALYSIS_TYPE, A.ANALYSIS_TYPE),
             A.ACTIVE,
-            C.MATCH_TABLE,
-            C.SITE_TABLE
+            T.MATCH_TABLE,
+            T.SITE_TABLE
         FROM IPM_ANALYSIS@ISPRO A
-            INNER JOIN IPM_ANALYSIS@ISPRO B 
-                ON A.ANALYSIS_MATCH_TABLE_ID = B.ANALYSIS_MATCH_TABLE_ID 
-                AND B.ACTIVE = 1
-            INNER JOIN IPM_ANALYSIS_MATCH_TABLE@ISPRO C
-                ON A.ANALYSIS_MATCH_TABLE_ID = C.ID
+            INNER JOIN IPM_ANALYSIS_MATCH_TABLE@ISPRO T
+                ON A.ANALYSIS_MATCH_TABLE_ID = T.ID
+            LEFT OUTER JOIN (
+                SELECT 
+                    ANALYSIS_MATCH_TABLE_ID, 
+                    MIN(ANALYSIS_TYPE) ANALYSIS_TYPE, 
+                    COUNT(*) CNT
+                FROM IPM_ANALYSIS@ISPRO
+                WHERE ACTIVE = 1
+                GROUP BY ANALYSIS_MATCH_TABLE_ID
+            ) P 
+                ON A.ANALYSIS_MATCH_TABLE_ID = P.ANALYSIS_MATCH_TABLE_ID 
+                AND P.CNT = 1
           WHERE {sql_filter}
           ORDER BY A.ANALYSIS_NAME
         """, params
