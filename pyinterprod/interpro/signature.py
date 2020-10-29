@@ -37,7 +37,10 @@ def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
     with Table(con, sql) as table:
         errors = 0
         for db, src in update:
-            if db.identifier == 'Q':
+            if db.identifier == 'J':
+                # CDD
+                signatures = contrib.cdd.parse_signatures(src)
+            elif db.identifier == 'Q':
                 # HAMAP
                 signatures = contrib.hamap.parse_signatures(src)
             elif db.identifier == 'V':
