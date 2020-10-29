@@ -458,8 +458,8 @@ def _prepare_matches(con: cx_Oracle.Connection):
             """
         )
 
-    logger.info("gathering statistics")
-    oracle.gather_stats(cur, "INTERPRO", "MATCH_NEW")
+    # logger.info("gathering statistics")
+    # oracle.gather_stats(cur, "INTERPRO", "MATCH_NEW")
 
     logger.info("deleting SUPERFAMILY duplicated matches")
     cur.execute(
