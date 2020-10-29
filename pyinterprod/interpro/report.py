@@ -189,13 +189,13 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
         emails,
         subject=f"Member database update report: {', '.join(names)}",
         content="""\
-    Dear curators,
+Dear curators,
 
-    Pronto has been refreshed. Please find attached a ZIP archive containing \
-    the report files for this member database update.
+Pronto has been refreshed. Please find attached a ZIP archive containing \
+the report files for this member database update.
 
-    The InterPro Production Team
-    """,
+The InterPro Production Team
+""",
         attachments=[filename]
     )
 
