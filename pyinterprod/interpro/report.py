@@ -84,7 +84,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                     fh2.write(f"{sig_acc}\t{entry_acc}\t{link}\t{old_val}"
                               f"\t{new_val}\n")
 
-            with open(os.path.join(dst, "descr_changes.tsv"), "wt") as fh2:
+            with open(os.path.join(dst, "description_changes.tsv"), "wt") as fh2:
                 fh2.write("Signature\tEntry\tLink\tPrevious description"
                           "\tNew description\n")
 
