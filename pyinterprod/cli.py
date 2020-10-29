@@ -410,7 +410,7 @@ def run_uniprot_update():
             args=(ora_interpro_url,),
             name="update-fmatches",
             scheduler=dict(queue=lsf_queue),
-            requires=["check-proteins", "import-matches"]
+            requires=["update-matches"]
         ),
 
         # Data for UniProt/SIB
@@ -491,8 +491,7 @@ def run_uniprot_update():
         else:
             # Task without dependency:
             # add some so it's submitted at the end of the protein update
-            t.requires = {"swissprot-de", "taxonomy", "update-matches",
-                          "update-fmatches"}
+            t.requires = {"swissprot-de", "taxonomy", "update-fmatches"}
 
         tasks.append(t)
 
