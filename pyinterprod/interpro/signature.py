@@ -28,11 +28,24 @@ def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
-    ora.truncate_table(cur, "METHOD_STG")
+    ora.drop_table(cur, "METHOD_STG", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.METHOD_STG (
+            METHOD_AC VARCHAR2(25) NOT NULL,
+            NAME VARCHAR2(100),
+            DBCODE CHAR(1) NOT NULL,
+            DESCRIPTION VARCHAR2(400),
+            SIG_TYPE CHAR(1) NOT NULL,
+            ABSTRACT VARCHAR2(4000),
+            ABSTRACT_LONG CLOB
+        )
+        """
+    )
 
     sql = """
         INSERT INTO INTERPRO.METHOD_STG 
-        VALUES (:1, :2, :3, :4, :5, :6) 
+        VALUES (:1, :2, :3, :4, :5, :6, :7) 
     """
     with Table(con, sql) as table:
         errors = 0
@@ -52,13 +65,21 @@ def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
                 continue
 
             for m in signatures:
+                if len(m.abstract) <= 4000:
+                    abstract = m.abstract
+                    abstract_long = None
+                else:
+                    abstract = None
+                    abstract_long = m.abstract
+
                 table.insert((
                     m.accession,
-                    db.identifier,
                     m.name,
+                    db.identifier,
                     m.description,
                     m.sig_type,
-                    m.abstract
+                    abstract,
+                    abstract_long
                 ))
 
     if errors:
@@ -400,10 +421,13 @@ def update_signatures(url: str):
                      M.DESCRIPTION = S.DESCRIPTION,
                      M.SIG_TYPE = S.SIG_TYPE,
                      M.ABSTRACT = S.ABSTRACT,
+                     M.ABSTRACT_LONG = S.ABSTRACT_LONG,
                      M.TIMESTAMP = SYSDATE
         WHEN NOT MATCHED THEN
-          INSERT (METHOD_AC, NAME, DBCODE, CANDIDATE, DESCRIPTION, SIG_TYPE, ABSTRACT)
-          VALUES (S.METHOD_AC, S.NAME, S.DBCODE, 'Y', S.DESCRIPTION, S.SIG_TYPE, S.ABSTRACT)
+          INSERT (METHOD_AC, NAME, DBCODE, CANDIDATE, DESCRIPTION, 
+                  SIG_TYPE, ABSTRACT, ABSTRACT_LONG)
+          VALUES (S.METHOD_AC, S.NAME, S.DBCODE, 'Y', S.DESCRIPTION, 
+                  S.SIG_TYPE, S.ABSTRACT, S.ABSTRACT_LONG)
         """
     )
     con.commit()
