@@ -219,8 +219,6 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     release, = cur.fetchone()
-    cur.close()
-    con.close()
 
     # Load entry -> descriptions BEFORE UniProt update
     entries_then = {}
@@ -295,9 +293,12 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
         changes = track_entry_changes(cur, data_dir)
         for entry_acc, prev_count, count, change in changes:
             name, type_code, checked_flag = entries[entry_acc]
-            ofh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t{name}\t"
-                      f"{type_code}\t{checked_flag}\t"
+            ofh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
+                      f"{name}\t{type_code}\t{checked_flag}\t"
                       f"{prev_count}\t{count}\t{change*100:.0f}\n")
+
+    cur.close()
+    con.close()
 
     filename = os.path.join(data_dir, f"protein_update_{release}.zip")
     with ZipFile(filename, 'w', compression=ZIP_DEFLATED) as fh:
