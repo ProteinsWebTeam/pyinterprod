@@ -192,8 +192,8 @@ def track_signature_changes(url: str, databases: Sequence[Database], data_dir: s
         }
 
         logger.info(db.name)
-        logger.info(f"\tnew:     {len(results[db.identifier]['new'])}")
-        logger.info(f"\tdeleted: {len(results[db.identifier]['deleted'])}")
+        logger.info(f"  new:     {len(results[db.identifier]['new']):>6}")
+        logger.info(f"  deleted: {len(results[db.identifier]['deleted']):>6}")
 
     cur.close()
     con.close()
