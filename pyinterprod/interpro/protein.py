@@ -245,7 +245,7 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
         else:
             new_unreviewed += 1
 
-        new_proteins.insert(new_seq.astuple())
+        new_proteins.insert(new_seq.asdict())
         track_proteins.insert((new_seq.accession,))
 
     cur2.close()
