@@ -67,7 +67,7 @@ def export_xrefs(url: str, outdir: str, emails: dict):
       <protein>    DR   <database>; <signature/entry>; <name>; <count>.
     Exceptions:
         - Gene3D: do not include prefix before accession (G3DSA:)
-                  replace signature#s name by hyphen (-)
+                  replace signature's name by hyphen (-)
         - PRINTS: do not include match count
         - InterPro: do not include match count
     """
