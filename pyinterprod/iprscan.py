@@ -152,8 +152,9 @@ SITE_PARITIONS = {
 }
 
 # Columns to select when inserting site matches in SITE
-SITE_SELECT = ['UPI', 'ANALYSIS_ID', 'METHOD_AC', 'LOC_START', 'LOC_END',
-               'NUM_SITES', 'RESIDUE', 'RES_START', 'RES_END', 'DESCRIPTION']
+SITE_SELECT = ["ANALYSIS_ID", "UPI_RANGE", "UPI", "METHOD_AC", "LOC_START",
+               "LOC_END", "NUM_SITES", "RESIDUE", "RES_START", "RES_END",
+               "DESCRIPTION"]
 
 
 @dataclass
