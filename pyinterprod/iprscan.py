@@ -387,52 +387,28 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
         logger.debug(f"importing {remote_table}@ISPRO -> {local_table}")
         import_from_ispro(cur, remote_table, local_table)
 
-    # Create temporary table for the partition exchange
-    tmp_table = f"IPRSCAN.{remote_table}"
-    oracle.drop_table(cur, tmp_table, purge=True)
-    cur.execute(
-        f"""
-        CREATE TABLE {tmp_table} NOLOGGING
-        AS
-        SELECT *
-        FROM IPRSCAN.{partitioned_table}
-        WHERE 1 = 0
-        """
-    )
-
     for analysis_id, partition, columns in analyses:
         logger.debug(f"{partition} ({analysis_id}): updating")
 
-        # Truncate table (if several analyses for one table, e.g. SignalP)
-        oracle.truncate_table(cur, tmp_table, reuse_storage=True)
-
-        # Insert only one analysis ID
+        # Truncating the partition with the old data
         cur.execute(
             f"""
-            INSERT /*+ APPEND */ INTO {tmp_table}
-            SELECT {', '.join(columns)}
-            FROM IPRSCAN.{local_table}
-            WHERE ANALYSIS_ID = :1
-            """, (analysis_id,)
+            ALTER TABLE IPRSCAN.{partitioned_table} 
+            TRUNCATE PARTITION {partition}
+            REUSE STORAGE
+            """
         )
-        con.commit()
 
         prev_val, new_val = part2id[partition]
         if prev_val is not None and prev_val != new_val:
             """
             Different ANALYSIS_ID (database update):
-            1. TRUNCATE the partition, to remove rows with the old ANALYSIS_ID
-            2. Modify the partition (remove old value)
-            3. Modify the partition (add new value)
+            1. Modify the partition (remove old value)
+            2. Modify the partition (add new value)
             """
             logger.debug(f"{partitioned_table} ({partition}): "
                          f"{prev_val} -> {new_val}")
-            cur.execute(
-                f"""
-                ALTER TABLE IPRSCAN.{partitioned_table} 
-                TRUNCATE PARTITION {partition}
-                """
-            )
+
             cur.execute(
                 f"""
                 ALTER TABLE IPRSCAN.{partitioned_table}
@@ -448,17 +424,16 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
                 """
             )
 
-        # Exchange partition with temp table
+        # Insert new data (only one analysis ID)
         cur.execute(
             f"""
-            ALTER TABLE IPRSCAN.{partitioned_table}
-            EXCHANGE PARTITION {partition}
-            WITH TABLE {tmp_table}
-            """
+            INSERT INTO IPRSCAN.{partitioned_table}
+            SELECT {', '.join(columns)}
+            FROM IPRSCAN.{local_table}
+            WHERE ANALYSIS_ID = :1
+            """, (analysis_id,)
         )
-
-    # Drop temporary table
-    oracle.drop_table(cur, tmp_table, purge=True)
+        con.commit()
 
     cur.close()
     con.close()
