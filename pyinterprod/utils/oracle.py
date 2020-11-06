@@ -111,7 +111,7 @@ def get_indexes(cur: Cursor, owner: str, name: str) -> List[dict]:
     return list(indexes.values())
 
 
-def get_partitions(cur: Cursor, schema: str, name: str) -> List[dict]:
+def get_partitions(cur: Cursor, schema: str, table: str) -> List[dict]:
     cur.execute(
         """
         SELECT P.PARTITION_NAME, P.PARTITION_POSITION, P.HIGH_VALUE,
@@ -122,7 +122,7 @@ def get_partitions(cur: Cursor, schema: str, name: str) -> List[dict]:
           AND P.TABLE_NAME = K.NAME
         WHERE P.TABLE_OWNER = :1 
         AND P.TABLE_NAME = :2
-        """, (schema, name)
+        """, (schema, table)
     )
 
     partitions = {}
@@ -139,6 +139,37 @@ def get_partitions(cur: Cursor, schema: str, name: str) -> List[dict]:
         }
 
     return sorted(partitions.values(), key=lambda x: x["position"])
+
+
+def get_subpartitions(cur: Cursor, schema: str, table: str, partition: str) -> List[dict]:
+    cur.execute(
+        """
+        SELECT SP.SUBPARTITION_NAME, SP.SUBPARTITION_POSITION, SP.HIGH_VALUE,
+               K.COLUMN_NAME, K.COLUMN_POSITION
+        FROM ALL_TAB_SUBPARTITIONS SP
+        INNER JOIN ALL_PART_KEY_COLUMNS K
+            ON SP.TABLE_OWNER = K.OWNER
+            AND SP.TABLE_NAME = K.NAME
+        WHERE SP.TABLE_OWNER = :1
+        AND SP.TABLE_NAME = :2
+        AND SP.PARTITION_NAME = :3
+        """, (schema, table, partition)
+    )
+
+    subpartitions = {}
+    for row in cur:
+        part_name = row[0]
+        if part_name in subpartitions:
+            raise ValueError("Multi-column partitioning keys not supported")
+
+        subpartitions[part_name] = {
+            "name": part_name,
+            "position": row[1],
+            "value": row[2],
+            "column": row[3]
+        }
+
+    return sorted(subpartitions.values(), key=lambda x: x["position"])
 
 
 def rebuild_index(cur: Cursor, name: str, parallel: bool = False):
