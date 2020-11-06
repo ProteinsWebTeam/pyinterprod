@@ -444,15 +444,21 @@ def import_matches(url: str, **kwargs):
     force_import = kwargs.get("force_import", False)
     threads = kwargs.get("threads", 1)
 
-    if databases:  # expects a sequence of Database objects
-        databases = {db.analysis_id for db in databases}
+    database_ids = set()
+    for db in databases:
+        if isinstance(db, Database):
+            database_ids.add(db.analysis_id)
+        elif isinstance(db, int):
+            database_ids.add(db)
+        else:
+            raise ValueError(f"expected Database or int, got {type(db)}")
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
     pending = {}
     for analysis in get_analyses(cur, mode="matches"):
-        if databases and analysis.id not in databases:
+        if database_ids and analysis.id not in database_ids:
             continue
 
         try:
@@ -558,15 +564,21 @@ def import_sites(url: str, **kwargs):
     force_import = kwargs.get("force_import", False)
     threads = kwargs.get("threads", 1)
 
-    if databases:  # expects a sequence of Database objects
-        databases = {db.analysis_id for db in databases}
+    database_ids = set()
+    for db in databases:
+        if isinstance(db, Database):
+            database_ids.add(db.analysis_id)
+        elif isinstance(db, int):
+            database_ids.add(db)
+        else:
+            raise ValueError(f"expected Database or int, got {type(db)}")
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
     pending = {}
     for analysis in get_analyses(cur, mode="sites"):
-        if databases and analysis.id not in databases:
+        if database_ids and analysis.id not in database_ids:
             continue
 
         try:
