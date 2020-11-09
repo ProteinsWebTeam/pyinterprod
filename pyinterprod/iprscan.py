@@ -545,9 +545,6 @@ def import_matches(url: str, **kwargs):
         failed = 0
 
         while True:
-            con = cx_Oracle.connect(url)
-            cur = con.cursor()
-
             tmp = []
             for f, table, names in running:
                 if not f.done():
@@ -566,34 +563,37 @@ def import_matches(url: str, **kwargs):
 
             running = tmp
 
-            tmp = {}
-            for table, analyses in pending.items():
-                ready = []
-                for analysis, partition, columns in analyses:
-                    if analysis.is_ready(cur, max_upi):
-                        ready.append((analysis.id, partition, columns))
+            if pending:
+                con = cx_Oracle.connect(url)
+                cur = con.cursor()
 
-                if len(ready) < len(analyses):
-                    # Not ready
-                    tmp[table] = analyses
-                    continue
+                tmp = {}
+                for table, analyses in pending.items():
+                    ready = []
+                    for analysis, partition, columns in analyses:
+                        if analysis.is_ready(cur, max_upi):
+                            ready.append((analysis.id, partition, columns))
 
-                names = [e[0].name for e in analyses]
-                for name in names:
-                    logger.info(f"{name:<35} ready")
+                    if len(ready) < len(analyses):
+                        # Not ready
+                        tmp[table] = analyses
+                        continue
 
-                args = (url, table, "MV_IPRSCAN", ready, force_import)
-                f = executor.submit(update_analyses, *args)
+                    names = [e[0].name for e in analyses]
+                    for name in names:
+                        logger.info(f"{name:<35} ready")
 
-                running.append((f, table, names))
+                    args = (url, table, "MV_IPRSCAN", ready, force_import)
+                    f = executor.submit(update_analyses, *args)
 
-            pending = tmp
+                    running.append((f, table, names))
 
-            cur.close()
-            con.close()
+                cur.close()
+                con.close()
+                pending = tmp
 
             if pending or running:
-                time.sleep(600)
+                time.sleep(60)
             else:
                 break
 
