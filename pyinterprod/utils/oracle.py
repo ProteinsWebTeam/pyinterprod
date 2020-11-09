@@ -147,7 +147,7 @@ def get_subpartitions(cur: Cursor, schema: str, table: str, partition: str) -> L
         SELECT SP.SUBPARTITION_NAME, SP.SUBPARTITION_POSITION, SP.HIGH_VALUE,
                K.COLUMN_NAME, K.COLUMN_POSITION
         FROM ALL_TAB_SUBPARTITIONS SP
-        INNER JOIN ALL_PART_KEY_COLUMNS K
+        INNER JOIN ALL_SUBPART_KEY_COLUMNS K
             ON SP.TABLE_OWNER = K.OWNER
             AND SP.TABLE_NAME = K.NAME
         WHERE SP.TABLE_OWNER = :1
