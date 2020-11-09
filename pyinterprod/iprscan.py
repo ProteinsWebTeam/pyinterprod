@@ -391,6 +391,7 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
 
     tmp_table = f"IPRSCAN.{remote_table}"
     part_columns = oracle.get_columns_ddl(cur, "IPRSCAN", partitioned_table)
+    part_columns = ",\n".join(part_columns)
 
     for analysis_id, partition, columns in analyses:
         logger.debug(f"{partition} ({analysis_id}): updating")
@@ -409,18 +410,18 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
                                                 table=partitioned_table,
                                                 partition=partition)
 
-            sql = f"CREATE TABLE {tmp_table} ({','.join(part_columns)})"
+            sql = f"CREATE TABLE {tmp_table} (\n{part_columns}\n)"
             if subparts:
                 """
                 The partitioned table has subpartitions, so the temporary
                 table must have partitions
                 """
                 col = subparts[0]["column"]
-                subparts = [
+                subparts = ",\n".join([
                     f"PARTITION {sp['name']} VALUES ({sp['value']})"
                     for sp in subparts
-                ]
-                sql += f"PARTITION BY LIST ({col}) ({','.join(subparts)})"
+                ])
+                sql += f"\nPARTITION BY LIST ({col}) (\n{subparts}\n)"
 
             sql += " NOLOGGING"
             cur.execute(sql)
@@ -703,7 +704,7 @@ def import_sites(url: str, **kwargs):
             con.close()
 
             if pending or running:
-                time.sleep(600)
+                time.sleep(60)
             else:
                 break
 
