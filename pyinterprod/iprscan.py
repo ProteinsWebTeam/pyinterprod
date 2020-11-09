@@ -395,34 +395,6 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
     for analysis_id, partition, columns in analyses:
         logger.debug(f"{partition} ({analysis_id}): updating")
 
-        prev_val, new_val = part2id[partition]
-        if prev_val is not None and prev_val != new_val:
-            # Different ANALYSIS_ID (database update)
-            logger.debug(f"{partitioned_table} ({partition}): "
-                         f"{prev_val} -> {new_val}")
-
-            cur.execute(
-                f"""
-                ALTER TABLE IPRSCAN.{partitioned_table} 
-                TRUNCATE PARTITION {partition}
-                REUSE STORAGE
-                """
-            )
-            cur.execute(
-                f"""
-                ALTER TABLE IPRSCAN.{partitioned_table}
-                MODIFY PARTITION {partition}
-                ADD VALUES ({new_val})
-                """
-            )
-            cur.execute(
-                f"""
-                ALTER TABLE IPRSCAN.{partitioned_table}
-                MODIFY PARTITION {partition}
-                DROP VALUES ({prev_val})
-                """
-            )
-
         if exchange:
             """
             Create a temporary table with the same structure as the partitioned
@@ -493,6 +465,27 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
                 """, (analysis_id,)
             )
             con.commit()
+
+        prev_val, new_val = part2id[partition]
+        if prev_val is not None and prev_val != new_val:
+            # Different ANALYSIS_ID (database update)
+            logger.debug(f"{partitioned_table} ({partition}): "
+                         f"{prev_val} -> {new_val}")
+
+            cur.execute(
+                f"""
+                ALTER TABLE IPRSCAN.{partitioned_table}
+                MODIFY PARTITION {partition}
+                ADD VALUES ({new_val})
+                """
+            )
+            cur.execute(
+                f"""
+                ALTER TABLE IPRSCAN.{partitioned_table}
+                MODIFY PARTITION {partition}
+                DROP VALUES ({prev_val})
+                """
+            )
 
     cur.close()
     con.close()
