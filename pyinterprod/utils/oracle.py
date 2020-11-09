@@ -172,6 +172,39 @@ def get_subpartitions(cur: Cursor, schema: str, table: str, partition: str) -> L
     return sorted(subpartitions.values(), key=lambda x: x["position"])
 
 
+def get_columns_ddl(cur: Cursor, schema: str, table: str) -> List[str]:
+    cur.execute(
+        """
+        SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, 
+               DATA_SCALE, NULLABLE
+        FROM ALL_TAB_COLUMNS
+        WHERE OWNER = :1 AND TABLE_NAME = :2
+        ORDER BY COLUMN_ID
+        """, (schema, table)
+    )
+    columns = []
+    for name, dt, length, precision, scale, nullable in cur:
+        col = f"{name} {dt}"
+
+        if dt == "VARCHAR2":
+            col += f"({length})"
+        elif dt == "NUMBER":
+            if precision is not None:
+                if scale is not None:
+                    col += f"({precision}, {scale})"
+                else:
+                    col += f"({precision})"
+        else:
+            raise ValueError(f"data type '{dt}' not supported")
+
+        if nullable == 'N':
+            col += " NOT NULL"
+
+        columns.append(col)
+
+    return columns
+
+
 def rebuild_index(cur: Cursor, name: str, parallel: bool = False):
     if parallel:
         cur.execute(f"ALTER INDEX {name} REBUILD PARALLEL")

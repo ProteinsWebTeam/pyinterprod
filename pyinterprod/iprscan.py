@@ -315,7 +315,7 @@ def import_from_ispro(cur: Cursor, src: str, dst: str):
 
 def update_analyses(url: str, remote_table: str, partitioned_table: str,
                     analyses: Sequence[Tuple[int, str, Sequence[str]]],
-                    force_import: bool = False):
+                    force_import: bool = False, exchange: bool = True):
     """
     Update matches for member database analyses.
     :param url: Oracle connection string
@@ -324,6 +324,8 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
     :param analyses: Sequence of analyses (analysis ID, partition name
                      in `partitioned_table`, columns to select)
     :param force_import: If True, import data from ISPRO regardless of the UPI
+    :param exchange: If True, exchange partitions to update partitioned table,
+                     insert rows directly otherwise
     """
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -387,28 +389,25 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
         logger.debug(f"importing {remote_table}@ISPRO -> {local_table}")
         import_from_ispro(cur, remote_table, local_table)
 
+    tmp_table = f"IPRSCAN.{remote_table}"
+    part_columns = oracle.get_columns_ddl(cur, "IPRSCAN", partitioned_table)
+
     for analysis_id, partition, columns in analyses:
         logger.debug(f"{partition} ({analysis_id}): updating")
 
-        # Truncating the partition with the old data
-        cur.execute(
-            f"""
-            ALTER TABLE IPRSCAN.{partitioned_table} 
-            TRUNCATE PARTITION {partition}
-            REUSE STORAGE
-            """
-        )
-
         prev_val, new_val = part2id[partition]
         if prev_val is not None and prev_val != new_val:
-            """
-            Different ANALYSIS_ID (database update):
-            1. Modify the partition (remove old value)
-            2. Modify the partition (add new value)
-            """
+            # Different ANALYSIS_ID (database update)
             logger.debug(f"{partitioned_table} ({partition}): "
                          f"{prev_val} -> {new_val}")
 
+            cur.execute(
+                f"""
+                ALTER TABLE IPRSCAN.{partitioned_table} 
+                TRUNCATE PARTITION {partition}
+                REUSE STORAGE
+                """
+            )
             cur.execute(
                 f"""
                 ALTER TABLE IPRSCAN.{partitioned_table}
@@ -424,16 +423,76 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
                 """
             )
 
-        # Insert new data (only one analysis ID)
-        cur.execute(
-            f"""
-            INSERT INTO IPRSCAN.{partitioned_table}
-            SELECT {', '.join(columns)}
-            FROM IPRSCAN.{local_table}
-            WHERE ANALYSIS_ID = :1
-            """, (analysis_id,)
-        )
-        con.commit()
+        if exchange:
+            """
+            Create a temporary table with the same structure as the partitioned
+            table.
+            Since the partitioned table may have subpartitions, we may need
+            to create the temporary table with partitions, which means we
+            cannot use a CTAS statement.
+            """
+            oracle.drop_table(cur, tmp_table, purge=True)
+            subparts = oracle.get_subpartitions(cur=cur,
+                                                schema="IPRSCAN",
+                                                table=partitioned_table,
+                                                partition=partition)
+
+            sql = f"CREATE TABLE {tmp_table} ({','.join(part_columns)})"
+            if subparts:
+                """
+                The partitioned table has subpartitions, so the temporary
+                table must have partitions
+                """
+                col = subparts[0]["column"]
+                subparts = [
+                    f"PARTITION {sp['name']} VALUES ({sp['value']})"
+                    for sp in subparts
+                ]
+                sql += f"PARTITION BY LIST ({col}) ({','.join(subparts)})"
+
+            sql += " NOLOGGING"
+            cur.execute(sql)
+
+            # No insert new data (only one analysis ID) in the temp table
+            cur.execute(
+                f"""
+                INSERT /*+ APPEND */ INTO {tmp_table}
+                SELECT {', '.join(columns)}
+                FROM IPRSCAN.{local_table}
+                WHERE ANALYSIS_ID = :1
+                """, (analysis_id,)
+            )
+            con.commit()
+
+            # Exchange partition with temp table, then drop temp table
+            cur.execute(
+                f"""
+                ALTER TABLE IPRSCAN.{partitioned_table}
+                EXCHANGE PARTITION {partition}
+                WITH TABLE {tmp_table}
+                """
+            )
+            oracle.drop_table(cur, tmp_table, purge=True)
+        else:
+            # Truncating the partition with the old data
+            cur.execute(
+                f"""
+                ALTER TABLE IPRSCAN.{partitioned_table} 
+                TRUNCATE PARTITION {partition}
+                REUSE STORAGE
+                """
+            )
+
+            # Insert new data (only one analysis ID)
+            cur.execute(
+                f"""
+                INSERT INTO IPRSCAN.{partitioned_table}
+                SELECT {', '.join(columns)}
+                FROM IPRSCAN.{local_table}
+                WHERE ANALYSIS_ID = :1
+                """, (analysis_id,)
+            )
+            con.commit()
 
     cur.close()
     con.close()
