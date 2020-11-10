@@ -268,7 +268,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
               "Lost\tGained\n")
     for entry_acc in sorted(changes):
         gained, lost = changes[entry_acc]
-        name, type_code, checked_flag = entries[entry_acc]
+        type_code, name, checked_flag = entries[entry_acc]
         entry_type = "families" if type_code == 'F' else "others"
 
         try:
