@@ -94,6 +94,7 @@ def update_database_matches(url: str, databases: Sequence[Database]):
                 f"""
                 CREATE INDEX MATCH_NEW${col[0]}
                 ON INTERPRO.MATCH_NEW ({col}) 
+                TABLESPACE INTERPRO_IND
                 NOLOGGING
                 """
             )
@@ -255,7 +256,9 @@ def update_database_site_matches(url: str, databases: Sequence[Database]):
             CREATE INDEX I_SITE_MATCH_NEW
             ON INTERPRO.SITE_MATCH_NEW (
                 PROTEIN_AC, METHOD_AC, LOC_START, LOC_END
-            ) NOLOGGING
+            )
+            TABLESPACE INTERPRO_IND 
+            NOLOGGING
             """
         )
 
@@ -456,6 +459,7 @@ def update_site_matches(url: str):
         """
         CREATE INDEX I_SITE_NEW
         ON INTERPRO.SITE_MATCH_NEW (PROTEIN_AC, METHOD_AC, LOC_START, LOC_END)
+        TABLESPACE INTERPRO_IND
         """
     )
 
@@ -564,7 +568,9 @@ def _prepare_matches(con: cx_Oracle.Connection):
         cur.execute(
             f"""
             CREATE INDEX I_MATCH_NEW${col}
-            ON INTERPRO.MATCH_NEW ({col}) NOLOGGING
+            ON INTERPRO.MATCH_NEW ({col})
+            TABLESPACE INTERPRO_IND
+            NOLOGGING
             """
         )
 
