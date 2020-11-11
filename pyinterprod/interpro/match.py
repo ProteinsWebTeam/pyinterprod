@@ -15,18 +15,18 @@ FILE_SIG_PROT_COUNTS = "signatures.prot.counts.pickle"
 FILE_ENTRY_PROT_COUNTS = "entries.prot.counts.pickle"
 MATCH_PARTITIONS = {
     'B': 'MATCH_DBCODE_B',  # SFLD
-    'F': 'MATCH_DBCODE_F',
+    'F': 'MATCH_DBCODE_F',  # PRINTS
     'H': 'MATCH_DBCODE_H',  # Pfam
     'J': 'MATCH_DBCODE_J',  # CDD
-    'M': 'MATCH_DBCODE_M',
-    'N': 'MATCH_DBCODE_N',
-    'P': 'MATCH_DBCODE_P',
+    'M': 'MATCH_DBCODE_M',  # PROSITE profiles
+    'N': 'MATCH_DBCODE_N',  # TIGRFAMs
+    'P': 'MATCH_DBCODE_P',  # PROSITE patterns
     'Q': 'MATCH_DBCODE_Q',  # HAMAP
-    'R': 'MATCH_DBCODE_R',
-    'U': 'MATCH_DBCODE_U',
+    'R': 'MATCH_DBCODE_R',  # SMART
+    'U': 'MATCH_DBCODE_U',  # PIRSF
     'V': 'MATCH_DBCODE_V',  # PANTHER
-    'X': 'MATCH_DBCODE_X',
-    'Y': 'MATCH_DBCODE_Y',
+    'X': 'MATCH_DBCODE_X',  # CATH-Gene3D
+    'Y': 'MATCH_DBCODE_Y',  # SUPERFAMILY
 }
 SITE_PARTITIONS = {
     'B': 'SFLD',
@@ -207,6 +207,111 @@ def update_database_matches(url: str, databases: Sequence[Database]):
     logger.info("complete")
 
 
+def update_database_site_matches(url: str, databases: Sequence[Database]):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    for database in databases:
+        logger.info(database.name)
+
+        """
+        Same partition names in:
+            - IPRSCAN.SITE
+            - INTERPRO.SITE_MATCH
+        """
+        site_partition = SITE_PARTITIONS[database.identifier]
+
+        oracle.drop_table(cur, "INTERPRO.SITE_MATCH_NEW", purge=True)
+        cur.execute(
+            """
+            CREATE TABLE INTERPRO.SITE_MATCH_NEW NOLOGGING
+            AS SELECT * FROM INTERPRO.SITE_MATCH WHERE 1 = 0
+            """
+        )
+
+        logger.debug(f"\tinserting site matches")
+        cur.execute(
+            f"""
+            INSERT /*+ APPEND */ INTO INTERPRO.SITE_MATCH_NEW
+            SELECT
+                X.AC, S.METHOD_AC, S.LOC_START, S.LOC_END, S.DESCRIPTION,
+                S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END, S.NUM_SITES, 
+                D.DBCODE
+            FROM IPRSCAN.SITE PARTITION ({site_partition}) S
+            INNER JOIN UNIPARC.XREF X 
+              ON S.UPI = X.UPI
+            INNER JOIN INTERPRO.IPRSCAN2DBCODE D
+              ON S.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
+            WHERE S.ANALYSIS_ID = :1
+            AND X.DBID IN (2, 3)  -- Swiss-Prot or TrEMBL
+            AND X.DELETED = 'N'
+            """, (database.analysis_id,)
+        )
+        con.commit()
+
+        logger.debug(f"\tindexing")
+        cur.execute(
+            """
+            CREATE INDEX I_SITE_MATCH_NEW
+            ON INTERPRO.SITE_MATCH_NEW (
+                PROTEIN_AC, METHOD_AC, LOC_START, LOC_END
+            ) NOLOGGING
+            """
+        )
+
+        logger.debug(f"\tchecking matches")
+        match_partition = MATCH_PARTITIONS[database.identifier]
+        cur.execute(
+            f"""
+            SELECT COUNT(*)
+            FROM (
+                SELECT DISTINCT PROTEIN_AC, METHOD_AC, LOC_START, LOC_END
+                FROM INTERPRO.SITE_MATCH_NEW
+                MINUS
+                SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
+                FROM INTERPRO.MATCH PARTITION ({match_partition})
+            )
+            """
+        )
+
+        cnt, = cur.fetchone()
+        if cnt:
+            cur.close()
+            con.close()
+            raise RuntimeError(f"{database.name}: {cnt} matches "
+                               f"in SITE_MATCH_NEW that are not in MATCH")
+
+        logger.debug(f"\tadding constraint")
+        cur.execute(
+            """
+            ALTER TABLE INTERPRO.SITE_MATCH_NEW 
+            ADD CONSTRAINT FK_SITE_MATCH_NEW 
+            FOREIGN KEY (PROTEIN_AC) REFERENCES PROTEIN
+            """
+        )
+
+        logger.debug(f"\texchanging partition")
+        cur.execute(
+            f"""
+            ALTER TABLE INTERPRO.SITE_MATCH 
+            EXCHANGE PARTITION ({site_partition})
+            WITH TABLE INTERPRO.SITE_MATCH_NEW
+            """
+        )
+
+        oracle.drop_table(cur, "INTERPRO.SITE_MATCH_NEW", purge=True)
+
+    for index in oracle.get_indexes(cur, "INTERPRO", "SITE_MATCH"):
+        if index["unusable"]:
+            logger.info(f"rebuilding index {index['name']}")
+            oracle.rebuild_index(cur, index["name"])
+
+    cur.close()
+    con.close()
+
+    logger.info("complete")
+
+
 def update_matches(url: str, data_dir: str):
     """
     Add protein matches for recently added/modified sequences
@@ -358,18 +463,23 @@ def update_site_matches(url: str):
     oracle.gather_stats(cur, "INTERPRO", "SITE_MATCH_NEW")
 
     logger.info("checking")
+    queries = []
+    for identifier in SITE_PARTITIONS:
+        queries.append(
+            f"""
+            SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
+            FROM INTERPRO.MATCH PARTITION ({MATCH_PARTITIONS[identifier]})
+            """
+        )
+
     cur.execute(
-        """
+        f"""
         SELECT COUNT(*)
         FROM (
             SELECT DISTINCT PROTEIN_AC, METHOD_AC, LOC_START, LOC_END
             FROM INTERPRO.SITE_MATCH_NEW
             MINUS (
-              SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
-              FROM INTERPRO.MATCH PARTITION (MATCH_DBCODE_J)
-              UNION ALL
-              SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
-              FROM INTERPRO.MATCH PARTITION (MATCH_DBCODE_B)
+              {' UNION ALL '.join(queries)}
             )
         )
         """
