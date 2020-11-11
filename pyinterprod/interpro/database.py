@@ -14,6 +14,7 @@ class Database:
     version: str
     date: datetime
     analysis_id: int
+    has_site_matches: bool
 
 
 def get_databases(url: str, names: Sequence[str]) -> Dict[str, Database]:
@@ -23,22 +24,35 @@ def get_databases(url: str, names: Sequence[str]) -> Dict[str, Database]:
     args = [':' + str(i+1) for i in range(len(names))]
     cur.execute(
         f"""
-        SELECT D.DBCODE, LOWER(D.DBSHORT), D.DBNAME, V.VERSION, V.FILE_DATE, 
-               I2C.IPRSCAN_SIG_LIB_REL_ID, I2C.PREV_ID
+        SELECT D.DBCODE, LOWER(D.DBSHORT), D.DBNAME, V.VERSION, V.FILE_DATE,
+                I2C.IPRSCAN_SIG_LIB_REL_ID, I2C.PREV_ID, T.SITE_TABLE
         FROM INTERPRO.CV_DATABASE D
-        INNER JOIN INTERPRO.DB_VERSION V ON D.DBCODE = V.DBCODE
-        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2C ON D.DBCODE = I2C.DBCODE 
+        INNER JOIN INTERPRO.DB_VERSION V 
+            ON D.DBCODE = V.DBCODE
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2C 
+            ON D.DBCODE = I2C.DBCODE
+        INNER JOIN IPRSCAN.IPM_ANALYSIS@ISPRO A 
+            ON I2C.IPRSCAN_SIG_LIB_REL_ID = A.ANALYSIS_ID
+        INNER JOIN IPRSCAN.IPM_ANALYSIS_MATCH_TABLE@ISPRO T 
+            ON A.ANALYSIS_MATCH_TABLE_ID = T.ID
         WHERE LOWER(D.DBSHORT) IN ({','.join(args)})
         """, tuple(map(str.lower, names))
     )
 
     databases = {}
     outdated = []
-    for code, key, name, version, date, analysis_id, prev_id in cur:
-        databases[key] = Database(code, name, version, date, analysis_id)
+    for row in cur:
+        db = Database(identifier=row[0],
+                      name=row[2],
+                      version=row[3],
+                      date=row[4],
+                      analysis_id=row[5],
+                      has_site_matches=row[7] is not None)
 
-        if analysis_id == prev_id:
-            outdated.append(name)
+        databases[row[1]] = db
+
+        if db.analysis_id == row[6]:
+            outdated.append(db.name)
 
     cur.close()
     con.close()
@@ -47,7 +61,9 @@ def get_databases(url: str, names: Sequence[str]) -> Dict[str, Database]:
     if unknown:
         raise RuntimeError(f"Unknown databases: {', '.join(unknown)}")
     elif outdated:
-        raise RuntimeError(f"Database(s) not ready: {', '.join(outdated)}")
+        raise RuntimeError(f"Database with outdated versions: "
+                           f"{', '.join(outdated)}.\n"
+                           f"Run ipr-pre-memdb to update version numbers.")
 
     return databases
 

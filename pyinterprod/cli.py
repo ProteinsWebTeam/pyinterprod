@@ -229,21 +229,12 @@ def run_member_db_update():
             scheduler=dict(queue=lsf_queue)
         ),
         Task(
-            fn=iprscan.import_sites,
-            args=(ora_iprscan_url,),
-            kwargs=dict(databases=databases, force_import=True, threads=2),
-            name="import-sites",
-            scheduler=dict(queue=lsf_queue)
-        ),
-        Task(
             fn=interpro.match.update_database_matches,
             args=(ora_interpro_url, databases),
             name="update-matches",
             scheduler=dict(queue=lsf_queue),
             requires=["import-matches", "pre-update-matches"]
         ),
-        # TODO: update sites, following import-sites
-
         Task(
             fn=interpro.signature.export_swissprot_descriptions,
             args=(pg_url, data_dir),
@@ -251,6 +242,26 @@ def run_member_db_update():
             scheduler=dict(queue=lsf_queue),
         ),
     ]
+
+    site_databases = [db for db in databases if db.has_site_matches]
+    if site_databases:
+        tasks += [
+            Task(
+                fn=iprscan.import_sites,
+                args=(ora_iprscan_url,),
+                kwargs=dict(databases=site_databases, force_import=True,
+                            threads=2),
+                name="import-sites",
+                scheduler=dict(queue=lsf_queue)
+            ),
+            Task(
+                fn=interpro.match.update_database_site_matches,
+                args=(ora_interpro_url, site_databases),
+                name="update-sites",
+                scheduler=dict(queue=lsf_queue),
+                requires=["import-sites", "update-matches"]
+            )
+        ]
 
     # Adding Pronto tasks
     after_pronto = set()
@@ -575,7 +586,7 @@ def run_pronto_update():
 
 
 def update_database():
-    parser = ArgumentParser(description="InterPro Pronto update")
+    parser = ArgumentParser(description="InterPro pre-member database update")
     parser.add_argument("config", metavar="config.ini",
                         help="Configuration file.")
     parser.add_argument("-n", "--name", required=True,
