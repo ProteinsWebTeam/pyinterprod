@@ -162,15 +162,15 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
     if dbkey == "panther":
         clans = contrib.panther.get_clans(url)
 
-        def getsubdir(x): return x[7]
+        def getsubdir(x): return x[:7]
     elif dbkey == "pfam":
         clans = contrib.pfam.get_clans(clan_source)
 
-        def getsubdir(x): return x[5]
+        def getsubdir(x): return x[:5]
     elif dbkey == "pirsf":
         clans = contrib.pirsf.get_clans(clan_source)
 
-        def getsubdir(x): return x[8]
+        def getsubdir(x): return x[:8]
     else:
         raise NotImplementedError()
 
