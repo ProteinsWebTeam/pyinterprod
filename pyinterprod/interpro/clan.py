@@ -209,7 +209,7 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
             outfile = prefix + OUT_SUFFIX
             domfile = prefix + DOM_SUFFIX
             f = executor.submit(hmmscan, hmmdb, seqfile, domfile, outfile)
-            fs[f] = f
+            fs[f] = model_acc
 
         con = cx_Oracle.connect(url)
         sql1 = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
