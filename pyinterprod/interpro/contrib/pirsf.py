@@ -43,4 +43,4 @@ def get_clans(file: str) -> List[Clan]:
                 "score": 1
             })
 
-    return [c for c in clans.values() if len(c.members) > 0]
+    return list(clans.values())

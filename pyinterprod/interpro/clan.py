@@ -167,17 +167,17 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
     )
     con.commit()
     cur.close()
-
-    mem2clan = {}
-    with Table(con, "INSERT INTO INTERPRO.CLAN VALUES (:1,:2,:3,:4)") as t1:
-        for c in clans:
-            t1.insert((c.accession, dbcode, c.name, c.description))
-            for m in c.members:
-                mem2clan[m["accession"]] = (c.accession, m["score"])
-    con.commit()
     con.close()
 
+    clans_to_insert = {}
+    mem2clan = {}
+    for c in clans:
+        clans_to_insert[c.accession] = c
+        for m in c.members:
+            mem2clan[m["accession"]] = (c.accession, m["score"])
+
     workdir = mkdtemp(dir=tmpdir)
+    num_duplicates = 0
     with futures.ThreadPoolExecutor(max_workers=threads) as executor:
         logger.info("emitting consensus sequences")
         fs = {}
@@ -187,10 +187,7 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
                 # Ignore models not belonging to a clan
                 continue
             elif model_acc in models:
-                """
-                Ensure a model is processed only once, 
-                even if duplicated in HMM file
-                """
+                num_duplicates += 1
                 continue
 
             prefix = os.path.join(workdir, model_acc)
@@ -207,6 +204,10 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
         if not_done:
             shutil.rmtree(workdir)
             raise RuntimeError(f"{len(not_done)} error(s)")
+        elif num_duplicates:
+            shutil.rmtree(workdir)
+            raise RuntimeError(f"HMM database {hmmdb} contains "
+                               f"{num_duplicates} duplicated models.")
 
         logger.info("searching consensus sequences")
         fs = {}
@@ -219,46 +220,66 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
             fs[f] = model_acc
 
         con = cx_Oracle.connect(url)
-        sql1 = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
-        sql2 = "INSERT INTO INTERPRO.CLAN_MATCH VALUES (:1, :2, :3, :4, :5)"
-        with Table(con, sql1) as t1, Table(con, sql2, depends_on=t1) as t2:
-            t2.cur.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE,
-                                 None, None)
-            not_done = 0
-            for f in futures.as_completed(fs):
-                model_acc = fs[f]
+        sql = "INSERT INTO INTERPRO.CLAN VALUES (:1,:2,:3,:4)"
+        t1 = Table(con, sql)
+        sql = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
+        t2 = Table(con, sql, depends_on=t1)
+        sql = "INSERT INTO INTERPRO.CLAN_MATCH VALUES (:1, :2, :3, :4, :5)"
+        t3 = Table(con, sql, depends_on=t2)
+        t3.cur.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE, None,
+                             None)
+        not_done = 0
+        for f in futures.as_completed(fs):
+            model_acc = fs[f]
 
-                try:
-                    f.result()
-                except sp.CalledProcessError:
-                    not_done += 1
-                    continue
+            try:
+                f.result()
+            except sp.CalledProcessError:
+                not_done += 1
+                continue
 
-                prefix = os.path.join(workdir, model_acc)
-                outfile = prefix + OUT_SUFFIX
-                domfile = prefix + DOM_SUFFIX
+            prefix = os.path.join(workdir, model_acc)
+            outfile = prefix + OUT_SUFFIX
+            domfile = prefix + DOM_SUFFIX
 
-                clan_acc, score = mem2clan[model_acc]
-                sequence = load_sequence(prefix + SEQ_SUFFIX)
+            clan_acc, score = mem2clan[model_acc]
+            sequence = load_sequence(prefix + SEQ_SUFFIX)
+
+            try:
+                clan = clans_to_insert.pop(clan_acc)
+            except KeyError:
+                # Clan already inserted
+                pass
+            else:
                 t1.insert((
-                    clan_acc,
-                    model_acc,
-                    score,
-                    gzip.compress(sequence.encode("utf-8"))
+                    clan.accession,
+                    dbcode,
+                    clan.name,
+                    clan.description
                 ))
 
-                for target in load_hmmscan_results(outfile, domfile):
-                    if target["accession"] == model_acc:
-                        continue
+            t2.insert((
+                clan_acc,
+                model_acc,
+                score,
+                gzip.compress(sequence.encode("utf-8"))
+            ))
 
-                    for dom in target["domains"]:
-                        t2.insert((
-                            model_acc,
-                            target["accession"],
-                            target["evalue"],
-                            dom["coordinates"]["ali"]["start"],
-                            dom["coordinates"]["ali"]["end"]
-                        ))
+            for target in load_hmmscan_results(outfile, domfile):
+                if target["accession"] == model_acc:
+                    continue
+
+                for dom in target["domains"]:
+                    t3.insert((
+                        model_acc,
+                        target["accession"],
+                        target["evalue"],
+                        dom["coordinates"]["ali"]["start"],
+                        dom["coordinates"]["ali"]["end"]
+                    ))
+
+        for t in (t1, t2, t3):
+            t.close()
 
         con.commit()
         con.close()
