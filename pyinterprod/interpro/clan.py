@@ -227,7 +227,7 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
         t3 = Table(con, sql, depends_on=t2)
         t3.cur.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE, None,
                              None)
-        completed = errors = 0
+        completed = errors = progress = 0
         for f in futures.as_completed(fs):
             model_acc = fs[f]
             completed += 1
@@ -278,8 +278,10 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
                         dom["coordinates"]["ali"]["end"]
                     ))
 
-            logger.debug(f"searching consensus sequences: "
-                         f"{completed:>10}/{len(fs)}")
+            pc = completed * 100 // len(fs)
+            if pc > progress:
+                progress = pc
+                logger.debug(f"{progress:>10}%")
 
         for t in (t1, t2, t3):
             t.close()
