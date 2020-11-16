@@ -1,9 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os
 from setuptools import Extension, find_packages, setup
 
 from pyinterprod import __version__
+
+
+def get_requirements():
+    filepath = os.path.join(os.path.dirname(__file__), "requirements.txt")
+
+    with open(filepath) as fh:
+        requirements = fh.read().splitlines()
+
+    return requirements
 
 
 setup(
@@ -17,7 +27,7 @@ setup(
                   sources=["pyinterprod/uniprot/sprotmodule.c"],
                   extra_link_args=["-lsqlite3"])
     ],
-    install_requires=["cx-Oracle>=8.0", "mundone>=0.4.0", "psycopg2>=2.8.4"],
+    install_requires=get_requirements(),
     entry_points={
         "console_scripts": [
             # "ipr-clans = pyinterprod.clan:main",
