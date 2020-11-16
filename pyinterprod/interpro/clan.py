@@ -332,7 +332,7 @@ def load_domain_alignments(file: str) -> List[Tuple[str, str]]:
     The "== domain" line might be followed by a consensus structure annotation line (not the case here).
     Each block has four lines:
         1. consensus of the target profile
-        2. matches between the query sequence and target profile
+        2. matches between the query sequence and target profile (**can be empty**)
         3. query sequence
         4. posterior probability of each aligned residue
 
@@ -361,7 +361,7 @@ def load_domain_alignments(file: str) -> List[Tuple[str, str]]:
 
                 line = next(fh).strip()
                 block = []
-                while line:
+                while line or len(block) < 4:
                     block.append(line)
                     line = next(fh).strip()
 
@@ -374,7 +374,7 @@ def load_domain_alignments(file: str) -> List[Tuple[str, str]]:
             elif query_seq:
                 # New block of domain
                 block = []
-                while line:
+                while line or len(block) < 4:
                     block.append(line)
                     line = next(fh).strip()
 
