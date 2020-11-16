@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 
@@ -12,3 +12,11 @@ class Method:
     description: str = None
     abstract: str = None
     date: datetime = None
+
+
+@dataclass
+class Clan:
+    accession: str
+    name: str
+    description: str = None
+    members: list = field(default_factory=list)
