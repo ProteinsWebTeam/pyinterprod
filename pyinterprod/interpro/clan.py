@@ -222,7 +222,8 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
         sql1 = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
         sql2 = "INSERT INTO INTERPRO.CLAN_MATCH VALUES (:1, :2, :3, :4, :5)"
         with Table(con, sql1) as t1, Table(con, sql2, depends_on=t1) as t2:
-            t2.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE, None, None)
+            t2.cur.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE,
+                                 None, None)
             not_done = 0
             for f in futures.as_completed(fs):
                 model_acc = fs[f]
