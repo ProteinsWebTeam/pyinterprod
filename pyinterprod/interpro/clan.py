@@ -150,24 +150,23 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
 
     dbcode = DATABASES[dbkey]
 
-    if dbkey == "pirsf":
-        clans = contrib.pirsf.get_clans(clan_source)
-    else:
-        raise NotImplementedError()
-
+    logger.info("deleting old clans")
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-
-    logger.info("deleting old clans")
-    cur.execute(
-        """
-        DELETE FROM INTERPRO.CLAN
-        WHERE DBCODE = :1
-        """, (dbcode,)
-    )
+    cur.execute("DELETE FROM INTERPRO.CLAN WHERE DBCODE = :1", (dbcode,))
     con.commit()
     cur.close()
     con.close()
+
+    logger.info("loading new clans")
+    if dbkey == "panther":
+        raise NotImplementedError()
+    elif dbkey == "pfam":
+        clans = contrib.pfam.get_clans(clan_source)
+    elif dbkey == "pirsf":
+        clans = contrib.pirsf.get_clans(clan_source)
+    else:
+        raise NotImplementedError()
 
     clans_to_insert = {}
     mem2clan = {}
@@ -228,14 +227,15 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
         t3 = Table(con, sql, depends_on=t2)
         t3.cur.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE, None,
                              None)
-        not_done = 0
+        completed = errors = 0
         for f in futures.as_completed(fs):
             model_acc = fs[f]
+            completed += 1
 
             try:
                 f.result()
             except sp.CalledProcessError:
-                not_done += 1
+                errors += 1
                 continue
 
             prefix = os.path.join(workdir, model_acc)
@@ -278,6 +278,9 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
                         dom["coordinates"]["ali"]["end"]
                     ))
 
+            logger.debug(f"searching consensus sequences: "
+                         f"{completed:>10}/{len(fs)}")
+
         for t in (t1, t2, t3):
             t.close()
 
@@ -289,8 +292,8 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
             size += os.path.getsize(os.path.join(workdir, f))
 
         shutil.rmtree(workdir)
-        if not_done:
-            raise RuntimeError(f"{not_done} error(s)")
+        if errors:
+            raise RuntimeError(f"{errors} error(s)")
 
     logger.info(f"complete (disk usage: {size / 1024 ** 2:,.0f} MB)")
 
