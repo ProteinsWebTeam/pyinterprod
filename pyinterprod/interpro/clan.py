@@ -198,7 +198,7 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
             subdir = os.path.join(workdir, getsubdir(model_acc))
             try:
                 os.mkdir(subdir)
-            except FileNotFoundError:
+            except FileExistsError:
                 pass
 
             prefix = os.path.join(subdir, model_acc)
