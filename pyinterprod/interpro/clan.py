@@ -181,9 +181,16 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
     with futures.ThreadPoolExecutor(max_workers=threads) as executor:
         logger.info("emitting consensus sequences")
         fs = {}
+        models = set()
         for model_acc, hmm in iter_models(hmmdb):
             if model_acc not in mem2clan:
                 # Ignore models not belonging to a clan
+                continue
+            elif model_acc in models:
+                """
+                Ensure a model is processed only once, 
+                even if duplicated in HMM file
+                """
                 continue
 
             prefix = os.path.join(workdir, model_acc)
@@ -194,6 +201,7 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
             seqfile = prefix + SEQ_SUFFIX
             f = executor.submit(hmmemit, hmmfile, seqfile)
             fs[f] = model_acc
+            models.add(model_acc)
 
         done, not_done = futures.wait(fs)
         if not_done:
@@ -201,7 +209,6 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
             raise RuntimeError(f"{len(not_done)} error(s)")
 
         logger.info("searching consensus sequences")
-        models = list(fs.values())
         fs = {}
         for model_acc in models:
             prefix = os.path.join(workdir, model_acc)
