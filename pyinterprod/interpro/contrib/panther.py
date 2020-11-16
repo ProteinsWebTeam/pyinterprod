@@ -3,9 +3,43 @@
 import re
 from typing import List
 
-from .model import Method
+import cx_Oracle
+
+from .model import Clan, Method
 
 _TYPE = 'F'
+
+
+def get_clans(url: str) -> List[Clan]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT METHOD_AC
+        FROM INTERPRO.METHOD 
+        WHERE DBCODE = 'V'
+        """
+    )
+
+    reg_subfam = re.compile(r"(PTHR\d+):SF\d+")
+    clans = {}
+    for member_acc, in cur:
+        match = reg_subfam.match(member_acc)
+        if not match:
+            continue
+
+        clan_acc = match.group(1)
+        try:
+            clan = clans[clan_acc]
+        except KeyError:
+            clan = clans[clan_acc] = Clan(clan_acc)
+
+        clan.members.append({
+            "accession": member_acc,
+            "score": 1
+        })
+
+    return list(clans.values())
 
 
 def parse_signatures(filepath: str) -> List[Method]:

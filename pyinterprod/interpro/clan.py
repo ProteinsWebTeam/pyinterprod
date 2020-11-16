@@ -160,11 +160,17 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
 
     logger.info("loading new clans")
     if dbkey == "panther":
-        raise NotImplementedError()
+        clans = contrib.panther.get_clans(url)
+
+        def getsubdir(x): return x[7]
     elif dbkey == "pfam":
         clans = contrib.pfam.get_clans(clan_source)
+
+        def getsubdir(x): return x[5]
     elif dbkey == "pirsf":
         clans = contrib.pirsf.get_clans(clan_source)
+
+        def getsubdir(x): return x[8]
     else:
         raise NotImplementedError()
 
@@ -189,7 +195,13 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
                 num_duplicates += 1
                 continue
 
-            prefix = os.path.join(workdir, model_acc)
+            subdir = os.path.join(workdir, getsubdir(model_acc))
+            try:
+                os.mkdir(subdir)
+            except FileNotFoundError:
+                pass
+
+            prefix = os.path.join(subdir, model_acc)
             hmmfile = prefix + HMM_SUFFIX
             with open(hmmfile, "wt") as fh:
                 fh.write(hmm)
@@ -211,7 +223,7 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
         logger.info("searching consensus sequences")
         fs = {}
         for model_acc in models:
-            prefix = os.path.join(workdir, model_acc)
+            prefix = os.path.join(workdir, getsubdir(model_acc), model_acc)
             seqfile = prefix + SEQ_SUFFIX
             outfile = prefix + OUT_SUFFIX
             domfile = prefix + DOM_SUFFIX
@@ -238,7 +250,7 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
                 errors += 1
                 continue
 
-            prefix = os.path.join(workdir, model_acc)
+            prefix = os.path.join(workdir, getsubdir(model_acc), model_acc)
             outfile = prefix + OUT_SUFFIX
             domfile = prefix + DOM_SUFFIX
 

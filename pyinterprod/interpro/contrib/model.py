@@ -17,6 +17,6 @@ class Method:
 @dataclass
 class Clan:
     accession: str
-    name: str
+    name: str = None
     description: str = None
     members: list = field(default_factory=list)
