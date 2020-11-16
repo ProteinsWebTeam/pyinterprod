@@ -263,11 +263,15 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
         con.commit()
         con.close()
 
+        size = 0
+        for f in os.listdir(workdir):
+            size += os.path.getsize(os.path.join(workdir, f))
+
+        shutil.rmtree(workdir)
         if not_done:
-            shutil.rmtree(workdir)
             raise RuntimeError(f"{not_done} error(s)")
 
-    logger.info("complete")
+    logger.info(f"complete (disk usage: {size / 1024 ** 2:,.0f} MB)")
 
 
 def load_domain_alignments(file: str) -> List[Tuple[str, str]]:
