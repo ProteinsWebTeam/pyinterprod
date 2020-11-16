@@ -31,7 +31,7 @@ def create_tables(url: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
-    for table in ("CLAN", "CLAN_MEMBER", "CLAN_MEMBER_ALN", "CLAN_MATCH"):
+    for table in ("CLAN_MEMBER_ALN", "CLAN_MATCH", "CLAN_MEMBER", "CLAN"):
         oracle.drop_table(cur, table, purge=True)
 
     cur.execute(
