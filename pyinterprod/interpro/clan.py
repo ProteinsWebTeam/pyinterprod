@@ -265,6 +265,8 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
             shutil.rmtree(workdir)
             raise RuntimeError(f"{not_done} error(s)")
 
+    logger.info("complete")
+
 
 def load_domain_alignments(file: str) -> List[Tuple[str, str]]:
     """
