@@ -361,13 +361,11 @@ def load_domain_alignments(file: str) -> List[Tuple[str, str]]:
 
                 line = next(fh).strip()
                 block = []
-                while line or len(block) < 4:
+                while line:
                     block.append(line)
                     line = next(fh).strip()
 
-                if len(block) == 5:
-                    block.pop(0)
-
+                del block[:-4]
                 target_seq += block[0].split()[2]
                 query_seq += block[2].split()[2]
             elif line == "Internal pipeline statistics summary:":
@@ -376,13 +374,11 @@ def load_domain_alignments(file: str) -> List[Tuple[str, str]]:
             elif query_seq:
                 # New block of domain
                 block = []
-                while line or len(block) < 4:
+                while line:
                     block.append(line)
                     line = next(fh).strip()
 
-                if len(block) == 5:
-                    block.pop(0)
-
+                del block[:-4]
                 target_seq += block[0].split()[2]
                 query_seq += block[2].split()[2]
 
