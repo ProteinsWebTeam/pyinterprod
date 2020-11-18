@@ -235,6 +235,7 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
         t1 = Table(con, sql)
         sql = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
         t2 = Table(con, sql, depends_on=t1)
+        t2.cur.setinputsizes(25, 25, cx_Oracle.DB_TYPE_CLOB, None)
         sql = "INSERT INTO INTERPRO.CLAN_MATCH VALUES (:1, :2, :3, :4, :5)"
         t3 = Table(con, sql, depends_on=t2)
         t3.cur.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE, None,
