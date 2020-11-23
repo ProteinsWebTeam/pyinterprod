@@ -59,7 +59,7 @@ def create_tables(url: str):
             CLAN_AC VARCHAR2(25) NOT NULL,
             MEMBER_AC VARCHAR2(25) NOT NULL,
             SCORE FLOAT NOT NULL,
-            SEQ CLOB NOT NULL,
+            SEQ BLOB NOT NULL,
             CONSTRAINT PK_CLAN_MEMBER
               PRIMARY KEY (CLAN_AC, MEMBER_AC),
             CONSTRAINT UQ_CLAN_MEMBER$MEMBER_AC
@@ -235,7 +235,7 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
         t1 = Table(con, sql)
         sql = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
         t2 = Table(con, sql, depends_on=t1)
-        t2.cur.setinputsizes(25, 25, cx_Oracle.DB_TYPE_CLOB, None)
+        t2.cur.setinputsizes(25, 25, None, cx_Oracle.DB_TYPE_BLOB)
         sql = "INSERT INTO INTERPRO.CLAN_MATCH VALUES (:1, :2, :3, :4, :5)"
         t3 = Table(con, sql, depends_on=t2)
         t3.cur.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE, None,
