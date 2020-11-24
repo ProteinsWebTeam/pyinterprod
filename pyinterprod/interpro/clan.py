@@ -6,7 +6,7 @@ import re
 import shutil
 import subprocess as sp
 from concurrent import futures
-from tempfile import mkdtemp
+from tempfile import mkdtemp, mkstemp
 from typing import List, Tuple
 
 import cx_Oracle
@@ -25,6 +25,15 @@ DATABASES = {
     "pfam": 'H',
     "pirsf": 'U'
 }
+
+
+def calc_dir_size(dirpath: str) -> int:
+    size = 0
+    for root, dirs, files in os.walk(dirpath):
+        for f in files:
+            size += os.path.join(root, f)
+
+    return size
 
 
 def create_tables(url: str):
@@ -99,40 +108,6 @@ def create_tables(url: str):
     con.close()
 
 
-def iter_models(hmmdb: str):
-    with open(hmmdb, "rt") as fh:
-        reg_acc = re.compile(r"ACC\s+(\w+)", flags=re.M)
-        reg_name = re.compile(r"^NAME\s+(PTHR\d+)\.(SF\d+)?", flags=re.M)
-        hmm = ""
-        for line in fh:
-            hmm += line
-
-            if line[:2] == "//":
-                m = reg_acc.search(hmm)
-                if m:
-                    accession = m.group(1)
-                else:
-                    # PANTHER: accessions in the NAME field
-                    m = reg_name.search(hmm)
-                    accession, prefix = m.groups()
-                    if prefix is not None:
-                        accession += ':' + prefix
-
-                yield accession, hmm
-                hmm = ""
-
-
-def hmmemit(hmmdb: str, seqfile: str):
-    sp.run(args=["hmmemit", "-c", "-o", seqfile, hmmdb],
-           stderr=sp.DEVNULL, stdout=sp.DEVNULL, check=True)
-
-
-def hmmscan(hmmdb: str, seqfile: str, domfile: str, outfile: str):
-    args = ["hmmscan", "-o", outfile, "--domtblout", domfile, hmmdb, seqfile]
-    sp.run(args=args,
-           stderr=sp.DEVNULL, stdout=sp.DEVNULL, check=True)
-
-
 def load_sequence(seqfile: str) -> str:
     seq = ""
     with open(seqfile, "rt") as fh:
@@ -141,6 +116,21 @@ def load_sequence(seqfile: str) -> str:
             seq += line.rstrip()
 
     return seq
+
+
+def prepare_insert(con):
+    sql = "INSERT INTO INTERPRO.CLAN VALUES (:1,:2,:3,:4)"
+    t1 = Table(con, sql)
+
+    sql = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
+    t2 = Table(con, sql, depends_on=t1)
+    t2.cur.setinputsizes(25, 25, None, cx_Oracle.DB_TYPE_BLOB)
+
+    sql = "INSERT INTO INTERPRO.CLAN_MATCH VALUES (:1, :2, :3, :4, :5)"
+    t3 = Table(con, sql, depends_on=t2)
+    t3.cur.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE, None, None)
+
+    return t1, t2, t3
 
 
 def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
@@ -231,15 +221,8 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
             fs[f] = model_acc
 
         con = cx_Oracle.connect(url)
-        sql = "INSERT INTO INTERPRO.CLAN VALUES (:1,:2,:3,:4)"
-        t1 = Table(con, sql)
-        sql = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
-        t2 = Table(con, sql, depends_on=t1)
-        t2.cur.setinputsizes(25, 25, None, cx_Oracle.DB_TYPE_BLOB)
-        sql = "INSERT INTO INTERPRO.CLAN_MATCH VALUES (:1, :2, :3, :4, :5)"
-        t3 = Table(con, sql, depends_on=t2)
-        t3.cur.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE, None,
-                             None)
+        t1, t2, t3 = prepare_insert(con)
+
         completed = errors = progress = 0
         for f in futures.as_completed(fs):
             model_acc = fs[f]
@@ -302,15 +285,120 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
         con.commit()
         con.close()
 
-        size = 0
-        for f in os.listdir(workdir):
-            size += os.path.getsize(os.path.join(workdir, f))
-
+        size = calc_dir_size(workdir)
         shutil.rmtree(workdir)
         if errors:
             raise RuntimeError(f"{errors} error(s)")
 
     logger.info(f"complete (disk usage: {size / 1024 ** 2:,.0f} MB)")
+
+
+def iter_models(hmmdb: str):
+    with open(hmmdb, "rt") as fh:
+        reg_acc = re.compile(r"ACC\s+(\w+)", flags=re.M)
+        reg_name = re.compile(r"^NAME\s+(PTHR\d+)\.(SF\d+)?", flags=re.M)
+        hmm = ""
+        for line in fh:
+            hmm += line
+
+            if line[:2] == "//":
+                m = reg_acc.search(hmm)
+                if m:
+                    accession = m.group(1)
+                else:
+                    # PANTHER: accessions in the NAME field
+                    m = reg_name.search(hmm)
+                    accession, prefix = m.groups()
+                    if prefix is not None:
+                        accession += ':' + prefix
+
+                yield accession, hmm
+                hmm = ""
+
+
+def hmmemit(hmmdb: str, seqfile: str):
+    sp.run(args=["hmmemit", "-c", "-o", seqfile, hmmdb],
+           stderr=sp.DEVNULL, stdout=sp.DEVNULL, check=True)
+
+
+def hmmscan(hmmdb: str, seqfile: str, domfile: str, outfile: str):
+    args = ["hmmscan", "-o", outfile, "--domtblout", domfile, hmmdb, seqfile]
+    sp.run(args=args,
+           stderr=sp.DEVNULL, stdout=sp.DEVNULL, check=True)
+
+
+def load_hmmscan_results(outfile: str, tabfile: str) -> List[dict]:
+    alignments = load_domain_alignments(outfile)
+    targets = {}
+
+    with open(tabfile, "rt") as fh:
+        i = 0
+        for line in fh:
+            if line[0] == "#":
+                continue
+
+            cols = re.split(r"\s+", line.rstrip(), maxsplit=22)
+
+            name = cols[0]
+
+            # Pfam entries end with a mark followed by a number
+            acc = cols[1].split(".")[0]
+
+            if acc == "-":
+                # Panther accessions are under the `target_name` column
+                acc = name
+
+            if acc in targets:
+                t = targets[acc]
+            else:
+                t = targets[acc] = {
+                    "name": name,
+                    "accession": acc,
+                    "tlen": int(cols[2]),
+                    "qlen": int(cols[5]),
+
+                    # full sequence
+                    "evalue": float(cols[6]),
+                    "evaluestr": cols[6],
+                    "score": float(cols[7]),
+                    "bias": float(cols[8]),
+
+                    "domains": []
+                }
+
+            t["domains"].append({
+                # this domain
+
+                # conditional E-value
+                "cevalue": float(cols[11]),
+                "cevaluestr": cols[11],
+                # independent E-value
+                "ievalue": float(cols[12]),
+                "ievaluestr": cols[12],
+                "score": float(cols[13]),
+                "bias": float(cols[14]),
+
+                "coordinates": {
+                    # target (as we scan an HMM DB)
+                    "hmm": {
+                        "start": int(cols[15]),
+                        "end": int(cols[16])
+                    },
+                    # query
+                    "ali": {
+                        "start": int(cols[17]),
+                        "end": int(cols[18])
+                    },
+                    "env": {
+                        "start": int(cols[19]),
+                        "end": int(cols[20])
+                    },
+                },
+                "sequences": alignments[i]
+            })
+            i += 1
+
+    return list(targets.values())
 
 
 def load_domain_alignments(file: str) -> List[Tuple[str, str]]:
@@ -386,75 +474,237 @@ def load_domain_alignments(file: str) -> List[Tuple[str, str]]:
     return alignments
 
 
-def load_hmmscan_results(outfile: str, tabfile: str) -> List[dict]:
-    alignments = load_domain_alignments(outfile)
-    targets = {}
+def update_cdd_clans(url: str, cddmasters: str, cddid: str,
+                     fam2supfam: str, **kwargs):
+    threads = kwargs.get("threads")
+    tmpdir = kwargs.get("tmpdir")
 
-    with open(tabfile, "rt") as fh:
-        i = 0
-        for line in fh:
-            if line[0] == "#":
+    dbcode = DATABASES["cdd"]
+
+    logger.info("deleting old clans")
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute("DELETE FROM INTERPRO.CLAN WHERE DBCODE = :1", (dbcode,))
+    con.commit()
+    cur.close()
+    con.close()
+
+    clans = contrib.cdd.get_clans(cddid, fam2supfam)
+    clans_to_insert = {}
+    mem2clan = {}
+    for c in clans:
+        clans_to_insert[c.accession] = c
+        for m in c.members:
+            mem2clan[m["accession"]] = (c.accession, m["score"])
+
+    logger.info("parsing representative sequences")
+    workdir = mkdtemp(dir=tmpdir)
+    fd, files_list = mkstemp(dir=workdir)
+
+    seqfiles = {}
+    with open(fd, "wt") as fh:
+        for model_acc, sequence in iter_sequences(cddmasters):
+            if model_acc not in mem2clan or model_acc in seqfiles:
                 continue
 
-            cols = re.split(r"\s+", line.rstrip(), maxsplit=22)
+            subdir = os.path.join(workdir, model_acc[:5])
+            try:
+                os.mkdir(subdir)
+            except FileExistsError:
+                pass
 
-            name = cols[0]
+            prefix = os.path.join(subdir, model_acc)
+            seqfile = prefix + SEQ_SUFFIX
+            with open(seqfile, "wt") as fh2:
+                fh2.write(sequence)
 
-            # Pfam entries end with a mark followed by a number
-            acc = cols[1].split(".")[0]
+            fh.write(f"{seqfile}\n")
+            seqfiles[model_acc] = prefix
 
-            if acc == "-":
-                # Panther accessions are under the `target_name` column
-                acc = name
+    logger.info("building profile database")
+    fd, database = mkstemp(dir=workdir)
+    os.close(fd)
+    os.remove(database)
+    sp.run(["mk_compass_db", "-i", files_list, "-o", database],
+           stderr=sp.DEVNULL, stdout=sp.DEVNULL, check=True)
 
-            if acc in targets:
-                t = targets[acc]
-            else:
-                t = targets[acc] = {
-                    "name": name,
-                    "accession": acc,
-                    "tlen": int(cols[2]),
-                    "qlen": int(cols[5]),
+    with futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        logger.info("querying sequences")
+        fs = {}
+        for model_acc, prefix in seqfiles.items():
+            seqfile = prefix + SEQ_SUFFIX
+            outfile = prefix + OUT_SUFFIX
+            f = executor.submit(compass_vs_db, seqfile, database, outfile)
+            fs[f] = prefix
 
-                    # full sequence
-                    "evalue": float(cols[6]),
-                    "evaluestr": cols[6],
-                    "score": float(cols[7]),
-                    "bias": float(cols[8]),
+        # con = cx_Oracle.connect(url)
+        # t1, t2, t3 = prepare_insert(con)
 
-                    "domains": []
-                }
+        completed = errors = progress = 0
+        for f in futures.as_completed(fs):
+            prefix = fs[f]
+            completed += 1
 
-            t["domains"].append({
-                # this domain
+            try:
+                f.result()
+            except sp.CalledProcessError:
+                errors += 1
+                continue
 
-                # conditional E-value
-                "cevalue": float(cols[11]),
-                "cevaluestr": cols[11],
-                # independent E-value
-                "ievalue": float(cols[12]),
-                "ievaluestr": cols[12],
-                "score": float(cols[13]),
-                "bias": float(cols[14]),
+            seqfile = prefix + SEQ_SUFFIX
+            outfile = prefix + OUT_SUFFIX
 
-                "coordinates": {
-                    # target (as we scan an HMM DB)
-                    "hmm": {
-                        "start": int(cols[15]),
-                        "end": int(cols[16])
-                    },
-                    # query
-                    "ali": {
-                        "start": int(cols[17]),
-                        "end": int(cols[18])
-                    },
-                    "env": {
-                        "start": int(cols[19]),
-                        "end": int(cols[20])
-                    },
-                },
-                "sequences": alignments[i]
-            })
-            i += 1
+            clan_acc, score = mem2clan[model_acc]
+
+            pc = completed * 100 // len(fs)
+            if pc > progress:
+                progress = pc
+                logger.debug(f"{progress:>10}%")
+
+        # for t in (t1, t2, t3):
+        #     t.close()
+        #
+        # con.commit()
+        # con.close()
+
+        size = calc_dir_size(workdir)
+        shutil.rmtree(workdir)
+        if errors:
+            raise RuntimeError(f"{errors} error(s)")
+
+    logger.info(f"complete (disk usage: {size / 1024 ** 2:,.0f} MB)")
+
+
+def iter_sequences(seqfile: str):
+    with open(seqfile, "rt") as fh:
+        buffer = ""
+        accession = identifier = None
+        for line in fh:
+            if line[0] == ">":
+                if buffer and identifier:
+                    yield accession, buffer
+
+                m = re.match(r">(gnl\|CDD\|\d+)\s+(cd\d+),", line)
+                if m:
+                    identifier, accession = m.groups()
+                else:
+                    accession = identifier = None
+
+                buffer = ""
+
+            buffer += line
+
+    if buffer and identifier:
+        yield accession, buffer
+
+
+def compass_vs_db(seqfile: str, database: str, outfile: str):
+    sp.run(["compass_vs_db", "-i", seqfile, "-d", database, "-o", outfile],
+           stderr=sp.DEVNULL, stdout=sp.DEVNULL, check=True)
+
+
+def load_compass_results(outfile) -> List[dict]:
+    # p1 = re.compile(r"length\s*=\s*(\d+)")
+    p2 = re.compile(r"Evalue\s*=\s*([\d.e\-]+)")
+
+    targets = {}
+    block = 0
+    query_id = None
+    query_seq = ""
+    target_id = None
+    target_seq = ""
+    length = None
+    evalue = None
+    evalue_str = None
+    pos_start = None
+
+    with open(outfile, "rt") as fh:
+        for line in fh:
+            line = line.rstrip()
+            if line.startswith("Subject="):
+                """
+                Format:
+                Subject= cd154/cd15468.fa
+                length=413	filtered_length=413	Neff=1.000
+                Smith-Waterman score = 254	Evalue = 3.36e-16
+
+                (the path after "Subject=" might be truncated)
+                """
+                if target_id:
+                    targets[target_id] = {
+                        "id": target_id,
+                        "evalue": evalue,
+                        "evaluestr": evalue_str,
+                        "length": length,
+                        "start": pos_start,
+                        "end": pos_start + len(query_seq.replace('=', '')) - 1,
+                        "sequences": {
+                            "query": query_seq,
+                            "target": target_seq
+                        }
+                    }
+
+                query_id = None
+                query_seq = None
+                target_id = None
+                target_seq = None
+
+                line = next(fh)
+                # length = int(p1.match(line).group(1))
+
+                line = next(fh)
+                evalue_str = p2.search(line).group(1)
+                try:
+                    evalue = float(evalue_str)
+                except ValueError:
+                    evalue = 0
+
+                block = 1
+            elif line.startswith("Parameters:"):
+                # Footer: end of results
+                break
+            elif not block:
+                continue
+            elif line:
+                """
+                First block:
+                gnl|CDD|271233   1      PSFIPGPT==TPKGCTRIPSFSLSDTHWCYTHNVILSGCQDHSKSNQYLSLGVIKTNSDG
+                CONSENSUS_1      1      PSFIPGPT==TPKGCTRIPSFSLSDTHWCYTHNVILSGCQDHSKSNQYLSLGVIKTNSDG
+                                        P++IP+ T      C+R PSF++S+  + YT+ V  ++CQDH +  +Y+++GVI+ ++ G
+                CONSENSUS_2      1      PNLIPADTGLLSGECVRQPSFAISSGIYAYTYLVRKGSCQDHRSLYRYFEVGVIRDDGLG
+                gnl|CDD|271230   1      PNLIPADTGLLSGECVRQPSFAISSGIYAYTYLVRKGSCQDHRSLYRYFEVGVIRDDGLG
+
+                (following blocks do not have the start position between the ID and the sequence)
+                """
+                query = line.split()
+                next(fh)
+                next(fh)
+                next(fh)
+                target = next(fh).split()
+
+                if block == 1:
+                    query_id = query[0]
+                    pos_start = int(query[1])
+                    query_seq = query[2]
+                    target_id = target[0]
+                    target_seq = target[2]
+                else:
+                    query_seq += query[1]
+                    target_seq += target[1]
+
+                block += 1
+
+    targets[target_id] = {
+        "id": target_id,
+        "evalue": evalue,
+        "evaluestr": evalue_str,
+        "length": length,
+        "start": pos_start,
+        "end": pos_start + len(query_seq.replace('=', '')) - 1,
+        "sequences": {
+            "query": query_seq,
+            "target": target_seq
+        }
+    }
 
     return list(targets.values())
