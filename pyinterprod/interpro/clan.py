@@ -31,7 +31,7 @@ def calc_dir_size(dirpath: str) -> int:
     size = 0
     for root, dirs, files in os.walk(dirpath):
         for f in files:
-            size += os.path.join(root, f)
+            size += os.path.getsize(os.path.join(root, f))
 
     return size
 
