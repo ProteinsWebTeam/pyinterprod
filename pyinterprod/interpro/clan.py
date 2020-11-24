@@ -231,6 +231,7 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
             try:
                 f.result()
             except sp.CalledProcessError:
+                logger.error(f"{model_acc}")
                 errors += 1
                 continue
 
@@ -548,6 +549,7 @@ def update_cdd_clans(url: str, cddmasters: str, cddid: str,
             try:
                 f.result()
             except sp.CalledProcessError:
+                logger.error(f"{model_acc}")
                 errors += 1
                 continue
 
