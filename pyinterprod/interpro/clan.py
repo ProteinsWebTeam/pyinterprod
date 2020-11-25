@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-import gzip
+import json
 import os
 import re
 import shutil
@@ -67,8 +67,8 @@ def create_tables(url: str):
         (
             CLAN_AC VARCHAR2(25) NOT NULL,
             MEMBER_AC VARCHAR2(25) NOT NULL,
+            LEN NUMBER NOT NULL,
             SCORE FLOAT NOT NULL,
-            SEQ BLOB NOT NULL,
             CONSTRAINT PK_CLAN_MEMBER
               PRIMARY KEY (CLAN_AC, MEMBER_AC),
             CONSTRAINT UQ_CLAN_MEMBER$MEMBER_AC
@@ -92,10 +92,9 @@ def create_tables(url: str):
             QUERY_AC VARCHAR2(25) NOT NULL,
             TARGET_AC VARCHAR2(25) NOT NULL,
             EVALUE FLOAT NOT NULL,
-            POS_FROM NUMBER NOT NULL,
-            POS_TO NUMBER NOT NULL,
+            DOMAINS CLOB NOT NULL,
             CONSTRAINT PK_CLAN_MATCH
-                PRIMARY KEY (QUERY_AC, TARGET_AC, POS_FROM, POS_TO),
+                PRIMARY KEY (QUERY_AC, TARGET_AC),
             CONSTRAINT FK_CLAN_MATCH
               FOREIGN KEY (QUERY_AC)
               REFERENCES INTERPRO.CLAN_MEMBER (MEMBER_AC)
@@ -124,11 +123,11 @@ def prepare_insert(con):
 
     sql = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
     t2 = Table(con, sql, depends_on=t1)
-    t2.cur.setinputsizes(25, 25, None, cx_Oracle.DB_TYPE_BLOB)
 
-    sql = "INSERT INTO INTERPRO.CLAN_MATCH VALUES (:1, :2, :3, :4, :5)"
+    sql = "INSERT INTO INTERPRO.CLAN_MATCH VALUES (:1, :2, :3, :4)"
     t3 = Table(con, sql, depends_on=t2)
-    t3.cur.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE, None, None)
+    t3.cur.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE,
+                         cx_Oracle.DB_TYPE_CLOB)
 
     return t1, t2, t3
 
@@ -253,25 +252,25 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
                     clan.description
                 ))
 
-            t2.insert((
-                clan_acc,
-                model_acc,
-                score,
-                gzip.compress(sequence.encode("utf-8"))
-            ))
+            t2.insert((clan_acc, model_acc, len(sequence), score))
 
             for target in load_hmmscan_results(outfile, domfile):
                 if target["accession"] == model_acc:
                     continue
 
+                domains = []
                 for dom in target["domains"]:
-                    t3.insert((
-                        model_acc,
-                        target["accession"],
-                        target["evalue"],
+                    domains.append((
                         dom["coordinates"]["ali"]["start"],
                         dom["coordinates"]["ali"]["end"]
                     ))
+
+                t3.insert((
+                    model_acc,
+                    target["accession"],
+                    target["evalue"],
+                    json.dumps(domains)
+                ))
 
             pc = completed * 100 // len(fs)
             if pc > progress:
