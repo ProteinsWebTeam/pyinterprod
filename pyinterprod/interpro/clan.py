@@ -228,9 +228,7 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
             model_acc = fs[f]
             completed += 1
 
-            try:
-                f.result()
-            except sp.CalledProcessError:
+            if not f.result():
                 logger.error(f"{model_acc}")
                 errors += 1
                 continue
@@ -322,10 +320,20 @@ def hmmemit(hmmdb: str, seqfile: str):
            stderr=sp.DEVNULL, stdout=sp.DEVNULL, check=True)
 
 
-def hmmscan(hmmdb: str, seqfile: str, domfile: str, outfile: str):
+def hmmscan(hmmdb: str, seqfile: str, domfile: str, outfile: str) -> bool:
     args = ["hmmscan", "-o", outfile, "--domtblout", domfile, hmmdb, seqfile]
-    sp.run(args=args,
-           stderr=sp.DEVNULL, stdout=sp.DEVNULL, check=True)
+    process = sp.run(args=args, stderr=sp.DEVNULL, stdout=sp.DEVNULL)
+
+    if process.returncode == 0:
+        return True
+
+    for f in (domfile, outfile):
+        try:
+            os.remove(f)
+        except FileNotFoundError:
+            pass
+
+    return False
 
 
 def load_hmmscan_results(outfile: str, tabfile: str) -> List[dict]:
@@ -546,9 +554,7 @@ def update_cdd_clans(url: str, cddmasters: str, cddid: str,
             prefix = fs[f]
             completed += 1
 
-            try:
-                f.result()
-            except sp.CalledProcessError:
+            if not f.result():
                 logger.error(f"{model_acc}")
                 errors += 1
                 continue
@@ -601,8 +607,18 @@ def iter_sequences(seqfile: str):
 
 
 def compass_vs_db(seqfile: str, database: str, outfile: str):
-    sp.run(["compass_vs_db", "-i", seqfile, "-d", database, "-o", outfile],
-           stderr=sp.DEVNULL, stdout=sp.DEVNULL, check=True)
+    args = ["compass_vs_db", "-i", seqfile, "-d", database, "-o", outfile]
+    process = sp.run(args=args, stderr=sp.DEVNULL, stdout=sp.DEVNULL)
+
+    if process.returncode == 0:
+        return True
+
+    try:
+        os.remove(outfile)
+    except FileNotFoundError:
+        pass
+
+    return False
 
 
 def load_compass_results(outfile) -> List[dict]:
