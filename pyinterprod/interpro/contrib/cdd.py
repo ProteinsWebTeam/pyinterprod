@@ -70,7 +70,11 @@ def get_clans(cddid: str, fam2supfam: str) -> List[Clan]:
 
     with open(fam2supfam, "rt") as fh:
         for line in fh:
-            fields = line.rstrip().split("\t")
+            line = line.rstrip()
+            if not line:
+                continue
+
+            fields = line.split("\t")
             family_acc = fields[0]
             supfam_acc = fields[2]
 
