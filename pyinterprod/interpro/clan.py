@@ -320,7 +320,8 @@ def hmmemit(hmmdb: str, seqfile: str):
 
 
 def hmmscan(hmmdb: str, seqfile: str, domfile: str, outfile: str) -> bool:
-    args = ["hmmscan", "-o", outfile, "--domtblout", domfile, hmmdb, seqfile]
+    args = ["hmmscan", "-o", outfile, "--domtblout", domfile, "--cpu", "1",
+            hmmdb, seqfile]
     process = sp.run(args=args, stderr=sp.DEVNULL, stdout=sp.DEVNULL)
 
     if process.returncode == 0:
