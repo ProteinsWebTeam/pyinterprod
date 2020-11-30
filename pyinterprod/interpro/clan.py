@@ -284,11 +284,10 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
         con.close()
 
         size = calc_dir_size(workdir)
+        logger.info(f"disk usage: {size / 1024 ** 2:,.0f} MB")
         shutil.rmtree(workdir)
         if errors:
             raise RuntimeError(f"{errors} error(s)")
-
-    logger.info(f"complete (disk usage: {size / 1024 ** 2:,.0f} MB)")
 
 
 def iter_models(hmmdb: str):
@@ -576,11 +575,11 @@ def update_cdd_clans(url: str, cddmasters: str, cddid: str,
         # con.close()
 
         size = calc_dir_size(workdir)
+        logger.info(f"disk usage: {size / 1024 ** 2:,.0f} MB")
         shutil.rmtree(workdir)
         if errors:
             raise RuntimeError(f"{errors} error(s)")
 
-    logger.info(f"complete (disk usage: {size / 1024 ** 2:,.0f} MB)")
 
 
 def iter_sequences(seqfile: str):
