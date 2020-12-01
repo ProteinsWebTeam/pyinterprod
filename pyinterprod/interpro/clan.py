@@ -509,9 +509,10 @@ def update_cdd_clans(url: str, cddmasters: str, cddid: str,
     workdir = mkdtemp(dir=tmpdir)
     fd, files_list = mkstemp(dir=workdir)
 
+    id2acc = {}
     seqfiles = {}
     with open(fd, "wt") as fh:
-        for model_acc, sequence in iter_sequences(cddmasters):
+        for model_id, model_acc, sequence in iter_sequences(cddmasters):
             if model_acc not in mem2clan or model_acc in seqfiles:
                 continue
 
@@ -528,6 +529,7 @@ def update_cdd_clans(url: str, cddmasters: str, cddid: str,
 
             fh.write(f"{seqfile}\n")
             seqfiles[model_acc] = prefix
+            id2acc[model_id] = model_acc
 
     logger.info("building profile database")
     fd, database = mkstemp(dir=workdir)
@@ -543,14 +545,14 @@ def update_cdd_clans(url: str, cddmasters: str, cddid: str,
             seqfile = prefix + SEQ_SUFFIX
             outfile = prefix + OUT_SUFFIX
             f = executor.submit(compass_vs_db, seqfile, database, outfile)
-            fs[f] = prefix
+            fs[f] = (model_acc, prefix)
 
-        # con = cx_Oracle.connect(url)
-        # t1, t2, t3 = prepare_insert(con)
+        con = cx_Oracle.connect(url)
+        t1, t2, t3 = prepare_insert(con)
 
         completed = errors = progress = 0
         for f in futures.as_completed(fs):
-            prefix = fs[f]
+            model_acc, prefix = fs[f]
             completed += 1
 
             if not f.result():
@@ -558,28 +560,52 @@ def update_cdd_clans(url: str, cddmasters: str, cddid: str,
                 errors += 1
                 continue
 
-            seqfile = prefix + SEQ_SUFFIX
-            outfile = prefix + OUT_SUFFIX
-
             clan_acc, score = mem2clan[model_acc]
+            sequence = load_sequence(prefix + SEQ_SUFFIX)
+
+            try:
+                clan = clans_to_insert.pop(clan_acc)
+            except KeyError:
+                # Clan already inserted
+                pass
+            else:
+                t1.insert((
+                    clan.accession,
+                    dbcode,
+                    clan.name,
+                    clan.description
+                ))
+
+            t2.insert((clan_acc, model_acc, len(sequence), score))
+
+            for target in load_compass_results(prefix + OUT_SUFFIX):
+                target_acc = id2acc[target["id"]]
+                if target_acc == model_acc:
+                    continue
+
+                t3.insert((
+                    model_acc,
+                    target_acc,
+                    target["evalue"],
+                    json.dumps([(target["start"], target["end"])])
+                ))
 
             pc = completed * 100 // len(fs)
             if pc > progress:
                 progress = pc
                 logger.debug(f"{progress:>10}%")
 
-        # for t in (t1, t2, t3):
-        #     t.close()
-        #
-        # con.commit()
-        # con.close()
+        for t in (t1, t2, t3):
+            t.close()
+
+        con.commit()
+        con.close()
 
         size = calc_dir_size(workdir)
         logger.info(f"disk usage: {size / 1024 ** 2:,.0f} MB")
         shutil.rmtree(workdir)
         if errors:
             raise RuntimeError(f"{errors} error(s)")
-
 
 
 def iter_sequences(seqfile: str):
@@ -589,7 +615,7 @@ def iter_sequences(seqfile: str):
         for line in fh:
             if line[0] == ">":
                 if buffer and identifier:
-                    yield accession, buffer
+                    yield identifier, accession, buffer
 
                 m = re.match(r">(gnl\|CDD\|\d+)\s+(cd\d+),", line)
                 if m:
@@ -602,7 +628,7 @@ def iter_sequences(seqfile: str):
             buffer += line
 
     if buffer and identifier:
-        yield accession, buffer
+        yield identifier, accession, buffer
 
 
 def compass_vs_db(seqfile: str, database: str, outfile: str):
