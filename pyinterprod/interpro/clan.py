@@ -220,8 +220,11 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
             fs[f] = model_acc
 
         con = cx_Oracle.connect(url)
-        t1, t2, t3 = prepare_insert(con)
+        cur = con.cursor()
 
+        clan_sql = "INSERT INTO INTERPRO.CLAN VALUES (:1, :2, :3, :4)"
+        memb_sql = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
+        mtch_sql = "INSERT INTO INTERPRO.CLAN_MATCH VALUES (:1, :2, :3, :4)"
         completed = errors = progress = 0
         for f in futures.as_completed(fs):
             model_acc = fs[f]
@@ -245,15 +248,12 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
                 # Clan already inserted
                 pass
             else:
-                t1.insert((
-                    clan.accession,
-                    dbcode,
-                    clan.name,
-                    clan.description
-                ))
+                cur.execute(clan_sql, (clan.accession, dbcode, clan.name,
+                                       clan.description))
 
-            t2.insert((clan_acc, model_acc, len(sequence), score))
+            cur.execute(memb_sql, (clan_acc, model_acc, len(sequence), score))
 
+            matches = []
             for target in load_hmmscan_results(outfile, domfile):
                 if target["accession"] == model_acc:
                     continue
@@ -265,22 +265,23 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
                         dom["coordinates"]["ali"]["end"]
                     ))
 
-                t3.insert((
+                matches.append((
                     model_acc,
                     target["accession"],
                     target["evalue"],
                     json.dumps(domains)
                 ))
 
+            if matches:
+                cur.executemany(mtch_sql, matches)
+
             pc = completed * 100 // len(fs)
             if pc > progress:
                 progress = pc
                 logger.debug(f"{progress:>10}%")
 
-        for t in (t1, t2, t3):
-            t.close()
-
         con.commit()
+        cur.close()
         con.close()
 
         size = calc_dir_size(workdir)
