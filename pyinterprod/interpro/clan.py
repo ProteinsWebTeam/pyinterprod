@@ -221,6 +221,9 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
 
         con = cx_Oracle.connect(url)
         cur = con.cursor()
+        cur2 = con.cursor()
+        cur2.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE,
+                           cx_Oracle.DB_TYPE_CLOB)
 
         clan_sql = "INSERT INTO INTERPRO.CLAN VALUES (:1, :2, :3, :4)"
         memb_sql = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
@@ -273,7 +276,7 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
                 ))
 
             if matches:
-                cur.executemany(mtch_sql, matches)
+                cur2.executemany(mtch_sql, matches)
 
             pc = completed * 100 // len(fs)
             if pc > progress:
@@ -282,6 +285,7 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
 
         con.commit()
         cur.close()
+        cur2.close()
         con.close()
 
         size = calc_dir_size(workdir)
