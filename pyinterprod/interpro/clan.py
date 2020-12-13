@@ -12,7 +12,7 @@ from typing import List, Tuple
 import cx_Oracle
 
 from pyinterprod import logger
-from pyinterprod.utils import oracle, Table
+from pyinterprod.utils import oracle
 from . import contrib
 
 HMM_SUFFIX = ".hmm"
@@ -117,21 +117,6 @@ def load_sequence(seqfile: str) -> str:
     return seq
 
 
-def prepare_insert(con):
-    sql = "INSERT INTO INTERPRO.CLAN VALUES (:1,:2,:3,:4)"
-    t1 = Table(con, sql)
-
-    sql = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
-    t2 = Table(con, sql, depends_on=t1)
-
-    sql = "INSERT INTO INTERPRO.CLAN_MATCH VALUES (:1, :2, :3, :4)"
-    t3 = Table(con, sql, depends_on=t2)
-    t3.cur.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE,
-                         cx_Oracle.DB_TYPE_CLOB)
-
-    return t1, t2, t3
-
-
 def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
     clan_source = kwargs.get("source")
     threads = kwargs.get("threads")
@@ -221,6 +206,9 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
 
         con = cx_Oracle.connect(url)
         cur = con.cursor()
+        cur2 = con.cursor()
+        cur2.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE,
+                           cx_Oracle.DB_TYPE_CLOB)
 
         clan_sql = "INSERT INTO INTERPRO.CLAN VALUES (:1, :2, :3, :4)"
         memb_sql = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
@@ -273,7 +261,7 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
                 ))
 
             if matches:
-                cur.executemany(mtch_sql, matches)
+                cur2.executemany(mtch_sql, matches)
 
             pc = completed * 100 // len(fs)
             if pc > progress:
@@ -282,6 +270,7 @@ def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
 
         con.commit()
         cur.close()
+        cur2.close()
         con.close()
 
         size = calc_dir_size(workdir)
@@ -549,8 +538,14 @@ def update_cdd_clans(url: str, cddmasters: str, cddid: str,
             fs[f] = (model_acc, prefix)
 
         con = cx_Oracle.connect(url)
-        t1, t2, t3 = prepare_insert(con)
+        cur = con.cursor()
+        cur2 = con.cursor()
+        cur2.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE,
+                           cx_Oracle.DB_TYPE_CLOB)
 
+        clan_sql = "INSERT INTO INTERPRO.CLAN VALUES (:1, :2, :3, :4)"
+        memb_sql = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
+        mtch_sql = "INSERT INTO INTERPRO.CLAN_MATCH VALUES (:1, :2, :3, :4)"
         completed = errors = progress = 0
         for f in futures.as_completed(fs):
             model_acc, prefix = fs[f]
@@ -570,36 +565,35 @@ def update_cdd_clans(url: str, cddmasters: str, cddid: str,
                 # Clan already inserted
                 pass
             else:
-                t1.insert((
-                    clan.accession,
-                    dbcode,
-                    clan.name,
-                    clan.description
-                ))
+                cur.execute(clan_sql, (clan.accession, dbcode, clan.name,
+                                      clan.description))
 
-            t2.insert((clan_acc, model_acc, len(sequence), score))
+            cur.execute(memb_sql, (clan_acc, model_acc, len(sequence), score))
 
+            matches = []
             for target in load_compass_results(prefix + OUT_SUFFIX):
                 target_acc = id2acc[target["id"]]
                 if target_acc == model_acc:
                     continue
 
-                t3.insert((
+                matches.append((
                     model_acc,
                     target_acc,
                     target["evalue"],
                     json.dumps([(target["start"], target["end"])])
                 ))
 
+            if matches:
+                cur2.executemany(mtch_sql, matches)
+
             pc = completed * 100 // len(fs)
             if pc > progress:
                 progress = pc
                 logger.debug(f"{progress:>10}%")
 
-        for t in (t1, t2, t3):
-            t.close()
-
         con.commit()
+        cur.close()
+        cur2.close()
         con.close()
 
         size = calc_dir_size(workdir)
