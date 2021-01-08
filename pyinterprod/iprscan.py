@@ -693,7 +693,12 @@ def import_sites(url: str, **kwargs):
                 names = ', '.join(e[0].name for e in analyses)
                 logger.info(f"{names}: ready")
 
-                args = (url, table, "SITE", ready, force_import)
+                """
+                The SITE table has sub-partitions, so we do not just exchange
+                the staging table with the partition. The staging table must
+                be partitioned first.
+                """
+                args = (url, table, "SITE", ready, force_import, False)
                 f = executor.submit(update_analyses, *args)
 
                 running.append((f, table, names))
