@@ -9,7 +9,6 @@ import cx_Oracle
 from cx_Oracle import Cursor
 
 from pyinterprod import logger
-from pyinterprod.interpro.database import Database
 from pyinterprod.utils import oracle
 
 PREFIX = "MV_"
@@ -342,22 +341,24 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
         row = cur.fetchone()
         part2id[partition] = (row[0] if row else None, analysis_id)
 
-        cur.execute(
-            f"""
-            SELECT MAX(UPI)
-            FROM IPRSCAN.{partitioned_table} PARTITION ({partition})
-            WHERE ANALYSIS_ID = :1
-            """, (analysis_id,)
-        )
-        row = cur.fetchone()
-        upi = row[0] if row else None
+        if not force_import:
+            # Check if the data is already up-to-date
+            cur.execute(
+                f"""
+                SELECT MAX(UPI)
+                FROM IPRSCAN.{partitioned_table} PARTITION ({partition})
+                WHERE ANALYSIS_ID = :1
+                """, (analysis_id,)
+            )
+            row = cur.fetchone()
+            upi = row[0] if row else None
 
-        if upi and upi >= max_upi:
-            # Data in `partitioned_table` >= UniParc: no need to refresh data
-            logger.debug(f"{partition} ({analysis_id}): up-to-date")
-            up_to_date += 1
-        else:
-            logger.debug(f"{partition} ({analysis_id}): outdated")
+            if upi and upi >= max_upi:
+                # Data in `partitioned_table` >= UniParc: no need to refresh
+                logger.debug(f"{partition} ({analysis_id}): up-to-date")
+                up_to_date += 1
+            else:
+                logger.debug(f"{partition} ({analysis_id}): outdated")
 
     if up_to_date == len(analyses):
         cur.close()
@@ -378,9 +379,11 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
         row = cur.fetchone()
         upi_loc = row[0] if row else None
 
-    if not upi_loc or upi_loc < max_upi or force_import:
+    if force_import or not upi_loc or upi_loc < max_upi:
         """
-        No matches for the highest UPI: need to import table from ISPRO
+        Either we force data import or there are no matches 
+          for the highest UPI: import table from ISPRO
+          
         All analyses for this table are imported
             (i.e. previous versions are not ignored)
         """
@@ -569,7 +572,7 @@ def import_matches(url: str, **kwargs):
             con.close()
 
             if pending or running:
-                time.sleep(600)
+                time.sleep(60)
             else:
                 break
 
@@ -680,7 +683,7 @@ def import_sites(url: str, **kwargs):
             con.close()
 
             if pending or running:
-                time.sleep(600)
+                time.sleep(60)
             else:
                 break
 
