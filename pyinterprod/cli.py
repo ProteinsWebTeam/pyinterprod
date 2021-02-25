@@ -182,7 +182,9 @@ def run_member_db_update():
         else:
             update[name.lower()] = file
 
-    databases = interpro.database.get_databases(ora_interpro_url, list(update))
+    databases = interpro.database.get_databases(url=ora_interpro_url,
+                                                names=list(update),
+                                                expects_new=True)
     updates = [(db, update[key]) for key, db in databases.items()]
     databases = list(databases.values())
 

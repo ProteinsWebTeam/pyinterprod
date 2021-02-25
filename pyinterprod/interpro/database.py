@@ -17,7 +17,7 @@ class Database:
     has_site_matches: bool
 
 
-def get_databases(url: str, names: Sequence[str]) -> Dict[str, Database]:
+def get_databases(url: str, names: Sequence[str], expects_new: bool = False) -> Dict[str, Database]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -40,7 +40,7 @@ def get_databases(url: str, names: Sequence[str]) -> Dict[str, Database]:
     )
 
     databases = {}
-    outdated = []
+    not_ready = []
     for row in cur:
         db = Database(identifier=row[0],
                       name=row[2],
@@ -51,8 +51,8 @@ def get_databases(url: str, names: Sequence[str]) -> Dict[str, Database]:
 
         databases[row[1]] = db
 
-        if db.analysis_id == row[6]:
-            outdated.append(db.name)
+        if expects_new and db.analysis_id == row[6]:
+            not_ready.append(db.name)
 
     cur.close()
     con.close()
@@ -60,10 +60,9 @@ def get_databases(url: str, names: Sequence[str]) -> Dict[str, Database]:
     unknown = set(names) - set(databases.keys())
     if unknown:
         raise RuntimeError(f"Unknown databases: {', '.join(unknown)}")
-    elif outdated:
-        raise RuntimeError(f"Database with outdated versions: "
-                           f"{', '.join(outdated)}.\n"
-                           f"Run ipr-pre-memdb to update version numbers.")
+    elif not_ready:
+        raise RuntimeError(f"Database(s) not ready: "
+                           f"{', '.join(not_ready)}")
 
     return databases
 
