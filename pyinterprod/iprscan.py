@@ -387,24 +387,40 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
         logger.debug(f"importing {remote_table}@ISPRO -> {local_table}")
         import_from_ispro(cur, remote_table, local_table)
 
-    # Create temporary table for the partition exchange
-    tmp_table = f"IPRSCAN.{remote_table}"
-    oracle.drop_table(cur, tmp_table, purge=True)
-    cur.execute(
-        f"""
-        CREATE TABLE {tmp_table} NOLOGGING
-        AS
-        SELECT *
-        FROM IPRSCAN.{partitioned_table}
-        WHERE 1 = 0
-        """
-    )
-
     for analysis_id, partition, columns in analyses:
         logger.debug(f"{partition} ({analysis_id}): updating")
 
-        # Truncate table (if several analyses for one table, e.g. SignalP)
-        oracle.truncate_table(cur, tmp_table, reuse_storage=True)
+        # Create temporary table for the partition exchange
+        tmp_table = f"IPRSCAN.{remote_table}"
+        oracle.drop_table(cur, tmp_table, purge=True)
+
+        sql = f"CREATE TABLE {tmp_table}"
+        subparts = oracle.get_subpartitions(cur, schema="IPRSCAN",
+                                            table=partitioned_table,
+                                            partition=partition)
+
+        if subparts:
+            """
+            The target table is sub-partitioned: the staging table needs
+            to be partitioned
+            """
+            col = subparts[0]["column"]
+            subparts = [
+                f"PARTITION {s['name']} VALUES ({s['value']})"
+                for s in subparts
+            ]
+
+            sql += f" PARTITION BY LIST ({col}) ({', '.join(subparts)})"
+
+        cur.execute(
+            f"""{sql}
+            NOLOGGING
+            AS
+            SELECT *
+            FROM IPRSCAN.{partitioned_table}
+            WHERE 1 = 0
+            """
+        )
 
         # Insert only one analysis ID
         cur.execute(
@@ -457,8 +473,8 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
             """
         )
 
-    # Drop temporary table
-    oracle.drop_table(cur, tmp_table, purge=True)
+        # Drop temporary table
+        oracle.drop_table(cur, tmp_table, purge=True)
 
     cur.close()
     con.close()
