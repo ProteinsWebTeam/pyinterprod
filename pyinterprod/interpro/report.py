@@ -211,7 +211,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
     cur.execute(
         """
-        SELECT ENTRY_AC, ENTRY_TYPE, NAME, CHECKED 
+        SELECT ENTRY_AC, NAME, ENTRY_TYPE, CHECKED 
         FROM INTERPRO.ENTRY
         """
     )
