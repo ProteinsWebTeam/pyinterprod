@@ -747,18 +747,20 @@ def track_sig_changes(cur: cx_Oracle.Cursor, databases: Sequence[Database],
 
 def _get_entries_proteins_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:
     """
-    Return the number of protein matched by each InterPro entry
+    Return the number of protein matched by each InterPro entry.
+    Only complete sequences are considered.
 
     :param cur: Oracle cursor object
     :return: dictionary
     """
     cur.execute(
         """
-        SELECT E.ENTRY_AC, COUNT(DISTINCT M.PROTEIN_AC)
-        FROM INTERPRO.ENTRY2METHOD E
-        INNER JOIN INTERPRO.MATCH M
-          ON E.METHOD_AC = M.METHOD_AC
-        GROUP BY E.ENTRY_AC
+        SELECT EM.ENTRY_AC, COUNT(DISTINCT P.PROTEIN_AC)
+        FROM INTERPRO.PROTEIN P
+        INNER JOIN INTERPRO.MATCH M ON P.PROTEIN_AC = M.PROTEIN_AC
+        INNER JOIN INTERPRO.ENTRY2METHOD EM ON EM.METHOD_AC = M.METHOD_AC
+        WHERE P.FRAGMENT = 'N'
+        GROUP BY EM.ENTRY_AC
         """
     )
     return dict(cur.fetchall())
