@@ -53,6 +53,9 @@ def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
             if db.identifier == 'f':
                 # FunFams
                 signatures = contrib.cath.parse_functional_families(src)
+            elif db.identifier == 'H':
+                # Pfam
+                signatures = contrib.pfam.get_signatures(src)
             elif db.identifier == 'J':
                 # CDD
                 signatures = contrib.cdd.parse_signatures(src)
