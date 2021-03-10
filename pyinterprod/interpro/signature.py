@@ -50,7 +50,10 @@ def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
     with Table(con, sql) as table:
         errors = 0
         for db, src in update:
-            if db.identifier == 'J':
+            if db.identifier == 'f':
+                # FunFams
+                signatures = contrib.cath.parse_functional_families(src)
+            elif db.identifier == 'J':
                 # CDD
                 signatures = contrib.cdd.parse_signatures(src)
             elif db.identifier == 'Q':
@@ -59,6 +62,9 @@ def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
             elif db.identifier == 'V':
                 # PANTHER
                 signatures = contrib.panther.parse_signatures(src)
+            elif db.identifier == 'X':
+                # CATH-Gene3D
+                signatures = contrib.cath.parse_superfamilies(src)
             else:
                 logger.error(f"{db.name}: unsupported member database")
                 errors += 1
