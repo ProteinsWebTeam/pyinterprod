@@ -61,8 +61,8 @@ def get_databases(url: str, names: Sequence[str], expects_new: bool = False) -> 
     if unknown:
         raise RuntimeError(f"Unknown databases: {', '.join(unknown)}")
     elif not_ready:
-        raise RuntimeError(f"Database(s) not ready: "
-                           f"{', '.join(not_ready)}")
+        raise RuntimeError(f"Database(s) outdated in IPRSCAN2DBCODE: "
+                           f"{', '.join(not_ready)}. Run ipr-pre-memdb.")
 
     return databases
 
