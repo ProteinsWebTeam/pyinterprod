@@ -74,7 +74,9 @@ def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
                 continue
 
             for m in signatures:
-                if len(m.abstract) <= 4000:
+                if m.abstract is None:
+                    abstract = abstract_long = None
+                elif len(m.abstract) <= 4000:
                     abstract = m.abstract
                     abstract_long = None
                 else:
