@@ -537,11 +537,11 @@ def import_matches(url: str, **kwargs):
                     f.result()
                 except Exception as exc:
                     for name in names:
-                        logger.info(f"{name:<35} failed ({exc})")
+                        logger.info(f"{name:<35} import failed ({exc})")
                     failed += 1
                 else:
                     for name in names:
-                        logger.info(f"{name:<35} done")
+                        logger.info(f"{name:<35} import done")
 
             running = tmp
 
@@ -559,7 +559,7 @@ def import_matches(url: str, **kwargs):
 
                 names = [e[0].name for e in analyses]
                 for name in names:
-                    logger.info(f"{name:<35} ready")
+                    logger.info(f"{name:<35} ready for import")
 
                 args = (url, table, "MV_IPRSCAN", ready, force_import)
                 f = executor.submit(update_analyses, *args)
@@ -650,10 +650,12 @@ def import_sites(url: str, **kwargs):
                 try:
                     f.result()
                 except Exception as exc:
-                    logger.error(f"{names}: failed ({exc})")
+                    for name in names:
+                        logger.info(f"{name:<35} import failed ({exc})")
                     failed += 1
                 else:
-                    logger.info(f"{names}: done")
+                    for name in names:
+                        logger.info(f"{name:<35} import done")
 
             running = tmp
 
@@ -669,8 +671,9 @@ def import_sites(url: str, **kwargs):
                     tmp[table] = analyses
                     continue
 
-                names = ', '.join(e[0].name for e in analyses)
-                logger.info(f"{names}: ready")
+                names = [e[0].name for e in analyses]
+                for name in names:
+                    logger.info(f"{name:<35} ready for import")
 
                 args = (url, table, "SITE", ready, force_import)
                 f = executor.submit(update_analyses, *args)
