@@ -344,11 +344,13 @@ def delete_obsoletes(url: str, databases: Sequence[Database], **kwargs):
         if table == "MATCH":
             for db in databases:
                 partition = MATCH_PARTITIONS[db.identifier]
-                tasks.append((table, partition, column))
+                logger.info(f"truncating {table} ({partition})")
+                ora.truncate_partition(cur, table, partition)
         elif table == "SITE_MATCH":
             for db in databases:
                 partition = SITE_PARTITIONS[db.identifier]
-                tasks.append((table, partition, column))
+                logger.info(f"truncating {table} ({partition})")
+                ora.truncate_partition(cur, table, partition)
         else:
             tasks.append((table, None, column))
 

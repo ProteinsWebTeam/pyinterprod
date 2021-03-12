@@ -200,6 +200,10 @@ def truncate_table(cur: Cursor, name: str, reuse_storage: bool = False):
     cur.execute(sql)
 
 
+def truncate_partition(cur: Cursor, table: str, partition: str):
+    cur.execute(f"ALTER TABLE {table} TRUNCATE PARTITION {partition}")
+
+
 def catch_temp_error(fn: Callable, args: Sequence, max_attempts: int = 3):
     num_attempts = 0
     while True:
