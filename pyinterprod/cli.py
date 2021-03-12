@@ -188,6 +188,7 @@ def run_member_db_update():
     updates = [(db, update[key]) for key, db in databases.items()]
     databases = list(databases.values())
 
+    os.makedirs(data_dir, exist_ok=True)
     tasks = [
         Task(
             fn=interpro.signature.add_staging,
