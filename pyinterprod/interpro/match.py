@@ -766,16 +766,26 @@ def _get_entries_proteins_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:
     return dict(cur.fetchall())
 
 
-def _get_sig_proteins_count(cur: cx_Oracle.Cursor, partition: str) -> dict:
+def _get_sig_proteins_count(cur: cx_Oracle.Cursor, partition: str) -> Dict[str, int]:
+    """
+    Return the number of protein matches by each member database signature.
+    Only complete sequences are considered
+
+    :param cur: Oracle cursor object
+    :param partition: table partition for the member database
+    :return: dictionary
+    """
     cur.execute(
         f"""
-        SELECT METHOD_AC, COUNT(DISTINCT PROTEIN_AC)
-        FROM INTERPRO.MATCH PARTITION ({partition})
-        GROUP BY METHOD_AC 
+        SELECT M.METHOD_AC, COUNT(DISTINCT P.PROTEIN_AC)
+        FROM INTERPRO.MATCH PARTITION ({partition}) M 
+        INNER JOIN INTERPRO.PROTEIN P
+            ON P.PROTEIN_AC = M.PROTEIN_AC
+        WHERE P.FRAGMENT = 'N'
+        GROUP BY M.METHOD_AC
         """
     )
-    counts = dict(cur.fetchall())
-    return counts
+    return dict(cur.fetchall())
 
 
 # def _get_databases_matches_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:
