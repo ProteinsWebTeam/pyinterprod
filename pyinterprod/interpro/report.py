@@ -13,12 +13,15 @@ import cx_Oracle
 from pyinterprod.utils import email
 from pyinterprod.pronto.signature import get_swissprot_descriptions
 from .database import Database
-from .match import track_entry_changes, track_sig_changes
-from .signature import FILE_DB_SIG_DIFF, FILE_SIG_DESCR
+from .match import track_entry_changes, get_sig_proteins_count
+from .signature import FILE_DB_SIG, FILE_SIG_DESCR
 
 
 def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                           data_dir: str, pronto_link: str, emails: dict):
+    # Get Swiss-Prot descriptions (after the update)
+    all_sig2descs = get_swissprot_descriptions(pg_url)
+
     pronto_link = pronto_link.rstrip('/')
 
     tmpdir = mkdtemp()
@@ -32,147 +35,145 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
     cur = con.cursor()
     cur.execute(
         """
-        SELECT EM.METHOD_AC, E.ENTRY_AC, E.ENTRY_TYPE, E.NAME
-        FROM INTERPRO.ENTRY2METHOD EM
+        SELECT M.METHOD_AC, E.ENTRY_AC, E.ENTRY_TYPE, E.NAME, M.DBCODE
+        FROM INTERPRO.METHOD M
+        INNER JOIN INTERPRO.ENTRY2METHOD EM ON M.METHOD_AC = EM.METHOD_AC
         INNER JOIN INTERPRO.ENTRY E ON EM.ENTRY_AC = E.ENTRY_AC
         """
     )
-    integrated = {}
-    for sig_acc, entry_acc, entry_type, entry_name in cur:
-        integrated[sig_acc] = (entry_acc, entry_type, entry_name)
+    integrated = {row[0]: row[1:] for row in cur}
 
-    cur.execute("SELECT METHOD_AC, DBCODE FROM INTERPRO.METHOD")
-    acc2dbid = dict(cur.fetchall())
+    with open(os.path.join(data_dir, FILE_DB_SIG), "rb") as fh:
+        databases = pickle.load(fh)
 
-    # Protein counts changes
-    for db_id, db_changes in track_sig_changes(cur, dbs, data_dir).items():
+    for db_id, data in databases.items():
         dst = id2dst[db_id]
+
+        # Protein count changes
+        old_counts = data["proteins"]
+        new_counts = get_sig_proteins_count(cur, db_id)
 
         with open(os.path.join(dst, "protein_counts.tsv"), "wt") as fh:
             fh.write("Signature\tLink\tEntry\tPrevious count"
                      "\tNew count\tChange (%)\n")
 
-            for sig_acc, old_cnt, new_cnt, change in db_changes:
+            for acc in sorted(old_counts):  # sort by accession
+                old_cnt = old_counts[acc]
+                new_cnt = new_counts.get(acc, 0)
+
                 try:
-                    entry_acc, entry_type, entry_name = integrated[sig_acc]
+                    entry_acc, entry_type, entry_name, _ = integrated[acc]
                 except KeyError:
                     continue
 
-                link = f"{pronto_link}/signature/{sig_acc}/"
-                fh.write(f"{sig_acc}\t{link}\t{entry_acc}\t{old_cnt}"
-                         f"\t{new_cnt}\t{change * 100:.0f}\n")
+                change = (new_cnt - old_cnt) / old_cnt
+                if new_cnt == 0 or abs(change) >= 0.1:
+                    link = f"{pronto_link}/signature/{acc}/"
+                    fh.write(f"{acc}\t{link}\t{entry_acc}\t{old_cnt}"
+                             f"\t{new_cnt}\t{change * 100:.0f}\n")
 
-    cur.close()
-    con.close()
+        # Annotation changes
+        with open(os.path.join(dst, "name_changes.tsv"), "wt") as fh:
+            fh.write("Signature\tEntry\tLink\tPrevious name\tNew name\n")
 
-    # Annotation changes
-    with open(os.path.join(data_dir, FILE_DB_SIG_DIFF), "rb") as fh:
-        for db_id, db_changes in pickle.load(fh).items():
-            dst = id2dst[db_id]
+            changes = data["changes"]["names"]
+            for acc, old_val, new_val in sorted(changes):
+                try:
+                    entry_acc = integrated[acc][0]
+                except KeyError:
+                    continue
 
-            with open(os.path.join(dst, "name_changes.tsv"), "wt") as fh2:
-                fh2.write("Signature\tEntry\tLink\tPrevious name\tNew name\n")
+                link = f"{pronto_link}/entry/{entry_acc}/"
+                fh.write(f"{acc}\t{entry_acc}\t{link}\t"
+                         f"{old_val or 'N/A'}\t{new_val or 'N/A'}\n")
 
-                changes = db_changes["changes"]["names"]
-                for sig_acc, old_val, new_val in sorted(changes):
-                    try:
-                        entry_acc = integrated[sig_acc][0]
-                    except KeyError:
-                        continue
+        with open(os.path.join(dst, "description_changes.tsv"), "wt") as fh:
+            fh.write("Signature\tEntry\tLink\tPrevious description"
+                     "\tNew description\n")
 
-                    link = f"{pronto_link}/entry/{entry_acc}/"
-                    fh2.write(f"{sig_acc}\t{entry_acc}\t{link}\t"
-                              f"{old_val or 'N/A'}\t{new_val or 'N/A'}\n")
+            changes = data["changes"]["descriptions"]
+            for acc, old_val, new_val in sorted(changes):
+                try:
+                    entry_acc = integrated[acc][0]
+                except KeyError:
+                    continue
 
-            with open(os.path.join(dst, "description_changes.tsv"), "wt") as fh2:
-                fh2.write("Signature\tEntry\tLink\tPrevious description"
-                          "\tNew description\n")
+                link = f"{pronto_link}/entry/{entry_acc}/"
+                fh.write(f"{acc}\t{entry_acc}\t{link}\t"
+                         f"{old_val or 'N/A'}\t{new_val or 'N/A'}\n")
 
-                changes = db_changes["changes"]["descriptions"]
-                for sig_acc, old_val, new_val in sorted(changes):
-                    try:
-                        entry_acc = integrated[sig_acc][0]
-                    except KeyError:
-                        continue
+        with open(os.path.join(dst, "type_changes.tsv"), "wt") as fh:
+            fh.write("Signature\tEntry\tLink\tPrevious type\tNew type\n")
 
-                    link = f"{pronto_link}/entry/{entry_acc}/"
-                    fh2.write(f"{sig_acc}\t{entry_acc}\t{link}\t"
-                              f"{old_val or 'N/A'}\t{new_val or 'N/A'}\n")
+            changes = data["changes"]["types"]
+            for acc, old_val, new_val in sorted(changes):
+                try:
+                    entry_acc = integrated[acc][0]
+                except KeyError:
+                    continue
 
-            with open(os.path.join(dst, "type_changes.tsv"), "wt") as fh2:
-                fh2.write("Signature\tEntry\tLink\tPrevious type\tNew type\n")
+                link = f"{pronto_link}/entry/{entry_acc}/"
+                fh.write(f"{acc}\t{entry_acc}\t{link}\t{old_val}"
+                         f"\t{new_val}\n")
 
-                changes = db_changes["changes"]["types"]
-                for sig_acc, old_val, new_val in sorted(changes):
-                    try:
-                        entry_acc = integrated[sig_acc][0]
-                    except KeyError:
-                        continue
+        # Swiss-Prot descriptions
+        old_sigs = data["descriptions"]
+        new_sigs = {
+            acc: all_sig2descs[acc]
+            for acc in all_sig2descs
+            if acc in integrated and integrated[acc][3] == db_id
+        }
+        changes = []
 
-                    link = f"{pronto_link}/entry/{entry_acc}/"
-                    fh2.write(f"{sig_acc}\t{entry_acc}\t{link}\t{old_val}"
-                              f"\t{new_val}\n")
-
-    # Swiss-Prot DE
-    new_sigs = get_swissprot_descriptions(pg_url)
-    changes = []
-    with open(os.path.join(data_dir, FILE_SIG_DESCR), "rb") as fh:
-        for sig_acc, old_descrs in pickle.load(fh).items():
-            new_descrs = new_sigs.pop(sig_acc, set())
+        for acc, old_descrs in old_sigs.items():
+            new_descrs = new_sigs.pop(acc, set())
 
             try:
-                entry_acc, entry_type, entry_name = integrated[sig_acc]
-                db_id = acc2dbid[sig_acc]
+                entry_acc, entry_type, entry_name, _ = integrated[acc]
             except KeyError:
-                # signature is unintegrated, or deleted
                 continue
 
             if old_descrs != new_descrs:
-                changes.append((sig_acc, db_id, entry_acc, entry_name,
-                                entry_type, old_descrs - new_descrs,
-                                new_descrs - old_descrs))
+                changes.append((
+                    acc, entry_acc, entry_name, entry_type,
+                    old_descrs - new_descrs, new_descrs - old_descrs
+                ))
 
-    for sig_acc, new_descrs in new_sigs.items():
-        try:
-            entry_acc, entry_type, entry_name = integrated[sig_acc]
-            db_id = acc2dbid[sig_acc]
-        except KeyError:
-            # signature is unintegrated, or deleted
-            continue
+        for acc, new_descrs in new_sigs.items():
+            entry_acc, entry_type, entry_name, _ = integrated[acc]
+            changes.append((
+                acc, entry_acc, entry_name, entry_type,
+                [], new_descrs
+            ))
 
-        changes.append((sig_acc, db_id, entry_acc, entry_name,
-                        entry_type, [], new_descrs))
+        changes.sort(key=lambda x: x[0])  # sort by accession
+        files = {}  # file objects
+        for acc, e_acc, e_name, e_type, lost, gained in changes:
+            if e_type == 'F':
+                label = "families"
+            elif e_type == 'D':
+                label = "domains"
+            else:
+                label = "others"
 
-    files_descr = {}
-    changes.sort(key=lambda x: x[0])
-    for sig_acc, db_id, e_acc, e_name, e_type, lost, gained in changes:
-        try:
-            dst = id2dst[db_id]
-        except KeyError:
-            continue  # signature not from updated member database
+            file = os.path.join(dst, f"swiss_de_{label}.tsv")
+            try:
+                fh = files[file]
+            except KeyError:
+                fh = files[file] = open(file, "wt")
+                fh.write(f"Signature\tLink\tEntry\tName\tType\t# Lost"
+                         f"\t# Gained\tLost\tGained\n")
 
-        if e_type == 'F':
-            label = "families"
-        elif e_type == 'D':
-            label = "domains"
-        else:
-            label = "others"
+            link = f"{pronto_link}/signatures/{acc}/descriptions/?reviewed"
+            fh.write(f"{acc}\t{link}\t{e_acc}\t{e_name}\t{e_type}\t{len(lost)}"
+                     f"\t{len(gained)}\t{' | '.join(sorted(lost))}"
+                     f"\t{' | '.join(sorted(gained))}\n")
 
-        file = os.path.join(dst, f"swiss_de_{label}.tsv")
-        try:
-            fh = files_descr[file]
-        except KeyError:
-            fh = files_descr[file] = open(file, "wt")
-            fh.write(f"Signature\tLink\tEntry\tName\tType\t# Lost"
-                     f"\t# Gained\tLost\tGained\n")
+        for fh in files.values():
+            fh.close()
 
-        link = f"{pronto_link}/signatures/{sig_acc}/descriptions/?reviewed"
-        fh.write(f"{sig_acc}\t{link}\t{e_acc}\t{e_name}\t{e_type}\t{len(lost)}"
-                 f"\t{len(gained)}\t{' | '.join(sorted(lost))}"
-                 f"\t{' | '.join(sorted(gained))}\n")
-
-    for fh in files_descr.values():
-        fh.close()
+    cur.close()
+    con.close()
 
     date = datetime.today().strftime("%Y%m%d")
     filename = os.path.join(data_dir, f"member_database_update_{date}.zip")

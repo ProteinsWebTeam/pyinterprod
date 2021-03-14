@@ -198,7 +198,7 @@ def run_member_db_update():
         ),
         Task(
             fn=interpro.signature.track_signature_changes,
-            args=(ora_interpro_url, databases, data_dir),
+            args=(ora_interpro_url, pg_url, databases, data_dir),
             name="track-changes",
             scheduler=dict(queue=lsf_queue),
             requires=["load-signatures"]
@@ -218,13 +218,6 @@ def run_member_db_update():
             requires=["delete-obsoletes"]
         ),
         Task(
-            fn=interpro.match.export_sig_prot_counts,
-            args=(ora_interpro_url, databases, data_dir),
-            name="pre-update-matches",
-            scheduler=dict(queue=lsf_queue),
-            requires=["update-signatures"]
-        ),
-        Task(
             fn=iprscan.import_matches,
             args=(ora_iprscan_url,),
             kwargs=dict(databases=databases, force_import=True, threads=8),
@@ -236,13 +229,7 @@ def run_member_db_update():
             args=(ora_interpro_url, databases),
             name="update-matches",
             scheduler=dict(queue=lsf_queue),
-            requires=["import-matches", "pre-update-matches"]
-        ),
-        Task(
-            fn=interpro.signature.export_swissprot_descriptions,
-            args=(pg_url, data_dir),
-            name="swissprot-de",
-            scheduler=dict(queue=lsf_queue),
+            requires=["import-matches"]
         ),
     ]
 
@@ -275,8 +262,8 @@ def run_member_db_update():
             t.requires = {f"pronto-{r}" for r in t.requires}
         else:
             # Task without dependency:
-            # add some so it's submitted at the end of the protein update
-            t.requires = {"swissprot-de", "update-matches"}
+            # add one so it's submitted at the end of the protein update
+            t.requires = {"update-matches"}
 
         tasks.append(t)
         after_pronto.add(t.name)

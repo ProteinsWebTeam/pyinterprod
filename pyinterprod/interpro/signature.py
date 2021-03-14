@@ -12,10 +12,10 @@ from pyinterprod.pronto.signature import get_swissprot_descriptions
 from pyinterprod.utils import Table, oracle as ora
 from . import contrib
 from .database import Database
-from .match import MATCH_PARTITIONS, SITE_PARTITIONS
+from .match import MATCH_PARTITIONS, SITE_PARTITIONS, get_sig_proteins_count
 
 
-FILE_DB_SIG_DIFF = "signatures.anno.changes.pickle"
+FILE_DB_SIG = "signatures.update.pickle"
 FILE_SIG_DESCR = "signatures.descr.pickle"
 
 
@@ -115,38 +115,15 @@ def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
     con.close()
 
 
-def track_signature_changes(url: str, databases: Sequence[Database], data_dir: str):
-    con = cx_Oracle.connect(url)
+def track_signature_changes(ora_url: str, pg_url: str,
+                            databases: Sequence[Database], data_dir: str):
+    # First, get the SwissProt descriptions (before the update)
+    all_sig2descs = get_swissprot_descriptions(pg_url)
+
+    con = cx_Oracle.connect(ora_url)
     cur = con.cursor()
     results = {}
     for db in databases:
-        # cur.execute(
-        #     """
-        #     SELECT COUNT(*)
-        #     FROM INTERPRO.MATCH
-        #     WHERE DBCODE = :1
-        #     """, (dbcode,)
-        # )
-        # num_matches, = cur.fetchone()
-        #
-        # cur.execute(
-        #     """
-        #     SELECT COUNT(*)
-        #     FROM INTERPRO.MATCH
-        #     WHERE DBCODE = :dbcode
-        #     AND METHOD_AC IN (
-        #         SELECT METHOD_AC
-        #         FROM INTERPRO.METHOD
-        #         WHERE DBCODE = :dbcode
-        #         MINUS
-        #         SELECT METHOD_AC
-        #         FROM INTERPRO.METHOD_STG
-        #         WHERE DBCODE = :dbcode
-        #     )
-        #     """, dbcode=dbcode
-        # )
-        # num_deleted_matches, = cur.fetchone()
-
         cur.execute(
             """
             SELECT M.METHOD_AC, M.NAME, M.DESCRIPTION, M.SIG_TYPE, EM.ENTRY_AC
@@ -199,6 +176,11 @@ def track_signature_changes(url: str, databases: Sequence[Database], data_dir: s
                 "names": name_changes,
                 "descriptions": descr_changes,
                 "types": type_changes
+            },
+            "proteins": get_sig_proteins_count(cur, db.identifier),
+            "descriptions": {
+                acc: all_sig2descs[acc]
+                for acc in all_sig2descs if acc in old_signatures
             }
         }
 
@@ -209,7 +191,7 @@ def track_signature_changes(url: str, databases: Sequence[Database], data_dir: s
     cur.close()
     con.close()
 
-    with open(os.path.join(data_dir, FILE_DB_SIG_DIFF), "wb") as fh:
+    with open(os.path.join(data_dir, FILE_DB_SIG), "wb") as fh:
         pickle.dump(results, fh)
 
 

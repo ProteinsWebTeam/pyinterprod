@@ -11,7 +11,6 @@ from pyinterprod.utils import oracle
 from .database import Database
 
 
-FILE_SIG_PROT_COUNTS = "signatures.prot.counts.pickle"
 FILE_ENTRY_PROT_COUNTS = "entries.prot.counts.pickle"
 MATCH_PARTITIONS = {
     'B': 'MATCH_DBCODE_B',  # SFLD
@@ -32,23 +31,6 @@ SITE_PARTITIONS = {
     'B': 'SFLD',
     'J': 'CDD',
 }
-
-
-def export_sig_prot_counts(url: str, databases: Sequence[Database],
-                           data_dir: str):
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-
-    counts = {}
-    for db in databases:
-        partition = MATCH_PARTITIONS[db.identifier]
-        counts[db.identifier] = _get_sig_proteins_count(cur, partition)
-
-    cur.close()
-    con.close()
-
-    with open(os.path.join(data_dir, FILE_SIG_PROT_COUNTS), "wb") as fh:
-        pickle.dump(counts, fh)
 
 
 def update_database_matches(url: str, databases: Sequence[Database]):
@@ -723,7 +705,7 @@ def track_sig_changes(cur: cx_Oracle.Cursor, databases: Sequence[Database],
     new_counts = {}
     for db in databases:
         partition = MATCH_PARTITIONS[db.identifier]
-        new_counts[db.identifier] = _get_sig_proteins_count(cur, partition)
+        new_counts[db.identifier] = get_sig_proteins_count(cur, partition)
 
     changes = {}
     for db_id, old_sigs in old_counts.items():
@@ -766,15 +748,16 @@ def _get_entries_proteins_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:
     return dict(cur.fetchall())
 
 
-def _get_sig_proteins_count(cur: cx_Oracle.Cursor, partition: str) -> Dict[str, int]:
+def get_sig_proteins_count(cur: cx_Oracle.Cursor, dbid: str) -> Dict[str, int]:
     """
     Return the number of protein matches by each member database signature.
     Only complete sequences are considered
 
     :param cur: Oracle cursor object
-    :param partition: table partition for the member database
+    :param dbid: member database identifier
     :return: dictionary
     """
+    partition = MATCH_PARTITIONS[dbid]
     cur.execute(
         f"""
         SELECT M.METHOD_AC, COUNT(DISTINCT P.PROTEIN_AC)
