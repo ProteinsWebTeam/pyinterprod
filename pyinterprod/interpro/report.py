@@ -81,8 +81,8 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                         continue
 
                     link = f"{pronto_link}/entry/{entry_acc}/"
-                    fh2.write(f"{sig_acc}\t{entry_acc}\t{link}\t{old_val}"
-                              f"\t{new_val}\n")
+                    fh2.write(f"{sig_acc}\t{entry_acc}\t{link}\t"
+                              f"{old_val or 'N/A'}\t{new_val or 'N/A'}\n")
 
             with open(os.path.join(dst, "description_changes.tsv"), "wt") as fh2:
                 fh2.write("Signature\tEntry\tLink\tPrevious description"
@@ -96,8 +96,8 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                         continue
 
                     link = f"{pronto_link}/entry/{entry_acc}/"
-                    fh2.write(f"{sig_acc}\t{entry_acc}\t{link}\t{old_val}"
-                              f"\t{new_val}\n")
+                    fh2.write(f"{sig_acc}\t{entry_acc}\t{link}\t"
+                              f"{old_val or 'N/A'}\t{new_val or 'N/A'}\n")
 
             with open(os.path.join(dst, "type_changes.tsv"), "wt") as fh2:
                 fh2.write("Signature\tEntry\tLink\tPrevious type\tNew type\n")
