@@ -229,7 +229,7 @@ def run_member_db_update():
             args=(ora_interpro_url, databases),
             name="update-matches",
             scheduler=dict(queue=lsf_queue),
-            requires=["import-matches"]
+            requires=["import-matches", "update-signatures"]
         ),
     ]
 
