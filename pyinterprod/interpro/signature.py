@@ -85,7 +85,7 @@ def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
 
                 table.insert((
                     m.accession,
-                    m.name,
+                    m.name or m.accession,
                     db.identifier,
                     m.description,
                     m.sig_type,
