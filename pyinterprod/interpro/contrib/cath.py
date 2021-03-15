@@ -18,7 +18,7 @@ def parse_superfamilies(filepath: str) -> List[Method]:
     :return:
     """
     signatures = []
-    reg = re.compile(r"^(\d\.\d+\.\d+\.\d+)\s+([a-zA-Z0-9]+)\s+:(.+)?$")
+    reg = re.compile(r"^(\d\.\d+\.\d+\.\d+)\s+([a-zA-Z0-9]+)\s+:(\S+)?$")
     with open(filepath, "rt") as fh:
         for line in fh:
             if line[0] == '#':
