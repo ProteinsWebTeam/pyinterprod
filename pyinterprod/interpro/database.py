@@ -105,30 +105,37 @@ def update_database(url: str, name: str, version: str, date: str,
         """, (current_id,)
     )
     rows = cur.fetchall()
+    cur.close()
+    con.close()
 
-    if len(rows) == 1:
-        active_id = rows[0][0]
-    elif len(rows) > 1:
-        cur.close()
-        con.close()
-        actives = '\n'.join([f"  {_id}: {name}" for _id, name in rows])
-        raise ValueError(f"more than one active analysis:\n"
-                         f"{actives}")
-    else:
-        cur.close()
-        con.close()
+    if not rows:
         raise ValueError("Missing analysis")
+
+    print("Analyses found:")
+    actives = set()
+    for active_id, active_name in rows:
+        print(f"{active_id}: {active_name}")
+        actives.add(str(active_id))
+
+    if len(actives) == 1:
+        active_id = actives.pop()
+    else:
+        active_id = None
+        while active_id not in actives:
+            active_id = input("Enter analysis ID to use: ")
+
+        active_id = int(active_id)
 
     print(f"Updating {name}")
     print(f"  Currently: {current_version} ({current_date:%Y-%m-%d})")
     print(f"  Update to: {version} ({date})")
 
     if confirm and input("Do you want to continue? [y/N] ").lower() != 'y':
-        cur.close()
-        con.close()
         print("Abort.")
         return
 
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     try:
         cur.execute(
             """
