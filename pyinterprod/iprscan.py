@@ -202,23 +202,29 @@ class Analysis:
         return row and row[0] >= max_upi
 
 
-def get_analyses(cur: Cursor, mode: str, **kwargs) -> List[Analysis]:
+def get_analyses(cur: Cursor, **kwargs) -> List[Analysis]:
     ids = kwargs.get("ids", [])
-    stable = kwargs.get("stable", True)
+    match_type = kwargs.get("type", "matches")
+    status = kwargs.get("status", "production")
 
-    if mode not in ("matches", "sites"):
-        raise ValueError("supported modes: matches, sites")
+    if match_type not in ("matches", "sites"):
+        raise ValueError("supported values for type: matches, sites")
+    elif status not in ("production", "active", "all"):
+        raise ValueError("supported values for status: production, active, all")
 
     if ids:
         params = [':' + str(i+1) for i in range(len(ids))]
-        sql_filter = f"A.ANALYSIS_ID IN ({','.join(params)})"
+        sql_filter = f"WHERE A.ANALYSIS_ID IN ({','.join(params)})"
         params = tuple(ids)
-    elif stable:
-        sql_filter = ("A.ANALYSIS_ID IN (SELECT IPRSCAN_SIG_LIB_REL_ID "
+    elif status == "production":
+        sql_filter = ("WHERE  A.ANALYSIS_ID IN (SELECT IPRSCAN_SIG_LIB_REL_ID "
                       "FROM INTERPRO.IPRSCAN2DBCODE)")
         params = tuple()
+    elif status == "active":
+        sql_filter = "WHERE A.ACTIVE = 1"
+        params = tuple()
     else:
-        sql_filter = "A.ACTIVE = 1"
+        sql_filter = ""
         params = tuple()
 
     cur.execute(
@@ -244,7 +250,7 @@ def get_analyses(cur: Cursor, mode: str, **kwargs) -> List[Analysis]:
             ) P 
                 ON A.ANALYSIS_MATCH_TABLE_ID = P.ANALYSIS_MATCH_TABLE_ID 
                 AND P.CNT = 1
-          WHERE {sql_filter}
+          {sql_filter}
           ORDER BY A.ANALYSIS_NAME
         """, params
     )
@@ -259,7 +265,7 @@ def get_analyses(cur: Cursor, mode: str, **kwargs) -> List[Analysis]:
         Others:
             - PERSISTED=2 when matches are ready
         """
-        if mode == "matches":
+        if match_type == "matches":
             persisted = 1 if a_type in ("cdd", "sfld") else 2
             table = match_table.upper()
         elif site_table:
@@ -495,7 +501,7 @@ def import_matches(url: str, **kwargs):
     cur = con.cursor()
 
     pending = {}
-    for analysis in get_analyses(cur, mode="matches"):
+    for analysis in get_analyses(cur, type="matches"):
         if databases and analysis.id not in databases:
             continue
 
@@ -609,7 +615,7 @@ def import_sites(url: str, **kwargs):
     cur = con.cursor()
 
     pending = {}
-    for analysis in get_analyses(cur, mode="sites"):
+    for analysis in get_analyses(cur, type="sites"):
         if databases and analysis.id not in databases:
             continue
 
