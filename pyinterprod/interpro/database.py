@@ -93,7 +93,7 @@ def update_database(url: str, name: str, version: str, date: str,
     # Find the 'active' analysis in ISPRO
     cur.execute(
         """
-        SELECT ANALYSIS_ID
+        SELECT ANALYSIS_ID, ANALYSIS_NAME
         FROM IPM_ANALYSIS@ISPRO
         WHERE ANALYSIS_MATCH_TABLE_ID = (
             SELECT ANALYSIS_MATCH_TABLE_ID
@@ -101,10 +101,23 @@ def update_database(url: str, name: str, version: str, date: str,
             WHERE ANALYSIS_ID = :1
         )
         AND ACTIVE = 1
+        ORDER BY ANALYSIS_ID
         """, (current_id,)
     )
-    row = cur.fetchone()
-    active_id, = row
+    rows = cur.fetchall()
+
+    if len(rows) == 1:
+        active_id = rows[0][0]
+    elif len(rows) > 1:
+        cur.close()
+        con.close()
+        actives = '\n'.join([f"  {_id}: {name}" for _id, name in rows])
+        raise ValueError(f"more than one active analysis:\n"
+                         f"{actives}")
+    else:
+        cur.close()
+        con.close()
+        raise ValueError("Missing analysis")
 
     print(f"Updating {name}")
     print(f"  Currently: {current_version} ({current_date:%Y-%m-%d})")
