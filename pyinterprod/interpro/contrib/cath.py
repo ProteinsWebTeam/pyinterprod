@@ -3,7 +3,7 @@
 import re
 from typing import List
 
-from .model import Method
+from .common import Method
 
 _PREFIX = "G3DSA:"
 _TYPE_SUPFAM = 'H'

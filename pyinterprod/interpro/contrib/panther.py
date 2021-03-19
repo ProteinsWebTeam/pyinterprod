@@ -5,7 +5,7 @@ from typing import List
 
 import cx_Oracle
 
-from .model import Clan, Method
+from .common import Clan, Method
 
 _TYPE = 'F'
 

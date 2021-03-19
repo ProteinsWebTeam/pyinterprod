@@ -3,7 +3,7 @@
 import re
 from typing import List
 
-from .model import Clan
+from .common import Clan
 
 
 def get_clans(file: str) -> List[Clan]:

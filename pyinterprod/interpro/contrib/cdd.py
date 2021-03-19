@@ -2,10 +2,9 @@
 
 import gzip
 import re
-import xml.etree.ElementTree as ET
 from typing import List
 
-from .model import Clan, Method
+from .common import Clan, Method, parse_xml
 
 _TYPE = 'D'
 
@@ -19,21 +18,7 @@ def parse_signatures(filepath: str) -> List[Method]:
     :param filepath:
     :return:
     """
-    signatures = []
-
-    tree = ET.parse(filepath)
-    root = tree.getroot()
-    namespace = "{http://www.ebi.ac.uk/schema/interpro}"
-    for sig in root.findall(f"{namespace}signature"):
-        attrib = sig.attrib
-        abstract = sig.find(f"{namespace}abstract").text.strip()
-        signatures.append(Method(accession=attrib["ac"],
-                                 sig_type=_TYPE,
-                                 name=attrib["name"].replace(',', '_'),
-                                 description=attrib["desc"],
-                                 abstract=abstract))
-
-    return signatures
+    return parse_xml(filepath, _TYPE)
 
 
 def get_clans(cddid: str, fam2supfam: str) -> List[Clan]:

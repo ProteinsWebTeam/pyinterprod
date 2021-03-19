@@ -6,7 +6,7 @@ from typing import List
 import MySQLdb
 import MySQLdb.cursors
 
-from .model import Clan, Method
+from .common import Clan, Method
 from pyinterprod import logger
 from pyinterprod.utils.pg import url2dict
 

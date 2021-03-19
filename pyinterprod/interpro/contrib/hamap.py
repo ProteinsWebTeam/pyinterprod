@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from typing import List
 
-from .model import Method
+from .common import Method
 
 _TYPE = 'F'
 
