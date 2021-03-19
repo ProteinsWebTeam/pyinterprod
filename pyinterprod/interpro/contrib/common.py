@@ -41,7 +41,12 @@ def parse_xml(filepath: str, sig_type: str) -> List[Method]:
     signatures = []
     for sig in root.findall(f"{namespace}signature"):
         attrib = sig.attrib
-        abstract = sig.find(f"{namespace}abstract").text.strip()
+
+        try:
+            abstract = sig.find(f"{namespace}abstract").text.strip()
+        except AttributeError:
+            abstract = None
+
         signatures.append(Method(accession=attrib["ac"],
                                  sig_type=sig_type,
                                  name=attrib["name"].replace(',', '_'),
