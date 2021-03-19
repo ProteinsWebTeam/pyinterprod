@@ -136,8 +136,9 @@ def run_member_db_update():
     parser.add_argument("config",
                         metavar="config.ini",
                         help="configuration file")
-    parser.add_argument("-d", "--databases", required=True, nargs='+',
-                        help="database(s) to update (format: NAME:FILE)")
+    parser.add_argument("databases",
+                        metavar="databases.txt",
+                        help="data source file")
     parser.add_argument("-t", "--tasks",
                         nargs="*",
                         default=None,
@@ -156,7 +157,11 @@ def run_member_db_update():
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
-        parser.error(f"cannot open '{args.config}': no such file or directory")
+        parser.error(f"cannot open '{args.config}': "
+                     f"no such file or directory")
+    elif not os.path.isfile(args.databases):
+        parser.error(f"cannot open '{args.databases}': "
+                     f"no such file or directory")
 
     config = ConfigParser()
     config.read(args.config)
@@ -174,13 +179,19 @@ def run_member_db_update():
     workflow_dir = config["misc"]["workflow_dir"]
 
     update = {}
-    for db in args.databases:
-        try:
-            name, file = db.split(':', 1)
-        except ValueError:
-            parser.error(f"invalid format: {db}")
-        else:
-            update[name.lower()] = file
+    with open(args.databases, "rt") as fh:
+        for i, line in enumerate(fh):
+            line = line.strip()
+            if not line:
+                continue
+
+            try:
+                name, source = line.split()
+            except ValueError:
+                parser.error(f"{args.databases}: "
+                             f"invalid format (line {i+1}): {line}")
+            else:
+                update[name.lower()] = source
 
     databases = interpro.database.get_databases(url=ora_interpro_url,
                                                 names=list(update),
