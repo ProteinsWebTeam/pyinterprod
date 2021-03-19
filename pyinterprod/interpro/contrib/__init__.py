@@ -1,3 +1,3 @@
 # -*- coding: utf-8 -*-
 
-from . import cath, cdd, hamap, panther, pfam, pirsf
+from . import cath, cdd, hamap, panther, pfam, pirsf, prosite

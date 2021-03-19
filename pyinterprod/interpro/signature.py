@@ -59,6 +59,12 @@ def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
             elif db.identifier == 'J':
                 # CDD
                 signatures = contrib.cdd.parse_signatures(src)
+            elif db.identifier == 'M':
+                # PROSITE profiles
+                signatures = contrib.prosite.parse_profiles(src)
+            elif db.identifier == 'P':
+                # PROSITE patterns
+                signatures = contrib.prosite.parse_patterns(src)
             elif db.identifier == 'Q':
                 # HAMAP
                 signatures = contrib.hamap.parse_signatures(src)
