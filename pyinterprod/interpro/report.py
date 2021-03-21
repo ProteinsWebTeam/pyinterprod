@@ -49,6 +49,14 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
     for db_id, data in databases.items():
         dst = id2dst[db_id]
 
+        # Deleted signatures
+        with open(os.path.join(dst, "deleted.tsv"), "wt") as fh:
+            fh.write("Signature\tName\tDescription\tEntry\n")
+            for acc, name, descr, entry_acc in sorted(data["deleted"]):
+                if entry_acc:
+                    # Only report signatures that were integrated
+                    fh.write(f"{acc}\t{name}\t{descr}\t{entry_acc}\n")
+
         # Protein count changes
         old_counts = data["proteins"]
         new_counts = get_sig_proteins_count(cur, db_id)
@@ -62,7 +70,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                 new_cnt = new_counts.get(acc, 0)
 
                 try:
-                    entry_acc, entry_type, entry_name, _ = integrated[acc]
+                    entry_acc = integrated[acc][0]
                 except KeyError:
                     continue
 
