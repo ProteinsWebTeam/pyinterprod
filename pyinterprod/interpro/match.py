@@ -697,36 +697,6 @@ def track_entry_changes(cur: cx_Oracle.Cursor, data_dir: str) -> list:
     return changes
 
 
-def track_sig_changes(cur: cx_Oracle.Cursor, databases: Sequence[Database],
-                      data_dir: str) -> Dict[str, list]:
-    with open(os.path.join(data_dir, FILE_SIG_PROT_COUNTS), "rb") as fh:
-        old_counts = pickle.load(fh)
-
-    new_counts = {}
-    for db in databases:
-        partition = MATCH_PARTITIONS[db.identifier]
-        new_counts[db.identifier] = get_sig_proteins_count(cur, partition)
-
-    changes = {}
-    for db_id, old_sigs in old_counts.items():
-        new_sigs = new_counts[db_id]
-        changes[db_id] = []
-
-        for sig_acc, old_cnt in old_sigs.items():
-            try:
-                new_cnt = new_sigs[sig_acc]
-            except KeyError:
-                continue  # deleted signature
-            else:
-                change = (new_cnt - old_cnt) / old_cnt
-                if abs(change) >= 0.1:
-                    changes[db_id].append((sig_acc, old_cnt, new_cnt, change))
-
-        changes[db_id].sort(key=lambda x: x[0])  # sort by accession
-
-    return changes
-
-
 def _get_entries_proteins_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:
     """
     Return the number of protein matched by each InterPro entry.
