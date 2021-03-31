@@ -718,7 +718,45 @@ def _get_entries_proteins_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:
     return dict(cur.fetchall())
 
 
-def get_sig_proteins_count(cur: cx_Oracle.Cursor, dbid: str) -> Dict[str, int]:
+def _get_taxon2superkingdom(cur: cx_Oracle.Cursor) -> Dict[int, str]:
+    # Load all taxa
+    cur.execute(
+        """
+        SELECT TAX_ID, SCIENTIFIC_NAME, RANK, PARENT_ID
+        FROM INTERPRO.ETAXI
+        """
+    )
+    taxa = {}
+    for tax_id, name, rank, parent_id in cur:
+        if tax_id in (1, 131567):
+            """
+            Skip root and meta-superkingdom (131567) which contains:
+                * Bacteria (2)
+                * Archaea (2157)
+                * Eukaryota (2759)
+            """
+            continue
+        elif parent_id in (1, 131567):
+            rank = "superkingdom"
+            parent_id = None
+
+        taxa[tax_id] = (name, rank, parent_id)
+
+    # For each taxon, find its root (i.e. superkingdom)
+    taxon2superkingdom = {}
+    for tax_id in taxa:
+        name, rank, parent_id = taxa[tax_id]
+
+        while parent_id is not None:
+            name, rank, parent_id = taxa[parent_id]
+            if rank == "superkingdom":
+                taxon2superkingdom[tax_id] = name
+                break
+
+    return taxon2superkingdom
+
+
+def get_sig_proteins_count(cur: cx_Oracle.Cursor, dbid: str) -> Dict[str, Dict[str, int]]:
     """
     Return the number of protein matches by each member database signature.
     Only complete sequences are considered
@@ -728,17 +766,31 @@ def get_sig_proteins_count(cur: cx_Oracle.Cursor, dbid: str) -> Dict[str, int]:
     :return: dictionary
     """
     partition = MATCH_PARTITIONS[dbid]
+    taxon2superkingdom = _get_taxon2superkingdom(cur)
     cur.execute(
         f"""
-        SELECT M.METHOD_AC, COUNT(DISTINCT P.PROTEIN_AC)
+        SELECT M.METHOD_AC, P.TAX_ID, COUNT(DISTINCT P.PROTEIN_AC)
         FROM INTERPRO.MATCH PARTITION ({partition}) M 
         INNER JOIN INTERPRO.PROTEIN P
             ON P.PROTEIN_AC = M.PROTEIN_AC
         WHERE P.FRAGMENT = 'N'
-        GROUP BY M.METHOD_AC
+        GROUP BY M.METHOD_AC, P.TAX_ID
         """
     )
-    return dict(cur.fetchall())
+    counts = {}
+    for sig_acc, tax_id, n_proteins in cur:
+        try:
+            sig = counts[sig_acc]
+        except KeyError:
+            sig = counts[sig_acc] = {}
+
+        superkingdom = taxon2superkingdom[tax_id]
+        try:
+            sig[superkingdom] += n_proteins
+        except KeyError:
+            sig[superkingdom] = n_proteins
+
+    return counts
 
 
 # def _get_databases_matches_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:

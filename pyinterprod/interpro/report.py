@@ -57,29 +57,6 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                     # Only report signatures that were integrated
                     fh.write(f"{acc}\t{name}\t{descr}\t{entry_acc}\n")
 
-        # Protein count changes
-        old_counts = data["proteins"]
-        new_counts = get_sig_proteins_count(cur, db_id)
-
-        with open(os.path.join(dst, "protein_counts.tsv"), "wt") as fh:
-            fh.write("Signature\tLink\tEntry\tPrevious count"
-                     "\tNew count\tChange (%)\n")
-
-            for acc in sorted(old_counts):  # sort by accession
-                old_cnt = old_counts[acc]
-                new_cnt = new_counts.get(acc, 0)
-
-                try:
-                    entry_acc = integrated[acc][0]
-                except KeyError:
-                    continue
-
-                change = (new_cnt - old_cnt) / old_cnt
-                if new_cnt == 0 or abs(change) >= 0.1:
-                    link = f"{pronto_link}/signature/{acc}/"
-                    fh.write(f"{acc}\t{link}\t{entry_acc}\t{old_cnt}"
-                             f"\t{new_cnt}\t{change * 100:.0f}\n")
-
         # Annotation changes
         with open(os.path.join(dst, "name_changes.tsv"), "wt") as fh:
             fh.write("Signature\tEntry\tLink\tPrevious name\tNew name\n")
@@ -131,8 +108,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
             for acc in all_sig2descs
             if acc in integrated and integrated[acc][3] == db_id
         }
-        changes = []
-
+        changes = {}
         for acc, old_descrs in old_sigs.items():
             new_descrs = new_sigs.pop(acc, set())
 
@@ -142,43 +118,141 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                 continue
 
             if old_descrs != new_descrs:
-                changes.append((
-                    acc, entry_acc, entry_name, entry_type,
-                    old_descrs - new_descrs, new_descrs - old_descrs
-                ))
+                changes[acc] = (entry_acc, entry_name, entry_type,
+                                old_descrs - new_descrs,
+                                new_descrs - old_descrs)
 
         for acc, new_descrs in new_sigs.items():
             entry_acc, entry_type, entry_name, _ = integrated[acc]
-            changes.append((
-                acc, entry_acc, entry_name, entry_type,
-                [], new_descrs
-            ))
+            changes[acc] = (entry_acc, entry_name, entry_type, [], new_descrs)
 
-        changes.sort(key=lambda x: x[0])  # sort by accession
         files = {}  # file objects
-        for acc, e_acc, e_name, e_type, lost, gained in changes:
-            if e_type == 'F':
-                label = "families"
-            elif e_type == 'D':
-                label = "domains"
+        for acc in sorted(changes):
+            entry_acc, entry_name, entry_type, lost, gained = changes[acc]
+            if entry_type == 'F':
+                entry_type = "families"
+            elif entry_type == 'D':
+                entry_type = "domains"
             else:
-                label = "others"
+                entry_type = "others"
 
-            file = os.path.join(dst, f"swiss_de_{label}.tsv")
+            file = os.path.join(dst, f"swiss_de_{entry_type}.tsv")
             try:
                 fh = files[file]
             except KeyError:
                 fh = files[file] = open(file, "wt")
-                fh.write(f"Signature\tLink\tEntry\tName\tType\t# Lost"
+                fh.write(f"Signature\tLink\tEntry\tName\t# Lost"
                          f"\t# Gained\tLost\tGained\n")
 
             link = f"{pronto_link}/signatures/{acc}/descriptions/?reviewed"
-            fh.write(f"{acc}\t{link}\t{e_acc}\t{e_name}\t{e_type}\t{len(lost)}"
-                     f"\t{len(gained)}\t{' | '.join(sorted(lost))}"
+            fh.write(f"{acc}\t{link}\t{entry_acc}\t{entry_name}"
+                     f"\t{len(lost)}\t{len(gained)}"
+                     f"\t{' | '.join(sorted(lost))}"
                      f"\t{' | '.join(sorted(gained))}\n")
 
         for fh in files.values():
             fh.close()
+
+        # Keep track of signatures with Swiss-Prot description changes
+        sig_changes = set(changes.keys())
+
+        # Protein count changes (total + per superkingdom)
+        old_counts = data["proteins"]
+        new_counts = get_sig_proteins_count(cur, db_id)
+        changes = []
+        superkingdoms = set()
+        for acc in sorted(old_counts):  # sort by accession
+            sig_old_cnts = old_counts[acc]
+            sig_new_cnts = new_counts.get(acc, {})
+
+            try:
+                entry_acc, entry_type, entry_name, _ = integrated[acc]
+            except KeyError:
+                continue
+
+            # Total number of proteins matched
+            sig_old_tot = sum(sig_old_cnts.values())
+            sig_new_tot = sum(sig_new_cnts.values())
+
+            change = (sig_new_tot - sig_old_tot) / sig_old_tot
+
+            # If the signature does not have any matches anymore,
+            # we want to report it (it is integrated in InterPro)
+            if sig_new_tot != 0 and abs(change) < 0.1:
+                continue
+
+            sig_superkingdoms = {}
+            for superkingdom, old_cnt in sig_old_cnts.items():
+                new_cnt = sig_new_cnts.pop(superkingdom, 0)
+                sig_superkingdoms[superkingdom] = (old_cnt, new_cnt)
+                superkingdoms.add(superkingdom)
+
+            # superkingdoms with proteins only matches in new version of DB
+            for superkingdom, new_cnt in sig_new_cnts.items():
+                sig_superkingdoms[superkingdom] = (0, new_cnt)
+                superkingdoms.add(superkingdom)
+
+            changes.append((
+                acc,
+                entry_acc,
+                entry_name,
+                entry_type,
+                sig_old_tot,
+                sig_new_tot,
+                change,
+                sig_superkingdoms
+            ))
+
+        superkingdoms = sorted(superkingdoms)
+        with open(os.path.join(dst, "protein_counts.tsv"), "wt") as fh:
+            # Header
+            line = ["Signature", "Link", "DE changes", "Entry", "Type",
+                    "Name", "Previous count", "New count", "Change (%)"]
+            line += superkingdoms
+            fh.write('\t'.join(line) + '\n')
+
+            line = [''] * 9
+            line += ["Previous count", "New count"] * len(superkingdoms)
+            fh.write('\t'.join(line) + '\n')
+
+            # Body
+            for obj in changes:
+                acc = obj[0]
+                entry_acc = obj[1]
+                entry_name = obj[2]
+                entry_type = obj[3]
+                sig_old_tot = obj[4]
+                sig_new_tot = obj[5]
+                change = obj[6]
+                sig_superkingdoms = obj[7]
+
+                if entry_type == 'F':
+                    entry_type = "Family"
+                elif entry_type == 'D':
+                    entry_type = "Domain"
+                else:
+                    entry_type = "Other"
+
+                line = [
+                    acc,
+                    f"{pronto_link}/signature/{acc}/",
+                    "Yes" if acc in sig_changes else "No",
+                    entry_acc,
+                    entry_type,
+                    entry_name,
+                    str(sig_old_tot),
+                    str(sig_new_tot),
+                    f"{change * 100:.0f}"
+                ]
+                for superkingdom in superkingdoms:
+                    try:
+                        old_cnt, new_cnt = sig_superkingdoms[superkingdom]
+                    except KeyError:
+                        line += ['0', '0']
+                    else:
+                        line += [str(old_cnt), str(new_cnt)]
+
+                fh.write('\t'.join(line) + '\n')
 
     cur.close()
     con.close()
