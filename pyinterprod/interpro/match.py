@@ -679,43 +679,43 @@ def track_entry_changes(cur: cx_Oracle.Cursor, data_dir: str) -> list:
     """
 
     with open(os.path.join(data_dir, FILE_ENTRY_PROT_COUNTS), "rb") as fh:
-        previous = pickle.load(fh)
+        old_counts = pickle.load(fh)
 
+    new_counts = _get_entries_proteins_count(cur)
     changes = []
-    for accession, count in _get_entries_proteins_count(cur).items():
-        try:
-            prev_count = previous[accession]
-        except KeyError:
-            # This entry did not have matches: skip
+    for acc in sorted(old_counts):
+        entry_old_counts = old_counts[acc]
+        entry_new_counts = new_counts.pop(acc, {})
+
+        # Total number of proteins matched
+        entry_old_total = sum(entry_old_counts.values())
+        entry_new_total = sum(entry_new_counts.values())
+
+        change = (entry_new_total - entry_old_total) / entry_old_total
+
+        # If the entry does not have any matches anymore,
+        # we want to report it
+        if entry_new_total != 0 and abs(change) < 0.5:
             continue
 
-        change = (count - prev_count) / prev_count
-        if abs(change) >= 0.5:
-            changes.append((accession, prev_count, count, change))
+        entry_superkingdoms = {}
+        for superkingdom, old_cnt in entry_old_counts.items():
+            new_cnt = entry_new_counts.pop(superkingdom, 0)
+            entry_superkingdoms[superkingdom] = (old_cnt, new_cnt)
 
-    changes.sort(key=lambda x: x[0])  # sort by accession
+        # superkingdoms with proteins only matched in new UniProt release
+        for superkingdom, new_cnt in entry_new_counts.items():
+            entry_superkingdoms[superkingdom] = (0, new_cnt)
+
+        changes.append((
+            acc,
+            entry_old_total,
+            entry_new_total,
+            change,
+            entry_superkingdoms
+        ))
+
     return changes
-
-
-def _get_entries_proteins_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:
-    """
-    Return the number of protein matched by each InterPro entry.
-    Only complete sequences are considered.
-
-    :param cur: Oracle cursor object
-    :return: dictionary
-    """
-    cur.execute(
-        """
-        SELECT EM.ENTRY_AC, COUNT(DISTINCT P.PROTEIN_AC)
-        FROM INTERPRO.PROTEIN P
-        INNER JOIN INTERPRO.MATCH M ON P.PROTEIN_AC = M.PROTEIN_AC
-        INNER JOIN INTERPRO.ENTRY2METHOD EM ON EM.METHOD_AC = M.METHOD_AC
-        WHERE P.FRAGMENT = 'N'
-        GROUP BY EM.ENTRY_AC
-        """
-    )
-    return dict(cur.fetchall())
 
 
 def _get_taxon2superkingdom(cur: cx_Oracle.Cursor) -> Dict[int, str]:
@@ -754,6 +754,41 @@ def _get_taxon2superkingdom(cur: cx_Oracle.Cursor) -> Dict[int, str]:
                 break
 
     return taxon2superkingdom
+
+
+def _get_entries_proteins_count(cur: cx_Oracle.Cursor) -> Dict[str, Dict[str, int]]:
+    """
+    Return the number of protein matched by each InterPro entry.
+    Only complete sequences are considered.
+
+    :param cur: Oracle cursor object
+    :return: dictionary
+    """
+    taxon2superkingdom = _get_taxon2superkingdom(cur)
+    cur.execute(
+        """
+        SELECT EM.ENTRY_AC, P.TAX_ID, COUNT(DISTINCT P.PROTEIN_AC)
+        FROM INTERPRO.PROTEIN P
+        INNER JOIN INTERPRO.MATCH M ON P.PROTEIN_AC = M.PROTEIN_AC
+        INNER JOIN INTERPRO.ENTRY2METHOD EM ON EM.METHOD_AC = M.METHOD_AC
+        WHERE P.FRAGMENT = 'N'
+        GROUP BY EM.ENTRY_AC, P.TAX_ID
+        """
+    )
+    counts = {}
+    for entry_acc, tax_id, n_proteins in cur:
+        try:
+            e = counts[entry_acc]
+        except KeyError:
+            e = counts[entry_acc] = {}
+
+        superkingdom = taxon2superkingdom[tax_id]
+        try:
+            e[superkingdom] += n_proteins
+        except KeyError:
+            e[superkingdom] = n_proteins
+
+    return dict(counts)
 
 
 def get_sig_proteins_count(cur: cx_Oracle.Cursor, dbid: str) -> Dict[str, Dict[str, int]]:

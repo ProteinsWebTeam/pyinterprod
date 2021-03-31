@@ -416,7 +416,8 @@ def run_uniprot_update():
             fn=interpro.match.update_matches,
             args=(ora_interpro_url, data_dir),
             name="update-matches",
-            scheduler=dict(queue=lsf_queue),
+            # TODO: update memory resource requirements
+            scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["check-proteins", "import-matches"]
         ),
         Task(
@@ -516,7 +517,8 @@ def run_uniprot_update():
             args=(ora_interpro_url, pg_url, data_dir, pronto_url,
                   prep_email(emails, to=["interpro"])),
             name="send-report",
-            scheduler=dict(mem=4000, queue=lsf_queue),
+            # TODO: update memory resource requirements
+            scheduler=dict(mem=24000, queue=lsf_queue),
             requires=["pronto-annotations", "pronto-proteins-similarities",
                       "pronto-proteins", "pronto-signatures",
                       "pronto-taxonomy"]

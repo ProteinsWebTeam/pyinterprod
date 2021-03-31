@@ -187,7 +187,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                 sig_superkingdoms[superkingdom] = (old_cnt, new_cnt)
                 superkingdoms.add(superkingdom)
 
-            # superkingdoms with proteins only matches in new version of DB
+            # superkingdoms with proteins only matched in new version of DB
             for superkingdom, new_cnt in sig_new_cnts.items():
                 sig_superkingdoms[superkingdom] = (0, new_cnt)
                 superkingdoms.add(superkingdom)
@@ -347,8 +347,8 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
     # Write entries with changes (two different files: families/others)
     files = {}
-    header = ("Accession\tLink\tName\tType\tChecked\t# Lost\t# Gained\t"
-              "Lost\tGained\n")
+    header = ("Accession\tLink\tName\tChecked\t# Lost\t# Gained"
+              "\tLost\tGained\n")
     for entry_acc in sorted(changes):
         gained, lost = changes[entry_acc]
         type_code, name, checked_flag = entries[entry_acc]
@@ -363,22 +363,69 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             files[entry_type] = (fh, path)
         finally:
             fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
-                     f"{name}\t{type_code}\t{checked_flag}\t{len(lost)}\t"
-                     f"{len(gained)}\t{' | '.join(sorted(lost))}\t"
+                     f"{name}\t{'Yes' if checked_flag == 'Y' else 'No'}\t"
+                     f"{len(lost)}\t{len(gained)}\t"
+                     f"{' | '.join(sorted(lost))}\t"
                      f"{' | '.join(sorted(gained))}\n")
 
-    # Write entries with protein count changes
-    path = os.path.join(data_dir, "entries_count_changes.tsv")
-    with open(path, "wt") as ofh:
-        ofh.write("# Accession\tLink\tName\tType\tChecked\t"
-                  "Previous count\tNew count\tChange (%)\n")
+    # Close files
+    for fh, _ in files.values():
+        fh.close()
 
+    # Keep track of entries with Swiss-Prot description changes
+    entries_changes = set(changes.keys())
+
+    # Write entries with protein count changes (total + per superkingdom)
+    path = os.path.join(data_dir, "entries_count_changes.tsv")
+    with open(path, "wt") as fh:
         changes = track_entry_changes(cur, data_dir)
-        for entry_acc, prev_count, count, change in changes:
+        superkingdoms = sorted({sk for e in changes for sk in e[4]})
+
+        # Header
+        line = ["Accession", "Link", "Type", "Name", "Checked",
+                "DE changes", "Previous count", "New count", "Change (%)"]
+        line += superkingdoms
+        fh.write('\t'.join(line) + '\n')
+
+        line = [''] * 9
+        line += ["Previous count", "New count"] * len(superkingdoms)
+
+        # Body
+        for obj in changes:
+            entry_acc = obj[0]
+            old_total = obj[1]
+            new_total = obj[2]
+            change = obj[3]
+            entry_superkingdoms = obj[4]
             name, type_code, checked_flag = entries[entry_acc]
-            ofh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
-                      f"{name}\t{type_code}\t{checked_flag}\t"
-                      f"{prev_count}\t{count}\t{change*100:.0f}\n")
+            if type_code == 'F':
+                entry_type = "Family"
+            elif type_code == 'D':
+                entry_type = "Domain"
+            else:
+                entry_type = "Other"
+
+            line = [
+                entry_acc,
+                f"{pronto_link}/entry/{entry_acc}/",
+                entry_type,
+                name,
+                "Yes" if checked_flag == 'Y' else "No",
+                "Yes" if entry_acc in entries_changes else "No",
+                str(old_total),
+                str(new_total),
+                f"{change*100:.0f}"
+            ]
+
+            for sk in superkingdoms:
+                try:
+                    old_cnt, new_cnt = entry_superkingdoms[sk]
+                except KeyError:
+                    line += ['0', '0']
+                else:
+                    line += [str(old_cnt), str(new_cnt)]
+
+            fh.write('\t'.join(line) + '\n')
 
     cur.close()
     con.close()
@@ -387,8 +434,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
     with ZipFile(filename, 'w', compression=ZIP_DEFLATED) as fh:
         fh.write(path, arcname=os.path.basename(path))
 
-        for ofh, path in files.values():
-            ofh.close()
+        for _, path in files.values():
             fh.write(path, arcname=os.path.basename(path))
 
     email.send(
