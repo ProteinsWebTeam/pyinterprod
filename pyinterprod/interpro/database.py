@@ -114,7 +114,7 @@ def update_database(url: str, name: str, version: str, date: str,
     print("Analyses found:")
     actives = set()
     for active_id, active_name in rows:
-        print(f"{active_id}: {active_name}")
+        print(f"  {active_id}: {active_name}")
         actives.add(str(active_id))
 
     if len(actives) == 1:
