@@ -34,7 +34,7 @@ def parse_xml(filepath: str, sig_type: str) -> List[Method]:
     """
 
     with open(filepath, "rt", errors="replace") as fh:
-        tree = ET.parse(filepath)
+        tree = ET.parse(fh)
 
     root = tree.getroot()
     namespace = "{http://www.ebi.ac.uk/schema/interpro}"
