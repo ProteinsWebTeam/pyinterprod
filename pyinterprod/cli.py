@@ -211,8 +211,7 @@ def run_member_db_update():
             fn=interpro.signature.track_signature_changes,
             args=(ora_interpro_url, pg_url, databases, data_dir),
             name="track-changes",
-            # TODO: update memory resource requirements
-            scheduler=dict(mem=16000, queue=lsf_queue),
+            scheduler=dict(mem=4000, queue=lsf_queue),
             requires=["load-signatures"]
         ),
         Task(
