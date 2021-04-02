@@ -55,7 +55,8 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
             for acc, name, descr, entry_acc in sorted(data["deleted"]):
                 if entry_acc:
                     # Only report signatures that were integrated
-                    fh.write(f"{acc}\t{name}\t{descr}\t{entry_acc}\n")
+                    fh.write(f"{acc}\t{name or 'N/A'}\t{descr or 'N/A'}\t"
+                             f"{entry_acc}\n")
 
         # Annotation changes
         with open(os.path.join(dst, "name_changes.tsv"), "wt") as fh:
