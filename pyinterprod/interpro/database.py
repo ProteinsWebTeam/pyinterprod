@@ -179,7 +179,7 @@ def update_database(url: str, name: str, version: str, date: str,
         query = """
             INSERT INTO INTERPRO.DB_VERSION (
                 DBCODE, VERSION, ENTRY_COUNT, FILE_DATE
-            ) VALUES (:1, :2, 0, :3)
+            ) VALUES (:1, :2, 0, TO_DATE(:3, 'YYYY-MM-DD'))
         """
         params = (dbcode, version, date)
 
