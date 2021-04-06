@@ -145,6 +145,13 @@ def run_match_update():
                         default=None,
                         metavar="TASK",
                         help="tasks to run")
+    parser.add_argument("--dry-run",
+                        action="store_true",
+                        default=False,
+                        help="list tasks to run and exit")
+    parser.add_argument("--detach",
+                        action="store_true",
+                        help="enqueue tasks to run and exit")
     parser.add_argument("-v", "--version", action="version",
                         version=f"%(prog)s {__version__}",
                         help="show the version and exit")
@@ -217,6 +224,11 @@ def run_match_update():
         ))
 
     if site_dbs:
+        if member_dbs:
+            requires = ["import-sites", "update-matches"]
+        else:
+            requires = ["import-sites"]
+
         tasks += [
             Task(
                 fn=iprscan.import_sites,
@@ -231,7 +243,7 @@ def run_match_update():
                 args=(ora_interpro_url, site_dbs),
                 name="update-sites",
                 scheduler=dict(queue=lsf_queue),
-                requires=["import-sites", "update-matches"] if member_dbs else ["import-sites"]
+                requires=requires
             )
         ]
 
