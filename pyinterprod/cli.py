@@ -131,6 +131,116 @@ def prep_email(emails: dict, to: Sequence[str], **kwargs) -> dict:
     return emails
 
 
+def run_match_update():
+    parser = ArgumentParser(description="InterPro match/site update")
+    parser.add_argument("config",
+                        metavar="config.ini",
+                        help="configuration file")
+    parser.add_argument("databases",
+                        metavar="databases",
+                        nargs="+",
+                        help="databases to update")
+    parser.add_argument("-v", "--version", action="version",
+                        version=f"%(prog)s {__version__}",
+                        help="show the version and exit")
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': "
+                     f"no such file or directory")
+
+    config = ConfigParser()
+    config.read(args.config)
+
+    dsn = config["oracle"]["dsn"]
+    ora_interpro_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
+    ora_iprscan_url = f"iprscan/{config['oracle']['iprscan']}@{dsn}"
+    uniprot_version = config["uniprot"]["version"]
+    lsf_queue = config["misc"]["lsf_queue"]
+    workflow_dir = config["misc"]["workflow_dir"]
+
+    db_names = list(set(args.databases))
+    databases = interpro.database.get_databases(ora_interpro_url, db_names)
+    member_dbs = []
+    feature_dbs = []
+    site_dbs = []
+    for db in databases.values():
+        if db.is_member_db:
+            member_dbs.append(db)
+        elif db.is_feature_db:
+            feature_dbs.append(db)
+
+        if db.has_site_matches:
+            site_dbs.append(db)
+
+    tasks = [
+        Task(
+            fn=iprscan.import_matches,
+            args=(ora_iprscan_url,),
+            kwargs=dict(databases=member_dbs+feature_dbs, force_import=True,
+                        threads=8),
+            name="import-matches",
+            scheduler=dict(queue=lsf_queue)
+        )
+    ]
+
+    if member_dbs:
+        tasks += [
+            Task(
+                fn=interpro.match.update_database_matches,
+                args=(ora_interpro_url, member_dbs),
+                name="update-matches",
+                scheduler=dict(queue=lsf_queue),
+                requires=["import-matches"]
+            ),
+            Task(
+                fn=interpro.match.update_variant_matches,
+                args=(ora_interpro_url,),
+                name="update-varsplic",
+                scheduler=dict(queue=lsf_queue),
+                requires=["import-matches"]
+            )
+        ]
+
+    if feature_dbs:
+        tasks.append(Task(
+            fn=interpro.match.update_database_feature_matches,
+            args=(ora_interpro_url, feature_dbs),
+            name="update-fmatches",
+            scheduler=dict(queue=lsf_queue),
+            requires=["import-matches"]
+        ))
+
+    if site_dbs:
+        tasks += [
+            Task(
+                fn=iprscan.import_sites,
+                args=(ora_iprscan_url,),
+                kwargs=dict(databases=site_dbs, force_import=True,
+                            threads=2),
+                name="import-sites",
+                scheduler=dict(queue=lsf_queue)
+            ),
+            Task(
+                fn=interpro.match.update_database_site_matches,
+                args=(ora_interpro_url, site_dbs),
+                name="update-sites",
+                scheduler=dict(queue=lsf_queue),
+                requires=["import-sites", "update-matches"] if member_dbs else ["import-sites"]
+            )
+        ]
+
+    # Base Mundone database on UniProt version and on the name/version
+    # of updated member databases
+    versions = [uniprot_version]
+    for db in member_dbs + feature_dbs:
+        versions.append(f"{db.name.lower().replace(' ', '')}{db.version}")
+
+    database = os.path.join(workflow_dir, f"{'.'.join(versions)}.sqlite")
+    with Workflow(tasks, dir=workflow_dir, database=database) as wf:
+        wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
+
+
 def run_member_db_update():
     parser = ArgumentParser(description="InterPro member database update")
     parser.add_argument("config",
