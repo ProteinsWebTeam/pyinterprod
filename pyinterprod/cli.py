@@ -308,6 +308,50 @@ def run_member_db_update():
         wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
 
 
+def run_pronto_update():
+    parser = ArgumentParser(description="InterPro Pronto update")
+    parser.add_argument("config",
+                        metavar="config.ini",
+                        help="configuration file")
+    parser.add_argument("-t", "--tasks",
+                        nargs="*",
+                        default=None,
+                        metavar="TASK",
+                        help="tasks to run")
+    parser.add_argument("--dry-run",
+                        action="store_true",
+                        default=False,
+                        help="list tasks to run and exit")
+    parser.add_argument("--detach",
+                        action="store_true",
+                        help="enqueue tasks to run and exit")
+    parser.add_argument("-v", "--version", action="version",
+                        version=f"%(prog)s {__version__}",
+                        help="show the version and exit")
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': no such file or directory")
+
+    config = ConfigParser()
+    config.read(args.config)
+
+    dsn = config["oracle"]["dsn"]
+    interpro_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
+    pronto_url = config["postgresql"]["pronto"]
+    uniprot_version = config["uniprot"]["version"]
+    data_dir = config["misc"]["data_dir"]
+    lsf_queue = config["misc"]["lsf_queue"]
+    workflow_dir = config["misc"]["workflow_dir"]
+
+    os.makedirs(data_dir, exist_ok=True)
+    tasks = get_pronto_tasks(interpro_url, pronto_url, data_dir, lsf_queue)
+
+    database = os.path.join(workflow_dir, f"{uniprot_version}.pronto.sqlite")
+    with Workflow(tasks, dir=workflow_dir, database=database) as wf:
+        wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
+
+
 def run_uniprot_update():
     parser = ArgumentParser(description="InterPro protein update")
     parser.add_argument("config",
@@ -547,50 +591,6 @@ def run_uniprot_update():
     ]
 
     database = os.path.join(workflow_dir, f"{uniprot_version}.sqlite")
-    with Workflow(tasks, dir=workflow_dir, database=database) as wf:
-        wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
-
-
-def run_pronto_update():
-    parser = ArgumentParser(description="InterPro Pronto update")
-    parser.add_argument("config",
-                        metavar="config.ini",
-                        help="configuration file")
-    parser.add_argument("-t", "--tasks",
-                        nargs="*",
-                        default=None,
-                        metavar="TASK",
-                        help="tasks to run")
-    parser.add_argument("--dry-run",
-                        action="store_true",
-                        default=False,
-                        help="list tasks to run and exit")
-    parser.add_argument("--detach",
-                        action="store_true",
-                        help="enqueue tasks to run and exit")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
-    args = parser.parse_args()
-
-    if not os.path.isfile(args.config):
-        parser.error(f"cannot open '{args.config}': no such file or directory")
-
-    config = ConfigParser()
-    config.read(args.config)
-
-    dsn = config["oracle"]["dsn"]
-    interpro_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
-    pronto_url = config["postgresql"]["pronto"]
-    uniprot_version = config["uniprot"]["version"]
-    data_dir = config["misc"]["data_dir"]
-    lsf_queue = config["misc"]["lsf_queue"]
-    workflow_dir = config["misc"]["workflow_dir"]
-
-    os.makedirs(data_dir, exist_ok=True)
-    tasks = get_pronto_tasks(interpro_url, pronto_url, data_dir, lsf_queue)
-
-    database = os.path.join(workflow_dir, f"{uniprot_version}.pronto.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as wf:
         wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
 
