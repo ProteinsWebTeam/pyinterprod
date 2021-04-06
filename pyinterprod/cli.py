@@ -185,16 +185,19 @@ def run_match_update():
         if db.has_site_matches:
             site_dbs.append(db)
 
-    tasks = [
-        Task(
-            fn=iprscan.import_matches,
-            args=(ora_iprscan_url,),
-            kwargs=dict(databases=member_dbs+feature_dbs, force_import=True,
-                        threads=8),
-            name="import-matches",
-            scheduler=dict(queue=lsf_queue)
-        )
-    ]
+    if member_dbs or feature_dbs:
+        tasks = [
+            Task(
+                fn=iprscan.import_matches,
+                args=(ora_iprscan_url,),
+                kwargs=dict(databases=member_dbs+feature_dbs,
+                            force_import=True, threads=8),
+                name="import-matches",
+                scheduler=dict(queue=lsf_queue)
+            )
+        ]
+    else:
+        tasks = []
 
     if member_dbs:
         tasks += [
