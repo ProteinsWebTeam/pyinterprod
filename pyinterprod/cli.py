@@ -242,6 +242,13 @@ def run_member_db_update():
             scheduler=dict(queue=lsf_queue),
             requires=["import-matches", "update-signatures"]
         ),
+        Task(
+            fn=interpro.match.update_variant_matches,
+            args=(ora_interpro_url,),
+            name="update-varsplic",
+            scheduler=dict(queue=lsf_queue),
+            requires=["import-matches", "update-signatures"]
+        )
     ]
 
     site_databases = [db for db in databases if db.has_site_matches]
@@ -285,8 +292,7 @@ def run_member_db_update():
             args=(ora_interpro_url, pg_url, databases, data_dir, pronto_url,
                   prep_email(emails, to=["interpro"])),
             name="send-report",
-            # TODO: update memory resource requirements
-            scheduler=dict(mem=24000, queue=lsf_queue),
+            scheduler=dict(mem=4000, queue=lsf_queue),
             requires=after_pronto
         ),
     ]
