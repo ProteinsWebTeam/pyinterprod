@@ -147,6 +147,7 @@ MATCH_SELECT = {
 # Partition in SITE
 SITE_PARITIONS = {
     "cdd": "CDD",
+    "pirsr": "PIRSR",
     "sfld": "SFLD"
 }
 

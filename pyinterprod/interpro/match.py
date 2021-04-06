@@ -13,23 +13,25 @@ from .database import Database
 
 FILE_ENTRY_PROT_COUNTS = "entries.prot.counts.pickle"
 MATCH_PARTITIONS = {
-    'B': 'MATCH_DBCODE_B',  # SFLD
-    'F': 'MATCH_DBCODE_F',  # PRINTS
-    'H': 'MATCH_DBCODE_H',  # Pfam
-    'J': 'MATCH_DBCODE_J',  # CDD
-    'M': 'MATCH_DBCODE_M',  # PROSITE profiles
-    'N': 'MATCH_DBCODE_N',  # TIGRFAMs
-    'P': 'MATCH_DBCODE_P',  # PROSITE patterns
-    'Q': 'MATCH_DBCODE_Q',  # HAMAP
-    'R': 'MATCH_DBCODE_R',  # SMART
-    'U': 'MATCH_DBCODE_U',  # PIRSF
-    'V': 'MATCH_DBCODE_V',  # PANTHER
-    'X': 'MATCH_DBCODE_X',  # CATH-Gene3D
-    'Y': 'MATCH_DBCODE_Y',  # SUPERFAMILY
+    'B': "MATCH_DBCODE_B",  # SFLD
+    'F': "MATCH_DBCODE_F",  # PRINTS
+    'H': "MATCH_DBCODE_H",  # Pfam
+    'J': "MATCH_DBCODE_J",  # CDD
+    'M': "MATCH_DBCODE_M",  # PROSITE profiles
+    'N': "MATCH_DBCODE_N",  # TIGRFAMs
+    'P': "MATCH_DBCODE_P",  # PROSITE patterns
+    'Q': "MATCH_DBCODE_Q",  # HAMAP
+    'R': "MATCH_DBCODE_R",  # SMART
+    'U': "MATCH_DBCODE_U",  # PIRSF
+    'V': "MATCH_DBCODE_V",  # PANTHER
+    'X': "MATCH_DBCODE_X",  # CATH-Gene3D
+    'Y': "MATCH_DBCODE_Y",  # SUPERFAMILY
 }
 SITE_PARTITIONS = {
-    'B': 'SFLD',
-    'J': 'CDD',
+    # DB identifier -> (str:partition, bool:check against MATCH table)
+    'B': ("SFLD", True),
+    'J': ("CDD", True),
+    'z': ("PIRSR", False)
 }
 
 
@@ -202,7 +204,7 @@ def update_database_site_matches(url: str, databases: Sequence[Database]):
             - IPRSCAN.SITE
             - INTERPRO.SITE_MATCH
         """
-        site_partition = SITE_PARTITIONS[database.identifier]
+        site_partition, ck_matches = SITE_PARTITIONS[database.identifier]
 
         oracle.drop_table(cur, "INTERPRO.SITE_MATCH_NEW", purge=True)
         cur.execute(
@@ -244,27 +246,28 @@ def update_database_site_matches(url: str, databases: Sequence[Database]):
             """
         )
 
-        logger.debug(f"\tchecking matches")
-        match_partition = MATCH_PARTITIONS[database.identifier]
-        cur.execute(
-            f"""
-            SELECT COUNT(*)
-            FROM (
-                SELECT DISTINCT PROTEIN_AC, METHOD_AC, LOC_START, LOC_END
-                FROM INTERPRO.SITE_MATCH_NEW
-                MINUS
-                SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
-                FROM INTERPRO.MATCH PARTITION ({match_partition})
+        if ck_matches:
+            logger.debug(f"\tchecking matches")
+            match_partition = MATCH_PARTITIONS[database.identifier]
+            cur.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM (
+                    SELECT DISTINCT PROTEIN_AC, METHOD_AC, LOC_START, LOC_END
+                    FROM INTERPRO.SITE_MATCH_NEW
+                    MINUS
+                    SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
+                    FROM INTERPRO.MATCH PARTITION ({match_partition})
+                )
+                """
             )
-            """
-        )
 
-        cnt, = cur.fetchone()
-        if cnt:
-            cur.close()
-            con.close()
-            raise RuntimeError(f"{database.name}: {cnt} matches "
-                               f"in SITE_MATCH_NEW that are not in MATCH")
+            cnt, = cur.fetchone()
+            if cnt:
+                cur.close()
+                con.close()
+                raise RuntimeError(f"{database.name}: {cnt} matches "
+                                   f"in SITE_MATCH_NEW that are not in MATCH")
 
         logger.debug(f"\tadding constraint")
         cur.execute(
@@ -450,33 +453,35 @@ def update_site_matches(url: str):
 
     logger.info("checking")
     queries = []
-    for identifier in SITE_PARTITIONS:
-        queries.append(
+    for identifier, ck_matches in SITE_PARTITIONS:
+        if ck_matches:
+            queries.append(
+                f"""
+                SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
+                FROM INTERPRO.MATCH PARTITION ({MATCH_PARTITIONS[identifier]})
+                """
+            )
+
+    if queries:
+        cur.execute(
             f"""
-            SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
-            FROM INTERPRO.MATCH PARTITION ({MATCH_PARTITIONS[identifier]})
+            SELECT COUNT(*)
+            FROM (
+                SELECT DISTINCT PROTEIN_AC, METHOD_AC, LOC_START, LOC_END
+                FROM INTERPRO.SITE_MATCH_NEW
+                MINUS (
+                  {' UNION ALL '.join(queries)}
+                )
+            )
             """
         )
 
-    cur.execute(
-        f"""
-        SELECT COUNT(*)
-        FROM (
-            SELECT DISTINCT PROTEIN_AC, METHOD_AC, LOC_START, LOC_END
-            FROM INTERPRO.SITE_MATCH_NEW
-            MINUS (
-              {' UNION ALL '.join(queries)}
-            )
-        )
-        """
-    )
-
-    cnt, = cur.fetchone()
-    if cnt:
-        cur.close()
-        con.close()
-        raise RuntimeError(f"{cnt} matches in SITE_MATCH_NEW "
-                           f"that are not in MATCH")
+        cnt, = cur.fetchone()
+        if cnt:
+            cur.close()
+            con.close()
+            raise RuntimeError(f"{cnt} matches in SITE_MATCH_NEW "
+                               f"that are not in MATCH")
 
     logger.info("updating SITE_MATCH")
     cur.execute(
