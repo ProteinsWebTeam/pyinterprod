@@ -158,16 +158,33 @@ def update_database(url: str, name: str, version: str, date: str,
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
+    cur.execute(
+        """
+        SELECT COUNT(*) 
+        FROM INTERPRO.DB_VERSION 
+        WHERE DBCODE = :1
+        """, (dbcode,)
+    )
+    cnt, = cur.fetchone()
+    if cnt:
+        query = """
+            UPDATE INTERPRO.DB_VERSION 
+            SET VERSION = :1,
+                FILE_DATE = TO_DATE(:2, 'YYYY-MM-DD'),
+                LOAD_DATE = SYSDATE
+            WHERE DBCODE = :3
+        """
+        params = (version, date, dbcode)
+    else:
+        query = """
+            INSERT INTO INTERPRO.DB_VERSION (
+                DBCODE, VERSION, ENTRY_COUNT, FILE_DATE
+            ) VALUES (:1, :2, 0, :3)
+        """
+        params = (dbcode, version, date)
+
     try:
-        cur.execute(
-            """
-                UPDATE INTERPRO.DB_VERSION 
-                SET VERSION = :1,
-                    FILE_DATE = TO_DATE(:2, 'YYYY-MM-DD'),
-                    LOAD_DATE = SYSDATE
-                WHERE DBCODE = :3
-            """, (version, date, dbcode)
-        )
+        cur.execute(query, params)
 
         if active_id != current_id:
             # Update IPRSCAN2DBCODE
