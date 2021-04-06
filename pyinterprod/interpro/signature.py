@@ -414,6 +414,15 @@ def update_signatures(url: str):
     cur = con.cursor()
     cur.execute(
         """
+        SELECT COUNT(*), DBCODE
+        FROM INTERPRO.METHOD_STG
+        GROUP BY DBCODE
+        """
+    )
+    counts = cur.fetchall()
+
+    cur.execute(
+        """
         MERGE INTO INTERPRO.METHOD M
         USING INTERPRO.METHOD_STG S
           ON (M.METHOD_AC = S.METHOD_AC)
@@ -431,6 +440,15 @@ def update_signatures(url: str):
                   S.SIG_TYPE, S.ABSTRACT, S.ABSTRACT_LONG)
         """
     )
+
+    cur.executemany(
+        """
+        UPDATE INTERPRO.DB_VERSION 
+        SET ENTRY_COUNT = :1
+        WHERE DBCODE = :2
+        """, counts
+    )
+
     con.commit()
     cur.close()
     con.close()
