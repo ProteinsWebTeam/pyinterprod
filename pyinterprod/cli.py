@@ -134,12 +134,17 @@ def prep_email(emails: dict, to: Sequence[str], **kwargs) -> dict:
 def run_match_update():
     parser = ArgumentParser(description="InterPro match/site update")
     parser.add_argument("config",
-                        metavar="config.ini",
+                        metavar="FILE",
                         help="configuration file")
     parser.add_argument("databases",
-                        metavar="databases",
+                        metavar="DATABASE",
                         nargs="+",
                         help="databases to update")
+    parser.add_argument("-t", "--tasks",
+                        nargs="*",
+                        default=None,
+                        metavar="TASK",
+                        help="tasks to run")
     parser.add_argument("-v", "--version", action="version",
                         version=f"%(prog)s {__version__}",
                         help="show the version and exit")
@@ -244,10 +249,10 @@ def run_match_update():
 def run_member_db_update():
     parser = ArgumentParser(description="InterPro member database update")
     parser.add_argument("config",
-                        metavar="config.ini",
+                        metavar="FILE",
                         help="configuration file")
     parser.add_argument("databases",
-                        metavar="databases.txt",
+                        metavar="FILE",
                         help="data source file")
     parser.add_argument("-t", "--tasks",
                         nargs="*",
@@ -421,7 +426,7 @@ def run_member_db_update():
 def run_pronto_update():
     parser = ArgumentParser(description="InterPro Pronto update")
     parser.add_argument("config",
-                        metavar="config.ini",
+                        metavar="FILE",
                         help="configuration file")
     parser.add_argument("-t", "--tasks",
                         nargs="*",
@@ -465,7 +470,7 @@ def run_pronto_update():
 def run_uniprot_update():
     parser = ArgumentParser(description="InterPro protein update")
     parser.add_argument("config",
-                        metavar="config.ini",
+                        metavar="FILE",
                         help="configuration file")
     parser.add_argument("-t", "--tasks",
                         nargs="*",
@@ -707,7 +712,7 @@ def run_uniprot_update():
 
 def update_database():
     parser = ArgumentParser(description="InterPro pre-member database update")
-    parser.add_argument("config", metavar="config.ini",
+    parser.add_argument("config", metavar="FILE",
                         help="Configuration file.")
     parser.add_argument("-n", "--name", required=True,
                         help="Name of member database.")
