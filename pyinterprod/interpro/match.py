@@ -27,6 +27,15 @@ MATCH_PARTITIONS = {
     'X': "MATCH_DBCODE_X",  # CATH-Gene3D
     'Y': "MATCH_DBCODE_Y",  # SUPERFAMILY
 }
+FEATURE_MATCH_PARTITIONS = {
+    'g': "MOBIDBLITE",
+    'j': "PHOBIUS",
+    'n': "SIGNALP_E",
+    'q': "TMHMM",
+    's': "SIGNALP_GP",
+    'v': "SIGNALP_GN",
+    'x': "COILS"
+}
 SITE_PARTITIONS = {
     # DB identifier -> (str:partition, bool:check against MATCH table)
     'B': ("SFLD", True),
@@ -182,6 +191,108 @@ def update_database_matches(url: str, databases: Sequence[Database]):
         oracle.gather_stats(cur, "INTERPRO", "MATCH", partition)
 
     for index in oracle.get_indexes(cur, "INTERPRO", "MATCH"):
+        if index["unusable"]:
+            logger.info(f"rebuilding index {index['name']}")
+            oracle.rebuild_index(cur, index["name"])
+
+    cur.close()
+    con.close()
+
+    logger.info("complete")
+
+
+def update_database_feature_matches(url: str, databases: Sequence[Database]):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    for database in databases:
+        logger.info(f"{database.name}")
+        oracle.drop_table(cur, "INTERPRO.FEATURE_MATCH_NEW", purge=True)
+        logger.debug(f"\tpopulating FEATURE_MATCH_NEW "
+                     f"(ANALYSIS_ID: {database.analysis_id})")
+        cur.execute(
+            """
+            CREATE TABLE INTERPRO.FEATURE_MATCH_NEW NOLOGGING
+            AS SELECT * FROM INTERPRO.FEATURE_MATCH WHERE 1 = 0
+            """
+        )
+        cur.execute(
+            """
+            INSERT /*+ APPEND */ INTO INTERPRO.FEATURE_MATCH_NEW
+            SELECT
+              X.AC, M.METHOD_AC, M.SEQ_FEATURE, M.SEQ_START, M.SEQ_END, 
+              D.DBCODE
+            FROM IPRSCAN.MV_IPRSCAN M
+            INNER JOIN UNIPARC.XREF X 
+              ON M.UPI = X.UPI
+            INNER JOIN INTERPRO.IPRSCAN2DBCODE D
+              ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
+            WHERE M.ANALYSIS_ID = :1
+            AND X.DBID IN (2, 3)  -- Swiss-Prot or TrEMBL
+            AND X.DELETED = 'N'            
+            """, (database.analysis_id,)
+        )
+        con.commit()
+
+        # Add indexes to be able to exchange partition
+        logger.debug("\tcreating constraints")
+        cur.execute(
+            """
+            ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
+            ADD CONSTRAINT FEATURE_MATCH_NEW$CK1 
+            CHECK ( POS_FROM >= 1 ) 
+            """
+        )
+        cur.execute(
+            """
+            ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
+            ADD CONSTRAINT FEATURE_MATCH_NEW$CK2
+            CHECK ( POS_TO >= POS_FROM ) 
+            """
+        )
+        cur.execute(
+            """
+            ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
+            ADD CONSTRAINT FEATURE_MATCH_NEW$PK
+            PRIMARY KEY (PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, DBCODE)
+            """
+        )
+        cur.execute(
+            f"""
+            ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
+            ADD CONSTRAINT FEATURE_MATCH_NEW$FK1 FOREIGN KEY (METHOD_AC, DBCODE) 
+            REFERENCES INTERPRO.FEATURE_METHOD (METHOD_AC, DBCODE)
+            """
+        )
+        cur.execute(
+            """
+            ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
+            ADD CONSTRAINT FEATURE_MATCH_NEW$FK2 FOREIGN KEY (PROTEIN_AC) 
+            REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
+            """
+        )
+
+        cur.execute("SELECT COUNT(*) FROM INTERPRO.FEATURE_MATCH_NEW")
+        cnt, = cur.fetchone()
+        if not cnt:
+            raise RuntimeError(f"no rows inserted "
+                               f"for analysis ID {database.analysis_id}")
+
+        logger.debug(f"\texchanging partition")
+        partition = FEATURE_MATCH_PARTITIONS[database.identifier]
+        cur.execute(
+            f"""
+                ALTER TABLE INTERPRO.FEATURE_MATCH
+                EXCHANGE PARTITION ({partition}) 
+                WITH TABLE INTERPRO.FEATURE_MATCH_NEW
+                """
+        )
+        oracle.drop_table(cur, "INTERPRO.FEATURE_MATCH_NEW", purge=True)
+
+        logger.info("\tgathering statistics")
+        oracle.gather_stats(cur, "INTERPRO", "FEATURE_MATCH", partition)
+
+    for index in oracle.get_indexes(cur, "INTERPRO", "FEATURE_MATCH"):
         if index["unusable"]:
             logger.info(f"rebuilding index {index['name']}")
             oracle.rebuild_index(cur, index["name"])
