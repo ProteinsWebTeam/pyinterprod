@@ -15,11 +15,31 @@ class Database:
     date: datetime
     analysis_id: int
     has_site_matches: bool
+    is_member_db: bool
+    is_feature_db: bool
 
 
 def get_databases(url: str, names: Sequence[str], expects_new: bool = False) -> Dict[str, Database]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
+
+    cur.execute(
+        """
+        SELECT DBCODE, COUNT(*)
+        FROM INTERPRO.METHOD
+        GROUP BY DBCODE
+        """
+    )
+    cnt_signatures = dict(cur.fetchall())
+
+    cur.execute(
+        """
+        SELECT DBCODE, COUNT(*)
+        FROM INTERPRO.FEATURE_METHOD
+        GROUP BY DBCODE
+        """
+    )
+    cnt_features = dict(cur.fetchall())
 
     args = [':' + str(i+1) for i in range(len(names))]
     cur.execute(
@@ -47,7 +67,9 @@ def get_databases(url: str, names: Sequence[str], expects_new: bool = False) -> 
                       version=row[3],
                       date=row[4],
                       analysis_id=row[5],
-                      has_site_matches=row[7] is not None)
+                      has_site_matches=row[7] is not None,
+                      is_member_db=cnt_signatures.get(row[0], 0) > 0,
+                      is_feature_db=cnt_features.get(row[0], 0) > 0)
 
         databases[row[1]] = db
 
