@@ -252,9 +252,13 @@ def run_match_update():
 
     # Base Mundone database on UniProt version and on the name/version
     # of updated member databases
+    databases = set()
+    for db in member_dbs + feature_dbs + site_dbs:
+        databases.add((db.name.lower().replace(' ', ''), db.version))
+
     versions = [uniprot_version]
-    for db in set(member_dbs + feature_dbs + site_dbs):
-        versions.append(f"{db.name.lower().replace(' ', '')}{db.version}")
+    for name, version in sorted(databases):
+        versions.append(f"{name}{version}")
 
     database = os.path.join(workflow_dir, f"{'.'.join(versions)}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as wf:
