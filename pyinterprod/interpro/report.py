@@ -138,19 +138,18 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
         files = {}  # file objects
         for acc in sorted(changes):
             entry_acc, entry_name, entry_type, lost, gained = changes[acc]
+            if entry_type == 'F':
+                filename = "swiss_de_families.tsv"
+            elif entry_type == 'D':
+                filename = "swiss_de_domains.tsv"
+            else:
+                filename = "swiss_de_others.tsv"
 
             try:
-                fh = files[entry_type]
+                fh = files[filename]
             except KeyError:
-                if entry_type == 'F':
-                    filename = "swiss_de_families.tsv"
-                elif entry_type == 'D':
-                    filename = "swiss_de_domains.tsv"
-                else:
-                    filename = "swiss_de_others.tsv"
-
                 filepath = os.path.join(dst, filename)
-                fh = files[entry_type] = open(filepath, "wt")
+                fh = files[filename] = open(filepath, "wt")
                 fh.write(f"Signature\tLink\tEntry\tType\tName\t# Lost"
                          f"\t# Gained\tLost\tGained\n")
 
@@ -364,19 +363,18 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
     for entry_acc in sorted(changes):
         gained, lost = changes[entry_acc]
         entry_type, name, checked_flag = entries[entry_acc]
+        if entry_type == 'F':
+            filename = "swiss_de_families.tsv"
+        elif entry_type == 'D':
+            filename = "swiss_de_domains.tsv"
+        else:
+            filename = "swiss_de_others.tsv"
 
         try:
-            fh = files[entry_type]
+            fh = files[filename]
         except KeyError:
-            if entry_type == 'F':
-                filename = "swiss_de_families.tsv"
-            elif entry_type == 'D':
-                filename = "swiss_de_domains.tsv"
-            else:
-                filename = "swiss_de_others.tsv"
-
             filepath = os.path.join(tmpdir, filename)
-            fh = files[entry_type] = open(filepath, "wt")
+            fh = files[filename] = open(filepath, "wt")
             fh.write(header)
         finally:
             fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
