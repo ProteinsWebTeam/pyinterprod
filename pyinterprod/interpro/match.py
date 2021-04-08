@@ -95,77 +95,77 @@ def update_database_matches(url: str, databases: Sequence[Database]):
         cur.execute(
             """
             ALTER TABLE INTERPRO.MATCH_NEW
-            ADD CONSTRAINT MATCH_NEW$CK1 
+            ADD CONSTRAINT CK_MATCH_NEW$FROM 
             CHECK ( POS_FROM >= 1 ) 
             """
         )
         cur.execute(
             """
             ALTER TABLE INTERPRO.MATCH_NEW
-            ADD CONSTRAINT MATCH_NEW$CK2
+            ADD CONSTRAINT CK_MATCH_NEW$NEG
             CHECK ( POS_TO - POS_FROM > 0 ) 
             """
         )
         cur.execute(
             """
             ALTER TABLE INTERPRO.MATCH_NEW
-            ADD CONSTRAINT MATCH_NEW$CK3
+            ADD CONSTRAINT CK_MATCH_NEW$STATUS
             CHECK ( STATUS != 'N' OR (STATUS = 'N' AND DBCODE IN ('P', 'M', 'Q')) )
             """
         )
         cur.execute(
             """
             ALTER TABLE INTERPRO.MATCH_NEW
-            ADD CONSTRAINT MATCH_NEW$PK
+            ADD CONSTRAINT PK_MATCH_NEW
             PRIMARY KEY (PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO)
             """
         )
         cur.execute(
             f"""
             ALTER TABLE INTERPRO.MATCH_NEW
-            ADD CONSTRAINT MATCH_NEW$FK1 FOREIGN KEY (DBCODE) 
-            REFERENCES INTERPRO.CV_DATABASE (DBCODE)
+            ADD CONSTRAINT FK_MATCH_NEW$DBCODE 
+            FOREIGN KEY (DBCODE) REFERENCES INTERPRO.CV_DATABASE (DBCODE)
             """
         )
         cur.execute(
             """
             ALTER TABLE INTERPRO.MATCH_NEW
-            ADD CONSTRAINT MATCH_NEW$FK2 FOREIGN KEY (EVIDENCE) 
-            REFERENCES INTERPRO.CV_EVIDENCE (CODE)
-            """
-        )
-        cur.execute(
-            f"""
-            ALTER TABLE INTERPRO.MATCH_NEW
-            ADD CONSTRAINT MATCH_NEW$FK3 FOREIGN KEY (METHOD_AC)
-            REFERENCES INTERPRO.METHOD (METHOD_AC)
+            ADD CONSTRAINT FK_MATCH_NEW$EVI 
+            FOREIGN KEY (EVIDENCE) REFERENCES INTERPRO.CV_EVIDENCE (CODE)
             """
         )
         cur.execute(
             f"""
             ALTER TABLE INTERPRO.MATCH_NEW
-            ADD CONSTRAINT MATCH_NEW$FK4 FOREIGN KEY (PROTEIN_AC) 
-            REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
+            ADD CONSTRAINT FK_MATCH_NEW$METHOD 
+            FOREIGN KEY (METHOD_AC) REFERENCES INTERPRO.METHOD (METHOD_AC)
             """
         )
         cur.execute(
             f"""
             ALTER TABLE INTERPRO.MATCH_NEW
-            ADD CONSTRAINT MATCH_NEW$FK5 FOREIGN KEY (STATUS) 
-            REFERENCES INTERPRO.CV_STATUS (CODE)
+            ADD CONSTRAINT FK_MATCH_NEW$PROTEIN 
+            FOREIGN KEY (PROTEIN_AC) REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
             """
         )
         cur.execute(
             f"""
             ALTER TABLE INTERPRO.MATCH_NEW
-            ADD CONSTRAINT MATCH_NEW$CK4 
+            ADD CONSTRAINT FK_MATCH_NEW$STATUS 
+            FOREIGN KEY (STATUS) REFERENCES INTERPRO.CV_STATUS (CODE)
+            """
+        )
+        cur.execute(
+            f"""
+            ALTER TABLE INTERPRO.MATCH_NEW
+            ADD CONSTRAINT CK_MATCH_NEW$PROTEIN
             CHECK (PROTEIN_AC IS NOT NULL )
             """
         )
         cur.execute(
             f"""
             ALTER TABLE INTERPRO.MATCH_NEW
-            ADD CONSTRAINT MATCH_NEW$CK5 
+            ADD CONSTRAINT CK_MATCH_NEW$METHOD
             CHECK (METHOD_AC IS NOT NULL )
             """
         )
@@ -239,36 +239,37 @@ def update_database_feature_matches(url: str, databases: Sequence[Database]):
         cur.execute(
             """
             ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
-            ADD CONSTRAINT FEATURE_MATCH_NEW$CK1 
+            ADD CONSTRAINT CK_FMATCH_NEW$FROM
             CHECK ( POS_FROM >= 1 ) 
             """
         )
         cur.execute(
             """
             ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
-            ADD CONSTRAINT FEATURE_MATCH_NEW$CK2
+            ADD CONSTRAINT CK_FMATCH_NEW$NEG
             CHECK ( POS_TO >= POS_FROM ) 
             """
         )
         cur.execute(
             """
             ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
-            ADD CONSTRAINT FEATURE_MATCH_NEW$PK
+            ADD CONSTRAINT PK_FMATCH_NEW
             PRIMARY KEY (PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, DBCODE)
             """
         )
         cur.execute(
             f"""
             ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
-            ADD CONSTRAINT FEATURE_MATCH_NEW$FK1 FOREIGN KEY (METHOD_AC, DBCODE) 
-            REFERENCES INTERPRO.FEATURE_METHOD (METHOD_AC, DBCODE)
+            ADD CONSTRAINT FK_FMATCH_NEW$M$D
+            FOREIGN KEY (METHOD_AC, DBCODE)  
+                REFERENCES INTERPRO.FEATURE_METHOD (METHOD_AC, DBCODE)
             """
         )
         cur.execute(
             """
             ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
-            ADD CONSTRAINT FEATURE_MATCH_NEW$FK2 FOREIGN KEY (PROTEIN_AC) 
-            REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
+            ADD CONSTRAINT FK_FMATCH_NEW$P 
+            FOREIGN KEY (PROTEIN_AC) REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
             """
         )
 
@@ -384,8 +385,15 @@ def update_database_site_matches(url: str, databases: Sequence[Database]):
         cur.execute(
             """
             ALTER TABLE INTERPRO.SITE_MATCH_NEW 
-            ADD CONSTRAINT FK_SITE_MATCH_NEW 
-            FOREIGN KEY (PROTEIN_AC) REFERENCES PROTEIN
+            ADD CONSTRAINT FK_SITE_MATCH_NEW$P 
+            FOREIGN KEY (PROTEIN_AC) REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
+            """
+        )
+        cur.execute(
+            """
+            ALTER TABLE INTERPRO.SITE_MATCH_NEW 
+            ADD CONSTRAINT FK_SITE_MATCH_NEW$D
+            FOREIGN KEY (DBCODE) REFERENCES INTERPRO.CV_DATABASE (DBCODE)
             """
         )
 
