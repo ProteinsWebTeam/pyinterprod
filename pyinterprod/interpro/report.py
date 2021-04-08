@@ -43,6 +43,14 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
     )
     integrated = {row[0]: row[1:] for row in cur}
 
+    cur.execute(
+        """
+        SELECT CODE, REPLACE(ABBREV, '_', ' ')
+        FROM INTERPRO.CV_ENTRY_TYPE
+        """
+    )
+    types = dict(cur.fetchall())
+
     with open(os.path.join(data_dir, FILE_DB_SIG), "rb") as fh:
         databases = pickle.load(fh)
 
@@ -130,24 +138,25 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
         files = {}  # file objects
         for acc in sorted(changes):
             entry_acc, entry_name, entry_type, lost, gained = changes[acc]
-            if entry_type == 'F':
-                entry_type = "families"
-            elif entry_type == 'D':
-                entry_type = "domains"
-            else:
-                entry_type = "others"
 
-            file = os.path.join(dst, f"swiss_de_{entry_type}.tsv")
             try:
-                fh = files[file]
+                fh = files[entry_type]
             except KeyError:
-                fh = files[file] = open(file, "wt")
-                fh.write(f"Signature\tLink\tEntry\tName\t# Lost"
+                if entry_type == 'F':
+                    filename = "swiss_de_families.tsv"
+                elif entry_type == 'D':
+                    filename = "swiss_de_domains.tsv"
+                else:
+                    filename = "swiss_de_others.tsv"
+
+                filepath = os.path.join(dst, filename)
+                fh = files[entry_type] = open(filepath, "wt")
+                fh.write(f"Signature\tLink\tEntry\tType\tName\t# Lost"
                          f"\t# Gained\tLost\tGained\n")
 
             link = f"{pronto_link}/signatures/{acc}/descriptions/?reviewed"
-            fh.write(f"{acc}\t{link}\t{entry_acc}\t{entry_name}"
-                     f"\t{len(lost)}\t{len(gained)}"
+            fh.write(f"{acc}\t{link}\t{entry_acc}\t{types[entry_type]}"
+                     f"\t{entry_name}\t{len(lost)}\t{len(gained)}"
                      f"\t{' | '.join(sorted(lost))}"
                      f"\t{' | '.join(sorted(gained))}\n")
 
@@ -221,18 +230,11 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                 acc = obj[0]
                 entry_acc = obj[1]
                 entry_name = obj[2]
-                entry_type = obj[3]
+                entry_type = types[obj[3]]
                 sig_old_tot = obj[4]
                 sig_new_tot = obj[5]
                 change = obj[6]
                 sig_superkingdoms = obj[7]
-
-                if entry_type == 'F':
-                    entry_type = "Family"
-                elif entry_type == 'D':
-                    entry_type = "Domain"
-                else:
-                    entry_type = "Other"
 
                 line = [
                     acc,
@@ -301,6 +303,14 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
     )
     entries = {row[0]: row[1:] for row in cur}
 
+    cur.execute(
+        """
+        SELECT CODE, REPLACE(ABBREV, '_', ' ')
+        FROM INTERPRO.CV_ENTRY_TYPE
+        """
+    )
+    types = dict(cur.fetchall())
+
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     release, = cur.fetchone()
 
@@ -347,21 +357,27 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
         changes[entry_acc] = ([], descs_then)
 
     # Write entries with changes (two different files: families/others)
+    tmpdir = mkdtemp()
     files = {}
     header = ("Accession\tLink\tName\tChecked\t# Lost\t# Gained"
               "\tLost\tGained\n")
     for entry_acc in sorted(changes):
         gained, lost = changes[entry_acc]
-        type_code, name, checked_flag = entries[entry_acc]
-        entry_type = "families" if type_code == 'F' else "others"
+        entry_type, name, checked_flag = entries[entry_acc]
 
         try:
-            fh, path = files[entry_type]
+            fh = files[entry_type]
         except KeyError:
-            path = os.path.join(data_dir, f"swiss_de_{entry_type}.tsv")
-            fh = open(path, "wt")
+            if entry_type == 'F':
+                filename = "swiss_de_families.tsv"
+            elif entry_type == 'D':
+                filename = "swiss_de_domains.tsv"
+            else:
+                filename = "swiss_de_others.tsv"
+
+            filepath = os.path.join(tmpdir, filename)
+            fh = files[entry_type] = open(filepath, "wt")
             fh.write(header)
-            files[entry_type] = (fh, path)
         finally:
             fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
                      f"{name}\t{'Yes' if checked_flag == 'Y' else 'No'}\t"
@@ -369,16 +385,14 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                      f"{' | '.join(sorted(lost))}\t"
                      f"{' | '.join(sorted(gained))}\n")
 
-    # Close files
-    for fh, _ in files.values():
+    for fh in files.values():
         fh.close()
 
     # Keep track of entries with Swiss-Prot description changes
     entries_changes = set(changes.keys())
 
     # Write entries with protein count changes (total + per superkingdom)
-    path = os.path.join(data_dir, "entries_count_changes.tsv")
-    with open(path, "wt") as fh:
+    with open(os.path.join(tmpdir, "entries_count_changes.tsv"), "wt") as fh:
         changes = track_entry_changes(cur, data_dir)
         superkingdoms = sorted({sk for e in changes for sk in e[4]})
 
@@ -398,18 +412,12 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             new_total = obj[2]
             change = obj[3]
             entry_superkingdoms = obj[4]
-            name, type_code, checked_flag = entries[entry_acc]
-            if type_code == 'F':
-                entry_type = "Family"
-            elif type_code == 'D':
-                entry_type = "Domain"
-            else:
-                entry_type = "Other"
+            name, entry_type, checked_flag = entries[entry_acc]
 
             line = [
                 entry_acc,
                 f"{pronto_link}/entry/{entry_acc}/",
-                entry_type,
+                types[entry_type],
                 name,
                 "Yes" if checked_flag == 'Y' else "No",
                 "Yes" if entry_acc in entries_changes else "No",
@@ -433,10 +441,12 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
     filename = os.path.join(data_dir, f"protein_update_{release}.zip")
     with ZipFile(filename, 'w', compression=ZIP_DEFLATED) as fh:
-        fh.write(path, arcname=os.path.basename(path))
+        for root, dirs, files in os.walk(tmpdir):
+            for file in files:
+                path = os.path.join(root, file)
+                fh.write(path, arcname=os.path.relpath(path, tmpdir))
 
-        for _, path in files.values():
-            fh.write(path, arcname=os.path.basename(path))
+    shutil.rmtree(tmpdir)
 
     email.send(
         emails,
