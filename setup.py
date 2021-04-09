@@ -1,9 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os
 from setuptools import Extension, find_packages, setup
 
 from pyinterprod import __version__
+
+
+def get_requirements():
+    filepath = os.path.join(os.path.dirname(__file__), "requirements.txt")
+
+    with open(filepath) as fh:
+        requirements = fh.read().splitlines()
+
+    return requirements
 
 
 setup(
@@ -13,20 +23,19 @@ setup(
     long_description="",
     packages=find_packages(),
     ext_modules=[
-        Extension(
-            "pyinterprod.proteinupdate.sprot",
-            ["pyinterprod/proteinupdate/sprotmodule.c"],
-            extra_link_args=["-lsqlite3"],
-        )
+        Extension(name="pyinterprod.uniprot.sprot",
+                  sources=["pyinterprod/uniprot/sprotmodule.c"],
+                  extra_link_args=["-lsqlite3"])
     ],
-    install_requires=["cx-Oracle>=7.1", "mundone>=0.2.0"],
-    zip_safe=False,
+    install_requires=get_requirements(),
     entry_points={
         "console_scripts": [
-            "ipr-clans = pyinterprod.clan:main",
-            "ipr-pronto = pyinterprod.pronto:main",
-            "ipr-uniprot = pyinterprod.proteinupdate:main",
-            "ipr-memberdb = pyinterprod.memberdbupdate:main",
+            # "ipr-clans = pyinterprod.clan:main",
+            "ipr-pre-memdb = pyinterprod.cli:update_database",
+            "ipr-matches = pyinterprod.cli:run_match_update",
+            "ipr-memdb = pyinterprod.cli:run_member_db_update",
+            "ipr-pronto = pyinterprod.cli:run_pronto_update",
+            "ipr-uniprot = pyinterprod.cli:run_uniprot_update"
         ]
-    },
+    }
 )

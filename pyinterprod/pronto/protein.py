@@ -1,560 +1,260 @@
 # -*- coding: utf-8 -*-
 
-import hashlib
-import math
-import re
-from multiprocessing import Queue
-from typing import List, Optional
+import os
+import shutil
+from tempfile import mkstemp
+from typing import Optional
 
 import cx_Oracle
+import psycopg2
+from psycopg2.extras import execute_values
 
-from .. import orautils
-from . import utils
+from pyinterprod import logger
+from pyinterprod.utils.kvdb import KVdb
+from pyinterprod.utils.pg import url2dict
 
 
-_MAX_GAP = 20        # at least 20 residues between positions
-
-
-def load_comments(user: str, dsn: str):
-    tables = ("CV_COMMENT_TOPIC", "COMMENT_VALUE", "PROTEIN_COMMENT")
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    for table in tables:
-        orautils.drop_table(cur, owner, table, purge=True)
-
-    cur.execute(
-        """
-        CREATE TABLE {}.CV_COMMENT_TOPIC
-        (
-            TOPIC_ID NUMBER(2) NOT NULL,
-            TOPIC VARCHAR2(30) NOT NULL
-        ) NOLOGGING
-        """.format(owner)
-    )
-
-    cur.execute(
-        """
-        CREATE TABLE {}.COMMENT_VALUE
-        (
-            TOPIC_ID NUMBER(2) NOT NULL,
-            COMMENT_ID NUMBER(6) NOT NULL,
-            TEXT VARCHAR2(4000) NOT NULL,
-            CONSTRAINT PK_COMMENT_VALUE PRIMARY KEY (TOPIC_ID, COMMENT_ID)
-        ) NOLOGGING
-        """.format(owner)
-    )
-
-    cur.execute(
-        """
-        CREATE TABLE {}.PROTEIN_COMMENT
-        (
-            PROTEIN_AC VARCHAR2(15) NOT NULL,
-            TOPIC_ID NUMBER(2) NOT NULL,
-            COMMENT_ID NUMBER(6) NOT NULL,
-            CONSTRAINT PK_PROTEIN_COMMENT PRIMARY KEY (
-                PROTEIN_AC, TOPIC_ID, COMMENT_ID
+def import_similarity_comments(ora_url: str, pg_url: str):
+    logger.info("populating")
+    pg_con = psycopg2.connect(**url2dict(pg_url))
+    with pg_con.cursor() as pg_cur:
+        pg_cur.execute("DROP TABLE IF EXISTS protein_similarity")
+        pg_cur.execute(
+            """
+            CREATE TABLE protein_similarity (
+                comment_id INTEGER NOT NULL,
+                comment_text TEXT NOT NULL,
+                protein_acc VARCHAR(15) NOT NULL
             )
-        ) NOLOGGING
-        """.format(owner)
-    )
-
-    cur.execute(
-        """
-        SELECT E.ACCESSION, B.COMMENT_TOPICS_ID, T.TOPIC, SS.TEXT
-        FROM SPTR.DBENTRY@SWPREAD E
-        INNER JOIN SPTR.COMMENT_BLOCK@SWPREAD B
-            ON E.DBENTRY_ID = B.DBENTRY_ID
-        INNER JOIN SPTR.CV_COMMENT_TOPICS@SWPREAD T
-            ON B.COMMENT_TOPICS_ID = T.COMMENT_TOPICS_ID
-        INNER JOIN SPTR.COMMENT_STRUCTURE@SWPREAD S
-            ON B.COMMENT_BLOCK_ID = S.COMMENT_BLOCK_ID
-        INNER JOIN SPTR.COMMENT_SUBSTRUCTURE@SWPREAD SS
-            ON S.COMMENT_STRUCTURE_ID = SS.COMMENT_STRUCTURE_ID
-        WHERE E.ENTRY_TYPE = 0
-        AND E.MERGE_STATUS != 'R'
-        AND E.DELETED = 'N'
-        AND E.FIRST_PUBLIC IS NOT NULL
-        """
-    )
-
-    topics = {}
-    protein2comment = set()
-    for row in cur:
-        accession = row[0]
-        topic_id = math.floor(row[1])
-        comment = row[3]
-
-        if topic_id not in topics:
-            topics[topic_id] = {
-                "name": row[2],
-                "comments": {}
-            }
-
-        topic_comments = topics[topic_id]["comments"]
-        if comment in topic_comments:
-            comment_id = topic_comments[comment]
-        else:
-            comment_id = topic_comments[comment] = len(topic_comments) + 1
-
-        protein2comment.add((accession, topic_id, comment_id))
-
-    comments = []
-    for topic_id, topic in topics.items():
-        for comment, comment_id in topic["comments"].items():
-            comments.append((topic_id, comment_id, comment))
-
-    topics = [
-        (topic_id, topic["name"])
-        for topic_id, topic in topics.items()
-    ]
-
-    cur.executemany(
-        """
-        INSERT /*+ APPEND */ INTO {}.CV_COMMENT_TOPIC
-        VALUES (:1, :2)
-        """.format(owner), topics
-    )
-    con.commit()
-
-    table = orautils.TablePopulator(con,
-                                    query="INSERT /*+ APPEND */ "
-                                          "INTO {}.COMMENT_VALUE "
-                                          "VALUES (:1, :2, :3)".format(owner),
-                                    autocommit=True)
-    for record in comments:
-        table.insert(record)
-    table.close()
-
-    table = orautils.TablePopulator(con,
-                                    query="INSERT /*+ APPEND */ "
-                                          "INTO {}.PROTEIN_COMMENT "
-                                          "VALUES (:1, :2, :3)".format(owner),
-                                    autocommit=True)
-    for record in protein2comment:
-        table.insert(record)
-    table.close()
-
-    for table in tables:
-        orautils.gather_stats(cur, owner, table)
-        orautils.grant(cur, owner, table, "SELECT", "INTERPRO_SELECT")
-    cur.close()
-    con.close()
-
-
-def load_descriptions_ctas(user: str, dsn: str):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    orautils.drop_table(cur, owner, "PROTEIN_DESC_STG", purge=True)
-    cur.execute(
-        """
-        CREATE TABLE {}.PROTEIN_DESC_STG
-        (
-          TEXT VARCHAR2(4000) NOT NULL,
-          PROTEIN_AC VARCHAR2(15) NOT NULL,
-          DESC_ID NUMBER(10) NOT NULL
-        ) NOLOGGING
-        AS
-        SELECT DESCR, ACCESSION, DENSE_RANK() OVER (ORDER BY DESCR)
-        FROM (
-          SELECT
-            E.ACCESSION,
-            D.DESCR,
-            ROW_NUMBER() OVER (
-              PARTITION BY E.ACCESSION
-              ORDER BY D.SECTION_GROUP_ID, D.DESC_ID
-            ) R
-          FROM SPTR.DBENTRY@SWPREAD E
-            LEFT OUTER JOIN SPTR.DBENTRY_2_DESC@SWPREAD D
-              ON E.DBENTRY_ID = D.DBENTRY_ID
-          WHERE E.ENTRY_TYPE = 0
-            AND E.MERGE_STATUS != 'R'
-            AND E.DELETED = 'N'
-            AND E.FIRST_PUBLIC IS NOT NULL
-        )
-        WHERE R = 1
-        """
-    )
-
-    for table in ("DESC_VALUE", "PROTEIN_DESC"):
-        orautils.drop_table(cur, owner, table, purge=True)
-
-    cur.execute(
-        """
-        CREATE TABLE {0}.DESC_VALUE
-        NOLOGGING
-        AS
-        SELECT DESC_ID, TEXT
-        FROM {0}.PROTEIN_DESC_STG
-        """.format(owner)
-    )
-
-    cur.execute(
-        """
-        CREATE TABLE {0}.PROTEIN_DESC
-        NOLOGGING
-        AS
-        SELECT PROTEIN_AC, DESC_ID
-        FROM {0}.PROTEIN_DESC_STG
-        """.format(owner)
-    )
-
-    orautils.drop_table(cur, owner, "PROTEIN_DESC_STG", purge=True)
-
-    cur.execute(
-        """
-        CREATE UNIQUE INDEX UI_DESC_VALUE
-        ON {}.DESC_VALUE (DESC_ID) NOLOGGING
-        """.format(owner)
-    )
-
-    cur.execute(
-        """
-        CREATE UNIQUE INDEX UI_PROTEIN_DESC
-        ON {}.PROTEIN_DESC (PROTEIN_AC) NOLOGGING
-        """.format(owner)
-    )
-    cur.execute(
-        """
-        CREATE INDEX I_PROTEIN_DESC
-        ON {}.PROTEIN_DESC (DESC_ID) NOLOGGING
-        """.format(owner)
-    )
-
-    for table in ("DESC_VALUE", "PROTEIN_DESC"):
-        orautils.gather_stats(cur, owner, table)
-        orautils.grant(cur, owner, table, "SELECT", "INTERPRO_SELECT")
-
-    cur.close()
-    con.close()
-
-
-def load_descriptions(user: str, dsn: str):
-    tables = ["DESC_VALUE", "PROTEIN_DESC"]
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    for table in tables:
-        orautils.drop_table(cur, owner, table, purge=True)
-
-    cur.execute(
-        """
-        CREATE TABLE {}.DESC_VALUE
-        (
-            DESC_ID NUMBER(10) NOT NULL,
-            TEXT VARCHAR2(4000) NOT NULL
-        ) NOLOGGING
-        """.format(owner)
-    )
-
-    cur.execute(
-        """
-        CREATE TABLE {}.PROTEIN_DESC
-        (
-            PROTEIN_AC VARCHAR2(15) NOT NULL,
-            DESC_ID NUMBER(10) NOT NULL
-        ) NOLOGGING
-        """.format(owner)
-    )
-
-    cur.execute(
-        """
-        SELECT DESCR, ACCESSION
-        FROM (
-          SELECT
-            E.ACCESSION,
-            D.DESCR,
-            ROW_NUMBER() OVER (
-                PARTITION BY E.ACCESSION
-                ORDER BY D.SECTION_GROUP_ID, D.DESC_ID
-            ) R
-          FROM SPTR.DBENTRY@SWPREAD E
-          LEFT OUTER JOIN SPTR.DBENTRY_2_DESC@SWPREAD D
-            ON E.DBENTRY_ID = D.DBENTRY_ID
-          WHERE E.ENTRY_TYPE IN (0, 1)
-                AND E.MERGE_STATUS != 'R'
-                AND E.DELETED = 'N'
-                AND E.FIRST_PUBLIC IS NOT NULL
-        )
-        WHERE R = 1
-        """
-    )
-
-    table1 = orautils.TablePopulator(con,
-                                     query="INSERT /*+ APPEND */ "
-                                           "INTO {}.DESC_VALUE "
-                                           "VALUES (:1, :2)".format(owner),
-                                     autocommit=True)
-
-    table2 = orautils.TablePopulator(con,
-                                     query="INSERT /*+ APPEND */ "
-                                           "INTO {}.PROTEIN_DESC "
-                                           "VALUES (:1, :2)".format(owner),
-                                     autocommit=True)
-    descriptions = {}
-    for text, accession in cur:
-        if text in descriptions:
-            desc_id = descriptions[text]
-        else:
-            desc_id = descriptions[text] = len(descriptions) + 1
-            table1.insert((desc_id, text))
-
-        table2.insert((accession, desc_id))
-
-    table1.close()
-    table2.close()
-
-    cur.execute(
-        """
-        CREATE UNIQUE INDEX UI_DESC_VALUE
-        ON {}.DESC_VALUE (DESC_ID) NOLOGGING
-        """.format(owner)
-    )
-
-    cur.execute(
-        """
-        CREATE UNIQUE INDEX UI_PROTEIN_DESC
-        ON {}.PROTEIN_DESC (PROTEIN_AC) NOLOGGING
-        """.format(owner)
-    )
-    cur.execute(
-        """
-        CREATE INDEX I_PROTEIN_DESC
-        ON {}.PROTEIN_DESC (DESC_ID) NOLOGGING
-        """.format(owner)
-    )
-
-    for table in tables:
-        orautils.gather_stats(cur, owner, table)
-        orautils.grant(cur, owner, table, "SELECT", "INTERPRO_SELECT")
-
-    cur.close()
-    con.close()
-
-
-def load_enzymes(user: str, dsn: str):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    orautils.drop_table(cur, owner, "ENZYME", purge=True)
-    cur.execute(
-        """
-        CREATE TABLE {}.ENZYME
-        (
-            PROTEIN_AC VARCHAR2(15) NOT NULL,
-            ECNO VARCHAR2(15) NOT NULL
-        ) NOLOGGING
-        """.format(owner)
-    )
-
-    query = f"INSERT /*+APPEND*/ INTO {owner}.ENZYME VALUES (:1, :2)"
-    with orautils.TablePopulator(con, query, autocommit=True) as table:
-        """
-        E.ENTRY_TYPE IN (0, 1)      -> Swiss-Prot/TrEMBL
-        E.MERGE_STATUS != 'R'       -> Not Redundant
-        E.DELETED = 'N'             -> Not deleted
-        E.FIRST_PUBLIC IS NOT NULL  -> is public
-        """
-        cur.execute(
             """
-            SELECT DISTINCT E.ACCESSION, D.DESCR
-            FROM SPTR.DBENTRY@SWPREAD E
-            INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD D
+        )
+
+        ora_con = cx_Oracle.connect(ora_url)
+        ora_cur = ora_con.cursor()
+        ora_cur.execute(
+            """
+            SELECT 
+                DENSE_RANK() OVER (ORDER BY TEXT),
+                TEXT,
+                ACCESSION
+            FROM (
+                SELECT E.ACCESSION, NVL(B.TEXT, SS.TEXT) AS TEXT
+                FROM SPTR.DBENTRY@SWPREAD E
+                INNER JOIN SPTR.COMMENT_BLOCK@SWPREAD B
+                  ON E.DBENTRY_ID = B.DBENTRY_ID
+                  AND B.COMMENT_TOPICS_ID = 34        -- SIMILARITY comments
+                LEFT OUTER JOIN SPTR.COMMENT_STRUCTURE@SWPREAD S
+                  ON B.COMMENT_BLOCK_ID = S.COMMENT_BLOCK_ID
+                  AND S.CC_STRUCTURE_TYPE_ID = 1      -- TEXT structure
+                LEFT OUTER JOIN SPTR.COMMENT_SUBSTRUCTURE@SWPREAD SS
+                  ON S.COMMENT_STRUCTURE_ID = SS.COMMENT_STRUCTURE_ID
+                WHERE E.ENTRY_TYPE = 0                -- Swiss-Prot
+                  AND E.MERGE_STATUS != 'R'           -- not 'Redundant'
+                  AND E.DELETED = 'N'                 -- not deleted
+                  AND E.FIRST_PUBLIC IS NOT NULL      -- published            
+            )
+            """
+        )
+
+        sql = "INSERT INTO protein_similarity VALUES %s"
+        execute_values(pg_cur, sql, ora_cur, page_size=1000)
+
+        ora_cur.close()
+        ora_con.close()
+
+        pg_cur.execute(
+            """
+            CREATE INDEX protein_similarity_comment_idx
+            ON protein_similarity (comment_id)
+            """
+        )
+        pg_cur.execute(
+            """
+            CREATE INDEX protein_similarity_protein_idx
+            ON protein_similarity (protein_acc)
+            """
+        )
+        pg_con.commit()
+
+    pg_con.close()
+    logger.info("complete")
+
+
+def import_protein_names(ora_url: str, pg_url: str, database: str,
+                         tmpdir: Optional[str] = None):
+    logger.info("populating protein2name")
+    fd, tmp_database = mkstemp(dir=tmpdir)
+    os.close(fd)
+    os.remove(tmp_database)
+
+    pg_con = psycopg2.connect(**url2dict(pg_url))
+    with pg_con.cursor() as pg_cur:
+        pg_cur.execute("DROP TABLE IF EXISTS protein_name")
+        pg_cur.execute("DROP TABLE IF EXISTS protein2name")
+        pg_cur.execute(
+            """
+            CREATE TABLE protein_name (
+                name_id INTEGER NOT NULL 
+                    CONSTRAINT protein_name_pkey PRIMARY KEY,
+                text TEXT NOT NULL
+            )
+            """
+        )
+        pg_cur.execute(
+            """
+            CREATE TABLE protein2name (
+                protein_acc VARCHAR(15) NOT NULL 
+                    CONSTRAINT protein2name_pkey PRIMARY KEY,
+                name_id INTEGER NOT NULL
+            )
+            """
+        )
+
+        ora_con = cx_Oracle.connect(ora_url)
+        ora_cur = ora_con.cursor()
+        ora_cur.execute(
+            """
+            SELECT ACCESSION, DESCR
+            FROM (
+              SELECT
+                E.ACCESSION,
+                D.DESCR,
+                ROW_NUMBER() OVER (
+                  PARTITION BY E.ACCESSION
+                  ORDER BY CV.DESC_ID,    -- 1=RecName, 2=AltName, 3=SubName
+                  CV.ORDER_IN,            -- Swiss-Prot manual order
+                  D.DESCR                 -- TrEMBL alphabetic order
+              ) R
+              FROM SPTR.DBENTRY@SWPREAD E
+              INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD D
                 ON E.DBENTRY_ID = D.DBENTRY_ID
-            INNER JOIN SPTR.CV_DESC@SWPREAD C
-                ON D.DESC_ID = C.DESC_ID
-            WHERE E.ENTRY_TYPE IN (0, 1)
-            AND E.MERGE_STATUS != 'R'
-            AND E.DELETED = 'N'
-            AND E.FIRST_PUBLIC IS NOT NULL
-            AND C.SUBCATG_TYPE = 'EC'
+                AND D.DESC_ID IN (1,4,11,13,16,23,25,28,35)  --Full description section
+              INNER JOIN SPTR.CV_DESC@SWPREAD CV
+                ON D.DESC_ID = CV.DESC_ID
+              WHERE E.ENTRY_TYPE IN (0, 1)          -- Swiss-Prot/TrEMBL
+                AND E.MERGE_STATUS != 'R'           -- not 'Redundant'
+                AND E.DELETED = 'N'                 -- not deleted
+                AND E.FIRST_PUBLIC IS NOT NULL      -- published
+            )
+            WHERE R = 1                             -- one name per protein
             """
         )
 
-        # Accepts X.X.X.X or X.X.X.-
-        # Does not accept preliminary EC numbers (e.g. X.X.X.nX)
-        prog = re.compile("(\d+\.){3}(\d+|-)$")
-        for acc, ecno in cur:
-            if prog.match(ecno):
-                table.insert((acc, ecno))
+        names = {}
+        values = []
+        i = 0
+        with KVdb(tmp_database, True) as namesdb:
+            for protein_acc, text in ora_cur:
+                try:
+                    name_id = names[text]
+                except KeyError:
+                    name_id = names[text] = len(names) + 1
 
-    cur.execute(
-        """
-        CREATE INDEX I_ENZYME$PROTEIN
-        ON {}.ENZYME (PROTEIN_AC) NOLOGGING
-        """.format(owner)
-    )
+                values.append((protein_acc, name_id))
+                namesdb[protein_acc] = name_id
+                i += 1
 
-    cur.execute(
-        """
-        CREATE INDEX I_ENZYME$EC
-        ON {}.ENZYME (ECNO) NOLOGGING
-        """.format(owner)
-    )
+                if not i % 100000:
+                    namesdb.sync()
+                    execute_values(
+                        cur=pg_cur,
+                        sql="INSERT INTO protein2name VALUES %s",
+                        argslist=values,
+                        page_size=1000
+                    )
+                    values = []
 
-    orautils.gather_stats(cur, owner, "ENZYME")
-    orautils.grant(cur, owner, "ENZYME", "SELECT", "INTERPRO_SELECT")
-    cur.close()
-    con.close()
+                    if not i % 10000000:
+                        logger.info(f"{i:>12,}")
 
+        ora_cur.close()
+        ora_con.close()
+        logger.info(f"{i:>12,}")
 
-def load_proteins(user: str, dsn: str):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    orautils.drop_table(cur, owner, "PROTEIN", purge=True)
-    cur.execute(
-        """
-        CREATE TABLE {}.PROTEIN
-        NOLOGGING
-        AS
-        SELECT PROTEIN_AC, NAME, DBCODE, LEN, FRAGMENT, TAX_ID
-        FROM INTERPRO.PROTEIN
-        """.format(owner)
-    )
-    orautils.gather_stats(cur, owner, "PROTEIN")
-    orautils.grant(cur, owner, "PROTEIN", "SELECT", "INTERPRO_SELECT")
-    cur.execute(
-        """
-        ALTER TABLE {}.PROTEIN
-        ADD CONSTRAINT PK_PROTEIN PRIMARY KEY (PROTEIN_AC)
-        """.format(owner)
-    )
-    cur.execute(
-        """
-        CREATE INDEX I_PROTEIN$DBCODE
-        ON {}.PROTEIN (DBCODE) NOLOGGING
-        """.format(owner)
-    )
-    cur.execute(
-        """
-        CREATE INDEX I_PROTEIN$NAME
-        ON {}.PROTEIN (NAME) NOLOGGING
-        """.format(owner)
-    )
+        if values:
+            execute_values(
+                cur=pg_cur,
+                sql="INSERT INTO protein2name VALUES %s",
+                argslist=values,
+                page_size=1000
+            )
 
-    cur.close()
-    con.close()
+        logger.info("populating protein_name")
+        execute_values(
+            cur=pg_cur,
+            sql="INSERT INTO protein_name VALUES %s",
+            argslist=((name_id, text) for text, name_id in names.items()),
+            page_size=1000
+        )
+
+        logger.info("analyzing tables")
+        pg_cur.execute("ANALYZE protein2name")
+        pg_cur.execute("ANALYZE protein_name")
+        pg_con.commit()
+
+    pg_con.close()
+
+    logger.info("copying database")
+    shutil.copyfile(tmp_database, database)
+    logger.info(f"disk usage: {os.path.getsize(tmp_database)/1024**2:.0f} MB")
+    os.remove(tmp_database)
+    logger.info("complete")
 
 
-def consume_proteins(user: str, dsn: str, task_queue: Queue,
-                     done_queue: Queue, tmpdir: Optional[str]=None,
-                     bucket_size: int=100):
-    owner = user.split('/')[0]
-    con = cx_Oracle.connect(orautils.make_connect_string(user, dsn))
-    cur = con.cursor()
-    cur.execute(f"SELECT METHOD_AC FROM {owner}.METHOD")
-    keys = sorted([row[0] for row in cur])
-    cur.close()
+def import_proteins(ora_url: str, pg_url: str):
+    logger.info("populating")
+    pg_con = psycopg2.connect(**url2dict(pg_url))
+    with pg_con.cursor() as pg_cur:
+        pg_cur.execute("DROP TABLE IF EXISTS protein")
+        pg_cur.execute(
+            """
+            CREATE TABLE protein (
+                accession VARCHAR(15) NOT NULL
+                    CONSTRAINT protein_pkey PRIMARY KEY,
+                identifier VARCHAR(16) NOT NULL,
+                length INTEGER NOT NULL,
+                taxon_id INTEGER NOT NULL,
+                is_fragment BOOLEAN NOT NULL,
+                is_reviewed BOOLEAN NOT NULL
+            )
+            """
+        )
 
-    keys = [keys[i] for i in range(0, len(keys), bucket_size)]
+        ora_con = cx_Oracle.connect(ora_url)
+        ora_cur = ora_con.cursor()
+        ora_cur.execute(
+            """
+            SELECT PROTEIN_AC, NAME, LEN, TAX_ID, FRAGMENT, DBCODE
+            FROM INTERPRO.PROTEIN                 --
+            """
+        )
 
-    names = utils.Organizer(keys, dir=tmpdir)
-    taxa = utils.Organizer(keys, dir=tmpdir)
-    terms = utils.Organizer(keys, dir=tmpdir)
-    comparator = utils.MatchComparator(dir=tmpdir)
-    table = orautils.TablePopulator(
-        con=con,
-        query=f"INSERT /*+ APPEND */ INTO {owner}.METHOD2PROTEIN "
-              f"VALUES (:1, :2, :3, :4, :5, :6, :7, :8)",
-        autocommit=True
-    )
-    for chunk in iter(task_queue.get, None):
-        for obj in chunk:
-            (acc, dbcode, length, tax_id, left_n, desc_id, matches,
-             protein_terms) = obj
+        sql = "INSERT INTO protein VALUES %s"
+        execute_values(pg_cur, sql, ((
+            row[0],
+            row[1],
+            row[2],
+            row[3],
+            row[4] == 'Y',
+            row[5] == 'S'
+        ) for row in ora_cur), page_size=1000)
 
-            md5 = _hash_protein(matches)
-            signatures = comparator.update(matches)
+        ora_cur.close()
+        ora_con.close()
 
-            # Update organizers and populate table
-            for signature_acc in signatures:
-                # UniProt descriptions
-                names.add(signature_acc, (desc_id, dbcode))
-                # Taxonomic origins
-                taxa.add(signature_acc, tax_id)
-                # GO terms
-                for go_id in protein_terms:
-                    terms.add(signature_acc, go_id)
+        pg_cur.execute(
+            """
+            CREATE UNIQUE INDEX protein_identifier_uidx
+            ON protein (identifier)
+            """
+        )
+        pg_cur.execute(
+            """
+            CREATE INDEX protein_reviewed_idx
+            ON protein (is_reviewed)
+            """
+        )
+        pg_con.commit()
 
-                table.insert((signature_acc, acc, dbcode, md5, length,
-                              tax_id, left_n, desc_id))
-
-        names.flush()
-        taxa.flush()
-        terms.flush()
-
-    table.close()
-    con.close()
-
-    comparator.sync()
-    size = comparator.size
-    organizers = (names, taxa, terms)
-    for o in organizers:
-        size += o.merge()
-
-    done_queue.put((comparator, *organizers, size))
-
-
-def _hash_protein(matches: List[tuple]) -> str:
-    # flatten matches
-    locations = []
-    for acc, pos_start, pos_end in matches:
-        locations.append((pos_start, acc))
-        locations.append((pos_end, acc))
-
-    """
-    Evaluate the protein's match structure,
-        i.e. how signatures match the proteins
-
-    -----------------------------   Protein
-     <    >                         Signature 1
-       <    >                       Signature 2
-                  < >               Signature 3
-
-    Flattened:
-    -----------------------------   Protein
-     < <  > >     < >
-     1 2  1 2     3 3
-
-    Structure, with '-' representing a "gap"
-        (more than N bp between two positions):
-    1212-33
-    """
-
-    # Sort locations by position
-    locations.sort()
-
-    """
-    Do not set the offset to 0, but to the first position:
-    if two proteins have the same structure,
-    but the first position of one protein is > max_gap
-    while the first position of the other protein is <= max_gap,
-    a gap will be used for the first protein and not for the other,
-    which will results in two different structures
-    """
-    offset = locations[0][0]
-
-    # overall match structure
-    structure = []
-    # close signatures (less than max_gap between two positions)
-    signatures = []
-
-    for pos, acc in locations:
-        if pos > offset + _MAX_GAP:
-            for _acc in signatures:
-                structure.append(_acc)
-
-            signatures = []
-            structure.append('')  # add a gap
-
-        offset = pos
-        signatures.append(acc)
-
-    for _acc in signatures:
-        structure.append(_acc)
-
-    return hashlib.md5(
-        '/'.join(structure).encode("utf-8")
-    ).hexdigest()
+    pg_con.close()
+    logger.info("complete")
