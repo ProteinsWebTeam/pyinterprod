@@ -64,7 +64,7 @@ The optional arguments are:
 - `-t, --tasks`: list of tasks to run, by default all tasks are run (see [Tasks](#ipr-uniprot-tasks) for a description of available tasks)
 - `--dry-run`: do not run tasks, only list those about to be run
 
-<a name="#ipr-uniprot-tasks"></a>
+<a name="ipr-uniprot-tasks"></a>
 
 #### Tasks
 
@@ -173,7 +173,7 @@ The optional arguments are:
     <td></td>
 </tr>
 <tr>
-    <td>[Pronto](#ipr-pronto-tasks)</td>
+    <td><a href="#ipr-pronto-tasks">Pronto</a></td>
     <td>Update the Pronto PostgreSQL table</td>
     <td>taxonomy, update-fmatches, swissprot-de</td>
 </tr>
@@ -219,7 +219,7 @@ The optional arguments are:
 - `-t, --tasks`: list of tasks to run, by default all tasks are run (see [Tasks](#ipr-memdb-tasks) for a description of available tasks)
 - `--dry-run`: do not run tasks, only list those about to be run
 
-<a name="#ipr-memdb-tasks"></a>
+<a name="ipr-memdb-tasks"></a>
 
 ##### Tasks
 
@@ -283,7 +283,7 @@ The optional arguments are:
     <td>import-matches, import-sites</td>
 </tr>
 <tr>
-    <td>[Pronto](#ipr-pronto-tasks)</td>
+    <td><a href="#ipr-pronto-tasks">Pronto</a></td>
     <td>Update the Pronto PostgreSQL table</td>
     <td>update-matches</td>
 </tr>
@@ -306,7 +306,7 @@ The optional arguments are:
 - `-t, --tasks`: list of tasks to run, by default all tasks are run (see [Tasks](#ipr-pronto-tasks) for a description of available tasks)
 - `--dry-run`: do not run tasks, only list those about to be run
 
-<a name="#ipr-pronto-tasks"></a>
+<a name="ipr-pronto-tasks"></a>
 
 #### Tasks
 
