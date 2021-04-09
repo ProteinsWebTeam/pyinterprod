@@ -358,7 +358,6 @@ The optional arguments are:
         <td>signatures</td>
         <td>Import member database signatures</td>
         <td>matches, signature2proteins</td>
-        <td></td>
     </tr>
     <tr>
         <td>taxonomy</td>
