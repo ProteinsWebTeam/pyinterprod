@@ -233,7 +233,7 @@ The optional arguments are:
 </thead>
 <tbody>
 <tr>
-    <td>load-signatures/td>
+    <td>load-signatures</td>
     <td>Import member database signatures for the version to update to</td>
     <td></td>
 </tr>
