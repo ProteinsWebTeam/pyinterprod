@@ -320,7 +320,7 @@ def run_member_db_update():
                 continue
 
             try:
-                name, source = line.split('\t', 1)
+                name, source = line.split(maxsplit=1)
             except ValueError:
                 parser.error(f"{args.databases}: "
                              f"invalid format (line {i+1}): {line}")
