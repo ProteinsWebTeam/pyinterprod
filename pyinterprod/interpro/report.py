@@ -60,7 +60,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
         # Deleted signatures
         with open(os.path.join(dst, "deleted.tsv"), "wt") as fh:
             fh.write("Signature\tName\tDescription\tEntry\n")
-            for acc, name, descr, entry_acc in sorted(data["deleted"]):
+            for acc, name, descr, entry_acc in data["deleted"]:
                 if entry_acc:
                     # Only report signatures that were integrated
                     fh.write(f"{acc}\t{name or 'N/A'}\t{descr or 'N/A'}\t"
@@ -70,8 +70,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
         with open(os.path.join(dst, "name_changes.tsv"), "wt") as fh:
             fh.write("Signature\tEntry\tLink\tPrevious name\tNew name\n")
 
-            changes = data["changes"]["names"]
-            for acc, old_val, new_val in sorted(changes):
+            for acc, old_val, new_val in data["changes"]["names"]:
                 try:
                     entry_acc = integrated[acc][0]
                 except KeyError:
@@ -86,8 +85,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
             fh.write("Signature\tEntry\tLink\tPrevious description"
                      "\tNew description\n")
 
-            changes = data["changes"]["descriptions"]
-            for acc, old_val, new_val in sorted(changes):
+            for acc, old_val, new_val in data["changes"]["descriptions"]:
                 try:
                     entry_acc = integrated[acc][0]
                 except KeyError:
@@ -101,8 +99,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
         with open(os.path.join(dst, "type_changes.tsv"), "wt") as fh:
             fh.write("Signature\tEntry\tLink\tPrevious type\tNew type\n")
 
-            changes = data["changes"]["types"]
-            for acc, old_val, new_val in sorted(changes):
+            for acc, old_val, new_val in data["changes"]["types"]:
                 try:
                     entry_acc = integrated[acc][0]
                 except KeyError:
