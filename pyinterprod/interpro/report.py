@@ -66,7 +66,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                     fh.write(f"{acc}\t{name or 'N/A'}\t{descr or 'N/A'}\t"
                              f"{entry_acc}\n")
 
-        # Annotation changes
+        # Signatures with a different name
         with open(os.path.join(dst, "name_changes.tsv"), "wt") as fh:
             fh.write("Signature\tEntry\tLink\tPrevious name\tNew name\n")
 
@@ -81,6 +81,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                 fh.write(f"{acc}\t{entry_acc}\t{link}\t"
                          f"{old_val or 'N/A'}\t{new_val or 'N/A'}\n")
 
+        # Signatures with a different descriptions
         with open(os.path.join(dst, "description_changes.tsv"), "wt") as fh:
             fh.write("Signature\tEntry\tLink\tPrevious description"
                      "\tNew description\n")
@@ -96,6 +97,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                 fh.write(f"{acc}\t{entry_acc}\t{link}\t"
                          f"{old_val or 'N/A'}\t{new_val or 'N/A'}\n")
 
+        # Signatures with a different type (if provided by member DB)
         with open(os.path.join(dst, "type_changes.tsv"), "wt") as fh:
             fh.write("Signature\tEntry\tLink\tPrevious type\tNew type\n")
 
@@ -255,6 +257,12 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                         line += [str(old_cnt), str(new_cnt)]
 
                 fh.write('\t'.join(line) + '\n')
+
+        # New signatures
+        with open(os.path.join(dst, "new.tsv"), "wt") as fh:
+            fh.write("Signature\tName\tDescription\n")
+            for acc, name, descr, _type in data["new"]:
+                fh.write(f"{acc}\t{name or 'N/A'}\t{descr or 'N/A'}\n")
 
     cur.close()
     con.close()
