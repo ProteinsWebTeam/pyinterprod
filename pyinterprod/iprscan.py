@@ -253,7 +253,7 @@ def get_analyses(cur: Cursor, **kwargs) -> List[Analysis]:
     analyses = []
     for a_id, a_name, a_type, a_active, match_table, site_table in cur:
         """
-        CDD/SFLD
+        CDD/PIRSR/SFLD
             - PERSISTED=1 when matches are ready
             - PERSISTED=2 when matches and sites are ready
 
@@ -261,7 +261,7 @@ def get_analyses(cur: Cursor, **kwargs) -> List[Analysis]:
             - PERSISTED=2 when matches are ready
         """
         if match_type == "matches":
-            persisted = 1 if a_type in ("cdd", "sfld") else 2
+            persisted = 1 if a_type in SITE_PARITIONS else 2
             table = match_table.upper()
         elif site_table:
             persisted = 2
