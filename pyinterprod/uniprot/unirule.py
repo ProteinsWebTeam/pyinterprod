@@ -430,7 +430,7 @@ def ask_to_snapshot(url: str, emails: dict):
     cur = con.cursor()
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     release, = cur.fetchone()
-    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
+    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     max_upi, = cur.fetchone()
     cur.execute(
         """
