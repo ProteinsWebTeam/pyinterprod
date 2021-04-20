@@ -464,13 +464,13 @@ def check_proteins(cur: cx_Oracle.Cursor) -> int:
     num_errors = 0
     cur.execute(
         """
-        SELECT IP.PROTEIN_AC
-        FROM INTERPRO.PROTEIN IP
-        LEFT OUTER JOIN UNIPARC.XREF UX
-          ON IP.PROTEIN_AC = UX.AC
-          AND UX.DBID IN (2, 3)   -- Swiss-Prot/TrEMBL
-          AND UX.DELETED = 'N'    -- Not deleted  
-        WHERE UX.AC IS NULL 
+        SELECT PROTEIN_AC
+        FROM INTERPRO.PROTEIN
+        MINUS
+        SELECT AC
+        FROM UNIPARC.XREF
+        WHERE DBID IN (2, 3)   -- Swiss-Prot/TrEMBL
+        AND DELETED = 'N'      -- Not deleted   
         """
     )
 
