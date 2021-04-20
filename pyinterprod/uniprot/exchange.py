@@ -34,7 +34,7 @@ def export_sib(url: str, emails: dict):
 
     email.send(
         emails,
-        subject=f"Data for SIB ready",
+        subject=f"Protein update {version}: data for SIB ready",
         content=f"""\
 The data required by SIB was successfully exported.
 
