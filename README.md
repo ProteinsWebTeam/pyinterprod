@@ -46,9 +46,9 @@ The `pyinterprod` package include command line tools, which expect an INI config
 - **misc**:
     - **pronto_url**: URL of the Pronto curation application
     - **data_dir**: directory where to store staging files
-    - **lsf_queue**: name of the LSQ queue to submit jobs to
+    - **lsf_queue**: name of the LSF queue to submit jobs to
     - **workflow_dir**: directory for temporary files (e.g. job input/output)
-   
+
 ## Usage
 
 ### Protein update
@@ -201,7 +201,7 @@ $ ipr-pre-memdb config.ini -n DATABASE -d YYYY-MM-DD -v VERSION
 
 A TSV file must be created, containing one line per member database to update. Each line has two values, separated by a tab:
 1. name of the database (as used in `ipr-pre-memdb`)
-2. source for the signatures, i.e. a file (e.g. `hamap.prf` for HAMAP) or a URL (e.g. connection string for the Pfam MySQL database) 
+2. source for the signatures, i.e. a file (e.g. `hamap.prf` for HAMAP) or a URL (e.g. connection string for the Pfam MySQL database)
 
 ```bash
 $ echo -e "cathgene3d\tcath_release/CathNames.txt" > sources.tsv
