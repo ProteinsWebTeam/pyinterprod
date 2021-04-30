@@ -13,7 +13,7 @@ import cx_Oracle
 from pyinterprod.utils import email
 from pyinterprod.pronto.signature import get_swissprot_descriptions
 from .database import Database
-from .match import track_entry_changes, get_sig_proteins_count
+from .match import track_entry_changes, get_sig_protein_counts
 from .signature import FILE_DB_SIG, FILE_SIG_DESCR
 
 
@@ -166,7 +166,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
 
         # Protein count changes (total + per superkingdom)
         old_counts = data["proteins"]
-        new_counts = get_sig_proteins_count(cur, db_id)
+        new_counts = get_sig_protein_counts(cur, db_id)
         changes = []
         superkingdoms = set()
         for acc in sorted(old_counts):  # sort by accession

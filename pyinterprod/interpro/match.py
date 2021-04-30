@@ -915,7 +915,7 @@ def _get_entries_protein_counts(cur: cx_Oracle.Cursor) -> Dict[str, Dict[str, in
     return counts
 
 
-def get_sig_proteins_count(cur: cx_Oracle.Cursor, dbid: str) -> Dict[str, Dict[str, int]]:
+def get_sig_protein_counts(cur: cx_Oracle.Cursor, dbid: str) -> Dict[str, Dict[str, int]]:
     """
     Return the number of protein matches by each member database signature.
     Only complete sequences are considered

@@ -12,7 +12,7 @@ from pyinterprod.pronto.signature import get_swissprot_descriptions
 from pyinterprod.utils import Table, oracle as ora
 from . import contrib
 from .database import Database
-from .match import MATCH_PARTITIONS, SITE_PARTITIONS, get_sig_proteins_count
+from .match import MATCH_PARTITIONS, SITE_PARTITIONS, get_sig_protein_counts
 
 
 FILE_DB_SIG = "signatures.update.pickle"
@@ -44,8 +44,8 @@ def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
     )
 
     sql = """
-        INSERT INTO INTERPRO.METHOD_STG 
-        VALUES (:1, :2, :3, :4, :5, :6, :7) 
+        INSERT INTO INTERPRO.METHOD_STG
+        VALUES (:1, :2, :3, :4, :5, :6, :7)
     """
     with Table(con, sql) as table:
         errors = 0
@@ -134,7 +134,7 @@ def track_signature_changes(ora_url: str, pg_url: str,
             """
             SELECT M.METHOD_AC, M.NAME, M.DESCRIPTION, M.SIG_TYPE, EM.ENTRY_AC
             FROM INTERPRO.METHOD M
-            LEFT OUTER JOIN INTERPRO.ENTRY2METHOD EM 
+            LEFT OUTER JOIN INTERPRO.ENTRY2METHOD EM
             ON M.METHOD_AC = EM.METHOD_AC
             WHERE DBCODE = :1
             """, (db.identifier,)
@@ -183,7 +183,7 @@ def track_signature_changes(ora_url: str, pg_url: str,
                 "descriptions": descr_changes,
                 "types": type_changes
             },
-            "proteins": get_sig_proteins_count(cur, db.identifier),
+            "proteins": get_sig_protein_counts(cur, db.identifier),
             "descriptions": {
                 acc: all_sig2descs[acc]
                 for acc in all_sig2descs if acc in old_signatures
@@ -216,9 +216,9 @@ def delete_from_table(url: str, table: str, partition: Optional[str],
         SELECT COUNT(*)
         FROM INTERPRO.{db_obj}
         WHERE {column} IN (
-            SELECT METHOD_AC 
+            SELECT METHOD_AC
             FROM INTERPRO.METHOD_TO_DELETE
-        ) 
+        )
         """
     )
     num_rows, = cur.fetchone()
@@ -426,7 +426,7 @@ def update_signatures(url: str):
         MERGE INTO INTERPRO.METHOD M
         USING INTERPRO.METHOD_STG S
           ON (M.METHOD_AC = S.METHOD_AC)
-        WHEN MATCHED THEN 
+        WHEN MATCHED THEN
           UPDATE SET M.NAME = S.NAME,
                      M.DESCRIPTION = S.DESCRIPTION,
                      M.SIG_TYPE = S.SIG_TYPE,
@@ -434,16 +434,16 @@ def update_signatures(url: str):
                      M.ABSTRACT_LONG = S.ABSTRACT_LONG,
                      M.TIMESTAMP = SYSDATE
         WHEN NOT MATCHED THEN
-          INSERT (METHOD_AC, NAME, DBCODE, CANDIDATE, DESCRIPTION, 
+          INSERT (METHOD_AC, NAME, DBCODE, CANDIDATE, DESCRIPTION,
                   SIG_TYPE, ABSTRACT, ABSTRACT_LONG)
-          VALUES (S.METHOD_AC, S.NAME, S.DBCODE, 'Y', S.DESCRIPTION, 
+          VALUES (S.METHOD_AC, S.NAME, S.DBCODE, 'Y', S.DESCRIPTION,
                   S.SIG_TYPE, S.ABSTRACT, S.ABSTRACT_LONG)
         """
     )
 
     cur.executemany(
         """
-        UPDATE INTERPRO.DB_VERSION 
+        UPDATE INTERPRO.DB_VERSION
         SET ENTRY_COUNT = :1
         WHERE DBCODE = :2
         """, counts
