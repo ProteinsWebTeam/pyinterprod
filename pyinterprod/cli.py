@@ -573,7 +573,8 @@ def run_uniprot_update():
                   config["uniprot"]["swiss-prot"],
                   config["uniprot"]["trembl"],
                   uniprot_version,
-                  config["uniprot"]["date"]),
+                  config["uniprot"]["date"],
+                  data_dir),
             kwargs=dict(tmpdir="/scratch/"),
             name="update-proteins",
             scheduler=dict(mem=2000, queue=lsf_queue, scratch=40000),
@@ -597,7 +598,7 @@ def run_uniprot_update():
         ),
         Task(
             fn=interpro.match.update_matches,
-            args=(ora_interpro_url, data_dir),
+            args=(ora_interpro_url,),
             name="update-matches",
             # TODO: update memory resource requirements
             scheduler=dict(mem=16000, queue=lsf_queue),
