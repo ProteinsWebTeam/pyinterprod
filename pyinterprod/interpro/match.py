@@ -482,6 +482,8 @@ def update_feature_matches(url: str):
 def update_variant_matches(url: str):
     """
     Recreate splice-variants table with the most recent data
+    from SWISSPROT_VARSPLIC. TREMBL_VARSPLIC (DBID=25) is obsolete and
+    only contains deleted cross-references.
 
     :param url: Oracle connection string
     """
@@ -499,7 +501,7 @@ def update_variant_matches(url: str):
           P.LEN
         FROM UNIPARC.XREF X
         INNER JOIN UNIPARC.PROTEIN P ON X.UPI = P.UPI
-        WHERE X.DBID IN (24, 25) -- SWISSPROT_VARSPLIC, TREMBL_VARSPLIC
+        WHERE X.DBID = 24
         AND X.DELETED = 'N'
         """
     )
@@ -521,7 +523,7 @@ def update_variant_matches(url: str):
           ON MV.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
         INNER JOIN INTERPRO.METHOD M
           ON MV.METHOD_AC = M.METHOD_AC
-        WHERE X.DBID IN (24, 25)  -- SWISSPROT_VARSPLIC, TREMBL_VARSPLIC
+        WHERE X.DBID = 24
         AND X.DELETED = 'N'
         -- Exclude MobiDB-Lite, Phobius, SignalP (Euk, Gram+, Gram-), TMHMM, COILS
         AND I2D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
