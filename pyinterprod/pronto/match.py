@@ -571,7 +571,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
                 signature_acc_2 VARCHAR(25) NOT NULL,
                 num_collocations INTEGER NOT NULL,
                 num_protein_overlaps INTEGER NOT NULL,
-                num_residue_overlaps INTEGER NOT NULL
+                num_residue_overlaps BIGINT NOT NULL
             )
             """
         )
