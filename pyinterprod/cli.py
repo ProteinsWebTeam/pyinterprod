@@ -535,7 +535,7 @@ def run_uniprot_update():
                   data_dir),
             kwargs=dict(tmpdir="/scratch/"),
             name="update-proteins",
-            scheduler=dict(mem=2000, queue=lsf_queue, scratch=40000),
+            scheduler=dict(mem=4000, queue=lsf_queue, scratch=40000),
         ),
 
         # Update IPPRO
@@ -558,8 +558,7 @@ def run_uniprot_update():
             fn=interpro.match.update_matches,
             args=(ora_interpro_url,),
             name="update-matches",
-            # TODO: update memory resource requirements
-            scheduler=dict(mem=16000, queue=lsf_queue),
+            scheduler=dict(mem=1000, queue=lsf_queue),
             requires=["check-proteins", "import-matches"]
         ),
         Task(
@@ -653,8 +652,7 @@ def run_uniprot_update():
             fn=interpro.report.send_prot_update_report,
             args=(ora_interpro_url, pg_url, data_dir, pronto_url, emails),
             name="send-report",
-            # TODO: update memory resource requirements
-            scheduler=dict(mem=24000, queue=lsf_queue),
+            scheduler=dict(mem=4000, queue=lsf_queue),
             requires=["pronto-annotations", "pronto-proteins-similarities",
                       "pronto-proteins", "pronto-signatures",
                       "pronto-taxonomy"]
