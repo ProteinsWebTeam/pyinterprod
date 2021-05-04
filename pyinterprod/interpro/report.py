@@ -276,7 +276,8 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
 
     names = [f"{db.name} {db.version}" for db in dbs]
     email.send(
-        emails,
+        info=emails,
+        to=["interpro"],
         subject=f"Member database update report: {', '.join(names)}",
         content="""\
 Dear curators,
@@ -452,7 +453,8 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
     shutil.rmtree(tmpdir)
 
     email.send(
-        emails,
+        info=emails,
+        to=["interpro"],
         subject=f"Protein update report: UniProt {release}",
         content="""\
 Dear curators,

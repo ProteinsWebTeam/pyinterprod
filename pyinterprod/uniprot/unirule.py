@@ -85,7 +85,10 @@ Description of states:
     content += "\nKind regards,\nThe InterPro Production Team\n"
 
     email.send(
-        emails,
+        info=emails,
+        to=["aa_dev"],
+        cc=["unirule"],
+        bcc=["sender"],
         subject=f"Protein update {release}: integration changes",
         content=content
     )
@@ -490,7 +493,8 @@ The InterPro Production Team
 
     try:
         email.send(
-            emails,
+            info=emails,
+            to=["interpro"],
             subject=f"Protein update {release}: please snapshot IPPRO",
             content=content
         )

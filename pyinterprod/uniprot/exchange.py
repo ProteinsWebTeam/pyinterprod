@@ -183,7 +183,10 @@ def export_xrefs(url: str, outdir: str, emails: dict):
         os.chmod(path, 0o775)
 
     email.send(
-        emails,
+        info=emails,
+        to=["uniprot_db"],
+        cc=["uniprot_prod"],
+        bcc=["sender"],
         subject="InterPro XREF files are ready",
         content=f"""\
 Dear UniProt team,
