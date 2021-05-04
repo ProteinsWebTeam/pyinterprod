@@ -90,45 +90,33 @@ def get_pronto_tasks(ora_url: str, pg_url: str, data_dir: str,
 
 
 def prep_email(emails: dict, to: Sequence[str], **kwargs) -> dict:
-    emails.update({
+    info = {
         "Server": emails["server"],
         "Sender": emails["sender"],
         "To": set(),
         "Cc": set(),
         "Bcc": set(),
-    })
+    }
 
     _to = []
     for key in to:
-        try:
-            addr = emails[key]
-        except KeyError:
-            continue
-        else:
-            if addr:
-                emails["To"].add(addr)
+        addr = emails[key]
+        if addr:
+            info["To"].add(addr)
 
     _cc = []
     for key in kwargs.get("cc", []):
-        try:
-            addr = emails[key]
-        except KeyError:
-            continue
-        else:
-            if addr and addr not in emails["To"]:
-                emails["Cc"].add(addr)
+        addr = emails[key]
+        if addr and addr not in info["To"]:
+            info["Cc"].add(addr)
 
     _bcc = []
     for key in kwargs.get("bcc", []):
-        try:
-            addr = emails[key]
-        except KeyError:
-            continue
-        else:
-            if addr and addr not in emails["To"] and addr not in emails["Cc"]:
-                emails["Bcc"].add(addr)
+        addr = emails[key]
+        if addr and addr not in info["To"] and addr not in info["Cc"]:
+            info["Bcc"].add(addr)
 
-    return emails
+    return info
 
 
 def run_match_update():
@@ -424,7 +412,7 @@ def run_member_db_update():
         Task(
             fn=interpro.report.send_db_update_report,
             args=(ora_interpro_url, pg_url, databases, data_dir, pronto_url,
-                  prep_email(emails, to=["interpro"])),
+                  prep_email(emails, ["interpro"])),
             name="send-report",
             scheduler=dict(mem=4000, queue=lsf_queue),
             requires=after_pronto
@@ -615,16 +603,16 @@ def run_uniprot_update():
         # Data for UniProt/SIB
         Task(
             fn=uniprot.exchange.export_sib,
-            args=(ora_interpro_url, prep_email(emails, to=["interpro"])),
+            args=(ora_interpro_url, prep_email(emails, ["interpro"])),
             name="export-sib",
             scheduler=dict(queue=lsf_queue),
             requires=["update-matches"]
         ),
         Task(
             fn=uniprot.unirule.report_integration_changes,
-            args=(ora_interpro_url, prep_email(emails,
-                                               to=["aa_dev"],
-                                               cc=["unirule", "interpro"])),
+            args=(ora_interpro_url, prep_email(emails, ["aa_dev"],
+                                               cc=["unirule"],
+                                               bcc=["sender"])),
             name="report-changes",
             scheduler=dict(mem=2000, queue=lsf_queue),
             requires=["update-matches"]
@@ -656,8 +644,8 @@ def run_uniprot_update():
         Task(
             fn=uniprot.exchange.export_xrefs,
             args=(ora_interpro_url, xrefs_dir,
-                  prep_email(emails, to=["uniprot_db"],
-                             cc=["uniprot_prod", "interpro"])
+                  prep_email(emails, ["uniprot_db"], cc=["uniprot_prod"],
+                             bcc=["sender"])
                   ),
             name="export-xrefs",
             scheduler=dict(queue=lsf_queue),
@@ -665,7 +653,7 @@ def run_uniprot_update():
         ),
         Task(
             fn=uniprot.unirule.ask_to_snapshot,
-            args=(ora_interpro_url, prep_email(emails, to=["interpro"])),
+            args=(ora_interpro_url, prep_email(emails, ["interpro"])),
             name="notify-interpro",
             scheduler=dict(queue=lsf_queue),
             requires=["aa-iprscan", "xref-condensed", "xref-summary",
