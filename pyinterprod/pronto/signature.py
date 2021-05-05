@@ -37,6 +37,11 @@ def import_signatures(ora_url: str, pg_url: str, allseqs: str, compseqs: str):
     )
     values = []
     for row in ora_cur:
+        try:
+            db_id = databases[row[1]]
+        except KeyError:
+            continue
+
         acc = row[0]
         try:
             n_rev_seqs, n_rev_matches, n_unrev_seqs = allseqs[acc]
@@ -50,7 +55,7 @@ def import_signatures(ora_url: str, pg_url: str, allseqs: str, compseqs: str):
 
         values.append((
             acc,                        # accession
-            databases.get(row[1]),      # database_id
+            db_id,                      # database_id
             row[2],                     # name
             row[3],                     # description
             row[4],                     # type
