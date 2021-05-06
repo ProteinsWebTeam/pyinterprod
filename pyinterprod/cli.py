@@ -89,6 +89,39 @@ def get_pronto_tasks(ora_url: str, pg_url: str, data_dir: str,
     ]
 
 
+def check_ispro():
+    parser = ArgumentParser(description="Check matches/sites status in ISPRO")
+    parser.add_argument("config",
+                        metavar="FILE",
+                        help="configuration file")
+    parser.add_argument("-t", "--type",
+                        default="matches",
+                        choices=("matches", "sites"),
+                        help="type of data to check (default: matches)")
+    parser.add_argument("-s", "--status",
+                        default="production",
+                        choices=("active", "all", "production"),
+                        help="status of analyses to check "
+                             "(default: production)")
+    parser.add_argument("--uaread",
+                        action="store_true",
+                        help="get the highest UPI from UAREAD (default: off)")
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': "
+                     f"no such file or directory")
+
+    config = ConfigParser()
+    config.read(args.config)
+
+    dsn = config["oracle"]["dsn"]
+    ora_iprscan_url = f"iprscan/{config['oracle']['iprscan']}@{dsn}"
+
+    iprscan.check_ispro(ora_iprscan_url, match_type=args.type,
+                        status=args.status, use_uaread=args.uaread)
+
+
 def run_match_update():
     parser = ArgumentParser(description="InterPro match/site update")
     parser.add_argument("config",
