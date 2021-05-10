@@ -551,7 +551,7 @@ def update_site_matches(url: str):
 
     cur.execute(
         """
-        CREATE TABLE INTERPRO.SITE_MATCH_NEW
+        CREATE TABLE INTERPRO.SITE_MATCH_NEW NOLOGGING
         AS
         SELECT
             P.PROTEIN_AC, S.METHOD_AC, S.LOC_START, S.LOC_END, S.DESCRIPTION,
@@ -570,6 +570,7 @@ def update_site_matches(url: str):
         CREATE INDEX I_SITE_NEW
         ON INTERPRO.SITE_MATCH_NEW (PROTEIN_AC, METHOD_AC, LOC_START, LOC_END)
         TABLESPACE INTERPRO_IND
+        NOLOGGING
         """
     )
 
@@ -577,10 +578,12 @@ def update_site_matches(url: str):
     oracle.gather_stats(cur, "INTERPRO", "SITE_MATCH_NEW")
 
     logger.info("checking")
+    params = []
     queries = []
     for identifier, (_, ck_matches) in SITE_PARTITIONS.items():
         if ck_matches:
             partition = MATCH_PARTITIONS[identifier]
+            params.append(identifier)
             queries.append(
                 f"""
                 SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
@@ -589,17 +592,19 @@ def update_site_matches(url: str):
             )
 
     if queries:
+        in_cond = [f":{i+1}" for i in range(len(params))]
         cur.execute(
             f"""
             SELECT COUNT(*)
             FROM (
                 SELECT DISTINCT PROTEIN_AC, METHOD_AC, LOC_START, LOC_END
                 FROM INTERPRO.SITE_MATCH_NEW
+                WHERE DBCODE IN ({', '.join(in_cond)})
                 MINUS (
                   {' UNION ALL '.join(queries)}
                 )
             )
-            """
+            """, params
         )
 
         cnt, = cur.fetchone()
