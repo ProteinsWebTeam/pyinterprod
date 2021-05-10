@@ -572,12 +572,12 @@ def update_site_matches(url: str):
 
     logger.info("checking")
     queries = []
-    for identifier, ck_matches in SITE_PARTITIONS:
+    for partition, ck_matches in SITE_PARTITIONS.values():
         if ck_matches:
             queries.append(
                 f"""
                 SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
-                FROM INTERPRO.MATCH PARTITION ({MATCH_PARTITIONS[identifier]})
+                FROM INTERPRO.MATCH PARTITION ({partition})
                 """
             )
 
