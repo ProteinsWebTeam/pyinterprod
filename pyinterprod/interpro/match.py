@@ -572,8 +572,9 @@ def update_site_matches(url: str):
 
     logger.info("checking")
     queries = []
-    for partition, ck_matches in SITE_PARTITIONS.values():
+    for identifier, (_, ck_matches) in SITE_PARTITIONS.items():
         if ck_matches:
+            partition = MATCH_PARTITIONS[identifier]
             queries.append(
                 f"""
                 SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
