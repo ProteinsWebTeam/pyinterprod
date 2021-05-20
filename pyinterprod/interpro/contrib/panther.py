@@ -53,14 +53,20 @@ def parse_signatures(filepath: str) -> List[Method]:
     prog = re.compile(r"(PTHR\d+)\.(SF\d+)?")
     with open(filepath, "rt") as fh:
         for line in fh:
-            accession, name = line.rstrip().split('\t')
+            cols = line.rstrip().split(sep='\t', maxsplit=1)
+            try:
+                accession, name = cols
+            except ValueError:
+                accession, = cols
+                name = None
+
             fam_id, sub_id = prog.search(accession).groups()
             if sub_id:
                 accession = f"{fam_id}:{sub_id}"
             else:
                 accession = fam_id
 
-            if name.upper().endswith("NOT NAMED"):
+            if name is None or name.upper().endswith("NOT NAMED"):
                 descr = None
             else:
                 descr = name

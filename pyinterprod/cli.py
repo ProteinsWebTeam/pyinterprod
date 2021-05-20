@@ -3,7 +3,7 @@
 import os
 from argparse import ArgumentParser
 from configparser import ConfigParser
-from typing import List, Sequence
+from typing import List
 
 from mundone import Task, Workflow
 
@@ -89,46 +89,37 @@ def get_pronto_tasks(ora_url: str, pg_url: str, data_dir: str,
     ]
 
 
-def prep_email(emails: dict, to: Sequence[str], **kwargs) -> dict:
-    emails.update({
-        "Server": emails["server"],
-        "Sender": emails["sender"],
-        "To": set(),
-        "Cc": set(),
-        "Bcc": set(),
-    })
+def check_ispro():
+    parser = ArgumentParser(description="Check matches/sites status in ISPRO")
+    parser.add_argument("config",
+                        metavar="FILE",
+                        help="configuration file")
+    parser.add_argument("-t", "--type",
+                        default="matches",
+                        choices=("matches", "sites"),
+                        help="type of data to check (default: matches)")
+    parser.add_argument("-s", "--status",
+                        default="production",
+                        choices=("active", "all", "production"),
+                        help="status of analyses to check "
+                             "(default: production)")
+    parser.add_argument("--uaread",
+                        action="store_true",
+                        help="get the highest UPI from UAREAD (default: off)")
+    args = parser.parse_args()
 
-    _to = []
-    for key in to:
-        try:
-            addr = emails[key]
-        except KeyError:
-            continue
-        else:
-            if addr:
-                emails["To"].add(addr)
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': "
+                     f"no such file or directory")
 
-    _cc = []
-    for key in kwargs.get("cc", []):
-        try:
-            addr = emails[key]
-        except KeyError:
-            continue
-        else:
-            if addr and addr not in emails["To"]:
-                emails["Cc"].add(addr)
+    config = ConfigParser()
+    config.read(args.config)
 
-    _bcc = []
-    for key in kwargs.get("bcc", []):
-        try:
-            addr = emails[key]
-        except KeyError:
-            continue
-        else:
-            if addr and addr not in emails["To"] and addr not in emails["Cc"]:
-                emails["Bcc"].add(addr)
+    dsn = config["oracle"]["dsn"]
+    ora_iprscan_url = f"iprscan/{config['oracle']['iprscan']}@{dsn}"
 
-    return emails
+    iprscan.check_ispro(ora_iprscan_url, match_type=args.type,
+                        status=args.status, use_uaread=args.uaread)
 
 
 def run_match_update():
@@ -424,7 +415,7 @@ def run_member_db_update():
         Task(
             fn=interpro.report.send_db_update_report,
             args=(ora_interpro_url, pg_url, databases, data_dir, pronto_url,
-                  prep_email(emails, to=["interpro"])),
+                  emails),
             name="send-report",
             scheduler=dict(mem=4000, queue=lsf_queue),
             requires=after_pronto
@@ -573,10 +564,11 @@ def run_uniprot_update():
                   config["uniprot"]["swiss-prot"],
                   config["uniprot"]["trembl"],
                   uniprot_version,
-                  config["uniprot"]["date"]),
+                  config["uniprot"]["date"],
+                  data_dir),
             kwargs=dict(tmpdir="/scratch/"),
             name="update-proteins",
-            scheduler=dict(mem=2000, queue=lsf_queue, scratch=40000),
+            scheduler=dict(mem=4000, queue=lsf_queue, scratch=40000),
         ),
 
         # Update IPPRO
@@ -597,10 +589,9 @@ def run_uniprot_update():
         ),
         Task(
             fn=interpro.match.update_matches,
-            args=(ora_interpro_url, data_dir),
+            args=(ora_interpro_url,),
             name="update-matches",
-            # TODO: update memory resource requirements
-            scheduler=dict(mem=16000, queue=lsf_queue),
+            scheduler=dict(mem=1000, queue=lsf_queue),
             requires=["check-proteins", "import-matches"]
         ),
         Task(
@@ -614,16 +605,14 @@ def run_uniprot_update():
         # Data for UniProt/SIB
         Task(
             fn=uniprot.exchange.export_sib,
-            args=(ora_interpro_url, prep_email(emails, to=["interpro"])),
+            args=(ora_interpro_url, emails),
             name="export-sib",
             scheduler=dict(queue=lsf_queue),
             requires=["update-matches"]
         ),
         Task(
             fn=uniprot.unirule.report_integration_changes,
-            args=(ora_interpro_url, prep_email(emails,
-                                               to=["aa_dev"],
-                                               cc=["unirule", "interpro"])),
+            args=(ora_interpro_url, emails),
             name="report-changes",
             scheduler=dict(mem=2000, queue=lsf_queue),
             requires=["update-matches"]
@@ -654,17 +643,14 @@ def run_uniprot_update():
         ),
         Task(
             fn=uniprot.exchange.export_xrefs,
-            args=(ora_interpro_url, xrefs_dir,
-                  prep_email(emails, to=["uniprot_db"],
-                             cc=["uniprot_prod", "interpro"])
-                  ),
+            args=(ora_interpro_url, xrefs_dir, emails),
             name="export-xrefs",
             scheduler=dict(queue=lsf_queue),
             requires=["xref-summary"]
         ),
         Task(
             fn=uniprot.unirule.ask_to_snapshot,
-            args=(ora_interpro_url, prep_email(emails, to=["interpro"])),
+            args=(ora_interpro_url, emails),
             name="notify-interpro",
             scheduler=dict(queue=lsf_queue),
             requires=["aa-iprscan", "xref-condensed", "xref-summary",
@@ -697,11 +683,9 @@ def run_uniprot_update():
         # Generate and send report to curators
         Task(
             fn=interpro.report.send_prot_update_report,
-            args=(ora_interpro_url, pg_url, data_dir, pronto_url,
-                  prep_email(emails, to=["interpro"])),
+            args=(ora_interpro_url, pg_url, data_dir, pronto_url, emails),
             name="send-report",
-            # TODO: update memory resource requirements
-            scheduler=dict(mem=24000, queue=lsf_queue),
+            scheduler=dict(mem=4000, queue=lsf_queue),
             requires=["pronto-annotations", "pronto-proteins-similarities",
                       "pronto-proteins", "pronto-signatures",
                       "pronto-taxonomy"]

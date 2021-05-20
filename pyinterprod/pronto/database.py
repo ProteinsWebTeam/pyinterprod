@@ -22,7 +22,7 @@ DATABASES = [
     'V',    # PANTHER
     'X',    # CATH-Gene3D
     'Y',    # SUPERFAMILY
-    'g',    # MobiDB Lite
+    # 'g',    # MobiDB Lite
     'u',    # UniProtKB
 ]
 

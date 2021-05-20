@@ -44,6 +44,11 @@ SITE_PARTITIONS = {
 }
 
 
+def export_entries_protein_counts(cur: cx_Oracle.Cursor, data_dir: str):
+    with open(os.path.join(data_dir, FILE_ENTRY_PROT_COUNTS), "wb") as fh:
+        pickle.dump(_get_entries_protein_counts(cur), fh)
+
+
 def update_database_matches(url: str, databases: Sequence[Database]):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -68,14 +73,14 @@ def update_database_matches(url: str, databases: Sequence[Database]):
               SYSDATE, SYSDATE, SYSDATE, 'INTERPRO',
               M.EVALUE, M.MODEL_AC, M.FRAGMENTS
             FROM IPRSCAN.MV_IPRSCAN M
-            INNER JOIN UNIPARC.XREF X 
+            INNER JOIN UNIPARC.XREF X
               ON M.UPI = X.UPI
             INNER JOIN INTERPRO.IPRSCAN2DBCODE D
               ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
             WHERE M.ANALYSIS_ID = :1
-            AND M.SEQ_START != M.SEQ_END 
+            AND M.SEQ_START != M.SEQ_END
             AND X.DBID IN (2, 3)  -- Swiss-Prot or TrEMBL
-            AND X.DELETED = 'N'            
+            AND X.DELETED = 'N'
             """, (database.analysis_id,)
         )
         con.commit()
@@ -86,7 +91,7 @@ def update_database_matches(url: str, databases: Sequence[Database]):
             cur.execute(
                 f"""
                 CREATE INDEX MATCH_NEW${col[0]}
-                ON INTERPRO.MATCH_NEW ({col}) 
+                ON INTERPRO.MATCH_NEW ({col})
                 TABLESPACE INTERPRO_IND
                 NOLOGGING
                 """
@@ -95,15 +100,15 @@ def update_database_matches(url: str, databases: Sequence[Database]):
         cur.execute(
             """
             ALTER TABLE INTERPRO.MATCH_NEW
-            ADD CONSTRAINT CK_MATCH_NEW$FROM 
-            CHECK ( POS_FROM >= 1 ) 
+            ADD CONSTRAINT CK_MATCH_NEW$FROM
+            CHECK ( POS_FROM >= 1 )
             """
         )
         cur.execute(
             """
             ALTER TABLE INTERPRO.MATCH_NEW
             ADD CONSTRAINT CK_MATCH_NEW$NEG
-            CHECK ( POS_TO - POS_FROM > 0 ) 
+            CHECK ( POS_TO - POS_FROM > 0 )
             """
         )
         cur.execute(
@@ -123,35 +128,35 @@ def update_database_matches(url: str, databases: Sequence[Database]):
         cur.execute(
             f"""
             ALTER TABLE INTERPRO.MATCH_NEW
-            ADD CONSTRAINT FK_MATCH_NEW$DBCODE 
+            ADD CONSTRAINT FK_MATCH_NEW$DBCODE
             FOREIGN KEY (DBCODE) REFERENCES INTERPRO.CV_DATABASE (DBCODE)
             """
         )
         cur.execute(
             """
             ALTER TABLE INTERPRO.MATCH_NEW
-            ADD CONSTRAINT FK_MATCH_NEW$EVI 
+            ADD CONSTRAINT FK_MATCH_NEW$EVI
             FOREIGN KEY (EVIDENCE) REFERENCES INTERPRO.CV_EVIDENCE (CODE)
             """
         )
         cur.execute(
             f"""
             ALTER TABLE INTERPRO.MATCH_NEW
-            ADD CONSTRAINT FK_MATCH_NEW$METHOD 
+            ADD CONSTRAINT FK_MATCH_NEW$METHOD
             FOREIGN KEY (METHOD_AC) REFERENCES INTERPRO.METHOD (METHOD_AC)
             """
         )
         cur.execute(
             f"""
             ALTER TABLE INTERPRO.MATCH_NEW
-            ADD CONSTRAINT FK_MATCH_NEW$PROTEIN 
+            ADD CONSTRAINT FK_MATCH_NEW$PROTEIN
             FOREIGN KEY (PROTEIN_AC) REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
             """
         )
         cur.execute(
             f"""
             ALTER TABLE INTERPRO.MATCH_NEW
-            ADD CONSTRAINT FK_MATCH_NEW$STATUS 
+            ADD CONSTRAINT FK_MATCH_NEW$STATUS
             FOREIGN KEY (STATUS) REFERENCES INTERPRO.CV_STATUS (CODE)
             """
         )
@@ -181,7 +186,7 @@ def update_database_matches(url: str, databases: Sequence[Database]):
         cur.execute(
             f"""
             ALTER TABLE INTERPRO.MATCH
-            EXCHANGE PARTITION ({partition}) 
+            EXCHANGE PARTITION ({partition})
             WITH TABLE INTERPRO.MATCH_NEW
             """
         )
@@ -220,16 +225,16 @@ def update_database_feature_matches(url: str, databases: Sequence[Database]):
             """
             INSERT /*+ APPEND */ INTO INTERPRO.FEATURE_MATCH_NEW
             SELECT
-              X.AC, M.METHOD_AC, M.SEQ_FEATURE, M.SEQ_START, M.SEQ_END, 
+              X.AC, M.METHOD_AC, M.SEQ_FEATURE, M.SEQ_START, M.SEQ_END,
               D.DBCODE
             FROM IPRSCAN.MV_IPRSCAN M
-            INNER JOIN UNIPARC.XREF X 
+            INNER JOIN UNIPARC.XREF X
               ON M.UPI = X.UPI
             INNER JOIN INTERPRO.IPRSCAN2DBCODE D
               ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
             WHERE M.ANALYSIS_ID = :1
             AND X.DBID IN (2, 3)  -- Swiss-Prot or TrEMBL
-            AND X.DELETED = 'N'            
+            AND X.DELETED = 'N'
             """, (database.analysis_id,)
         )
         con.commit()
@@ -240,14 +245,14 @@ def update_database_feature_matches(url: str, databases: Sequence[Database]):
             """
             ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
             ADD CONSTRAINT CK_FMATCH_NEW$FROM
-            CHECK ( POS_FROM >= 1 ) 
+            CHECK ( POS_FROM >= 1 )
             """
         )
         cur.execute(
             """
             ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
             ADD CONSTRAINT CK_FMATCH_NEW$NEG
-            CHECK ( POS_TO >= POS_FROM ) 
+            CHECK ( POS_TO >= POS_FROM )
             """
         )
         cur.execute(
@@ -261,14 +266,14 @@ def update_database_feature_matches(url: str, databases: Sequence[Database]):
             f"""
             ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
             ADD CONSTRAINT FK_FMATCH_NEW$M$D
-            FOREIGN KEY (METHOD_AC, DBCODE)  
+            FOREIGN KEY (METHOD_AC, DBCODE)
                 REFERENCES INTERPRO.FEATURE_METHOD (METHOD_AC, DBCODE)
             """
         )
         cur.execute(
             """
             ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
-            ADD CONSTRAINT FK_FMATCH_NEW$P 
+            ADD CONSTRAINT FK_FMATCH_NEW$P
             FOREIGN KEY (PROTEIN_AC) REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
             """
         )
@@ -284,7 +289,7 @@ def update_database_feature_matches(url: str, databases: Sequence[Database]):
         cur.execute(
             f"""
                 ALTER TABLE INTERPRO.FEATURE_MATCH
-                EXCHANGE PARTITION ({partition}) 
+                EXCHANGE PARTITION ({partition})
                 WITH TABLE INTERPRO.FEATURE_MATCH_NEW
                 """
         )
@@ -332,10 +337,10 @@ def update_database_site_matches(url: str, databases: Sequence[Database]):
             INSERT /*+ APPEND */ INTO INTERPRO.SITE_MATCH_NEW
             SELECT
                 X.AC, S.METHOD_AC, S.LOC_START, S.LOC_END, S.DESCRIPTION,
-                S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END, S.NUM_SITES, 
+                S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END, S.NUM_SITES,
                 D.DBCODE
             FROM IPRSCAN.SITE PARTITION ({site_partition}) S
-            INNER JOIN UNIPARC.XREF X 
+            INNER JOIN UNIPARC.XREF X
               ON S.UPI = X.UPI
             INNER JOIN INTERPRO.IPRSCAN2DBCODE D
               ON S.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
@@ -353,7 +358,7 @@ def update_database_site_matches(url: str, databases: Sequence[Database]):
             ON INTERPRO.SITE_MATCH_NEW (
                 PROTEIN_AC, METHOD_AC, LOC_START, LOC_END
             )
-            TABLESPACE INTERPRO_IND 
+            TABLESPACE INTERPRO_IND
             NOLOGGING
             """
         )
@@ -384,14 +389,14 @@ def update_database_site_matches(url: str, databases: Sequence[Database]):
         logger.debug(f"\tadding constraint")
         cur.execute(
             """
-            ALTER TABLE INTERPRO.SITE_MATCH_NEW 
-            ADD CONSTRAINT FK_SITE_MATCH_NEW$P 
+            ALTER TABLE INTERPRO.SITE_MATCH_NEW
+            ADD CONSTRAINT FK_SITE_MATCH_NEW$P
             FOREIGN KEY (PROTEIN_AC) REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
             """
         )
         cur.execute(
             """
-            ALTER TABLE INTERPRO.SITE_MATCH_NEW 
+            ALTER TABLE INTERPRO.SITE_MATCH_NEW
             ADD CONSTRAINT FK_SITE_MATCH_NEW$D
             FOREIGN KEY (DBCODE) REFERENCES INTERPRO.CV_DATABASE (DBCODE)
             """
@@ -400,7 +405,7 @@ def update_database_site_matches(url: str, databases: Sequence[Database]):
         logger.debug(f"\texchanging partition")
         cur.execute(
             f"""
-            ALTER TABLE INTERPRO.SITE_MATCH 
+            ALTER TABLE INTERPRO.SITE_MATCH
             EXCHANGE PARTITION ({site_partition})
             WITH TABLE INTERPRO.SITE_MATCH_NEW
             """
@@ -419,16 +424,15 @@ def update_database_site_matches(url: str, databases: Sequence[Database]):
     logger.info("complete")
 
 
-def update_matches(url: str, data_dir: str):
+def update_matches(url: str):
     """
     Add protein matches for recently added/modified sequences
 
     :param url: Oracle connection string
-    :param data_dir: output directory for data files
     """
     con = cx_Oracle.connect(url)
     _prepare_matches(con)
-    _check_matches(con, os.path.join(data_dir, FILE_ENTRY_PROT_COUNTS))
+    _check_matches(con)
     _insert_matches(con)
     con.close()
 
@@ -478,6 +482,8 @@ def update_feature_matches(url: str):
 def update_variant_matches(url: str):
     """
     Recreate splice-variants table with the most recent data
+    from SWISSPROT_VARSPLIC. TREMBL_VARSPLIC (DBID=25) is obsolete and
+    only contains deleted cross-references.
 
     :param url: Oracle connection string
     """
@@ -488,14 +494,14 @@ def update_variant_matches(url: str):
     cur.execute(
         """
         INSERT INTO INTERPRO.VARSPLIC_MASTER
-        SELECT 
+        SELECT
           SUBSTR(X.AC, 1, INSTR(X.AC, '-') - 1),
           SUBSTR(X.AC, INSTR(X.AC, '-') + 1),
           P.CRC64,
           P.LEN
         FROM UNIPARC.XREF X
         INNER JOIN UNIPARC.PROTEIN P ON X.UPI = P.UPI
-        WHERE X.DBID IN (24, 25) -- SWISSPROT_VARSPLIC, TREMBL_VARSPLIC
+        WHERE X.DBID = 24
         AND X.DELETED = 'N'
         """
     )
@@ -506,18 +512,18 @@ def update_variant_matches(url: str):
     cur.execute(
         """
         INSERT INTO INTERPRO.VARSPLIC_MATCH
-        SELECT 
-          X.AC, MV.METHOD_AC, MV.SEQ_START, MV.SEQ_END, 'T' AS STATUS, 
-          I2D.DBCODE, I2D.EVIDENCE, SYSDATE, SYSDATE, SYSDATE, 
+        SELECT
+          X.AC, MV.METHOD_AC, MV.SEQ_START, MV.SEQ_END, 'T' AS STATUS,
+          I2D.DBCODE, I2D.EVIDENCE, SYSDATE, SYSDATE, SYSDATE,
           'INTERPRO', MV.EVALUE, MV.MODEL_AC, MV.FRAGMENTS
         FROM UNIPARC.XREF X
         INNER JOIN IPRSCAN.MV_IPRSCAN MV
           ON X.UPI = MV.UPI
-        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
           ON MV.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
         INNER JOIN INTERPRO.METHOD M
           ON MV.METHOD_AC = M.METHOD_AC
-        WHERE X.DBID IN (24, 25)  -- SWISSPROT_VARSPLIC, TREMBL_VARSPLIC
+        WHERE X.DBID = 24
         AND X.DELETED = 'N'
         -- Exclude MobiDB-Lite, Phobius, SignalP (Euk, Gram+, Gram-), TMHMM, COILS
         AND I2D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
@@ -545,11 +551,12 @@ def update_site_matches(url: str):
 
     cur.execute(
         """
-        CREATE TABLE INTERPRO.SITE_MATCH_NEW
+        CREATE TABLE INTERPRO.SITE_MATCH_NEW NOLOGGING
         AS
         SELECT
-            P.PROTEIN_AC, S.METHOD_AC, S.LOC_START, S.LOC_END, S.DESCRIPTION,
-            S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END, S.NUM_SITES, D.DBCODE
+            P.PROTEIN_AC, S.METHOD_AC, D.DBCODE, S.LOC_START, S.LOC_END, 
+            S.DESCRIPTION, S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END, 
+            S.NUM_SITES
         FROM INTERPRO.PROTEIN_TO_SCAN P
         INNER JOIN IPRSCAN.SITE S
           ON P.UPI = S.UPI
@@ -564,6 +571,7 @@ def update_site_matches(url: str):
         CREATE INDEX I_SITE_NEW
         ON INTERPRO.SITE_MATCH_NEW (PROTEIN_AC, METHOD_AC, LOC_START, LOC_END)
         TABLESPACE INTERPRO_IND
+        NOLOGGING
         """
     )
 
@@ -571,10 +579,12 @@ def update_site_matches(url: str):
     oracle.gather_stats(cur, "INTERPRO", "SITE_MATCH_NEW")
 
     logger.info("checking")
+    params = []
     queries = []
     for identifier, (_, ck_matches) in SITE_PARTITIONS.items():
         if ck_matches:
             partition = MATCH_PARTITIONS[identifier]
+            params.append(identifier)
             queries.append(
                 f"""
                 SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
@@ -583,17 +593,19 @@ def update_site_matches(url: str):
             )
 
     if queries:
+        in_cond = [f":{i+1}" for i in range(len(params))]
         cur.execute(
             f"""
             SELECT COUNT(*)
             FROM (
                 SELECT DISTINCT PROTEIN_AC, METHOD_AC, LOC_START, LOC_END
                 FROM INTERPRO.SITE_MATCH_NEW
+                WHERE DBCODE IN ({', '.join(in_cond)})
                 MINUS (
                   {' UNION ALL '.join(queries)}
                 )
             )
-            """
+            """, params
         )
 
         cnt, = cur.fetchone()
@@ -645,7 +657,7 @@ def _prepare_matches(con: cx_Oracle.Connection):
         """
         CREATE TABLE INTERPRO.MATCH_NEW NOLOGGING
         AS
-        SELECT * 
+        SELECT *
         FROM INTERPRO.MATCH WHERE 1 = 0
         """
     )
@@ -705,12 +717,11 @@ def _prepare_matches(con: cx_Oracle.Connection):
     cur.close()
 
 
-def _check_matches(con: cx_Oracle.Connection, output: str):
+def _check_matches(con: cx_Oracle.Connection):
     """
     Check there are not errors in imported matches
 
     :param con: Oracle connection object
-    :param output: output file to store the number of protein matches per entry
     """
     cur = con.cursor()
 
@@ -753,9 +764,6 @@ def _check_matches(con: cx_Oracle.Connection, output: str):
         cur.close()
         con.close()
         raise RuntimeError(f"{cnt} invalid matches")
-
-    with open(output, "wb") as fh:
-        pickle.dump(_get_entries_proteins_count(cur), fh)
 
     cur.close()
 
@@ -806,7 +814,7 @@ def track_entry_changes(cur: cx_Oracle.Cursor, data_dir: str) -> list:
     with open(os.path.join(data_dir, FILE_ENTRY_PROT_COUNTS), "rb") as fh:
         old_counts = pickle.load(fh)
 
-    new_counts = _get_entries_proteins_count(cur)
+    new_counts = _get_entries_protein_counts(cur)
     changes = []
     for acc in sorted(old_counts):
         entry_old_counts = old_counts[acc]
@@ -881,7 +889,7 @@ def _get_taxon2superkingdom(cur: cx_Oracle.Cursor) -> Dict[int, str]:
     return taxon2superkingdom
 
 
-def _get_entries_proteins_count(cur: cx_Oracle.Cursor) -> Dict[str, Dict[str, int]]:
+def _get_entries_protein_counts(cur: cx_Oracle.Cursor) -> Dict[str, Dict[str, int]]:
     """
     Return the number of protein matched by each InterPro entry.
     Only complete sequences are considered.
@@ -913,10 +921,10 @@ def _get_entries_proteins_count(cur: cx_Oracle.Cursor) -> Dict[str, Dict[str, in
         except KeyError:
             e[superkingdom] = n_proteins
 
-    return dict(counts)
+    return counts
 
 
-def get_sig_proteins_count(cur: cx_Oracle.Cursor, dbid: str) -> Dict[str, Dict[str, int]]:
+def get_sig_protein_counts(cur: cx_Oracle.Cursor, dbid: str) -> Dict[str, Dict[str, int]]:
     """
     Return the number of protein matches by each member database signature.
     Only complete sequences are considered
@@ -930,7 +938,7 @@ def get_sig_proteins_count(cur: cx_Oracle.Cursor, dbid: str) -> Dict[str, Dict[s
     cur.execute(
         f"""
         SELECT M.METHOD_AC, P.TAX_ID, COUNT(DISTINCT P.PROTEIN_AC)
-        FROM INTERPRO.MATCH PARTITION ({partition}) M 
+        FROM INTERPRO.MATCH PARTITION ({partition}) M
         INNER JOIN INTERPRO.PROTEIN P
             ON P.PROTEIN_AC = M.PROTEIN_AC
         WHERE P.FRAGMENT = 'N'

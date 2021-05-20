@@ -13,6 +13,7 @@ import cx_Oracle
 from pyinterprod import logger
 from pyinterprod.utils import Table, oracle as ora
 from pyinterprod.uniprot import sprot
+from .match import export_entries_protein_counts
 
 
 @dataclass
@@ -86,13 +87,17 @@ def export_proteins(url: str, outdir: str, buffer_size: int = 1000000) -> List[s
 
 
 def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
-                  tmpdir: Optional[str] = None):
+                  data_dir: str, tmpdir: Optional[str] = None):
     workdir = mkdtemp(dir=tmpdir)
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     old_version, = cur.fetchone()
+
+    logger.info(f"exporting protein counts per entry (UniProt {old_version})")
+    export_entries_protein_counts(cur, data_dir)
+
     cur.close()
     con.close()
 
@@ -134,7 +139,7 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
     # New proteins
     sql = """
         INSERT INTO INTERPRO.PROTEIN
-        VALUES (:acc, :identifer, :dbcode, :crc64, :length, SYSDATE, USER, 
+        VALUES (:acc, :identifer, :dbcode, :crc64, :length, SYSDATE, USER,
                 :fragment, 'N', :taxid)
     """
     new_proteins = Table(con, sql)
@@ -142,8 +147,8 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
     # Annotation/sequence changes
     sql = """
         UPDATE INTERPRO.PROTEIN
-        SET NAME = :identifer, DBCODE = :dbcode, CRC64 = :crc64, LEN = :length, 
-            TIMESTAMP = SYSDATE, USERSTAMP = USER, FRAGMENT = :fragment, 
+        SET NAME = :identifer, DBCODE = :dbcode, CRC64 = :crc64, LEN = :length,
+            TIMESTAMP = SYSDATE, USERSTAMP = USER, FRAGMENT = :fragment,
             TAX_ID = :taxid
         WHERE PROTEIN_AC = :acc
     """
@@ -178,8 +183,8 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
 
         cur2.execute(
             """
-            SELECT * 
-            FROM protein 
+            SELECT *
+            FROM protein
             WHERE accession BETWEEN ? AND ?
             """, (start, stop)
         )
@@ -226,14 +231,14 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
                 old_unreviewed += 1
 
     """
-    If there is a new protein with an accession lower than the lowest accession 
-    of the old proteins, or with an an accession greater than the greatest 
+    If there is a new protein with an accession lower than the lowest accession
+    of the old proteins, or with an an accession greater than the greatest
     accession of the old proteins, it has not been considered until now
     """
     cur2.execute(
         """
-        SELECT * 
-        FROM protein 
+        SELECT *
+        FROM protein
         WHERE accession < ? OR accession > ?
         """, (min_acc, max_acc)
     )
@@ -429,9 +434,9 @@ def iterative_delete(url: str, table: str, partition: Optional[str],
         SELECT COUNT(*)
         FROM {_table}
         WHERE {column} IN (
-            SELECT PROTEIN_AC 
+            SELECT PROTEIN_AC
             FROM INTERPRO.PROTEIN_TO_DELETE
-        ) 
+        )
         """
     )
     num_rows, = cur.fetchone()
@@ -464,13 +469,13 @@ def check_proteins(cur: cx_Oracle.Cursor) -> int:
     num_errors = 0
     cur.execute(
         """
-        SELECT IP.PROTEIN_AC
-        FROM INTERPRO.PROTEIN IP
-        LEFT OUTER JOIN UNIPARC.XREF UX
-          ON IP.PROTEIN_AC = UX.AC
-          AND UX.DBID IN (2, 3)   -- Swiss-Prot/TrEMBL
-          AND UX.DELETED = 'N'    -- Not deleted  
-        WHERE UX.AC IS NULL 
+        SELECT PROTEIN_AC
+        FROM INTERPRO.PROTEIN
+        MINUS
+        SELECT AC
+        FROM UNIPARC.XREF
+        WHERE DBID IN (2, 3)   -- Swiss-Prot/TrEMBL
+        AND DELETED = 'N'      -- Not deleted
         """
     )
 
@@ -488,7 +493,7 @@ def check_proteins(cur: cx_Oracle.Cursor) -> int:
           AND UX.DELETED = 'N'    -- Not deleted
         INNER JOIN UNIPARC.PROTEIN UP
           ON UX.UPI = UP.UPI
-        WHERE IP.CRC64 != UP.CRC64     
+        WHERE IP.CRC64 != UP.CRC64
         """
     )
 
@@ -515,13 +520,13 @@ def check_proteins_to_scan(url: str):
     ora.truncate_table(cur, "INTERPRO.PROTEIN_TO_SCAN")
     cur.execute(
         """
-        INSERT INTO INTERPRO.PROTEIN_TO_SCAN (PROTEIN_AC, UPI) 
+        INSERT INTO INTERPRO.PROTEIN_TO_SCAN (PROTEIN_AC, UPI)
         SELECT P.PROTEIN_AC, X.UPI
         FROM INTERPRO.PROTEIN_CHANGES P
-        INNER JOIN UNIPARC.XREF X 
+        INNER JOIN UNIPARC.XREF X
         ON P.PROTEIN_AC = X.AC
         AND X.DBID IN (2, 3)   -- Swiss-Prot/TrEMBL
-        AND X.DELETED = 'N'    -- Not deleted  
+        AND X.DELETED = 'N'    -- Not deleted
         """
     )
 

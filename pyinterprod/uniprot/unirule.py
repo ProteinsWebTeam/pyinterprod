@@ -27,21 +27,16 @@ def report_integration_changes(url: str, emails: dict):
     previous_signatures = dict(cur.fetchall())
     cur.execute(
         """
-        SELECT M.METHOD_AC, EM.ENTRY_AC
+        SELECT M.METHOD_AC, E.ENTRY_AC
         FROM INTERPRO.METHOD M
         LEFT OUTER JOIN INTERPRO.ENTRY2METHOD EM
           ON M.METHOD_AC = EM.METHOD_AC
+        LEFT OUTER JOIN INTERPRO.ENTRY E
+          ON EM.ENTRY_AC = E.ENTRY_AC
+          AND E.CHECKED = 'Y'
         """
     )
     current_signatures = dict(cur.fetchall())
-    cur.execute(
-        """
-        SELECT ENTRY_AC
-        FROM INTERPRO.ENTRY
-        WHERE CHECKED = 'Y'
-        """
-    )
-    checked_entries = {row[0] for row in cur}
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     release = cur.fetchone()[0]
     cur.close()
@@ -56,22 +51,16 @@ def report_integration_changes(url: str, emails: dict):
             changes[signature] = ("deleted", entry_then, '')
             continue
 
-        if entry_now:
-            # Signature still integrated
-            if entry_now not in checked_entries:
-                # Integrated in an unchecked entry: like unintegrated
-                changes[signature] = ("unintegrated", entry_then, '')
-            elif entry_then != entry_now:
-                # Integrated in a different, checked, entry
-                changes[signature] = ("integrated", entry_then, entry_now)
-            # Integrated in the same, checked, entry => no change
-        else:
+        if entry_now is None:
             # Signature unintegrated
             changes[signature] = ("unintegrated", entry_then, '')
+        elif entry_now != entry_then:
+            # Integrated in a different entry
+            changes[signature] = ("integrated", entry_then, entry_now)
 
     # All new integrations (signature was not integrated before)
     for signature, entry_now in current_signatures.items():
-        if entry_now and entry_now in checked_entries:
+        if entry_now:
             changes[signature] = ("integrated", '', entry_now)
 
     content = """\
@@ -96,7 +85,10 @@ Description of states:
     content += "\nKind regards,\nThe InterPro Production Team\n"
 
     email.send(
-        emails,
+        info=emails,
+        to=["aa_dev"],
+        cc=["unirule"],
+        bcc=["sender"],
         subject=f"Protein update {release}: integration changes",
         content=content
     )
@@ -441,7 +433,7 @@ def ask_to_snapshot(url: str, emails: dict):
     cur = con.cursor()
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     release, = cur.fetchone()
-    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
+    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     max_upi, = cur.fetchone()
     cur.execute(
         """
@@ -501,7 +493,8 @@ The InterPro Production Team
 
     try:
         email.send(
-            emails,
+            info=emails,
+            to=["interpro"],
             subject=f"Protein update {release}: please snapshot IPPRO",
             content=content
         )

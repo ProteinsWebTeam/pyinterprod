@@ -13,7 +13,7 @@ import cx_Oracle
 from pyinterprod.utils import email
 from pyinterprod.pronto.signature import get_swissprot_descriptions
 from .database import Database
-from .match import track_entry_changes, get_sig_proteins_count
+from .match import track_entry_changes, get_sig_protein_counts
 from .signature import FILE_DB_SIG, FILE_SIG_DESCR
 
 
@@ -60,18 +60,17 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
         # Deleted signatures
         with open(os.path.join(dst, "deleted.tsv"), "wt") as fh:
             fh.write("Signature\tName\tDescription\tEntry\n")
-            for acc, name, descr, entry_acc in sorted(data["deleted"]):
+            for acc, name, descr, entry_acc in data["deleted"]:
                 if entry_acc:
                     # Only report signatures that were integrated
                     fh.write(f"{acc}\t{name or 'N/A'}\t{descr or 'N/A'}\t"
                              f"{entry_acc}\n")
 
-        # Annotation changes
+        # Signatures with a different name
         with open(os.path.join(dst, "name_changes.tsv"), "wt") as fh:
             fh.write("Signature\tEntry\tLink\tPrevious name\tNew name\n")
 
-            changes = data["changes"]["names"]
-            for acc, old_val, new_val in sorted(changes):
+            for acc, old_val, new_val in data["changes"]["names"]:
                 try:
                     entry_acc = integrated[acc][0]
                 except KeyError:
@@ -81,12 +80,12 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                 fh.write(f"{acc}\t{entry_acc}\t{link}\t"
                          f"{old_val or 'N/A'}\t{new_val or 'N/A'}\n")
 
+        # Signatures with a different descriptions
         with open(os.path.join(dst, "description_changes.tsv"), "wt") as fh:
             fh.write("Signature\tEntry\tLink\tPrevious description"
                      "\tNew description\n")
 
-            changes = data["changes"]["descriptions"]
-            for acc, old_val, new_val in sorted(changes):
+            for acc, old_val, new_val in data["changes"]["descriptions"]:
                 try:
                     entry_acc = integrated[acc][0]
                 except KeyError:
@@ -96,11 +95,11 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                 fh.write(f"{acc}\t{entry_acc}\t{link}\t"
                          f"{old_val or 'N/A'}\t{new_val or 'N/A'}\n")
 
+        # Signatures with a different type (if provided by member DB)
         with open(os.path.join(dst, "type_changes.tsv"), "wt") as fh:
             fh.write("Signature\tEntry\tLink\tPrevious type\tNew type\n")
 
-            changes = data["changes"]["types"]
-            for acc, old_val, new_val in sorted(changes):
+            for acc, old_val, new_val in data["changes"]["types"]:
                 try:
                     entry_acc = integrated[acc][0]
                 except KeyError:
@@ -167,7 +166,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
 
         # Protein count changes (total + per superkingdom)
         old_counts = data["proteins"]
-        new_counts = get_sig_proteins_count(cur, db_id)
+        new_counts = get_sig_protein_counts(cur, db_id)
         changes = []
         superkingdoms = set()
         for acc in sorted(old_counts):  # sort by accession
@@ -256,6 +255,12 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
 
                 fh.write('\t'.join(line) + '\n')
 
+        # New signatures
+        with open(os.path.join(dst, "new.tsv"), "wt") as fh:
+            fh.write("Signature\tName\tDescription\n")
+            for acc, name, descr, _type in data["new"]:
+                fh.write(f"{acc}\t{name or 'N/A'}\t{descr or 'N/A'}\n")
+
     cur.close()
     con.close()
 
@@ -271,7 +276,8 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
 
     names = [f"{db.name} {db.version}" for db in dbs]
     email.send(
-        emails,
+        info=emails,
+        to=["interpro"],
         subject=f"Member database update report: {', '.join(names)}",
         content="""\
 Dear curators,
@@ -296,7 +302,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
     cur.execute(
         """
-        SELECT ENTRY_AC, NAME, ENTRY_TYPE, CHECKED 
+        SELECT ENTRY_AC, NAME, ENTRY_TYPE, CHECKED
         FROM INTERPRO.ENTRY
         """
     )
@@ -447,7 +453,8 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
     shutil.rmtree(tmpdir)
 
     email.send(
-        emails,
+        info=emails,
+        to=["interpro"],
         subject=f"Protein update report: UniProt {release}",
         content="""\
 Dear curators,

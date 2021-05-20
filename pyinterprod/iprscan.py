@@ -714,3 +714,30 @@ def import_sites(url: str, **kwargs):
     con.close()
 
     logger.info("complete")
+
+
+def check_ispro(url: str, match_type: str = "matches",
+                status: str = "production", use_uaread: bool = False):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    analyses = {}
+    for analysis in get_analyses(cur, type=match_type, status=status):
+        try:
+            analyses[analysis.table].append(analysis)
+        except KeyError:
+            analyses[analysis.table] = [analysis]
+
+    if use_uaread:
+        cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
+    else:
+        cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
+
+    max_upi, = cur.fetchone()
+    for table in sorted(analyses):
+        for a in analyses[table]:
+            status = "ready" if a.is_ready(cur, max_upi) else "pending"
+            print(f"{a.id:<3} {a.name:<40} {a.type:<30} {table:<30} {status}")
+
+    cur.close()
+    con.close()
