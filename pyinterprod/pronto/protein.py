@@ -254,6 +254,12 @@ def import_proteins(ora_url: str, pg_url: str):
             ON protein (is_reviewed)
             """
         )
+        pg_cur.execute(
+            """
+            CREATE INDEX protein_taxon_idx 
+            ON protein (taxon_id)
+            """
+        )
         pg_con.commit()
 
     pg_con.close()
