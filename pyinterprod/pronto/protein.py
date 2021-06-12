@@ -225,7 +225,7 @@ def import_proteins(ora_url: str, pg_url: str):
         ora_cur.execute(
             """
             SELECT PROTEIN_AC, NAME, LEN, TAX_ID, FRAGMENT, DBCODE
-            FROM INTERPRO.PROTEIN                 --
+            FROM INTERPRO.PROTEIN
             """
         )
 

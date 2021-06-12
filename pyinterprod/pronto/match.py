@@ -5,7 +5,7 @@ import os
 import pickle
 import shutil
 from multiprocessing import Process, Queue
-from tempfile import mkdtemp, mkstemp
+from tempfile import mkstemp
 from typing import Dict, List, Optional, Sequence
 
 import cx_Oracle
@@ -61,36 +61,34 @@ class MatchIterator:
                    M.POS_FROM, M.POS_TO, M.FRAGMENTS
             FROM INTERPRO.MATCH M
             INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
-            --UNION ALL
-            --SELECT FM.PROTEIN_AC, FM.METHOD_AC, LOWER(D.DBSHORT),
-            --       FM.POS_FROM, FM.POS_TO, NULL
-            --FROM INTERPRO.FEATURE_MATCH FM
-            --INNER JOIN INTERPRO.CV_DATABASE D ON FM.DBCODE = D.DBCODE
-            --WHERE FM.DBCODE = 'g'
             """
         )
 
         i = 0
         signatures = {}
         for row in cur:
-            prot_acc = row[0]
-            sign_acc = row[1]
+            protein_acc = row[0]
+            signature_acc = row[1]
+            signature_db = row[2]
+            pos_start = row[3]
+            pos_end = row[4]
+            fragments = row[5]
 
             yield (
-                prot_acc,
-                sign_acc,
-                self.databases[row[2]],
+                protein_acc,
+                signature_acc,
+                self.databases[signature_db],
                 # Format: start-end-type
                 # with type=S (continuous single chain domain)
-                row[5] if row[5] else f"{row[3]}-{row[4]}-S"
+                fragments or f"{pos_start}-{pos_end}-S"
             )
 
             try:
-                matches = signatures[sign_acc]
+                matches = signatures[signature_acc]
             except KeyError:
-                matches = signatures[sign_acc] = []
+                matches = signatures[signature_acc] = []
 
-            matches.append((prot_acc, prot_acc in reviewed))
+            matches.append((protein_acc, protein_acc in reviewed))
 
             i += 1
             if not i % 1000000:
@@ -216,10 +214,15 @@ def import_matches(ora_url: str, pg_url: str, output: str,
     pg_cur.execute(
         """
         CREATE INDEX match_protein_idx
-        ON match (protein_acc)
+        ON interpro.match (protein_acc)
         """
     )
     pg_con.commit()
+
+    logger.info("clustering")
+    pg_cur.execute("CLUSTER interpro.match USING match_protein_idx")
+    pg_con.commit()
+
     pg_cur.close()
     pg_con.close()
 
