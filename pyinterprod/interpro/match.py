@@ -801,13 +801,16 @@ def _insert_matches(con: cx_Oracle.Connection):
     cur.close()
 
 
-def track_entry_changes(cur: cx_Oracle.Cursor, data_dir: str) -> list:
+def track_entry_changes(cur: cx_Oracle.Cursor, data_dir: str,
+                        threshold: float) -> list:
     """
     Find entries with significant protein count changes
 
     :param cur: Oracle cursor object
     :param data_dir: directory containing the file for protein counts
                      before the update
+    :param threshold: report entries with at least (threshold/100)% change
+                      in protein counts
     :return: list of entries with a significant changes in proteins count
     """
 
@@ -828,7 +831,7 @@ def track_entry_changes(cur: cx_Oracle.Cursor, data_dir: str) -> list:
 
         # If the entry does not have any matches anymore,
         # we want to report it
-        if entry_new_total != 0 and abs(change) < 0.5:
+        if entry_new_total != 0 and abs(change) < threshold:
             continue
 
         entry_superkingdoms = {}

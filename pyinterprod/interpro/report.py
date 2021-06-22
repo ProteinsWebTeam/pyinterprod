@@ -16,6 +16,9 @@ from .database import Database
 from .match import track_entry_changes, get_sig_protein_counts
 from .signature import FILE_DB_SIG, FILE_SIG_DESCR
 
+MIN_ENTRY_CHANGE = 0.5
+MIN_SIGNATURE_CHANGE = 0.1
+
 
 def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
                           data_dir: str, pronto_link: str, emails: dict):
@@ -186,7 +189,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
 
             # If the signature does not have any matches anymore,
             # we want to report it (it is integrated in InterPro)
-            if sig_new_tot != 0 and abs(change) < 0.1:
+            if sig_new_tot != 0 and abs(change) < MIN_SIGNATURE_CHANGE:
                 continue
 
             sig_superkingdoms = {}
@@ -397,7 +400,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
     # Write entries with protein count changes (total + per superkingdom)
     with open(os.path.join(tmpdir, "entries_count_changes.tsv"), "wt") as fh:
-        changes = track_entry_changes(cur, data_dir)
+        changes = track_entry_changes(cur, data_dir, MIN_ENTRY_CHANGE)
         superkingdoms = sorted({sk for e in changes for sk in e[4]})
 
         # Header
