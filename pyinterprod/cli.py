@@ -158,7 +158,9 @@ def run_match_update():
     dsn = config["oracle"]["dsn"]
     ora_interpro_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
     ora_iprscan_url = f"iprscan/{config['oracle']['iprscan']}@{dsn}"
+    pg_url = config["postgresql"]["pronto"]
     uniprot_version = config["uniprot"]["version"]
+    data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
     workflow_dir = config["misc"]["workflow_dir"]
 
@@ -193,11 +195,17 @@ def run_match_update():
     if member_dbs:
         tasks += [
             Task(
+                fn=interpro.signature.track_signature_changes,
+                args=(ora_interpro_url, pg_url, member_dbs, data_dir),
+                name="track-changes",
+                scheduler=dict(mem=4000, queue=lsf_queue),
+            ),
+            Task(
                 fn=interpro.match.update_database_matches,
                 args=(ora_interpro_url, member_dbs),
                 name="update-matches",
                 scheduler=dict(queue=lsf_queue),
-                requires=["import-matches"]
+                requires=["import-matches", "track-changes"]
             ),
             Task(
                 fn=interpro.match.update_variant_matches,

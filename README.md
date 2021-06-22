@@ -323,9 +323,14 @@ The optional arguments are:
     <td></td>
 </tr>
 <tr>
+    <td>track-changes</td>
+    <td>Compare signatures between versions (e.g. name, description, matched proteins)</td>
+    <td></td>
+</tr>
+<tr>
     <td>update-matches</td>
     <td>Update and check matches in production tables</td>
-    <td>import-matches</td>
+    <td>import-matches, track-changes</td>
 </tr>
 <tr>
     <td>update-varsplic</td>
