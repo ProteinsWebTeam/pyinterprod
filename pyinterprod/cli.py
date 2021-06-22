@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 from argparse import ArgumentParser
 from configparser import ConfigParser
 from typing import List
@@ -261,7 +262,10 @@ def run_match_update():
 
     database = os.path.join(workflow_dir, f"{'.'.join(versions)}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as wf:
-        wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
+        if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
+            sys.exit(0)
+        else:
+            sys.exit(1)
 
 
 def run_member_db_update():
@@ -438,7 +442,10 @@ def run_member_db_update():
 
     database = os.path.join(workflow_dir, f"{'.'.join(versions)}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as wf:
-        wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
+        if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
+            sys.exit(0)
+        else:
+            sys.exit(1)
 
 
 def run_pronto_update():
@@ -482,7 +489,10 @@ def run_pronto_update():
 
     database = os.path.join(workflow_dir, f"{uniprot_version}.pronto.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as wf:
-        wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
+        if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
+            sys.exit(0)
+        else:
+            sys.exit(1)
 
 
 def run_uniprot_update():
@@ -718,7 +728,10 @@ def run_uniprot_update():
 
     database = os.path.join(workflow_dir, f"{uniprot_version}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as wf:
-        wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
+        if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
+            sys.exit(0)
+        else:
+            sys.exit(1)
 
 
 def update_database():
