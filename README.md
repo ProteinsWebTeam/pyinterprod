@@ -268,11 +268,6 @@ The optional arguments are:
     <td>import-matches, delete-obsoletes</td>
 </tr>
 <tr>
-    <td>update-varsplic</td>
-    <td>Update splice variant matches</td>
-    <td>import-matches, delete-obsoletes</td>
-</tr>
-<tr>
     <td>import-sites</td>
     <td>Import residue annotations from ISPRO (if updating a member database with residue annotations)</td>
     <td></td>
@@ -291,6 +286,66 @@ The optional arguments are:
     <td>send-report</td>
     <td>Send reports to curators, and inform them that Pronto is ready</td>
     <td>Pronto tasks</td>
+</tr>
+</tbody>
+</table>
+
+### Matches update
+
+Used to update matches, but not signatures. Useful to update non-member databases, 
+i.e. databases whose models are not integrated but provide useful annotations nonetheless (e.g. MobiDB, SignalP, etc.).
+
+```bash
+$ ipr-matches [OPTIONS] config.ini database [databases]
+```
+
+The optional arguments are:
+
+- `-t, --tasks`: list of tasks to run, by default all tasks are run (see [Tasks](#ipr-matches-tasks) for a description of available tasks)
+- `--dry-run`: do not run tasks, only list those about to be run
+
+<a name="ipr-matches-tasks"></a>
+
+#### Tasks
+
+<table>
+<thead>
+<tr>
+    <th>Name</th>
+    <th>Description</th>
+    <th>Dependencies</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+    <td>import-matches</td>
+    <td>Import protein matches from ISPRO</td>
+    <td></td>
+</tr>
+<tr>
+    <td>update-matches</td>
+    <td>Update and check matches in production tables</td>
+    <td>import-matches</td>
+</tr>
+<tr>
+    <td>update-varsplic</td>
+    <td>Update splice variant matches</td>
+    <td>import-matches</td>
+</tr>
+<tr>
+    <td>update-fmatches</td>
+    <td>Update protein matches for sequence features (e.g. MobiDB-lite, Coils, etc.)</td>
+    <td>update-matches</td>
+</tr>
+<tr>
+    <td>import-sites</td>
+    <td>Import residue annotations from ISPRO (if updating a member database with residue annotations)</td>
+    <td></td>
+</tr>
+<tr>
+    <td>update-sites</td>
+    <td>Update residue annotations (if updating a member database with residue annotations)</td>
+    <td>import-matches, import-sites</td>
 </tr>
 </tbody>
 </table>
