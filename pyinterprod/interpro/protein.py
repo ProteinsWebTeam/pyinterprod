@@ -169,7 +169,7 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
 
     con2 = sqlite3.connect(database)
     cur2 = con2.cursor()
-    for file in files:
+    for i, file in enumerate(files):
         with open(file, "rb") as fh:
             old_proteins = pickle.load(fh)
 
@@ -177,17 +177,25 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
 
         start = min(old_proteins)
         stop = max(old_proteins)
-        if min_acc is None:
+        if i == 0:
+            cur2.execute(
+                """
+                SELECT *
+                FROM protein
+                WHERE accession >= ? AND accession <= ?
+                """, (start, stop)
+            )
             min_acc = start
+        else:
+            cur2.execute(
+                """
+                SELECT *
+                FROM protein
+                WHERE accession > ? AND accession <= ?
+                """, (max_acc, stop)
+            )
+                       
         max_acc = stop
-
-        cur2.execute(
-            """
-            SELECT *
-            FROM protein
-            WHERE accession BETWEEN ? AND ?
-            """, (start, stop)
-        )
 
         for row in cur2:
             new_seq = Sequence(*row)
