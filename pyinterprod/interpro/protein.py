@@ -289,7 +289,7 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
     logger.info(f"Reviewed (before):     {old_reviewed:>12}")
     logger.info(f"Unreviewed (before):   {old_unreviewed:>12}")
     logger.info(f"Reviewed (now):        {new_reviewed:>12}")
-    logger.info(f"Uneviewed (now):       {new_unreviewed:>12}")
+    logger.info(f"Unreviewed (now):      {new_unreviewed:>12}")
     logger.info(f"New proteins:          {new_proteins.count:>12}")
     logger.info(f"Updated proteins:      {existing_proteins.count:>12}")
     logger.info(f"Obsolete sequences:    {obsolete_proteins.count:>12}")
