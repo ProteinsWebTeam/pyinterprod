@@ -681,6 +681,14 @@ def run_uniprot_update():
             args=(pg_url, data_dir),
             name="swissprot-de",
             scheduler=dict(queue=lsf_queue),
+        ),
+
+        # Update signatures used by UniRule
+        Task(
+            fn=uniprot.unirule.update_signatures,
+            args=(config["uniprot"]["unirule"], ora_interpro_url),
+            name="unirule",
+            scheduler=dict(queue=lsf_queue),
         )
     ]
 
@@ -693,7 +701,8 @@ def run_uniprot_update():
         else:
             # Task without dependency:
             # add some so it's submitted at the end of the protein update
-            t.requires = {"swissprot-de", "taxonomy", "update-fmatches"}
+            t.requires = {"swissprot-de", "taxonomy", "unirule",
+                          "update-fmatches"}
 
         tasks.append(t)
 

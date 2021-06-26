@@ -510,3 +510,39 @@ The InterPro Production Team
     finally:
         cur.close()
         con.close()
+
+
+def update_signatures(filepath: str, url: str):
+    params = []
+    with open(filepath, "rt") as fh:
+        for line in fh:
+            database, accession = line.rstrip().split()
+            if database == "GDAC":
+                params.append((f"G3DSA:{accession}",))
+            elif database != "IPRO":
+                # ignore InterPro entries
+                params.append((accession,))
+
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    oracle.drop_table(cur, "INTERPRO.METHOD_UNIRULE", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.METHOD_UNIRULE (
+            METHOD_AC VARCHAR2(25) NOT NULL 
+                CONSTRAINT FK_METHOD_UNIRULE 
+                    REFERENCES INTERPRO.METHOD (METHOD_AC) 
+                    ON DELETE CASCADE,
+            CONSTRAINT UQ_METHOD_UNIRULE 
+                UNIQUE (METHOD_AC)
+        ) NOLOGGING
+        """
+    )
+    cur.executemany(
+        """
+        INSERT INTO INTERPRO.UNIRULE VALUES (:1)
+        """, params
+    )
+    con.commit()
+    cur.close()
+    con.close()
