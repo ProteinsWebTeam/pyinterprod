@@ -540,7 +540,7 @@ def update_signatures(filepath: str, url: str):
     )
     cur.executemany(
         """
-        INSERT INTO INTERPRO.UNIRULE VALUES (:1)
+        INSERT INTO INTERPRO.METHOD_UNIRULE VALUES (:1)
         """, params
     )
     con.commit()
