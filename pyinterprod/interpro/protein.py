@@ -294,14 +294,14 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
     cur.close()
     con.close()
 
-    logger.info(f"Reviewed (before):     {old_reviewed:>12}")
-    logger.info(f"Unreviewed (before):   {old_unreviewed:>12}")
-    logger.info(f"Reviewed (now):        {new_reviewed:>12}")
-    logger.info(f"Unreviewed (now):      {new_unreviewed:>12}")
-    logger.info(f"New proteins:          {new_proteins.count:>12}")
-    logger.info(f"Updated proteins:      {existing_proteins.count:>12}")
-    logger.info(f"Obsolete sequences:    {obsolete_proteins.count:>12}")
-    logger.info(f"disk usage:            {size / 1024 ** 2:.0f} MB")
+    logger.info(f"Reviewed (before):     {old_reviewed:>12,}")
+    logger.info(f"Reviewed (now):        {new_reviewed:>12,}")
+    logger.info(f"Unreviewed (before):   {old_unreviewed:>12,}")
+    logger.info(f"Unreviewed (now):      {new_unreviewed:>12,}")
+    logger.info(f"New proteins:          {new_proteins.count:>12,}")
+    logger.info(f"Updated proteins:      {existing_proteins.count:>12,}")
+    logger.info(f"Obsolete proteins:     {obsolete_proteins.count:>12,}")
+    logger.info(f"Disk usage:            {size / 1024 ** 2:>9,.0f} MB")
 
 
 def delete_obsoletes(url: str, truncate: bool = False, threads: int = 8,
