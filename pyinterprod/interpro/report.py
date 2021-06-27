@@ -219,7 +219,8 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
             # Header
             line = ["Signature", "Link", "DE changes", "Entry", "Type",
                     "Name", "Previous count", "New count", "Change (%)"]
-            line += superkingdoms
+            for sk in superkingdoms:
+                line += [sk, '']
             fh.write('\t'.join(line) + '\n')
 
             line = [''] * 9
@@ -406,7 +407,9 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
         # Header
         line = ["Accession", "Link", "Type", "Name", "Checked",
                 "DE changes", "Previous count", "New count", "Change (%)"]
-        line += superkingdoms
+        for sk in superkingdoms:
+            line += [sk, '']
+
         fh.write('\t'.join(line) + '\n')
 
         line = [''] * 9
