@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 from argparse import ArgumentParser
 from configparser import ConfigParser
 from typing import List
@@ -158,7 +159,9 @@ def run_match_update():
     dsn = config["oracle"]["dsn"]
     ora_interpro_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
     ora_iprscan_url = f"iprscan/{config['oracle']['iprscan']}@{dsn}"
+    pg_url = config["postgresql"]["pronto"]
     uniprot_version = config["uniprot"]["version"]
+    data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
     workflow_dir = config["misc"]["workflow_dir"]
 
@@ -193,11 +196,17 @@ def run_match_update():
     if member_dbs:
         tasks += [
             Task(
+                fn=interpro.signature.track_signature_changes,
+                args=(ora_interpro_url, pg_url, member_dbs, data_dir),
+                name="track-changes",
+                scheduler=dict(mem=4000, queue=lsf_queue),
+            ),
+            Task(
                 fn=interpro.match.update_database_matches,
                 args=(ora_interpro_url, member_dbs),
                 name="update-matches",
                 scheduler=dict(queue=lsf_queue),
-                requires=["import-matches"]
+                requires=["import-matches", "track-changes"]
             ),
             Task(
                 fn=interpro.match.update_variant_matches,
@@ -253,7 +262,10 @@ def run_match_update():
 
     database = os.path.join(workflow_dir, f"{'.'.join(versions)}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as wf:
-        wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
+        if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
+            sys.exit(0)
+        else:
+            sys.exit(1)
 
 
 def run_member_db_update():
@@ -430,7 +442,10 @@ def run_member_db_update():
 
     database = os.path.join(workflow_dir, f"{'.'.join(versions)}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as wf:
-        wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
+        if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
+            sys.exit(0)
+        else:
+            sys.exit(1)
 
 
 def run_pronto_update():
@@ -474,7 +489,10 @@ def run_pronto_update():
 
     database = os.path.join(workflow_dir, f"{uniprot_version}.pronto.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as wf:
-        wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
+        if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
+            sys.exit(0)
+        else:
+            sys.exit(1)
 
 
 def run_uniprot_update():
@@ -663,6 +681,14 @@ def run_uniprot_update():
             args=(pg_url, data_dir),
             name="swissprot-de",
             scheduler=dict(queue=lsf_queue),
+        ),
+
+        # Update signatures used by UniRule
+        Task(
+            fn=uniprot.unirule.update_signatures,
+            args=(config["uniprot"]["unirule"], ora_interpro_url),
+            name="unirule",
+            scheduler=dict(queue=lsf_queue),
         )
     ]
 
@@ -675,7 +701,8 @@ def run_uniprot_update():
         else:
             # Task without dependency:
             # add some so it's submitted at the end of the protein update
-            t.requires = {"swissprot-de", "taxonomy", "update-fmatches"}
+            t.requires = {"swissprot-de", "taxonomy", "unirule",
+                          "update-fmatches"}
 
         tasks.append(t)
 
@@ -710,7 +737,10 @@ def run_uniprot_update():
 
     database = os.path.join(workflow_dir, f"{uniprot_version}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as wf:
-        wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
+        if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
+            sys.exit(0)
+        else:
+            sys.exit(1)
 
 
 def update_database():

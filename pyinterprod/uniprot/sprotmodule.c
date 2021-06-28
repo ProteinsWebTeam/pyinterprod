@@ -41,21 +41,25 @@ static PyObject *sprot_load(PyObject *self, PyObject *args) {
     unsigned int num_entries = 0;
 
     FILE *fp = fopen(src, "r");
-    if (fp == NULL)
-        return NULL;
+    if (fp == NULL) {
+        PyErr_Format(PyExc_FileNotFoundError, "No such file or directory: %s", src);
+        return (PyObject *) NULL;
+    }
 
     sqlite3 *db;
-    int rc = sqlite3_open(dst, &db);
+    int rc = sqlite3_open_v2(dst, &db, SQLITE_OPEN_READWRITE, NULL);
     if (rc != SQLITE_OK) {
         fclose(fp);
-        return NULL;
+        PyErr_Format(PyExc_RuntimeError, "Cannot open database: %s", dst);
+        return (PyObject *) NULL;
     }
     sqlite3_stmt *stmt;
     rc = sqlite3_prepare_v2(db, zSql, strlen(zSql), &stmt, NULL);
     if (rc != SQLITE_OK) {
         fclose(fp);
         sqlite3_close(db);
-        return NULL;
+        PyErr_Format(PyExc_RuntimeError, "Invalid statement: %s", zSql);
+        return (PyObject *) NULL;
     }
 
     char *errmsg;
@@ -135,14 +139,61 @@ static PyObject *sprot_load(PyObject *self, PyObject *args) {
                 i++;
             }
         } else if (strncmp(buffer, "//", 2) == 0) {
-            // TODO: test that sqlite_bind* calls return SQLITE_OK
-            sqlite3_bind_text(stmt, 1, e.accession, -1, SQLITE_STATIC);
-            sqlite3_bind_text(stmt, 2, e.identifier, -1, SQLITE_STATIC);
-            sqlite3_bind_int(stmt, 3, e.is_reviewed);
-            sqlite3_bind_text(stmt, 4, e.crc64, -1, SQLITE_STATIC);
-            sqlite3_bind_int(stmt, 5, e.length);
-            sqlite3_bind_int(stmt, 6, e.is_fragment);
-            sqlite3_bind_int(stmt, 7, e.taxon_id);
+            rc = sqlite3_bind_text(stmt, 1, e.accession, -1, SQLITE_STATIC);
+            if (rc != SQLITE_OK) {
+                fclose(fp);
+                sqlite3_close(db);
+                PyErr_SetString(PyExc_ValueError, "Error binding parameter");
+                return (PyObject *) NULL;
+            }
+
+            rc = sqlite3_bind_text(stmt, 2, e.identifier, -1, SQLITE_STATIC);
+            if (rc != SQLITE_OK) {
+                fclose(fp);
+                sqlite3_close(db);
+                PyErr_SetString(PyExc_ValueError, "Error binding parameter");
+                return (PyObject *) NULL;
+            }
+
+            rc = sqlite3_bind_int(stmt, 3, e.is_reviewed);
+            if (rc != SQLITE_OK) {
+                fclose(fp);
+                sqlite3_close(db);
+                PyErr_SetString(PyExc_ValueError, "Error binding parameter");
+                return (PyObject *) NULL;
+            }
+
+            rc = sqlite3_bind_text(stmt, 4, e.crc64, -1, SQLITE_STATIC);
+            if (rc != SQLITE_OK) {
+                fclose(fp);
+                sqlite3_close(db);
+                PyErr_SetString(PyExc_ValueError, "Error binding parameter");
+                return (PyObject *) NULL;
+            }
+
+            rc = sqlite3_bind_int(stmt, 5, e.length);
+            if (rc != SQLITE_OK) {
+                fclose(fp);
+                sqlite3_close(db);
+                PyErr_SetString(PyExc_ValueError, "Error binding parameter");
+                return (PyObject *) NULL;
+            }
+
+            rc = sqlite3_bind_int(stmt, 6, e.is_fragment);
+            if (rc != SQLITE_OK) {
+                fclose(fp);
+                sqlite3_close(db);
+                PyErr_SetString(PyExc_ValueError, "Error binding parameter");
+                return (PyObject *) NULL;
+            }
+
+            rc = sqlite3_bind_int(stmt, 7, e.taxon_id);
+            if (rc != SQLITE_OK) {
+                fclose(fp);
+                sqlite3_close(db);
+                PyErr_SetString(PyExc_ValueError, "Error binding parameter");
+                return (PyObject *) NULL;
+            }
 
             sqlite3_step(stmt);
             sqlite3_reset(stmt);
