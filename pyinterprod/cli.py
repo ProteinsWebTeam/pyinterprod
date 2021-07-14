@@ -167,15 +167,15 @@ def run_clan_update():
         "tmpdir": args.tempdir
     }
 
-    for database in databases.values():
-        params = options[database.name]
-        if database.name == "cdd":
+    for dbname, database in databases.items():
+        params = options[dbname]
+        if dbname == "cdd":
             update_cdd_clans(ora_url, database,
                              cddmasters=params["sequences"],
                              cddid=params["summary"],
                              fam2supfam=params["members"],
                              **kwargs)
-        elif database.name == "panther":
+        elif dbname == "panther":
             update_hmm_clans(ora_url, database,
                              hmmdb=params["hmm"],
                              **kwargs)

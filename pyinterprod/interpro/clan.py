@@ -600,15 +600,15 @@ def update_hmm_clans(url: str, database: Database, hmmdb: str, **kwargs):
     con.close()
 
     logger.info("loading new clans")
-    if database.name == "panther":
+    if database.name.lower() == "panther":
         clans = contrib.panther.get_clans(url)
 
         def getsubdir(x): return x[:7]
-    elif database.name == "pfam":
+    elif database.name.lower() == "pfam":
         clans = contrib.pfam.get_clans(clan_source)
 
         def getsubdir(x): return x[:5]
-    elif database.name == "pirsf":
+    elif database.name.lower() == "pirsf":
         clans = contrib.pirsf.get_clans(clan_source)
 
         def getsubdir(x): return x[:8]
