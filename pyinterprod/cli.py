@@ -10,6 +10,7 @@ from mundone import Task, Workflow
 
 from pyinterprod import __version__, iprscan
 from pyinterprod import interpro, pronto, uniparc, uniprot
+from pyinterprod.interpro.clan import update_cdd_clans, update_hmm_clans
 
 
 def get_pronto_tasks(ora_url: str, pg_url: str, data_dir: str,
@@ -93,7 +94,7 @@ def get_pronto_tasks(ora_url: str, pg_url: str, data_dir: str,
 def check_ispro():
     parser = ArgumentParser(description="Check matches/sites status in ISPRO")
     parser.add_argument("config",
-                        metavar="FILE",
+                        metavar="config.ini",
                         help="configuration file")
     parser.add_argument("-t", "--type",
                         default="matches",
@@ -123,10 +124,72 @@ def check_ispro():
                         status=args.status, use_uaread=args.uaread)
 
 
+def run_clan_update():
+    parser = ArgumentParser(description="Update clans and run "
+                                        "profile-profile alignments")
+    parser.add_argument("config",
+                        metavar="config.ini",
+                        help="global configuration file")
+    parser.add_argument("members",
+                        metavar="members.ini",
+                        help="member database configuration file")
+    parser.add_argument("databases",
+                        metavar="DATABASE",
+                        nargs="+",
+                        help="databases to update")
+    parser.add_argument("-t", "--threads", type=int,
+                        help="number of alignment workers")
+    parser.add_argument("-T", "--tempdir",
+                        help="directory to use for temporary files")
+    parser.add_argument("-v", "--version", action="version",
+                        version=f"%(prog)s {__version__}",
+                        help="show the version and exit")
+    args = parser.parse_args()
+
+    for file in [args.config, args.members]:
+        if not os.path.isfile(file):
+            parser.error(f"cannot open '{file}': "
+                         f"no such file or directory")
+
+    config = ConfigParser()
+    config.read(args.config)
+    dsn = config["oracle"]["dsn"]
+    ora_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
+
+    options = ConfigParser()
+    options.read(args.members)
+
+    db_names = list(set(args.databases))
+    databases = interpro.database.get_databases(ora_url, db_names)
+
+    kwargs = {
+        "threads": args.threads,
+        "tmpdir": args.tempdir
+    }
+
+    for database in databases.values():
+        params = options[database.name]
+        if database.name == "cdd":
+            update_cdd_clans(ora_url, database,
+                             cddmasters=params["sequences"],
+                             cddid=params["summary"],
+                             fam2supfam=params["members"],
+                             **kwargs)
+        elif database.name == "panther":
+            update_hmm_clans(ora_url, database,
+                             hmmdb=params["hmm"],
+                             **kwargs)
+        else:
+            update_hmm_clans(ora_url, database,
+                             hmmdb=params["hmm"],
+                             source=params["source"],
+                             **kwargs)
+
+
 def run_match_update():
     parser = ArgumentParser(description="InterPro match/site update")
     parser.add_argument("config",
-                        metavar="FILE",
+                        metavar="config.ini",
                         help="configuration file")
     parser.add_argument("databases",
                         metavar="DATABASE",
@@ -271,10 +334,10 @@ def run_match_update():
 def run_member_db_update():
     parser = ArgumentParser(description="InterPro member database update")
     parser.add_argument("config",
-                        metavar="FILE",
+                        metavar="config.ini",
                         help="configuration file")
     parser.add_argument("databases",
-                        metavar="FILE",
+                        metavar="updates.txt",
                         help="data source file")
     parser.add_argument("-t", "--tasks",
                         nargs="*",
@@ -451,7 +514,7 @@ def run_member_db_update():
 def run_pronto_update():
     parser = ArgumentParser(description="InterPro Pronto update")
     parser.add_argument("config",
-                        metavar="FILE",
+                        metavar="config.ini",
                         help="configuration file")
     parser.add_argument("-t", "--tasks",
                         nargs="*",
@@ -498,7 +561,7 @@ def run_pronto_update():
 def run_uniprot_update():
     parser = ArgumentParser(description="InterPro protein update")
     parser.add_argument("config",
-                        metavar="FILE",
+                        metavar="config.ini",
                         help="configuration file")
     parser.add_argument("-t", "--tasks",
                         nargs="*",
@@ -745,7 +808,7 @@ def run_uniprot_update():
 
 def update_database():
     parser = ArgumentParser(description="InterPro pre-member database update")
-    parser.add_argument("config", metavar="FILE",
+    parser.add_argument("config", metavar="config.ini",
                         help="Configuration file.")
     parser.add_argument("-n", "--name", required=True,
                         help="Name of member database.")
