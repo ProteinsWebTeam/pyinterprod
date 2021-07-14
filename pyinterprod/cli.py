@@ -182,7 +182,7 @@ def run_clan_update():
         else:
             update_hmm_clans(ora_url, database,
                              hmmdb=params["hmm"],
-                             source=params["source"],
+                             source=params["members"],
                              **kwargs)
 
 
