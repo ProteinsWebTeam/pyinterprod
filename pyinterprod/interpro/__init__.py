@@ -1,3 +1,3 @@
 # -*- coding: utf-8 -*-
 
-from . import clan, database, match, protein, report, signature, taxonomy
+from . import database, match, protein, report, signature, taxonomy
