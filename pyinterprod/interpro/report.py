@@ -372,7 +372,12 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
               "\tLost\tGained\n")
     for entry_acc in sorted(changes):
         gained, lost = changes[entry_acc]
-        entry_type, name, checked_flag = entries[entry_acc]
+        try:
+            entry_type, name, checked_flag = entries[entry_acc]
+        except KeyError:
+            # Entry does not exist anymore
+            continue
+
         if entry_type == 'F':
             filename = "swiss_de_families.tsv"
         elif entry_type == 'D':
@@ -422,7 +427,11 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             new_total = obj[2]
             change = obj[3]
             entry_superkingdoms = obj[4]
-            name, entry_type, checked_flag = entries[entry_acc]
+            try:
+                entry_type, name, checked_flag = entries[entry_acc]
+            except KeyError:
+                # Entry does not exist anymore
+                continue
 
             line = [
                 entry_acc,
