@@ -4,12 +4,14 @@ import heapq
 import os
 import pickle
 import shutil
+import time
 from multiprocessing import Process, Queue
 from tempfile import mkstemp
 from typing import Dict, List, Optional, Sequence
 
 import cx_Oracle
 import psycopg2
+import psycopg2.errors
 
 from pyinterprod import logger
 from pyinterprod.utils.kvdb import KVdb
@@ -446,6 +448,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
     tmpdir = kwargs.get("tmpdir")
     matches_dat = kwargs.get("matches")
     processes = kwargs.get("processes", 4)
+    max_attempts = kwargs.get("max_attempts", 2)
 
     logger.info("copying database")
     fd, tmp_database = mkstemp(dir=tmpdir)
@@ -613,13 +616,28 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         pg_con.commit()
 
         logger.info("\tCLUSTER")
-        pg_cur.execute(
-            """
-            CLUSTER signature2protein
-            USING signature2protein_signature_idx
-            """
-        )
-        pg_con.commit()
+        num_attempts = 0
+        while True:
+            num_attempts += 1
+            try:
+                pg_cur.execute(
+                    """
+                    CLUSTER signature2protein
+                    USING signature2protein_signature_idx
+                    """
+                )
+            except psycopg2.errors.DiskFull:
+                pg_con.rollback()
+
+                if num_attempts == max_attempts:
+                    pg_cur.close()
+                    pg_con.close()
+                    raise
+
+                time.sleep(600)  # wait 10 minutes before next attempt
+            else:
+                pg_con.commit()
+                break
 
     pg_con.close()
     logger.info("complete")
