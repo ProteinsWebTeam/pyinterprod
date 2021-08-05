@@ -186,6 +186,45 @@ def run_clan_update():
                              **kwargs)
 
 
+def run_hmm_update():
+    parser = ArgumentParser(description="Update HMMs")
+    parser.add_argument("config",
+                        metavar="config.ini",
+                        help="global configuration file")
+    parser.add_argument("members",
+                        metavar="members.ini",
+                        help="member database configuration file")
+    parser.add_argument("databases",
+                        metavar="DATABASE",
+                        nargs="+",
+                        help="database(s) to update")
+    parser.add_argument("-v", "--version", action="version",
+                        version=f"%(prog)s {__version__}",
+                        help="show the version and exit")
+    args = parser.parse_args()
+
+    for file in [args.config, args.members]:
+        if not os.path.isfile(file):
+            parser.error(f"cannot open '{file}': "
+                         f"no such file or directory")
+
+    config = ConfigParser()
+    config.read(args.config)
+    dsn = config["oracle"]["dsn"]
+    ora_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
+
+    options = ConfigParser()
+    options.read(args.members)
+
+    db_names = list(set(args.databases))
+    databases = interpro.database.get_databases(ora_url, db_names)
+
+    for dbname, database in databases.items():
+        hmmfile = options[dbname]["hmm"]
+        mapfile = options[dbname].get("mapping")
+        interpro.hmm.update(ora_url, database, hmmfile, mapfile)
+
+
 def run_match_update():
     parser = ArgumentParser(description="InterPro match/site update")
     parser.add_argument("config",
