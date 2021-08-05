@@ -136,7 +136,7 @@ def run_clan_update():
     parser.add_argument("databases",
                         metavar="DATABASE",
                         nargs="+",
-                        help="databases to update")
+                        help="database(s) to update")
     parser.add_argument("-t", "--threads", type=int,
                         help="number of alignment workers")
     parser.add_argument("-T", "--tempdir",
@@ -335,10 +335,14 @@ def run_member_db_update():
     parser = ArgumentParser(description="InterPro member database update")
     parser.add_argument("config",
                         metavar="config.ini",
-                        help="configuration file")
+                        help="global configuration file")
+    parser.add_argument("members",
+                        metavar="members.ini",
+                        help="member database configuration file")
     parser.add_argument("databases",
-                        metavar="updates.txt",
-                        help="data source file")
+                        metavar="DATABASE",
+                        nargs="+",
+                        help="database(s) to update")
     parser.add_argument("-t", "--tasks",
                         nargs="*",
                         default=None,
@@ -356,15 +360,18 @@ def run_member_db_update():
                         help="show the version and exit")
     args = parser.parse_args()
 
-    if not os.path.isfile(args.config):
-        parser.error(f"cannot open '{args.config}': "
-                     f"no such file or directory")
-    elif not os.path.isfile(args.databases):
-        parser.error(f"cannot open '{args.databases}': "
-                     f"no such file or directory")
+    for file in [args.config, args.members]:
+        if not os.path.isfile(file):
+            parser.error(f"cannot open '{file}': "
+                         f"no such file or directory")
 
     config = ConfigParser()
     config.read(args.config)
+
+    options = ConfigParser()
+    options.read(args.members)
+
+    db_names = list(set(args.databases))
 
     dsn = config["oracle"]["dsn"]
     ora_interpro_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
@@ -378,27 +385,28 @@ def run_member_db_update():
     lsf_queue = config["misc"]["lsf_queue"]
     workflow_dir = config["misc"]["workflow_dir"]
 
-    update = {}
-    with open(args.databases, "rt") as fh:
-        for i, line in enumerate(fh):
-            line = line.strip()
-            if not line:
-                continue
-
-            try:
-                name, source = line.split(maxsplit=1)
-            except ValueError:
-                parser.error(f"{args.databases}: "
-                             f"invalid format (line {i+1}): {line}")
-            else:
-                update[name.lower()] = source
-
     databases = interpro.database.get_databases(url=ora_interpro_url,
-                                                names=list(update),
+                                                names=db_names,
                                                 expects_new=True)
-    updates = [(db, update[key]) for key, db in databases.items()]
-    databases = list(databases.values())
+    updates = []
+    for dbname, db in databases.items():
+        try:
+            props = options[dbname]
+        except KeyError:
+            parser.error(f"{args.members}: missing database '{dbname}'")
 
+        try:
+            sig_source = props["signatures"]
+        except KeyError:
+            sig_source = None
+
+        if sig_source:
+            updates.append((dbname, sig_source))
+        else:
+            parser.error(f"{args.members}: 'signatures' property missing "
+                         f"or empty for database '{dbname}'")
+
+    databases = list(databases.values())
     os.makedirs(data_dir, exist_ok=True)
     tasks = [
         Task(
