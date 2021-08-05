@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 
+import argparse
 import json
 import os
 import re
 import shutil
 import subprocess as sp
+import sys
 from concurrent import futures
 from tempfile import mkdtemp, mkstemp
 from typing import List, Tuple
@@ -13,18 +15,13 @@ import cx_Oracle
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
+from .database import Database
 from . import contrib
 
 HMM_SUFFIX = ".hmm"
 SEQ_SUFFIX = ".fa"
 DOM_SUFFIX = ".tab"
 OUT_SUFFIX = ".out"
-DATABASES = {
-    "cdd": 'J',
-    "panther": 'V',
-    "pfam": 'H',
-    "pirsf": 'U'
-}
 
 
 def calc_dir_size(dirpath: str) -> int:
@@ -117,169 +114,6 @@ def load_sequence(seqfile: str) -> str:
     return seq
 
 
-def update_hmm_clans(url: str, dbkey: str, hmmdb: str, **kwargs):
-    clan_source = kwargs.get("source")
-    threads = kwargs.get("threads")
-    tmpdir = kwargs.get("tmpdir")
-
-    dbcode = DATABASES[dbkey]
-
-    logger.info("deleting old clans")
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute("DELETE FROM INTERPRO.CLAN WHERE DBCODE = :1", (dbcode,))
-    con.commit()
-    cur.close()
-    con.close()
-
-    logger.info("loading new clans")
-    if dbkey == "panther":
-        clans = contrib.panther.get_clans(url)
-
-        def getsubdir(x): return x[:7]
-    elif dbkey == "pfam":
-        clans = contrib.pfam.get_clans(clan_source)
-
-        def getsubdir(x): return x[:5]
-    elif dbkey == "pirsf":
-        clans = contrib.pirsf.get_clans(clan_source)
-
-        def getsubdir(x): return x[:8]
-    else:
-        raise NotImplementedError()
-
-    clans_to_insert = {}
-    mem2clan = {}
-    for c in clans:
-        clans_to_insert[c.accession] = c
-        for m in c.members:
-            mem2clan[m["accession"]] = (c.accession, m["score"])
-
-    workdir = mkdtemp(dir=tmpdir)
-    num_duplicates = 0
-    with futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        logger.info("emitting consensus sequences")
-        fs = {}
-        models = set()
-        for model_acc, hmm in iter_models(hmmdb):
-            if model_acc not in mem2clan:
-                # Ignore models not belonging to a clan
-                continue
-            elif model_acc in models:
-                num_duplicates += 1
-                continue
-
-            subdir = os.path.join(workdir, getsubdir(model_acc))
-            try:
-                os.mkdir(subdir)
-            except FileExistsError:
-                pass
-
-            prefix = os.path.join(subdir, model_acc)
-            hmmfile = prefix + HMM_SUFFIX
-            with open(hmmfile, "wt") as fh:
-                fh.write(hmm)
-
-            seqfile = prefix + SEQ_SUFFIX
-            f = executor.submit(hmmemit, hmmfile, seqfile)
-            fs[f] = model_acc
-            models.add(model_acc)
-
-        done, not_done = futures.wait(fs)
-        if not_done:
-            shutil.rmtree(workdir)
-            raise RuntimeError(f"{len(not_done)} error(s)")
-        elif num_duplicates:
-            shutil.rmtree(workdir)
-            raise RuntimeError(f"HMM database {hmmdb} contains "
-                               f"{num_duplicates} duplicated models.")
-
-        logger.info("searching consensus sequences")
-        fs = {}
-        for model_acc in models:
-            prefix = os.path.join(workdir, getsubdir(model_acc), model_acc)
-            seqfile = prefix + SEQ_SUFFIX
-            outfile = prefix + OUT_SUFFIX
-            domfile = prefix + DOM_SUFFIX
-            f = executor.submit(hmmscan, hmmdb, seqfile, domfile, outfile)
-            fs[f] = model_acc
-
-        con = cx_Oracle.connect(url)
-        cur = con.cursor()
-        cur2 = con.cursor()
-        cur2.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE,
-                           cx_Oracle.DB_TYPE_CLOB)
-
-        clan_sql = "INSERT INTO INTERPRO.CLAN VALUES (:1, :2, :3, :4)"
-        memb_sql = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
-        mtch_sql = "INSERT INTO INTERPRO.CLAN_MATCH VALUES (:1, :2, :3, :4)"
-        completed = errors = progress = 0
-        for f in futures.as_completed(fs):
-            model_acc = fs[f]
-            completed += 1
-
-            if not f.result():
-                logger.error(f"{model_acc}")
-                errors += 1
-                continue
-
-            prefix = os.path.join(workdir, getsubdir(model_acc), model_acc)
-            outfile = prefix + OUT_SUFFIX
-            domfile = prefix + DOM_SUFFIX
-
-            clan_acc, score = mem2clan[model_acc]
-            sequence = load_sequence(prefix + SEQ_SUFFIX)
-
-            try:
-                clan = clans_to_insert.pop(clan_acc)
-            except KeyError:
-                # Clan already inserted
-                pass
-            else:
-                cur.execute(clan_sql, (clan.accession, dbcode, clan.name,
-                                       clan.description))
-
-            cur.execute(memb_sql, (clan_acc, model_acc, len(sequence), score))
-
-            matches = []
-            for target in load_hmmscan_results(outfile, domfile):
-                if target["accession"] == model_acc:
-                    continue
-
-                domains = []
-                for dom in target["domains"]:
-                    domains.append((
-                        dom["coordinates"]["ali"]["start"],
-                        dom["coordinates"]["ali"]["end"]
-                    ))
-
-                matches.append((
-                    model_acc,
-                    target["accession"],
-                    target["evalue"],
-                    json.dumps(domains)
-                ))
-
-            if matches:
-                cur2.executemany(mtch_sql, matches)
-
-            pc = completed * 100 // len(fs)
-            if pc > progress:
-                progress = pc
-                logger.debug(f"{progress:>10}%")
-
-        con.commit()
-        cur.close()
-        cur2.close()
-        con.close()
-
-        size = calc_dir_size(workdir)
-        logger.info(f"disk usage: {size / 1024 ** 2:,.0f} MB")
-        shutil.rmtree(workdir)
-        if errors:
-            raise RuntimeError(f"{errors} error(s)")
-
-
 def iter_models(hmmdb: str):
     with open(hmmdb, "rt") as fh:
         reg_acc = re.compile(r"ACC\s+(\w+)", flags=re.M)
@@ -303,26 +137,27 @@ def iter_models(hmmdb: str):
                 hmm = ""
 
 
-def hmmemit(hmmdb: str, seqfile: str):
-    sp.run(args=["hmmemit", "-c", "-o", seqfile, hmmdb],
-           stderr=sp.DEVNULL, stdout=sp.DEVNULL, check=True)
+def iter_sequences(seqfile: str):
+    with open(seqfile, "rt") as fh:
+        buffer = ""
+        accession = identifier = None
+        for line in fh:
+            if line[0] == ">":
+                if buffer and identifier:
+                    yield identifier, accession, buffer
 
+                m = re.match(r">(gnl\|CDD\|\d+)\s+(cd\d+),", line)
+                if m:
+                    identifier, accession = m.groups()
+                else:
+                    accession = identifier = None
 
-def hmmscan(hmmdb: str, seqfile: str, domfile: str, outfile: str) -> bool:
-    args = ["hmmscan", "-o", outfile, "--domtblout", domfile, "--cpu", "1",
-            hmmdb, seqfile]
-    process = sp.run(args=args, stderr=sp.DEVNULL, stdout=sp.DEVNULL)
+                buffer = ""
 
-    if process.returncode == 0:
-        return True
+            buffer += line
 
-    for f in (domfile, outfile):
-        try:
-            os.remove(f)
-        except FileNotFoundError:
-            pass
-
-    return False
+    if buffer and identifier:
+        yield identifier, accession, buffer
 
 
 def load_hmmscan_results(outfile: str, tabfile: str) -> List[dict]:
@@ -472,175 +307,6 @@ def load_domain_alignments(file: str) -> List[Tuple[str, str]]:
     return alignments
 
 
-def update_cdd_clans(url: str, cddmasters: str, cddid: str,
-                     fam2supfam: str, **kwargs):
-    threads = kwargs.get("threads")
-    tmpdir = kwargs.get("tmpdir")
-
-    dbcode = DATABASES["cdd"]
-
-    logger.info("deleting old clans")
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute("DELETE FROM INTERPRO.CLAN WHERE DBCODE = :1", (dbcode,))
-    con.commit()
-    cur.close()
-    con.close()
-
-    clans = contrib.cdd.get_clans(cddid, fam2supfam)
-    clans_to_insert = {}
-    mem2clan = {}
-    for c in clans:
-        clans_to_insert[c.accession] = c
-        for m in c.members:
-            mem2clan[m["accession"]] = (c.accession, m["score"])
-
-    logger.info("parsing representative sequences")
-    workdir = mkdtemp(dir=tmpdir)
-    fd, files_list = mkstemp(dir=workdir)
-
-    id2acc = {}
-    seqfiles = {}
-    with open(fd, "wt") as fh:
-        for model_id, model_acc, sequence in iter_sequences(cddmasters):
-            if model_acc not in mem2clan or model_acc in seqfiles:
-                continue
-
-            subdir = os.path.join(workdir, model_acc[:5])
-            try:
-                os.mkdir(subdir)
-            except FileExistsError:
-                pass
-
-            prefix = os.path.join(subdir, model_acc)
-            seqfile = prefix + SEQ_SUFFIX
-            with open(seqfile, "wt") as fh2:
-                fh2.write(sequence)
-
-            fh.write(f"{seqfile}\n")
-            seqfiles[model_acc] = prefix
-            id2acc[model_id] = model_acc
-
-    logger.info("building profile database")
-    fd, database = mkstemp(dir=workdir)
-    os.close(fd)
-    os.remove(database)
-    sp.run(["mk_compass_db", "-i", files_list, "-o", database],
-           stderr=sp.DEVNULL, stdout=sp.DEVNULL, check=True)
-
-    with futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        logger.info("querying sequences")
-        fs = {}
-        for model_acc, prefix in seqfiles.items():
-            seqfile = prefix + SEQ_SUFFIX
-            outfile = prefix + OUT_SUFFIX
-            f = executor.submit(compass_vs_db, seqfile, database, outfile)
-            fs[f] = (model_acc, prefix)
-
-        con = cx_Oracle.connect(url)
-        cur = con.cursor()
-        cur2 = con.cursor()
-        cur2.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE,
-                           cx_Oracle.DB_TYPE_CLOB)
-
-        clan_sql = "INSERT INTO INTERPRO.CLAN VALUES (:1, :2, :3, :4)"
-        memb_sql = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
-        mtch_sql = "INSERT INTO INTERPRO.CLAN_MATCH VALUES (:1, :2, :3, :4)"
-        completed = errors = progress = 0
-        for f in futures.as_completed(fs):
-            model_acc, prefix = fs[f]
-            completed += 1
-
-            if not f.result():
-                logger.error(f"{model_acc}")
-                errors += 1
-                continue
-
-            clan_acc, score = mem2clan[model_acc]
-            sequence = load_sequence(prefix + SEQ_SUFFIX)
-
-            try:
-                clan = clans_to_insert.pop(clan_acc)
-            except KeyError:
-                # Clan already inserted
-                pass
-            else:
-                cur.execute(clan_sql, (clan.accession, dbcode, clan.name,
-                                      clan.description))
-
-            cur.execute(memb_sql, (clan_acc, model_acc, len(sequence), score))
-
-            matches = []
-            for target in load_compass_results(prefix + OUT_SUFFIX):
-                target_acc = id2acc[target["id"]]
-                if target_acc == model_acc:
-                    continue
-
-                matches.append((
-                    model_acc,
-                    target_acc,
-                    target["evalue"],
-                    json.dumps([(target["start"], target["end"])])
-                ))
-
-            if matches:
-                cur2.executemany(mtch_sql, matches)
-
-            pc = completed * 100 // len(fs)
-            if pc > progress:
-                progress = pc
-                logger.debug(f"{progress:>10}%")
-
-        con.commit()
-        cur.close()
-        cur2.close()
-        con.close()
-
-        size = calc_dir_size(workdir)
-        logger.info(f"disk usage: {size / 1024 ** 2:,.0f} MB")
-        shutil.rmtree(workdir)
-        if errors:
-            raise RuntimeError(f"{errors} error(s)")
-
-
-def iter_sequences(seqfile: str):
-    with open(seqfile, "rt") as fh:
-        buffer = ""
-        accession = identifier = None
-        for line in fh:
-            if line[0] == ">":
-                if buffer and identifier:
-                    yield identifier, accession, buffer
-
-                m = re.match(r">(gnl\|CDD\|\d+)\s+(cd\d+),", line)
-                if m:
-                    identifier, accession = m.groups()
-                else:
-                    accession = identifier = None
-
-                buffer = ""
-
-            buffer += line
-
-    if buffer and identifier:
-        yield identifier, accession, buffer
-
-
-def compass_vs_db(seqfile: str, database: str, outfile: str):
-    args = ["compass_vs_db", "-i", seqfile, "-d", database, "-o", outfile]
-    process = sp.run(args=args, stderr=sp.DEVNULL, stdout=sp.DEVNULL)
-
-    if process.returncode == 0:
-        return True
-
-    try:
-        os.remove(outfile)
-    except FileNotFoundError:
-        pass
-
-    return False
-
-
 def load_compass_results(outfile) -> List[dict]:
     # p1 = re.compile(r"length\s*=\s*(\d+)")
     p2 = re.compile(r"Evalue\s*=\s*([\d.e\-]+)")
@@ -746,3 +412,360 @@ def load_compass_results(outfile) -> List[dict]:
     }
 
     return list(targets.values())
+
+
+def run_compass(seqfile: str, database: str, outfile: str):
+    args = ["compass_vs_db", "-i", seqfile, "-d", database, "-o", outfile]
+    process = sp.run(args=args, stderr=sp.DEVNULL, stdout=sp.DEVNULL)
+
+    if process.returncode == 0:
+        return True
+
+    try:
+        os.remove(outfile)
+    except FileNotFoundError:
+        pass
+
+    return False
+
+
+def run_hmmemit(hmmdb: str, seqfile: str):
+    sp.run(args=["hmmemit", "-c", "-o", seqfile, hmmdb],
+           stderr=sp.DEVNULL, stdout=sp.DEVNULL, check=True)
+
+
+def run_hmmscan(hmmdb: str, seqfile: str, domfile: str, outfile: str) -> bool:
+    args = ["hmmscan", "-o", outfile, "--domtblout", domfile, "--cpu", "1",
+            hmmdb, seqfile]
+    process = sp.run(args=args, stderr=sp.DEVNULL, stdout=sp.DEVNULL)
+
+    if process.returncode == 0:
+        return True
+
+    for f in (domfile, outfile):
+        try:
+            os.remove(f)
+        except FileNotFoundError:
+            pass
+
+    return False
+
+
+def update_cdd_clans(url: str, database: Database, cddmasters: str,
+                     cddid: str, fam2supfam: str, **kwargs):
+    threads = kwargs.get("threads")
+    tmpdir = kwargs.get("tmpdir")
+    if tmpdir:
+        os.makedirs(tmpdir, exist_ok=True)
+
+    logger.info("deleting old clans")
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute("DELETE FROM INTERPRO.CLAN WHERE DBCODE = :1",
+                (database.identifier,))
+    con.commit()
+    cur.close()
+    con.close()
+
+    clans = contrib.cdd.get_clans(cddid, fam2supfam)
+    clans_to_insert = {}
+    mem2clan = {}
+    for c in clans:
+        clans_to_insert[c.accession] = c
+        for m in c.members:
+            mem2clan[m["accession"]] = (c.accession, m["score"])
+
+    logger.info("parsing representative sequences")
+    workdir = mkdtemp(dir=tmpdir)
+    fd, files_list = mkstemp(dir=workdir)
+
+    id2acc = {}
+    seqfiles = {}
+    with open(fd, "wt") as fh:
+        for model_id, model_acc, sequence in iter_sequences(cddmasters):
+            if model_acc not in mem2clan or model_acc in seqfiles:
+                continue
+
+            subdir = os.path.join(workdir, model_acc[:5])
+            try:
+                os.mkdir(subdir)
+            except FileExistsError:
+                pass
+
+            prefix = os.path.join(subdir, model_acc)
+            seqfile = prefix + SEQ_SUFFIX
+            with open(seqfile, "wt") as fh2:
+                fh2.write(sequence)
+
+            fh.write(f"{seqfile}\n")
+            seqfiles[model_acc] = prefix
+            id2acc[model_id] = model_acc
+
+    logger.info("building profile database")
+    fd, database = mkstemp(dir=workdir)
+    os.close(fd)
+    os.remove(database)
+    sp.run(["mk_compass_db", "-i", files_list, "-o", database],
+           stderr=sp.DEVNULL, stdout=sp.DEVNULL, check=True)
+
+    with futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        logger.info("querying sequences")
+        fs = {}
+        for model_acc, prefix in seqfiles.items():
+            seqfile = prefix + SEQ_SUFFIX
+            outfile = prefix + OUT_SUFFIX
+            f = executor.submit(run_compass, seqfile, database, outfile)
+            fs[f] = (model_acc, prefix)
+
+        con = cx_Oracle.connect(url)
+        cur = con.cursor()
+        cur2 = con.cursor()
+        cur2.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE,
+                           cx_Oracle.DB_TYPE_CLOB)
+
+        clan_sql = "INSERT INTO INTERPRO.CLAN VALUES (:1, :2, :3, :4)"
+        memb_sql = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
+        mtch_sql = "INSERT INTO INTERPRO.CLAN_MATCH VALUES (:1, :2, :3, :4)"
+        completed = errors = progress = 0
+        for f in futures.as_completed(fs):
+            model_acc, prefix = fs[f]
+            completed += 1
+
+            if not f.result():
+                logger.error(f"{model_acc}")
+                errors += 1
+                continue
+
+            clan_acc, score = mem2clan[model_acc]
+            sequence = load_sequence(prefix + SEQ_SUFFIX)
+
+            try:
+                clan = clans_to_insert.pop(clan_acc)
+            except KeyError:
+                # Clan already inserted
+                pass
+            else:
+                cur.execute(clan_sql, (clan.accession, database.identifier,
+                                       clan.name, clan.description))
+
+            cur.execute(memb_sql, (clan_acc, model_acc, len(sequence), score))
+
+            matches = []
+            for target in load_compass_results(prefix + OUT_SUFFIX):
+                target_acc = id2acc[target["id"]]
+                if target_acc == model_acc:
+                    continue
+
+                matches.append((
+                    model_acc,
+                    target_acc,
+                    target["evalue"],
+                    json.dumps([(target["start"], target["end"])])
+                ))
+
+            if matches:
+                cur2.executemany(mtch_sql, matches)
+
+            pc = completed * 100 // len(fs)
+            if pc > progress:
+                progress = pc
+                logger.debug(f"{progress:>10}%")
+
+        con.commit()
+        cur.close()
+        cur2.close()
+        con.close()
+
+        size = calc_dir_size(workdir)
+        logger.info(f"disk usage: {size / 1024 ** 2:,.0f} MB")
+        shutil.rmtree(workdir)
+        if errors:
+            raise RuntimeError(f"{errors} error(s)")
+
+
+def update_hmm_clans(url: str, database: Database, hmmdb: str, **kwargs):
+    clan_source = kwargs.get("source")
+    threads = kwargs.get("threads")
+    tmpdir = kwargs.get("tmpdir")
+    if tmpdir:
+        os.makedirs(tmpdir, exist_ok=True)
+
+    logger.info("deleting old clans")
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute("DELETE FROM INTERPRO.CLAN WHERE DBCODE = :1",
+                (database.identifier,))
+    con.commit()
+    cur.close()
+    con.close()
+
+    logger.info("loading new clans")
+    if database.name.lower() == "panther":
+        clans = contrib.panther.get_clans(url)
+
+        def getsubdir(x): return x[:7]
+    elif database.name.lower() == "pfam":
+        clans = contrib.pfam.get_clans(clan_source)
+
+        def getsubdir(x): return x[:5]
+    elif database.name.lower() == "pirsf":
+        clans = contrib.pirsf.get_clans(clan_source)
+
+        def getsubdir(x): return x[:8]
+    else:
+        raise NotImplementedError()
+
+    clans_to_insert = {}
+    mem2clan = {}
+    for c in clans:
+        clans_to_insert[c.accession] = c
+        for m in c.members:
+            mem2clan[m["accession"]] = (c.accession, m["score"])
+
+    workdir = mkdtemp(dir=tmpdir)
+    num_duplicates = 0
+    with futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        logger.info("emitting consensus sequences")
+        fs = {}
+        models = set()
+        for model_acc, hmm in iter_models(hmmdb):
+            if model_acc not in mem2clan:
+                # Ignore models not belonging to a clan
+                continue
+            elif model_acc in models:
+                num_duplicates += 1
+                continue
+
+            subdir = os.path.join(workdir, getsubdir(model_acc))
+            try:
+                os.mkdir(subdir)
+            except FileExistsError:
+                pass
+
+            prefix = os.path.join(subdir, model_acc)
+            hmmfile = prefix + HMM_SUFFIX
+            with open(hmmfile, "wt") as fh:
+                fh.write(hmm)
+
+            seqfile = prefix + SEQ_SUFFIX
+            f = executor.submit(run_hmmemit, hmmfile, seqfile)
+            fs[f] = model_acc
+            models.add(model_acc)
+
+        done, not_done = futures.wait(fs)
+        if not_done:
+            shutil.rmtree(workdir)
+            raise RuntimeError(f"{len(not_done)} error(s)")
+        elif num_duplicates:
+            shutil.rmtree(workdir)
+            raise RuntimeError(f"HMM database {hmmdb} contains "
+                               f"{num_duplicates} duplicated models.")
+
+        logger.info("searching consensus sequences")
+        fs = {}
+        for model_acc in models:
+            prefix = os.path.join(workdir, getsubdir(model_acc), model_acc)
+            seqfile = prefix + SEQ_SUFFIX
+            outfile = prefix + OUT_SUFFIX
+            domfile = prefix + DOM_SUFFIX
+            f = executor.submit(run_hmmscan, hmmdb, seqfile, domfile, outfile)
+            fs[f] = model_acc
+
+        con = cx_Oracle.connect(url)
+        cur = con.cursor()
+        cur2 = con.cursor()
+        cur2.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE,
+                           cx_Oracle.DB_TYPE_CLOB)
+
+        clan_sql = "INSERT INTO INTERPRO.CLAN VALUES (:1, :2, :3, :4)"
+        memb_sql = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
+        mtch_sql = "INSERT INTO INTERPRO.CLAN_MATCH VALUES (:1, :2, :3, :4)"
+        completed = errors = progress = 0
+        for f in futures.as_completed(fs):
+            model_acc = fs[f]
+            completed += 1
+
+            if not f.result():
+                logger.error(f"{model_acc}")
+                errors += 1
+                continue
+
+            prefix = os.path.join(workdir, getsubdir(model_acc), model_acc)
+            outfile = prefix + OUT_SUFFIX
+            domfile = prefix + DOM_SUFFIX
+
+            clan_acc, score = mem2clan[model_acc]
+            sequence = load_sequence(prefix + SEQ_SUFFIX)
+
+            try:
+                clan = clans_to_insert.pop(clan_acc)
+            except KeyError:
+                # Clan already inserted
+                pass
+            else:
+                cur.execute(clan_sql, (clan.accession, database.identifier,
+                                       clan.name, clan.description))
+
+            cur.execute(memb_sql, (clan_acc, model_acc, len(sequence), score))
+
+            matches = []
+            for target in load_hmmscan_results(outfile, domfile):
+                if target["accession"] == model_acc:
+                    continue
+
+                domains = []
+                for dom in target["domains"]:
+                    domains.append((
+                        dom["coordinates"]["ali"]["start"],
+                        dom["coordinates"]["ali"]["end"]
+                    ))
+
+                matches.append((
+                    model_acc,
+                    target["accession"],
+                    target["evalue"],
+                    json.dumps(domains)
+                ))
+
+            if matches:
+                cur2.executemany(mtch_sql, matches)
+
+            pc = completed * 100 // len(fs)
+            if pc > progress:
+                progress = pc
+                logger.debug(f"{progress:>10}%")
+
+        con.commit()
+        cur.close()
+        cur2.close()
+        con.close()
+
+        size = calc_dir_size(workdir)
+        logger.info(f"disk usage: {size / 1024 ** 2:,.0f} MB")
+        shutil.rmtree(workdir)
+        if errors:
+            raise RuntimeError(f"{errors} error(s)")
+
+
+def remove_hmm_duplicates():
+    prog = "python -m pyinterprod.interpro.clan"
+    description = ("Simple command line interface to stream an HMM file "
+                   "without repeated models.")
+    parser = argparse.ArgumentParser(prog=prog, description=description)
+    parser.add_argument("hmmdb", help="an HMM file")
+    options = parser.parse_args()
+
+    accessions = set()
+    for acc, hmm in iter_models(options.hmmdb):
+        if acc in accessions:
+            continue
+
+        accessions.add(acc)
+        print(hmm, end='')
+
+
+if __name__ == '__main__':
+    try:
+        remove_hmm_duplicates()
+    except BrokenPipeError as exc:
+        sys.exit(exc.errno)

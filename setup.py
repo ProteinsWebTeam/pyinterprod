@@ -30,7 +30,7 @@ setup(
     install_requires=get_requirements(),
     entry_points={
         "console_scripts": [
-            # "ipr-clans = pyinterprod.clan:main",
+            "ipr-clans = pyinterprod.cli:run_clan_update",
             "ipr-ispro = pyinterprod.cli:check_ispro",
             "ipr-pre-memdb = pyinterprod.cli:update_database",
             "ipr-matches = pyinterprod.cli:run_match_update",
