@@ -64,9 +64,9 @@ def import_annotations(ora_url: str, pg_url: str):
         ora_cur.execute(
             """
             SELECT A.ENTITY_ID, A.GO_ID, A.REF_DB_CODE, A.REF_DB_ID
-            FROM GO.ANNOTATIONS@GOAPRO A
-            INNER JOIN GO.ECO2EVIDENCE@GOAPRO E ON A.ECO_ID = E.ECO_ID
-            INNER JOIN GO.CV_SOURCES@GOAPRO S ON S.CODE = A.SOURCE
+            FROM GO.ANNOTATIONS A
+            INNER JOIN GO.ECO2EVIDENCE E ON A.ECO_ID = E.ECO_ID
+            INNER JOIN GO.CV_SOURCES S ON S.CODE = A.SOURCE
             WHERE A.ENTITY_TYPE = 'protein'
             AND LENGTH(A.ENTITY_ID) <= 15
             AND E.GO_EVIDENCE != 'IEA'
@@ -81,12 +81,12 @@ def import_annotations(ora_url: str, pg_url: str):
         ora_cur.execute(
             """
             SELECT ID, TITLE, FIRST_PUBLISH_DATE
-            FROM GO.PUBLICATIONS@GOAPRO
+            FROM GO.PUBLICATIONS
             WHERE ID IN (
               SELECT DISTINCT A.REF_DB_ID
-              FROM GO.ANNOTATIONS@GOAPRO A
-              INNER JOIN GO.ECO2EVIDENCE@GOAPRO E ON A.ECO_ID = E.ECO_ID
-              INNER JOIN GO.CV_SOURCES@GOAPRO S ON S.CODE = A.SOURCE
+              FROM GO.ANNOTATIONS A
+              INNER JOIN GO.ECO2EVIDENCE E ON A.ECO_ID = E.ECO_ID
+              INNER JOIN GO.CV_SOURCES S ON S.CODE = A.SOURCE
               WHERE A.ENTITY_TYPE = 'protein'
               AND LENGTH(A.ENTITY_ID) <= 15
               AND E.GO_EVIDENCE != 'IEA'
@@ -102,7 +102,7 @@ def import_annotations(ora_url: str, pg_url: str):
         ora_cur.execute(
             """
             SELECT CHILD_ID, PARENT_ID
-            FROM GO.ANCESTORS@GOAPRO
+            FROM GO.ANCESTORS
             WHERE CHILD_ID != PARENT_ID
             """
         )
@@ -116,7 +116,7 @@ def import_annotations(ora_url: str, pg_url: str):
         ora_cur.execute(
             """
             SELECT DISTINCT GO_ID, CONSTRAINT_ID
-            FROM GO.TERM_TAXON_CONSTRAINTS@GOAPRO
+            FROM GO.TERM_TAXON_CONSTRAINTS
             """
         )
         constraints = {}
@@ -130,16 +130,16 @@ def import_annotations(ora_url: str, pg_url: str):
             """
             SELECT T.GO_ID, T.NAME, C.TERM_NAME, T.IS_OBSOLETE,
                    D.DEFINITION, NULL
-            FROM GO.TERMS@GOAPRO T
-            INNER JOIN GO.DEFINITIONS@GOAPRO D ON T.GO_ID = D.GO_ID
-            INNER JOIN GO.CV_CATEGORIES@GOAPRO C ON T.CATEGORY = C.CODE
+            FROM GO.TERMS T
+            INNER JOIN GO.DEFINITIONS D ON T.GO_ID = D.GO_ID
+            INNER JOIN GO.CV_CATEGORIES C ON T.CATEGORY = C.CODE
             UNION ALL
             SELECT S.SECONDARY_ID, T.NAME, C.TERM_NAME, T.IS_OBSOLETE,
                    D.DEFINITION, T.GO_ID
-            FROM GO.SECONDARIES@GOAPRO S
-            INNER JOIN GO.TERMS@GOAPRO T ON S.GO_ID = T.GO_ID
-            INNER JOIN GO.CV_CATEGORIES@GOAPRO C ON T.CATEGORY = C.CODE
-            INNER JOIN GO.DEFINITIONS@GOAPRO D ON T.GO_ID = D.GO_ID
+            FROM GO.SECONDARIES S
+            INNER JOIN GO.TERMS T ON S.GO_ID = T.GO_ID
+            INNER JOIN GO.CV_CATEGORIES C ON T.CATEGORY = C.CODE
+            INNER JOIN GO.DEFINITIONS D ON T.GO_ID = D.GO_ID
             """
         )
 
