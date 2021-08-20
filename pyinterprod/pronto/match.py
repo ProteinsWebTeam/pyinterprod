@@ -355,7 +355,7 @@ def merge_matches(matches: Sequence[tuple]) -> Dict[str, List[tuple]]:
 
 
 def process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
-    signatures = {}  # number of proteins/residues per signature
+    signatures = {}  # number of proteins/reviewed proteins/residues
     comparisons = {}  # collocations/overlaps between signatures
 
     con = psycopg2.connect(**url2dict(url))
@@ -385,11 +385,17 @@ def process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
                     try:
                         obj = signatures[signature_acc]
                     except KeyError:
-                        signatures[signature_acc] = [1, residues_1]
+                        signatures[signature_acc] = [
+                            1,
+                            1 if is_reviewed else 0,
+                            residues_1
+                        ]
                         comparisons[signature_acc] = {}
                     else:
                         obj[0] += 1
-                        obj[1] += residues_1
+                        if is_reviewed:
+                            obj[1] += 1
+                        obj[2] += residues_1
 
                     for other_acc in matches:
                         if other_acc <= signature_acc:
