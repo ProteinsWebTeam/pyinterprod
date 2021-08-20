@@ -512,14 +512,24 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
     comparisons = {}
     for _ in workers:
         _signatures, _comparisons = outqueue.get()
-        for signature_acc, [num_proteins, num_residues] in _signatures.items():
+        for signature_acc in _signatures:
+            (
+                num_compl_seqs,
+                num_compl_rev_seqs,
+                num_residues
+            ) = _signatures[signature_acc]
             try:
                 obj = signatures[signature_acc]
             except KeyError:
-                signatures[signature_acc] = [num_proteins, num_residues]
+                signatures[signature_acc] = [
+                    num_compl_seqs,
+                    num_compl_rev_seqs,
+                    num_residues
+                ]
             else:
-                obj[0] += num_proteins
-                obj[1] += num_residues
+                obj[0] += num_compl_seqs
+                obj[1] += num_compl_rev_seqs
+                obj[2] += num_residues
 
         for signature_acc, others in _comparisons.items():
             try:
