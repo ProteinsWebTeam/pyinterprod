@@ -64,7 +64,7 @@ def get_pronto_tasks(ora_url: str, pg_url: str, data_dir: str,
             requires=["databases"]
         ),
         Task(
-            fn=pronto.match.proc_comp_seq_matches,
+            fn=pronto.match.create_signature2protein,
             args=(ora_url, pg_url,
                   os.path.join(data_dir, "names.sqlite"),
                   os.path.join(data_dir, "compseqs.dat")),

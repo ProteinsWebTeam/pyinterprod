@@ -354,7 +354,7 @@ def merge_matches(matches: Sequence[tuple]) -> Dict[str, List[tuple]]:
     return signatures
 
 
-def process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
+def process_matches(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
     signatures = {}  # number of proteins/residues per signature
     comparisons = {}  # collocations/overlaps between signatures
 
@@ -443,8 +443,8 @@ def process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
     outqueue.put((signatures, comparisons))
 
 
-def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
-                          output: str, **kwargs):
+def create_signature2protein(ora_url: str, pg_url: str, database: str,
+                             output: str, **kwargs):
     tmpdir = kwargs.get("tmpdir")
     matches_dat = kwargs.get("matches")
     processes = kwargs.get("processes", 4)
@@ -478,7 +478,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
     outqueue = Queue()
     workers = []
     for _ in range(max(1, processes-1)):
-        p = Process(target=process_chunk,
+        p = Process(target=process_matches,
                     args=(pg_url, tmp_database, inqueue, outqueue))
         p.start()
         workers.append(p)
