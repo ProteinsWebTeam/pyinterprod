@@ -669,8 +669,8 @@ def iter_comparisons(comparisons: dict):
 def iter_predictions(signatures: dict, comparisons: dict):
     for acc1, others in comparisons.items():
         for acc2, [collocs, prot_overlaps, res_overlaps] in others.items():
-            num_proteins1, num_residues_1 = signatures[acc1]
-            num_proteins2, num_residues_2 = signatures[acc2]
+            num_proteins1, num_reviewed1, num_residues_1 = signatures[acc1]
+            num_proteins2, num_reviewed2, num_residues_2 = signatures[acc2]
 
             if collocs / min(num_proteins1, num_proteins2) >= MIN_COLLOCATION:
                 yield acc1, acc2, collocs, prot_overlaps, res_overlaps
