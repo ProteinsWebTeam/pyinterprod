@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-
+import hashlib
 import heapq
 import os
 import pickle
@@ -7,7 +6,7 @@ import shutil
 import time
 from multiprocessing import Process, Queue
 from tempfile import mkstemp
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Mapping, Optional, Sequence
 
 import cx_Oracle
 import psycopg2
@@ -33,6 +32,9 @@ MIN_COLLOCATION = 0.5
 
 # Threshold for Jaccard index/coefficients
 MIN_SIMILARITY = 0.75
+
+# Domain org.: introduce a gap when distance between two positions > 20 aa
+MAX_GAP = 20
 
 
 class MatchIterator:
@@ -354,6 +356,62 @@ def merge_matches(matches: Sequence[tuple]) -> Dict[str, List[tuple]]:
     return signatures
 
 
+def hash_domain_architecture(matches: Mapping[str, List[tuple]]) -> str:
+    # Flatten matches
+    locations = []
+
+    for signature_acc in matches:
+        for pos_start, pos_end in matches[signature_acc]:
+            locations.append((pos_start, signature_acc))
+            locations.append((pos_end, signature_acc))
+
+    """
+    Evaluate the protein's match structure,
+        i.e. how signatures match the proteins
+    -----------------------------   Protein
+     <    >                         Signature 1
+       <    >                       Signature 2
+                  < >               Signature 3
+    Flattened:
+    -----------------------------   Protein
+     < <  > >     < >
+     1 2  1 2     3 3
+    Structure, with '-' representing a "gap"
+        (more than N bp between two positions):
+    1212-33
+    """
+
+    # Sort locations by position
+    locations.sort()
+
+    positions = iter(locations)
+
+    """
+    Do not set last_pos to 0, but to the first position:
+    if two proteins have the same structure, but the distance between 0 
+    and the first position is > max_gap in the first protein, 
+    and <= max_gap in the second, a gap will be used for the first protein 
+    and not for the other, which will results in two different hashes
+    """
+    last_pos, signature_acc = next(positions)
+    # Overall domain organisation
+    dom_org = []
+    # Local domain organisation (positions within MAX_GAP)
+    loc_org = [signature_acc]
+
+    for pos, signature_acc in positions:
+        if pos - last_pos > MAX_GAP:
+            dom_org += loc_org
+            dom_org.append('')  # Add a gap
+            loc_org.clear()
+
+        loc_org.append(signature_acc)
+
+    dom_org += loc_org
+
+    return hashlib.md5('/'.join(dom_org).encode("utf-8")).hexdigest()
+
+
 def process_matches(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
     signatures = {}  # number of proteins/residues per signature
     comparisons = {}  # collocations/overlaps between signatures
@@ -367,6 +425,7 @@ def process_matches(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
                 is_reviewed = obj[1]
                 taxon_left_num = obj[2]
                 matches = merge_matches(obj[3])
+                md5 = hash_domain_architecture(matches)
 
                 name_id = names[protein_acc]
                 for signature_acc in matches:
@@ -375,7 +434,8 @@ def process_matches(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
                         protein_acc,
                         is_reviewed,
                         taxon_left_num,
-                        name_id
+                        name_id,
+                        md5
                     ))
 
                     # Number of residues covered by signature's matches
@@ -466,7 +526,8 @@ def create_signature2protein(ora_url: str, pg_url: str, database: str,
                 protein_acc VARCHAR(15) NOT NULL,
                 is_reviewed BOOLEAN NOT NULL,
                 taxon_left_num INTEGER NOT NULL,
-                name_id INTEGER NOT NULL
+                name_id INTEGER NOT NULL,
+                md5 VARCHAR(32) NOT NULL
             )
             """
         )
