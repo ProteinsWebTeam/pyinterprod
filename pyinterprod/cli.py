@@ -105,9 +105,6 @@ def check_ispro():
                         choices=("active", "all", "production"),
                         help="status of analyses to check "
                              "(default: production)")
-    parser.add_argument("--uaread",
-                        action="store_true",
-                        help="get the highest UPI from UAREAD (default: off)")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
