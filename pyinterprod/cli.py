@@ -118,8 +118,7 @@ def check_ispro():
     config.read(args.config)
 
     ora_iprscan_url = config["oracle"]["iprscan"]
-    iprscan.check_ispro(ora_iprscan_url, match_type=args.type,
-                        status=args.status, use_uaread=args.uaread)
+    iprscan.check_ispro(ora_iprscan_url, args.type, args.status)
 
 
 def run_clan_update():
@@ -407,7 +406,7 @@ def run_member_db_update():
 
     db_names = list(set(args.databases))
 
-    ora_interpro_url =config["oracle"]["interpro"]
+    ora_interpro_url = config["oracle"]["interpro"]
     ora_iprscan_url = config["oracle"]["iprscan"]
     ora_goa_url = config["oracle"]["goapro"]
     ora_swpread_url = config["oracle"]["swpread"]
