@@ -13,12 +13,12 @@ from pyinterprod import interpro, pronto, uniparc, uniprot
 from pyinterprod.interpro.clan import update_cdd_clans, update_hmm_clans
 
 
-def get_pronto_tasks(ora_url: str, pg_url: str, data_dir: str,
-                     lsf_queue: str) -> List[Task]:
+def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
+                     pg_ipr_url: str, data_dir: str, lsf_queue: str) -> List[Task]:
     return [
         Task(
             fn=pronto.database.import_databases,
-            args=(ora_url, pg_url),
+            args=(ora_ipr_url, pg_ipr_url),
             name="databases",
             scheduler=dict(mem=100, queue=lsf_queue)
         ),
@@ -26,7 +26,7 @@ def get_pronto_tasks(ora_url: str, pg_url: str, data_dir: str,
         # Data from GOAPRO
         Task(
             fn=pronto.goa.import_annotations,
-            args=(ora_url, pg_url),
+            args=(ora_goa_url, pg_ipr_url),
             name="annotations",
             scheduler=dict(mem=500, queue=lsf_queue)
         ),
@@ -34,13 +34,13 @@ def get_pronto_tasks(ora_url: str, pg_url: str, data_dir: str,
         # Data from SWPREAD
         Task(
             fn=pronto.protein.import_similarity_comments,
-            args=(ora_url, pg_url),
+            args=(ora_swp_url, pg_ipr_url),
             name="proteins-similarities",
             scheduler=dict(mem=100, queue=lsf_queue),
         ),
         Task(
             fn=pronto.protein.import_protein_names,
-            args=(ora_url, pg_url,
+            args=(ora_swp_url, pg_ipr_url,
                   os.path.join(data_dir, "names.sqlite")),
             kwargs=dict(tmpdir="/scratch/"),
             name="proteins-names",
@@ -50,13 +50,13 @@ def get_pronto_tasks(ora_url: str, pg_url: str, data_dir: str,
         # Data from IPPRO
         Task(
             fn=pronto.protein.import_proteins,
-            args=(ora_url, pg_url),
+            args=(ora_ipr_url, pg_ipr_url),
             name="proteins",
             scheduler=dict(mem=100, queue=lsf_queue),
         ),
         Task(
             fn=pronto.match.import_matches,
-            args=(ora_url, pg_url,
+            args=(ora_ipr_url, pg_ipr_url,
                   os.path.join(data_dir, "allseqs.dat")),
             kwargs=dict(tmpdir="/scratch/"),
             name="matches",
@@ -65,7 +65,7 @@ def get_pronto_tasks(ora_url: str, pg_url: str, data_dir: str,
         ),
         Task(
             fn=pronto.match.proc_comp_seq_matches,
-            args=(ora_url, pg_url,
+            args=(ora_ipr_url, pg_ipr_url,
                   os.path.join(data_dir, "names.sqlite"),
                   os.path.join(data_dir, "compseqs.dat")),
             kwargs=dict(tmpdir="/scratch/", processes=8),
@@ -75,7 +75,7 @@ def get_pronto_tasks(ora_url: str, pg_url: str, data_dir: str,
         ),
         Task(
             fn=pronto.signature.import_signatures,
-            args=(ora_url, pg_url,
+            args=(ora_ipr_url, pg_ipr_url,
                   os.path.join(data_dir, "allseqs.dat"),
                   os.path.join(data_dir, "compseqs.dat")),
             name="signatures",
@@ -84,7 +84,7 @@ def get_pronto_tasks(ora_url: str, pg_url: str, data_dir: str,
         ),
         Task(
             fn=pronto.taxon.import_taxonomy,
-            args=(ora_url, pg_url),
+            args=(ora_ipr_url, pg_ipr_url),
             name="taxonomy",
             scheduler=dict(mem=2000, queue=lsf_queue),
         ),
@@ -117,9 +117,7 @@ def check_ispro():
     config = ConfigParser()
     config.read(args.config)
 
-    dsn = config["oracle"]["dsn"]
-    ora_iprscan_url = f"iprscan/{config['oracle']['iprscan']}@{dsn}"
-
+    ora_iprscan_url = config["oracle"]["iprscan"]
     iprscan.check_ispro(ora_iprscan_url, match_type=args.type,
                         status=args.status, use_uaread=args.uaread)
 
@@ -153,14 +151,13 @@ def run_clan_update():
 
     config = ConfigParser()
     config.read(args.config)
-    dsn = config["oracle"]["dsn"]
-    ora_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
+    ora_interpro_url = config["oracle"]["interpro"]
 
     options = ConfigParser()
     options.read(args.members)
 
     db_names = list(set(args.databases))
-    databases = interpro.database.get_databases(ora_url, db_names)
+    databases = interpro.database.get_databases(ora_interpro_url, db_names)
 
     kwargs = {
         "threads": args.threads,
@@ -170,17 +167,17 @@ def run_clan_update():
     for dbname, database in databases.items():
         params = options[dbname]
         if dbname == "cdd":
-            update_cdd_clans(ora_url, database,
+            update_cdd_clans(ora_interpro_url, database,
                              cddmasters=params["sequences"],
                              cddid=params["summary"],
                              fam2supfam=params["members"],
                              **kwargs)
         elif dbname == "panther":
-            update_hmm_clans(ora_url, database,
+            update_hmm_clans(ora_interpro_url, database,
                              hmmdb=params["hmm"],
                              **kwargs)
         else:
-            update_hmm_clans(ora_url, database,
+            update_hmm_clans(ora_interpro_url, database,
                              hmmdb=params["hmm"],
                              source=params["members"],
                              **kwargs)
@@ -210,19 +207,18 @@ def run_hmm_update():
 
     config = ConfigParser()
     config.read(args.config)
-    dsn = config["oracle"]["dsn"]
-    ora_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
+    ora_interpro_url = config["oracle"]["interpro"]
 
     options = ConfigParser()
     options.read(args.members)
 
     db_names = list(set(args.databases))
-    databases = interpro.database.get_databases(ora_url, db_names)
+    databases = interpro.database.get_databases(ora_interpro_url, db_names)
 
     for dbname, database in databases.items():
         hmmfile = options[dbname]["hmm"]
         mapfile = options[dbname].get("mapping")
-        interpro.hmm.update(ora_url, database, hmmfile, mapfile)
+        interpro.hmm.update(ora_interpro_url, database, hmmfile, mapfile)
 
 
 def run_match_update():
@@ -258,9 +254,8 @@ def run_match_update():
     config = ConfigParser()
     config.read(args.config)
 
-    dsn = config["oracle"]["dsn"]
-    ora_interpro_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
-    ora_iprscan_url = f"iprscan/{config['oracle']['iprscan']}@{dsn}"
+    ora_interpro_url = config["oracle"]["interpro"]
+    ora_iprscan_url = config["oracle"]["iprscan"]
     pg_url = config["postgresql"]["pronto"]
     uniprot_version = config["uniprot"]["version"]
     data_dir = config["misc"]["data_dir"]
@@ -412,9 +407,10 @@ def run_member_db_update():
 
     db_names = list(set(args.databases))
 
-    dsn = config["oracle"]["dsn"]
-    ora_interpro_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
-    ora_iprscan_url = f"iprscan/{config['oracle']['iprscan']}@{dsn}"
+    ora_interpro_url =config["oracle"]["interpro"]
+    ora_iprscan_url = config["oracle"]["iprscan"]
+    ora_goa_url = config["oracle"]["goapro"]
+    ora_swpread_url = config["oracle"]["swpread"]
     pg_url = config["postgresql"]["pronto"]
 
     uniprot_version = config["uniprot"]["version"]
@@ -520,7 +516,8 @@ def run_member_db_update():
 
     # Adding Pronto tasks
     after_pronto = set()
-    for t in get_pronto_tasks(ora_interpro_url, pg_url, data_dir, lsf_queue):
+    for t in get_pronto_tasks(ora_interpro_url, ora_swpread_url, ora_goa_url,
+                              pg_url, data_dir, lsf_queue):
         # Adding 'pronto-' prefix
         t.name = f"pronto-{t.name}"
         if t.requires:
@@ -586,16 +583,18 @@ def run_pronto_update():
     config = ConfigParser()
     config.read(args.config)
 
-    dsn = config["oracle"]["dsn"]
-    interpro_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
-    pronto_url = config["postgresql"]["pronto"]
+    ora_interpro_url = config["oracle"]["interpro"]
+    ora_goa_url = config["oracle"]["goapro"]
+    ora_swpread_url = config["oracle"]["swpread"]
+    pg_url = config["postgresql"]["pronto"]
     uniprot_version = config["uniprot"]["version"]
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
     workflow_dir = config["misc"]["workflow_dir"]
 
     os.makedirs(data_dir, exist_ok=True)
-    tasks = get_pronto_tasks(interpro_url, pronto_url, data_dir, lsf_queue)
+    tasks = get_pronto_tasks(ora_interpro_url, ora_swpread_url, ora_goa_url,
+                             pg_url, data_dir, lsf_queue)
 
     database = os.path.join(workflow_dir, f"{uniprot_version}.pronto.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as wf:
@@ -633,10 +632,12 @@ def run_uniprot_update():
     config = ConfigParser()
     config.read(args.config)
 
-    dsn = config["oracle"]["dsn"]
-    ora_interpro_url = f"interpro/{config['oracle']['interpro']}@{dsn}"
-    ora_iprscan_url = f"iprscan/{config['oracle']['iprscan']}@{dsn}"
-    ora_uniparc_url = f"uniparc/{config['oracle']['uniparc']}@{dsn}"
+    ora_interpro_url = config["oracle"]["interpro"]
+    ora_iprscan_url = config["oracle"]["iprscan"]
+    ora_uniparc_url = config["oracle"]["uniparc"]
+    ora_goa_url = config["oracle"]["goapro"]
+    ora_swpread_url = config["oracle"]["swpread"]
+    ora_uaread_url = config["oracle"]["uaread"]
     pg_url = config["postgresql"]["pronto"]
 
     uniprot_version = config["uniprot"]["version"]
@@ -654,7 +655,7 @@ def run_uniprot_update():
         # Data from UAREAD
         Task(
             fn=uniparc.update,
-            args=(ora_uniparc_url,),
+            args=(ora_uniparc_url, ora_uaread_url),
             name="update-uniparc",
             scheduler=dict(queue=lsf_queue)
         ),
@@ -662,7 +663,7 @@ def run_uniprot_update():
         # Data from SWPREAD
         Task(
             fn=interpro.taxonomy.refresh_taxonomy,
-            args=(ora_interpro_url,),
+            args=(ora_interpro_url, ora_swpread_url),
             name="taxonomy",
             scheduler=dict(queue=lsf_queue)
         ),
@@ -803,7 +804,8 @@ def run_uniprot_update():
     ]
 
     # Adding Pronto tasks
-    for t in get_pronto_tasks(ora_interpro_url, pg_url, data_dir, lsf_queue):
+    for t in get_pronto_tasks(ora_interpro_url, ora_swpread_url, ora_goa_url,
+                              pg_url, data_dir, lsf_queue):
         # Adding 'pronto-' prefix
         t.name = f"pronto-{t.name}"
         if t.requires:
@@ -874,9 +876,8 @@ def update_database():
     config = ConfigParser()
     config.read(args.config)
 
-    dsn = config["oracle"]["dsn"]
-    url = f"interpro/{config['oracle']['interpro']}@{dsn}"
-    interpro.database.update_database(url=url,
+    ora_interpro_url = config["oracle"]["interpro"]
+    interpro.database.update_database(url=ora_interpro_url,
                                       name=args.name,
                                       version=args.version,
                                       date=args.date,
