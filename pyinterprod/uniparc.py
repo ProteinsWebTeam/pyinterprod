@@ -21,7 +21,7 @@ def update_databases(ipr_con: cx_Oracle.Connection, unp_url: str):
     oracle.drop_table(ipr_cur, "UNIPARC.CV_DATABASE", purge=True)
     ipr_cur.execute(
         """
-        CREATE_TABLE UNIPARC.CV_DATABASE
+        CREATE TABLE UNIPARC.CV_DATABASE
         (
             ID NUMBER(3) NOT NULL,
             TIMESTAMP DATE NOT NULL,
