@@ -7,16 +7,14 @@ from pyinterprod.utils import oracle, Table
 
 
 def update(ipr_url: str, unp_url: str):
-    ipr_con = cx_Oracle.connect(ipr_url)
-    update_databases(ipr_con, unp_url)
-    update_proteins(ipr_con, unp_url)
-    update_xrefs(ipr_con, unp_url)
-    ipr_con.close()
-    logger.info("complete")
+    update_databases(ipr_url, unp_url)
+    update_proteins(ipr_url, unp_url)
+    update_xrefs(ipr_url, unp_url)
 
 
-def update_databases(ipr_con: cx_Oracle.Connection, unp_url: str):
+def update_databases(ipr_url: str, unp_url: str):
     logger.info("creating table CV_DATABASE")
+    ipr_con = cx_Oracle.connect(ipr_url)
     ipr_cur = ipr_con.cursor()
     oracle.drop_table(ipr_cur, "UNIPARC.CV_DATABASE", purge=True)
     ipr_cur.execute(
@@ -87,10 +85,13 @@ def update_databases(ipr_con: cx_Oracle.Connection, unp_url: str):
     )
     oracle.gather_stats(ipr_cur, "UNIPARC", "CV_DATABASE")
     ipr_cur.close()
+    ipr_con.close()
+    logger.info("complete")
 
 
-def update_proteins(ipr_con: cx_Oracle.Connection, unp_url: str):
+def update_proteins(ipr_url: str, unp_url: str):
     logger.info("creating table PROTEIN")
+    ipr_con = cx_Oracle.connect(ipr_url)
     ipr_cur = ipr_con.cursor()
     oracle.drop_table(ipr_cur, "UNIPARC.PROTEIN", purge=True)
     ipr_cur.execute(
@@ -147,10 +148,13 @@ def update_proteins(ipr_con: cx_Oracle.Connection, unp_url: str):
     logger.info("gathering statistics on table PROTEIN")
     oracle.gather_stats(ipr_cur, "UNIPARC", "PROTEIN")
     ipr_cur.close()
+    ipr_con.close()
+    logger.info("complete")
 
 
-def update_xrefs(ipr_con: cx_Oracle.Connection, unp_url: str):
+def update_xrefs(ipr_url: str, unp_url: str):
     logger.info("creating table XREF")
+    ipr_con = cx_Oracle.connect(ipr_url)
     ipr_cur = ipr_con.cursor()
     oracle.drop_table(ipr_cur, "UNIPARC.XREF", purge=True)
     ipr_cur.execute(
@@ -203,3 +207,5 @@ def update_xrefs(ipr_con: cx_Oracle.Connection, unp_url: str):
     logger.info("gathering statistics on table XREF")
     oracle.gather_stats(ipr_cur, "UNIPARC", "XREF")
     ipr_cur.close()
+    ipr_con.close()
+    logger.info("complete")
