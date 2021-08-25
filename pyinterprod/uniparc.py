@@ -115,10 +115,10 @@ def update_proteins(ipr_con: cx_Oracle.Connection, unp_url: str):
         INTO UNIPARC.PROTEIN
         VALUES (:1, :2, :3, :4, :5, :6, :7, :8)
     """
-    ipr_con.outputtypehandler = oracle.clob_as_str
     with Table(ipr_con, req, autocommit=True, buffer_size=1000) as protein:
         unp_con = cx_Oracle.connect(unp_url)
         unp_cur = unp_con.cursor()
+        unp_cur.outputtypehandler = oracle.clob_as_str
         unp_cur.execute(
             """
             SELECT UPI, TIMESTAMP, USERSTAMP, CRC64, LEN, SEQ_SHORT, 
