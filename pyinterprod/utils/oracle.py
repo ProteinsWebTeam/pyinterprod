@@ -1,11 +1,14 @@
-# -*- coding: utf-8 -*-
-
 import time
 from typing import Callable, List, Optional, Sequence
 
-from cx_Oracle import Cursor, DatabaseError
+from cx_Oracle import Cursor, DatabaseError, DB_TYPE_CLOB, DB_TYPE_LONG
 
 from pyinterprod import logger
+
+
+def clob_as_str(cur: Cursor, name, default_type, size, precision, scale):
+    if default_type == DB_TYPE_CLOB:
+        return cur.var(DB_TYPE_LONG, arraysize=cur.arraysize)
 
 
 def drop_mview(cur: Cursor, name: str):
