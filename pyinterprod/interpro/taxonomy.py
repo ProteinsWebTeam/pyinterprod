@@ -94,7 +94,7 @@ def refresh_taxonomy(ipr_url: str, swp_url: str):
         ON LR.TAX_ID = N.TAX_ID
         """
     )
-    ipr_cur.commit()
+    ipr_con.commit()
     oracle.gather_stats(ipr_cur, "INTERPRO", "ETAXI")
 
     # Dropping temporary table
