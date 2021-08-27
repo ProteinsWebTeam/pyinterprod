@@ -87,17 +87,16 @@ class MatchIterator:
                 fragments or f"{pos_start}-{pos_end}-S"
             )
 
+            is_reviewed = protein_acc in reviewed
             try:
-                matches = signatures[signature_acc]
+                signatures[signature_acc][protein_acc] = is_reviewed
             except KeyError:
-                matches = signatures[signature_acc] = []
-
-            matches.append((protein_acc, protein_acc in reviewed))
+                signatures[signature_acc] = {protein_acc: is_reviewed}
 
             i += 1
             if not i % 1000000:
                 self.dump(signatures)
-                signatures = {}
+                signatures.clear()
 
             if not i % 100000000:
                 logger.info(f"{i:>13,}")
@@ -108,25 +107,22 @@ class MatchIterator:
         self.dump(signatures)
         logger.info(f"{i:>13,}")
 
-    def dump(self, signatures: Dict[str, Sequence]):
+    def dump(self, signatures: Dict[str, Dict[str, bool]]):
         fd, path = mkstemp(dir=self.tmpdir)
         with open(fd, "wb") as fh:
             for sign_acc in sorted(signatures):
                 reviewed_proteins = set()
-                n_reviewed_matches = 0
                 unreviewed_proteins = set()
 
-                for prot_acc, is_reviewed in signatures[sign_acc]:
+                for prot_acc, is_reviewed in signatures[sign_acc].items():
                     if is_reviewed:
                         reviewed_proteins.add(prot_acc)
-                        n_reviewed_matches += 1
                     else:
                         unreviewed_proteins.add(prot_acc)
 
                 pickle.dump((
                     sign_acc,
                     reviewed_proteins,
-                    n_reviewed_matches,
                     unreviewed_proteins
                 ), fh)
 
@@ -145,36 +141,31 @@ class MatchIterator:
 
     def merge(self) -> Dict[str, tuple]:
         counts = {}
-        signature = None
+        signature_acc = None
         reviewed_proteins = set()
         unreviewed_proteins = set()
-        n_reviewed_matches = 0
 
         iterable = [self.load(path) for path in self.files]
         for item in heapq.merge(*iterable, key=lambda x: x[0]):
-            sig_acc, rev_prots, n_rev_matches, unrev_prots = item
+            sig_acc, rev_prots, unrev_prots = item
 
-            if sig_acc != signature:
-                if signature:
-                    counts[signature] = (
+            if sig_acc != signature_acc:
+                if signature_acc:
+                    counts[signature_acc] = (
                         len(reviewed_proteins),
-                        n_reviewed_matches,
                         len(unreviewed_proteins)
                     )
 
-                signature = sig_acc
-                reviewed_proteins = set()
-                unreviewed_proteins = set()
-                n_reviewed_matches = 0
+                signature_acc = sig_acc
+                reviewed_proteins.clear()
+                unreviewed_proteins.clear()
 
             reviewed_proteins |= rev_prots
-            n_reviewed_matches += n_rev_matches
             unreviewed_proteins |= unrev_prots
 
-        if signature:
-            counts[signature] = (
+        if signature_acc:
+            counts[signature_acc] = (
                 len(reviewed_proteins),
-                n_reviewed_matches,
                 len(unreviewed_proteins)
             )
 
