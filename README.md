@@ -20,10 +20,12 @@ python setup.py install
 The `pyinterprod` package include command line tools, which expect an INI config file. Properties are described bellow:
 
 - **oracle**
-    - **dsn**: Oracle data source name (format: `host:port/service`, or simply `service`)
-    - **interpro**: password for the INTERPRO user
-    - **iprscan**: password for the IPRSCAN user
-    - **uniparc**: password for the UNIPARC user
+    - **interpro**: connection string for the `interpro` user in the InterPro database (format: `user/password@host:port/service`, or simply `service`)
+    - **iprscan**: connection string for the `iprscan` user in the InterPro database
+    - **uniparc**: connection string for the `uniparc` user in the InterPro database
+    - **goapro**: connection string for the GOA database
+    - **swpread**: connection string for the Swiss-Prot database
+    - **uaread**: connection string for the UniParc database
 - **postgresql**:
     - **pronto**: connection string (format: `user/password@host:port/database`)
 - **uniprot**:

@@ -194,7 +194,7 @@ class Analysis:
             """, (self.id, self.persisted)
         )
         row = cur.fetchone()
-        return row and row[0] >= max_upi
+        return row and row[0] is not None and row[0] >= max_upi
 
 
 def get_analyses(cur: Cursor, **kwargs) -> List[Analysis]:
@@ -235,15 +235,15 @@ def get_analyses(cur: Cursor, **kwargs) -> List[Analysis]:
             INNER JOIN IPM_ANALYSIS_MATCH_TABLE@ISPRO T
                 ON A.ANALYSIS_MATCH_TABLE_ID = T.ID
             LEFT OUTER JOIN (
-                SELECT 
-                    ANALYSIS_MATCH_TABLE_ID, 
-                    MIN(ANALYSIS_TYPE) ANALYSIS_TYPE, 
+                SELECT
+                    ANALYSIS_MATCH_TABLE_ID,
+                    MIN(ANALYSIS_TYPE) ANALYSIS_TYPE,
                     COUNT(*) CNT
                 FROM IPM_ANALYSIS@ISPRO
                 WHERE ACTIVE = 1
                 GROUP BY ANALYSIS_MATCH_TABLE_ID
-            ) P 
-                ON A.ANALYSIS_MATCH_TABLE_ID = P.ANALYSIS_MATCH_TABLE_ID 
+            ) P
+                ON A.ANALYSIS_MATCH_TABLE_ID = P.ANALYSIS_MATCH_TABLE_ID
                 AND P.CNT = 1
           {sql_filter}
           ORDER BY A.ANALYSIS_NAME
@@ -382,9 +382,9 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
 
     if force_import or not upi_loc or upi_loc < max_upi:
         """
-        Either we force data import or there are no matches 
+        Either we force data import or there are no matches
           for the highest UPI: import table from ISPRO
-          
+
         All analyses for this table are imported
             (i.e. previous versions are not ignored)
         """
@@ -449,7 +449,7 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
                          f"{prev_val} -> {new_val}")
             cur.execute(
                 f"""
-                ALTER TABLE IPRSCAN.{partitioned_table} 
+                ALTER TABLE IPRSCAN.{partitioned_table}
                 TRUNCATE PARTITION {partition}
                 """
             )
@@ -717,7 +717,7 @@ def import_sites(url: str, **kwargs):
 
 
 def check_ispro(url: str, match_type: str = "matches",
-                status: str = "production", use_uaread: bool = False):
+                status: str = "production"):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -728,12 +728,9 @@ def check_ispro(url: str, match_type: str = "matches",
         except KeyError:
             analyses[analysis.table] = [analysis]
 
-    if use_uaread:
-        cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
-    else:
-        cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
-
+    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     max_upi, = cur.fetchone()
+
     for table in sorted(analyses):
         for a in analyses[table]:
             status = "ready" if a.is_ready(cur, max_upi) else "pending"

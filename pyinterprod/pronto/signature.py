@@ -49,9 +49,9 @@ def import_signatures(ora_url: str, pg_url: str, allseqs: str, compseqs: str):
             n_rev_seqs = n_rev_matches = n_unrev_seqs = 0
 
         try:
-            num_complete_sequences, num_residues = compseqs[acc]
+            num_compl_seqs, num_compl_rev_seqs, num_residues = compseqs[acc]
         except KeyError:
-            num_complete_sequences = num_residues = 0
+            num_compl_seqs = num_compl_rev_seqs = num_residues = 0
 
         values.append((
             acc,                        # accession
@@ -63,7 +63,8 @@ def import_signatures(ora_url: str, pg_url: str, allseqs: str, compseqs: str):
             n_rev_seqs + n_unrev_seqs,  # num_sequences
             n_rev_seqs,                 # num_reviewed_sequences
             n_rev_matches,              # num_reviewed_matches
-            num_complete_sequences,     # num_complete_sequences
+            num_compl_seqs,             # num_complete_sequences
+            num_compl_rev_seqs,         # num_complete_reviewed_sequences
             num_residues                # num_residues
         ))
     ora_cur.close()
@@ -85,6 +86,7 @@ def import_signatures(ora_url: str, pg_url: str, allseqs: str, compseqs: str):
                 num_reviewed_sequences INTEGER NOT NULL,
                 num_reviewed_matches INTEGER NOT NULL,
                 num_complete_sequences INTEGER NOT NULL,
+                num_complete_reviewed_sequences INTEGER NOT NULL,
                 num_residues BIGINT NOT NULL
             )
             """
