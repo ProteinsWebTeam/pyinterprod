@@ -175,9 +175,14 @@ The optional arguments are:
     <td></td>
 </tr>
 <tr>
+    <td>unirule</td>
+    <td>Update the list of signatures used by UniRule, so InterPro curators are warned if they attempt to unintegrated one of these signatures.</td>
+    <td></td>
+</tr>
+<tr>
     <td><a href="#ipr-pronto-tasks">Pronto</a></td>
     <td>Update the Pronto PostgreSQL table</td>
-    <td>taxonomy, update-fmatches, swissprot-de</td>
+    <td>taxonomy, update-fmatches, swissprot-de, unirule</td>
 </tr>
 <tr>
     <td>send-report</td>
