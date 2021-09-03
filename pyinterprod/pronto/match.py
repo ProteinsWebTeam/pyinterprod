@@ -4,18 +4,16 @@ import heapq
 import os
 import pickle
 import shutil
-import time
 from multiprocessing import Process, Queue
 from tempfile import mkstemp
 from typing import Dict, List, Optional, Sequence
 
 import cx_Oracle
 import psycopg2
-import psycopg2.errors
 
 from pyinterprod import logger
 from pyinterprod.utils.kvdb import KVdb
-from pyinterprod.utils.pg import CsvIO, url2dict
+from pyinterprod.utils import pg
 
 
 """
@@ -190,7 +188,7 @@ class MatchIterator:
 def import_matches(ora_url: str, pg_url: str, output: str,
                    tmpdir: Optional[str] = None):
     logger.info("populating")
-    pg_con = psycopg2.connect(**url2dict(pg_url))
+    pg_con = psycopg2.connect(**pg.url2dict(pg_url))
     pg_cur = pg_con.cursor()
     pg_cur.execute("DROP TABLE IF EXISTS match")
     pg_cur.execute(
@@ -208,7 +206,7 @@ def import_matches(ora_url: str, pg_url: str, output: str,
     databases = dict(pg_cur.fetchall())
 
     matches = MatchIterator(ora_url, databases, tmpdir)
-    pg_cur.copy_from(file=CsvIO(iter(matches), sep='|'),
+    pg_cur.copy_from(file=pg.CsvIO(iter(matches), sep='|'),
                      table="match",
                      sep='|')
 
@@ -220,12 +218,10 @@ def import_matches(ora_url: str, pg_url: str, output: str,
         """
     )
     pg_con.commit()
+    pg_cur.close()
 
     logger.info("clustering")
-    pg_cur.execute("CLUSTER interpro.match USING match_protein_idx")
-    pg_con.commit()
-
-    pg_cur.close()
+    pg.cluster(pg_con, "match", "match_protein_idx", max_attempts=2)
     pg_con.close()
 
     logger.info("counting proteins per signature")
@@ -358,7 +354,7 @@ def process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
     signatures = {}  # number of proteins/reviewed proteins/residues
     comparisons = {}  # collocations/overlaps between signatures
 
-    con = psycopg2.connect(**url2dict(url))
+    con = psycopg2.connect(**pg.url2dict(url))
     with con.cursor() as cur, KVdb(names_db) as names:
         for chunk in iter(inqueue.get, None):
             values = []
@@ -440,7 +436,7 @@ def process_chunk(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
                         # Overlapping residues
                         cmp[2] += residues
 
-            cur.copy_from(file=CsvIO(iter(values), sep='|'),
+            cur.copy_from(file=pg.CsvIO(iter(values), sep='|'),
                           table="signature2protein",
                           sep='|')
 
@@ -462,7 +458,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
     shutil.copyfile(database, tmp_database)
 
     logger.info("populating: signature2protein")
-    pg_con = psycopg2.connect(**url2dict(pg_url))
+    pg_con = psycopg2.connect(**pg.url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("DROP TABLE IF EXISTS signature2protein")
         pg_cur.execute(
@@ -552,7 +548,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
 
     os.remove(tmp_database)
 
-    pg_con = psycopg2.connect(**url2dict(pg_url))
+    pg_con = psycopg2.connect(**pg.url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         logger.info("populating: comparison")
         pg_cur.execute("DROP TABLE IF EXISTS comparison")
@@ -568,7 +564,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         )
 
         gen = iter_comparisons(comparisons)
-        pg_cur.copy_from(file=CsvIO(gen, sep='|'),
+        pg_cur.copy_from(file=pg.CsvIO(gen, sep='|'),
                          table="comparison",
                          sep='|')
 
@@ -581,8 +577,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         )
         pg_con.commit()
 
-        pg_cur.execute("CLUSTER comparison USING comparison_idx")
-        pg_con.commit()
+        pg.cluster(pg_con, "comparison", "comparison_idx")
 
         logger.info("populating: prediction")
         pg_cur.execute("DROP TABLE IF EXISTS prediction")
@@ -599,7 +594,7 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         )
 
         gen = iter_predictions(signatures, comparisons)
-        pg_cur.copy_from(file=CsvIO(gen, sep='|'),
+        pg_cur.copy_from(file=pg.CsvIO(gen, sep='|'),
                          table="prediction",
                          sep='|')
 
@@ -611,8 +606,8 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
             """
         )
         pg_con.commit()
-        pg_cur.execute("CLUSTER prediction USING prediction_idx")
-        pg_con.commit()
+
+        pg.cluster(pg_con, "prediction", "prediction_idx")
 
         logger.info("optimizing: signature2protein")
         logger.info("\tsignature2protein_protein_idx")
@@ -632,28 +627,8 @@ def proc_comp_seq_matches(ora_url: str, pg_url: str, database: str,
         pg_con.commit()
 
         logger.info("\tCLUSTER")
-        num_attempts = 0
-        while True:
-            num_attempts += 1
-            try:
-                pg_cur.execute(
-                    """
-                    CLUSTER signature2protein
-                    USING signature2protein_signature_idx
-                    """
-                )
-            except psycopg2.errors.DiskFull:
-                pg_con.rollback()
-
-                if num_attempts == max_attempts:
-                    pg_cur.close()
-                    pg_con.close()
-                    raise
-
-                time.sleep(600)  # wait 10 minutes before next attempt
-            else:
-                pg_con.commit()
-                break
+        pg.cluster(pg_con, table="signature2protein",
+                   index="signature2protein_signature_idx", max_attempts=2)
 
     pg_con.close()
     logger.info("complete")
