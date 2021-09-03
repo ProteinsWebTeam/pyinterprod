@@ -378,7 +378,7 @@ def hash_domain_architecture(matches: Mapping[str, List[tuple]]) -> str:
     if two proteins have the same structure, but the distance between 0 
     and the first position is > max_gap in the first protein, 
     and <= max_gap in the second, a gap will be used for the first protein 
-    and not for the other, which will results in two different hashes
+    and not for the other, which will result in two different hashes
     """
     last_pos, signature_acc = next(positions)
     # Overall domain organisation
