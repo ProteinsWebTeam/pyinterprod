@@ -503,7 +503,6 @@ def create_signature2protein(ora_url: str, pg_url: str, database: str,
     tmpdir = kwargs.get("tmpdir")
     matches_dat = kwargs.get("matches")
     processes = kwargs.get("processes", 4)
-    max_attempts = kwargs.get("max_attempts", 2)
 
     logger.info("copying database")
     fd, tmp_database = mkstemp(dir=tmpdir)
