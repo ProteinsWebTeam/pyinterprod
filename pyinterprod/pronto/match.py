@@ -404,7 +404,7 @@ def hash_domain_architecture(matches: Mapping[str, List[tuple]]) -> str:
 
 
 def process_matches(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
-    signatures = {}  # number of proteins/residues per signature
+    signatures = {}  # number of proteins/reviewed proteins/residues
     comparisons = {}  # collocations/overlaps between signatures
 
     con = psycopg2.connect(**url2dict(url))
@@ -436,11 +436,17 @@ def process_matches(url: str, names_db: str, inqueue: Queue, outqueue: Queue):
                     try:
                         obj = signatures[signature_acc]
                     except KeyError:
-                        signatures[signature_acc] = [1, residues_1]
+                        signatures[signature_acc] = [
+                            1,
+                            1 if is_reviewed else 0,
+                            residues_1
+                        ]
                         comparisons[signature_acc] = {}
                     else:
                         obj[0] += 1
-                        obj[1] += residues_1
+                        if is_reviewed:
+                            obj[1] += 1
+                        obj[2] += residues_1
 
                     for other_acc in matches:
                         if other_acc <= signature_acc:
@@ -558,14 +564,24 @@ def create_signature2protein(ora_url: str, pg_url: str, database: str,
     comparisons = {}
     for _ in workers:
         _signatures, _comparisons = outqueue.get()
-        for signature_acc, [num_proteins, num_residues] in _signatures.items():
+        for signature_acc in _signatures:
+            (
+                num_compl_seqs,
+                num_compl_rev_seqs,
+                num_residues
+            ) = _signatures[signature_acc]
             try:
                 obj = signatures[signature_acc]
             except KeyError:
-                signatures[signature_acc] = [num_proteins, num_residues]
+                signatures[signature_acc] = [
+                    num_compl_seqs,
+                    num_compl_rev_seqs,
+                    num_residues
+                ]
             else:
-                obj[0] += num_proteins
-                obj[1] += num_residues
+                obj[0] += num_compl_seqs
+                obj[1] += num_compl_rev_seqs
+                obj[2] += num_residues
 
         for signature_acc, others in _comparisons.items():
             try:
@@ -705,8 +721,8 @@ def iter_comparisons(comparisons: dict):
 def iter_predictions(signatures: dict, comparisons: dict):
     for acc1, others in comparisons.items():
         for acc2, [collocs, prot_overlaps, res_overlaps] in others.items():
-            num_proteins1, num_residues_1 = signatures[acc1]
-            num_proteins2, num_residues_2 = signatures[acc2]
+            num_proteins1, num_reviewed1, num_residues_1 = signatures[acc1]
+            num_proteins2, num_reviewed2, num_residues_2 = signatures[acc2]
 
             if collocs / min(num_proteins1, num_proteins2) >= MIN_COLLOCATION:
                 yield acc1, acc2, collocs, prot_overlaps, res_overlaps

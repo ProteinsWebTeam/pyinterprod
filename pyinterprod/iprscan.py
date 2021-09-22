@@ -717,7 +717,7 @@ def import_sites(url: str, **kwargs):
 
 
 def check_ispro(url: str, match_type: str = "matches",
-                status: str = "production", use_uaread: bool = False):
+                status: str = "production"):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -728,12 +728,9 @@ def check_ispro(url: str, match_type: str = "matches",
         except KeyError:
             analyses[analysis.table] = [analysis]
 
-    if use_uaread:
-        cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN@UAREAD")
-    else:
-        cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
-
+    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     max_upi, = cur.fetchone()
+
     for table in sorted(analyses):
         for a in analyses[table]:
             status = "ready" if a.is_ready(cur, max_upi) else "pending"

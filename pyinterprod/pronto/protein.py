@@ -14,9 +14,9 @@ from pyinterprod.utils.kvdb import KVdb
 from pyinterprod.utils.pg import url2dict
 
 
-def import_similarity_comments(ora_url: str, pg_url: str):
+def import_similarity_comments(swp_url: str, ipr_url: str):
     logger.info("populating")
-    pg_con = psycopg2.connect(**url2dict(pg_url))
+    pg_con = psycopg2.connect(**url2dict(ipr_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("DROP TABLE IF EXISTS protein_similarity")
         pg_cur.execute(
@@ -29,7 +29,7 @@ def import_similarity_comments(ora_url: str, pg_url: str):
             """
         )
 
-        ora_con = cx_Oracle.connect(ora_url)
+        ora_con = cx_Oracle.connect(swp_url)
         ora_cur = ora_con.cursor()
         ora_cur.execute(
             """
@@ -39,14 +39,14 @@ def import_similarity_comments(ora_url: str, pg_url: str):
                 ACCESSION
             FROM (
                 SELECT E.ACCESSION, NVL(B.TEXT, SS.TEXT) AS TEXT
-                FROM SPTR.DBENTRY@SWPREAD E
-                INNER JOIN SPTR.COMMENT_BLOCK@SWPREAD B
+                FROM SPTR.DBENTRY E
+                INNER JOIN SPTR.COMMENT_BLOCK B
                   ON E.DBENTRY_ID = B.DBENTRY_ID
                   AND B.COMMENT_TOPICS_ID = 34        -- SIMILARITY comments
-                LEFT OUTER JOIN SPTR.COMMENT_STRUCTURE@SWPREAD S
+                LEFT OUTER JOIN SPTR.COMMENT_STRUCTURE S
                   ON B.COMMENT_BLOCK_ID = S.COMMENT_BLOCK_ID
                   AND S.CC_STRUCTURE_TYPE_ID = 1      -- TEXT structure
-                LEFT OUTER JOIN SPTR.COMMENT_SUBSTRUCTURE@SWPREAD SS
+                LEFT OUTER JOIN SPTR.COMMENT_SUBSTRUCTURE SS
                   ON S.COMMENT_STRUCTURE_ID = SS.COMMENT_STRUCTURE_ID
                 WHERE E.ENTRY_TYPE = 0                -- Swiss-Prot
                   AND E.MERGE_STATUS != 'R'           -- not 'Redundant'
@@ -80,14 +80,14 @@ def import_similarity_comments(ora_url: str, pg_url: str):
     logger.info("complete")
 
 
-def import_protein_names(ora_url: str, pg_url: str, database: str,
+def import_protein_names(swp_url: str, ipr_url: str, database: str,
                          tmpdir: Optional[str] = None):
     logger.info("populating protein2name")
     fd, tmp_database = mkstemp(dir=tmpdir)
     os.close(fd)
     os.remove(tmp_database)
 
-    pg_con = psycopg2.connect(**url2dict(pg_url))
+    pg_con = psycopg2.connect(**url2dict(ipr_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("DROP TABLE IF EXISTS protein_name")
         pg_cur.execute("DROP TABLE IF EXISTS protein2name")
@@ -110,7 +110,7 @@ def import_protein_names(ora_url: str, pg_url: str, database: str,
             """
         )
 
-        ora_con = cx_Oracle.connect(ora_url)
+        ora_con = cx_Oracle.connect(swp_url)
         ora_cur = ora_con.cursor()
         ora_cur.execute(
             """
@@ -125,11 +125,11 @@ def import_protein_names(ora_url: str, pg_url: str, database: str,
                   CV.ORDER_IN,            -- Swiss-Prot manual order
                   D.DESCR                 -- TrEMBL alphabetic order
               ) R
-              FROM SPTR.DBENTRY@SWPREAD E
-              INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD D
+              FROM SPTR.DBENTRY E
+              INNER JOIN SPTR.DBENTRY_2_DESC D
                 ON E.DBENTRY_ID = D.DBENTRY_ID
                 AND D.DESC_ID IN (1,4,11,13,16,23,25,28,35)  --Full description section
-              INNER JOIN SPTR.CV_DESC@SWPREAD CV
+              INNER JOIN SPTR.CV_DESC CV
                 ON D.DESC_ID = CV.DESC_ID
               WHERE E.ENTRY_TYPE IN (0, 1)          -- Swiss-Prot/TrEMBL
                 AND E.MERGE_STATUS != 'R'           -- not 'Redundant'
