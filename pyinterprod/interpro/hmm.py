@@ -47,7 +47,7 @@ class _Mapper:
             raise ValueError(f"unsupported member database '{database}'")
 
         self.prog_cathgene3d = re.compile(r"([a-zA-Z0-9]+)-i\d")
-        self.prog_panther = re.compile("(PTHR\d+)\.(SF\d+)?")
+        self.prog_panther = re.compile(r"(PTHR\d+)\.(SF\d+)?")
 
     def __call__(self, *args):
         return self.map(*args)
