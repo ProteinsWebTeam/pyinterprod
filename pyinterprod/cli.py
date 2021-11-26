@@ -124,9 +124,6 @@ def run_clan_update():
     parser.add_argument("config",
                         metavar="config.ini",
                         help="global configuration file")
-    parser.add_argument("members",
-                        metavar="members.ini",
-                        help="member database configuration file")
     parser.add_argument("databases",
                         metavar="DATABASE",
                         nargs="+",
@@ -140,18 +137,21 @@ def run_clan_update():
                         help="show the version and exit")
     args = parser.parse_args()
 
-    for file in [args.config, args.members]:
-        if not os.path.isfile(file):
-            parser.error(f"cannot open '{file}': "
-                         f"no such file or directory")
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': "
+                     f"no such file or directory")
 
     config = ConfigParser()
     config.read(args.config)
-    ora_interpro_url = config["oracle"]["interpro"]
+
+    if not os.path.isfile(config["misc"]["members"]):
+        parser.error(f"cannot open '{config['misc']['members']}': "
+                     f"no such file or directory")
 
     options = ConfigParser()
-    options.read(args.members)
+    options.read(config["misc"]["members"])
 
+    ora_interpro_url = config["oracle"]["interpro"]
     db_names = list(set(args.databases))
     databases = interpro.database.get_databases(ora_interpro_url, db_names)
 
@@ -184,9 +184,6 @@ def run_hmm_update():
     parser.add_argument("config",
                         metavar="config.ini",
                         help="global configuration file")
-    parser.add_argument("members",
-                        metavar="members.ini",
-                        help="member database configuration file")
     parser.add_argument("databases",
                         metavar="DATABASE",
                         nargs="+",
@@ -196,19 +193,22 @@ def run_hmm_update():
                         help="show the version and exit")
     args = parser.parse_args()
 
-    for file in [args.config, args.members]:
-        if not os.path.isfile(file):
-            parser.error(f"cannot open '{file}': "
-                         f"no such file or directory")
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': "
+                     f"no such file or directory")
 
     config = ConfigParser()
     config.read(args.config)
-    ora_interpro_url = config["oracle"]["interpro"]
+
+    if not os.path.isfile(config["misc"]["members"]):
+        parser.error(f"cannot open '{config['misc']['members']}': "
+                     f"no such file or directory")
 
     options = ConfigParser()
-    options.read(args.members)
+    options.read(config["misc"]["members"])
 
     db_names = list(set(args.databases))
+    ora_interpro_url = config["oracle"]["interpro"]
     databases = interpro.database.get_databases(ora_interpro_url, db_names)
 
     for dbname, database in databases.items():
@@ -366,9 +366,6 @@ def run_member_db_update():
     parser.add_argument("config",
                         metavar="config.ini",
                         help="global configuration file")
-    parser.add_argument("members",
-                        metavar="members.ini",
-                        help="member database configuration file")
     parser.add_argument("databases",
                         metavar="DATABASE",
                         nargs="+",
@@ -390,16 +387,19 @@ def run_member_db_update():
                         help="show the version and exit")
     args = parser.parse_args()
 
-    for file in [args.config, args.members]:
-        if not os.path.isfile(file):
-            parser.error(f"cannot open '{file}': "
-                         f"no such file or directory")
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': "
+                     f"no such file or directory")
 
     config = ConfigParser()
     config.read(args.config)
 
+    if not os.path.isfile(config["misc"]["members"]):
+        parser.error(f"cannot open '{config['misc']['members']}': "
+                     f"no such file or directory")
+
     options = ConfigParser()
-    options.read(args.members)
+    options.read(config["misc"]["members"])
 
     db_names = list(set(args.databases))
 
@@ -424,7 +424,8 @@ def run_member_db_update():
         try:
             props = options[dbname]
         except KeyError:
-            parser.error(f"{args.members}: missing database '{dbname}'")
+            parser.error(f"{config['misc']['members']}: "
+                         f"missing database '{dbname}'")
 
         try:
             sig_source = props["signatures"]
@@ -434,7 +435,8 @@ def run_member_db_update():
         if sig_source:
             updates.append((dbname, sig_source))
         else:
-            parser.error(f"{args.members}: 'signatures' property missing "
+            parser.error(f"{config['misc']['members']}: "
+                         f"'signatures' property missing "
                          f"or empty for database '{dbname}'")
 
     databases = list(databases.values())
