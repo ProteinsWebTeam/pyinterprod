@@ -433,7 +433,7 @@ def run_member_db_update():
             sig_source = None
 
         if sig_source:
-            updates.append((dbname, sig_source))
+            updates.append((db, sig_source))
         else:
             parser.error(f"{config['misc']['members']}: "
                          f"'signatures' property missing "
