@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import os
 import sys
 from argparse import ArgumentParser
@@ -311,13 +309,22 @@ def run_match_update():
         ]
 
     if feature_dbs:
-        tasks.append(Task(
-            fn=interpro.match.update_database_feature_matches,
-            args=(ora_interpro_url, feature_dbs),
-            name="update-fmatches",
-            scheduler=dict(queue=lsf_queue),
-            requires=["import-matches"]
-        ))
+        tasks += [
+            Task(
+                fn=interpro.signature.update_features,
+                args=(ora_interpro_url, feature_dbs),
+                name="update-features",
+                scheduler=dict(queue=lsf_queue),
+                requires=["import-matches"]
+            ),
+            Task(
+                fn=interpro.match.update_database_feature_matches,
+                args=(ora_interpro_url, feature_dbs),
+                name="update-fmatches",
+                scheduler=dict(queue=lsf_queue),
+                requires=["update-features"]
+            )
+        ]
 
     if site_dbs:
         if member_dbs:
