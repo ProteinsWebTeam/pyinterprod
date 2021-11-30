@@ -12,7 +12,8 @@ from pyinterprod.pronto.signature import get_swissprot_descriptions
 from pyinterprod.utils import Table, oracle as ora
 from . import contrib
 from .database import Database
-from .match import MATCH_PARTITIONS, SITE_PARTITIONS, get_sig_protein_counts
+from .match import FEATURE_MATCH_PARTITIONS, MATCH_PARTITIONS, SITE_PARTITIONS
+from .match import get_sig_protein_counts
 
 
 FILE_DB_SIG = "signatures.update.pickle"
@@ -450,5 +451,132 @@ def update_signatures(url: str):
     )
 
     con.commit()
+    cur.close()
+    con.close()
+
+
+def update_features(url: str, update: Sequence[Tuple[Database, str]]):
+    partitions = []
+
+    for db, src in update:
+        try:
+            partition = FEATURE_MATCH_PARTITIONS[db.identifier]
+        except KeyError:
+            logger.critical(f"{db.name}: not a sequence feature database")
+
+        partitions.append(partition)
+
+    if len(partitions) < len(update):
+        raise RuntimeError(f"one or more invalid databases")
+
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    for (db, src), partition in zip(update, partitions):
+        ora.truncate_partition(cur, "INTERPRO.FEATURE_MATCH", partition)
+
+        cur.execute(
+            """
+            DELETE FROM INTERPRO.FEATURE_METHOD
+            WHERE DBCODE = :1
+            """,
+            (db.identifier,)
+        )
+
+    con.commit()
+
+
+
+
+
+    ora.drop_table(cur, "METHOD_STG", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.METHOD_STG (
+            METHOD_AC VARCHAR2(25) NOT NULL,
+            NAME VARCHAR2(100),
+            DBCODE CHAR(1) NOT NULL,
+            DESCRIPTION VARCHAR2(400),
+            SIG_TYPE CHAR(1) NOT NULL,
+            ABSTRACT VARCHAR2(4000),
+            ABSTRACT_LONG CLOB
+        )
+        """
+    )
+
+    sql = """
+            INSERT INTO INTERPRO.METHOD_STG
+            VALUES (:1, :2, :3, :4, :5, :6, :7)
+        """
+    with Table(con, sql) as table:
+        errors = 0
+        for db, src in update:
+            if db.identifier == 'f':
+                # FunFams
+                signatures = contrib.cath.parse_functional_families(src)
+            elif db.identifier == 'H':
+                # Pfam
+                signatures = contrib.pfam.get_signatures(src)
+            elif db.identifier == 'J':
+                # CDD
+                signatures = contrib.cdd.parse_signatures(src)
+            elif db.identifier == 'M':
+                # PROSITE profiles
+                signatures = contrib.prosite.parse_profiles(src)
+            elif db.identifier == 'P':
+                # PROSITE patterns
+                signatures = contrib.prosite.parse_patterns(src)
+            elif db.identifier == 'Q':
+                # HAMAP
+                signatures = contrib.hamap.parse_signatures(src)
+            elif db.identifier == 'V':
+                # PANTHER
+                signatures = contrib.panther.parse_signatures(src)
+            elif db.identifier == 'X':
+                # CATH-Gene3D
+                signatures = contrib.cath.parse_superfamilies(src)
+            else:
+                logger.error(f"{db.name}: unsupported member database")
+                errors += 1
+                continue
+
+            for m in signatures:
+                if m.abstract is None:
+                    abstract = abstract_long = None
+                elif len(m.abstract) <= 4000:
+                    abstract = m.abstract
+                    abstract_long = None
+                else:
+                    abstract = None
+                    abstract_long = m.abstract
+
+                table.insert((
+                    m.accession,
+                    m.name or m.accession,
+                    db.identifier,
+                    m.description,
+                    m.sig_type,
+                    abstract,
+                    abstract_long
+                ))
+
+    if errors:
+        cur.close()
+        con.close()
+        raise RuntimeError(f"{errors} errors occurred")
+
+    con.commit()
+
+    code2name = {db.identifier: db.name for db, _ in update}
+    cur.execute(
+        """
+        SELECT DBCODE, COUNT(*)
+        FROM INTERPRO.METHOD_STG
+        GROUP BY DBCODE
+        """
+    )
+    for dbcode, cnt in cur:
+        logger.info(f"{code2name[dbcode]:<30} {cnt:>10,} signatures")
+
     cur.close()
     con.close()
