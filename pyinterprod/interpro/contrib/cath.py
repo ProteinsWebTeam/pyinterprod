@@ -47,7 +47,7 @@ def parse_functional_families(filepath: str) -> List[Method]:
 
     signatures = []
     reg_name = re.compile(r"^NAME\s+(\d+\.\d+\.\d+\.\d+)-FF-(\d+)$")
-    dsc_name = re.compile(r"^DESC\s+(.+)$")
+    reg_desc = re.compile(r"^DESC\s+(.+)$")
     with open(filepath, "rt") as fh:
         cnt = 0
         supfam = funfam = desc = None
@@ -68,7 +68,7 @@ def parse_functional_families(filepath: str) -> List[Method]:
                 funfam = int(m.group(2))
                 continue
 
-            m = dsc_name.match(line)
+            m = reg_desc.match(line)
             if m:
                 desc = m.group(1)
 
