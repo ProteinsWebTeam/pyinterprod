@@ -28,6 +28,7 @@ MATCH_PARTITIONS = {
     'Y': "MATCH_DBCODE_Y",  # SUPERFAMILY
 }
 FEATURE_MATCH_PARTITIONS = {
+    'a': 'ANTIFAM',
     'g': "MOBIDBLITE",
     'j': "PHOBIUS",
     'n': "SIGNALP_E",
