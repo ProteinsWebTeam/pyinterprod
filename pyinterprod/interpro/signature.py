@@ -49,10 +49,7 @@ def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
     with Table(con, sql) as table:
         errors = 0
         for db, src in update:
-            if db.identifier == 'f':
-                # FunFams
-                signatures = contrib.cath.parse_functional_families(src)
-            elif db.identifier == 'H':
+            if db.identifier == 'H':
                 # Pfam
                 signatures = contrib.pfam.get_signatures(src)
             elif db.identifier == 'J':
@@ -480,6 +477,9 @@ def update_features(url: str, update: Sequence[Tuple[Database, str]]):
         if db.identifier == 'a':
             # AntiFam
             features = contrib.antifam.parse_models(src)
+        elif db.identifier == 'f':
+            # FunFams
+            features = contrib.cath.parse_functional_families(src)
         else:
             cur.close()
             con.close()

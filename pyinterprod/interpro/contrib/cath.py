@@ -39,42 +39,26 @@ def parse_superfamilies(filepath: str) -> List[Method]:
 
 def parse_functional_families(filepath: str) -> List[Method]:
     """
-    Parse the funfams HMM file distributed with CATH-Gene3D releases
+    Parse the FunFam HMM file distributed with CATH-Gene3D releases.
+    Version 4.3.0: http://download.cathdb.info/cath/releases/latest-release/sequence-data/funfam-hmm3.lib.gz
 
     :param filepath:
     :return:
     """
 
     signatures = []
-    reg_name = re.compile(r"^NAME\s+(\d+\.\d+\.\d+\.\d+)-FF-(\d+)$")
-    reg_desc = re.compile(r"^DESC\s+(.+)$")
+    reg_name = re.compile(r"^NAME\s+(.+)$")
     with open(filepath, "rt") as fh:
         cnt = 0
-        supfam = funfam = desc = None
+        funfam = None
         for line in fh:
             if line[:2] == "//":
-                if cnt:
-                    accession = f"{_PREFIX}{supfam}:{funfam}"
-                    m = Method(accession, _TYPE_FUNFAM, description=desc)
-                    signatures.append(m)
-
-                supfam = funfam = desc = None
-                cnt += 1
+                signatures.append(Method(funfam, _TYPE_FUNFAM))
+                funfam = None
                 continue
 
             m = reg_name.match(line)
             if m:
-                supfam = m.group(1)
-                funfam = int(m.group(2))
-                continue
-
-            m = reg_desc.match(line)
-            if m:
-                desc = m.group(1)
-
-    if supfam is not None:
-        accession = f"{_PREFIX}{supfam}:{funfam}"
-        m = Method(accession, _TYPE_FUNFAM, description=desc)
-        signatures.append(m)
+                funfam = m.group(1)
 
     return signatures
