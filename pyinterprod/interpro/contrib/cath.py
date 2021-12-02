@@ -49,7 +49,6 @@ def parse_functional_families(filepath: str) -> List[Method]:
     signatures = []
     reg_name = re.compile(r"^NAME\s+(.+)$")
     with open(filepath, "rt") as fh:
-        cnt = 0
         funfam = None
         for line in fh:
             if line[:2] == "//":
