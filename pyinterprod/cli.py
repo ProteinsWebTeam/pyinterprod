@@ -42,9 +42,9 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
             fn=pronto.protein.import_protein_names,
             args=(ora_swp_url, pg_ipr_url,
                   os.path.join(data_dir, "names.sqlite")),
-            kwargs=dict(tmpdir="/scratch/"),
+            kwargs=dict(tmpdir="/tmp/"),
             name="proteins-names",
-            scheduler=dict(mem=8000, scratch=30000, queue=lsf_queue),
+            scheduler=dict(mem=8000, tmp=30000, queue=lsf_queue),
         ),
 
         # Data from IPPRO
@@ -58,9 +58,9 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
             fn=pronto.match.import_matches,
             args=(ora_ipr_url, pg_ipr_url,
                   os.path.join(data_dir, "allseqs.dat")),
-            kwargs=dict(tmpdir="/scratch/"),
+            kwargs=dict(tmpdir="/tmp/"),
             name="matches",
-            scheduler=dict(mem=10000, scratch=20000, queue=lsf_queue),
+            scheduler=dict(mem=10000, tmp=20000, queue=lsf_queue),
             requires=["databases"]
         ),
         Task(
@@ -68,9 +68,9 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
             args=(ora_ipr_url, pg_ipr_url,
                   os.path.join(data_dir, "names.sqlite"),
                   os.path.join(data_dir, "compseqs.dat")),
-            kwargs=dict(tmpdir="/scratch/", processes=8),
+            kwargs=dict(tmpdir="/tmp/", processes=8),
             name="signature2proteins",
-            scheduler=dict(cpu=8, mem=16000, scratch=30000, queue=lsf_queue),
+            scheduler=dict(cpu=8, mem=16000, tmp=30000, queue=lsf_queue),
             requires=["proteins-names"]
         ),
         Task(
@@ -700,9 +700,9 @@ def run_uniprot_update():
                   uniprot_version,
                   config["uniprot"]["date"],
                   data_dir),
-            kwargs=dict(tmpdir="/scratch/"),
+            kwargs=dict(tmpdir="/tmp/"),
             name="update-proteins",
-            scheduler=dict(mem=4000, queue=lsf_queue, scratch=40000),
+            scheduler=dict(mem=4000, queue=lsf_queue, tmp=40000),
         ),
 
         # Update IPPRO
