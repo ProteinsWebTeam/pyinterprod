@@ -440,7 +440,10 @@ def run_member_db_update():
                          f"or empty for database '{dbname}'")
 
     databases = list(databases.values())
-    os.makedirs(data_dir, exist_ok=True)
+
+    if not os.path.isdir(data_dir):
+        os.makedirs(data_dir)
+
     tasks = [
         Task(
             fn=interpro.signature.add_staging,
@@ -590,7 +593,9 @@ def run_pronto_update():
     lsf_queue = config["misc"]["lsf_queue"]
     workflow_dir = config["misc"]["workflow_dir"]
 
-    os.makedirs(data_dir, exist_ok=True)
+    if not os.path.isdir(data_dir):
+        os.makedirs(data_dir)
+
     tasks = get_pronto_tasks(ora_interpro_url, ora_swpread_url, ora_goa_url,
                              pg_url, data_dir, lsf_queue)
 
@@ -648,7 +653,9 @@ def run_uniprot_update():
     lsf_queue = config["misc"]["lsf_queue"]
     workflow_dir = config["misc"]["workflow_dir"]
 
-    os.makedirs(data_dir, exist_ok=True)
+    if not os.path.isdir(data_dir):
+        os.makedirs(data_dir)
+
     tasks = [
         # Data from UAREAD
         Task(
