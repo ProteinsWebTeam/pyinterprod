@@ -19,8 +19,11 @@ python setup.py install
 
 The `pyinterprod` package include command line tools, which expect an INI config file. Properties are described bellow:
 
+> The expected format for database connection strings is `user/password@host:port/service`. 
+> For Oracle databases, `user/password@service` may work as well, depending on `tnsnames.ora`.
+
 - **oracle**
-    - **interpro**: connection string for the `interpro` user in the InterPro database (format: `user/password@host:port/service`, or simply `service`)
+    - **interpro**: connection string for the `interpro` user in the InterPro database
     - **iprscan**: connection string for the `iprscan` user in the InterPro database
     - **uniparc**: connection string for the `uniparc` user in the InterPro database
     - **goapro**: connection string for the GOA database

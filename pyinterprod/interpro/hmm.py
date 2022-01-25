@@ -24,7 +24,7 @@ CREATE TABLE INTERPRO.METHOD_HMM
 """
 
 
-class _Maper:
+class _Mapper:
     def __init__(self, database: str, mapfile: Optional[str]):
         self.model2fam = {}
         if mapfile:
@@ -99,7 +99,7 @@ def update(url: str, database: Database, hmmfile: str, mapfile: Optional[str]):
 
     logger.info(f"{database.name}: inserting HMMs")
     with open(hmmfile, "rt") as fh:
-        mapper = _Maper(database.name, mapfile)
+        mapper = _Mapper(database.name, mapfile)
         prog_acc = re.compile(r"^ACC\s+(.+)$", re.M)
         prog_name = re.compile(r"^NAME\s+(.+)$", re.M)
 
