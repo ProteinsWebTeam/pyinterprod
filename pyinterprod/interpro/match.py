@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import os
 import pickle
 from typing import Dict, Sequence
@@ -336,9 +334,9 @@ def update_database_site_matches(url: str, databases: Sequence[Database]):
             f"""
             INSERT /*+ APPEND */ INTO INTERPRO.SITE_MATCH_NEW
             SELECT
-                X.AC, S.METHOD_AC, S.LOC_START, S.LOC_END, S.DESCRIPTION,
-                S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END, S.NUM_SITES,
-                D.DBCODE
+                X.AC, S.METHOD_AC, D.DBCODE, S.LOC_START, S.LOC_END, 
+                S.DESCRIPTION, S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END, 
+                S.NUM_SITES
             FROM IPRSCAN.SITE PARTITION ({site_partition}) S
             INNER JOIN UNIPARC.XREF X
               ON S.UPI = X.UPI
