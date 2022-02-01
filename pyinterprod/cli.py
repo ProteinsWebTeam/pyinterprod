@@ -248,6 +248,13 @@ def run_match_update():
     config = ConfigParser()
     config.read(args.config)
 
+    if not os.path.isfile(config["misc"]["members"]):
+        parser.error(f"cannot open '{config['misc']['members']}': "
+                     f"no such file or directory")
+
+    options = ConfigParser()
+    options.read(config["misc"]["members"])
+
     ora_interpro_url = config["oracle"]["interpro"]
     ora_iprscan_url = config["oracle"]["iprscan"]
     pg_url = config["postgresql"]["pronto"]
@@ -260,12 +267,24 @@ def run_match_update():
     databases = interpro.database.get_databases(ora_interpro_url, db_names)
     member_dbs = []
     feature_dbs = []
+    feature_src = []
     site_dbs = []
-    for db in databases.values():
+    for dbname, db in databases.items():
         if db.is_member_db:
             member_dbs.append(db)
         elif db.is_feature_db:
-            feature_dbs.append(db)
+            try:
+                sig_source = options[dbname]["signatures"]
+            except KeyError:
+                sig_source = None
+
+            if sig_source:
+                feature_dbs.append(db)
+                feature_src.append(sig_source)
+            else:
+                parser.error(f"{config['misc']['members']}: "
+                             f"'signatures' property missing "
+                             f"or empty for database '{dbname}'")
 
         if db.has_site_matches:
             site_dbs.append(db)
@@ -312,7 +331,7 @@ def run_match_update():
         tasks += [
             Task(
                 fn=interpro.signature.update_features,
-                args=(ora_interpro_url, feature_dbs),
+                args=(ora_interpro_url, list(zip(feature_dbs, feature_src))),
                 name="update-features",
                 scheduler=dict(queue=lsf_queue),
                 requires=["import-matches"]
