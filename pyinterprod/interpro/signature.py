@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import os
 import pickle
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -12,7 +10,8 @@ from pyinterprod.pronto.signature import get_swissprot_descriptions
 from pyinterprod.utils import Table, oracle as ora
 from . import contrib
 from .database import Database
-from .match import MATCH_PARTITIONS, SITE_PARTITIONS, get_sig_protein_counts
+from .match import FEATURE_MATCH_PARTITIONS, MATCH_PARTITIONS, SITE_PARTITIONS
+from .match import get_sig_protein_counts
 
 
 FILE_DB_SIG = "signatures.update.pickle"
@@ -50,10 +49,7 @@ def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
     with Table(con, sql) as table:
         errors = 0
         for db, src in update:
-            if db.identifier == 'f':
-                # FunFams
-                signatures = contrib.cath.parse_functional_families(src)
-            elif db.identifier == 'H':
+            if db.identifier == 'H':
                 # Pfam
                 signatures = contrib.pfam.get_signatures(src)
             elif db.identifier == 'J':
@@ -448,6 +444,67 @@ def update_signatures(url: str):
         WHERE DBCODE = :2
         """, counts
     )
+
+    con.commit()
+    cur.close()
+    con.close()
+
+
+def update_features(url: str, update: Sequence[Tuple[Database, str]]):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    for db, src in update:
+        try:
+            partition = FEATURE_MATCH_PARTITIONS[db.identifier]
+        except KeyError:
+            cur.close()
+            con.close()
+            raise ValueError(f"{db.name}: not a sequence feature database")
+
+        # Remove matches
+        ora.truncate_partition(cur, "INTERPRO.FEATURE_MATCH", partition)
+
+        # Remove features
+        cur.execute(
+            """
+            DELETE FROM INTERPRO.FEATURE_METHOD
+            WHERE DBCODE = :1
+            """,
+            (db.identifier,)
+        )
+
+        if db.identifier == 'a':
+            # AntiFam
+            features = contrib.antifam.parse_models(src)
+        elif db.identifier == 'f':
+            # FunFams
+            features = contrib.cath.parse_functional_families(src)
+        else:
+            cur.close()
+            con.close()
+            raise ValueError(f"{db.name}: unsupported member database")
+
+        # Add features
+        params = []
+        for f in features:
+            params.append((
+                f.accession,
+                f.name,
+                db.identifier,
+                f.description,
+                f.abstract[:4000] if f.abstract else None
+            ))
+
+        cur.executemany(
+            """
+            INSERT INTO INTERPRO.FEATURE_METHOD 
+                (METHOD_AC, NAME, DBCODE, METHOD_DATE, TIMESTAMP, USERSTAMP, 
+                DESCRIPTION, ABSTRACT) 
+            VALUES (:1, :2, :3, SYSDATE, SYSDATE, USER, :4. :6)
+            """,
+            params
+        )
 
     con.commit()
     cur.close()

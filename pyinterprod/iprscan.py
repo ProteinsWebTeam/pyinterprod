@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -16,6 +14,12 @@ PREFIX = "MV_"
 # Columns to select when inserting matches in MV_IPRSCAN
 # Keys are partitions names
 MATCH_SELECT = {
+    "antifam": [
+        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+        'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
+        'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
+        'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+    ],
     "cdd": [
         'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
         'SEQ_START', 'SEQ_END', '0', '0', '0',
