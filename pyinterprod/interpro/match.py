@@ -11,35 +11,36 @@ from .database import Database
 
 FILE_ENTRY_PROT_COUNTS = "entries.prot.counts.pickle"
 MATCH_PARTITIONS = {
-    'B': "MATCH_DBCODE_B",  # SFLD
-    'F': "MATCH_DBCODE_F",  # PRINTS
-    'H': "MATCH_DBCODE_H",  # Pfam
-    'J': "MATCH_DBCODE_J",  # CDD
-    'M': "MATCH_DBCODE_M",  # PROSITE profiles
-    'N': "MATCH_DBCODE_N",  # TIGRFAMs
-    'P': "MATCH_DBCODE_P",  # PROSITE patterns
-    'Q': "MATCH_DBCODE_Q",  # HAMAP
-    'R': "MATCH_DBCODE_R",  # SMART
-    'U': "MATCH_DBCODE_U",  # PIRSF
-    'V': "MATCH_DBCODE_V",  # PANTHER
-    'X': "MATCH_DBCODE_X",  # CATH-Gene3D
-    'Y': "MATCH_DBCODE_Y",  # SUPERFAMILY
+    "B": "MATCH_DBCODE_B",  # SFLD
+    "F": "MATCH_DBCODE_F",  # PRINTS
+    "H": "MATCH_DBCODE_H",  # Pfam
+    "J": "MATCH_DBCODE_J",  # CDD
+    "M": "MATCH_DBCODE_M",  # PROSITE profiles
+    "N": "MATCH_DBCODE_N",  # TIGRFAMs
+    "P": "MATCH_DBCODE_P",  # PROSITE patterns
+    "Q": "MATCH_DBCODE_Q",  # HAMAP
+    "R": "MATCH_DBCODE_R",  # SMART
+    "U": "MATCH_DBCODE_U",  # PIRSF
+    "V": "MATCH_DBCODE_V",  # PANTHER
+    "X": "MATCH_DBCODE_X",  # CATH-Gene3D
+    "Y": "MATCH_DBCODE_Y",  # SUPERFAMILY
 }
 FEATURE_MATCH_PARTITIONS = {
-    'a': 'ANTIFAM',
-    'g': "MOBIDBLITE",
-    'j': "PHOBIUS",
-    'n': "SIGNALP_E",
-    'q': "TMHMM",
-    's': "SIGNALP_GP",
-    'v': "SIGNALP_GN",
-    'x': "COILS"
+    "a": "ANTIFAM",
+    "f": "FUNFAM",
+    "g": "MOBIDBLITE",
+    "j": "PHOBIUS",
+    "n": "SIGNALP_E",
+    "q": "TMHMM",
+    "s": "SIGNALP_GP",
+    "v": "SIGNALP_GN",
+    "x": "COILS"
 }
 SITE_PARTITIONS = {
     # DB identifier -> (str:partition, bool:check against MATCH table)
-    'B': ("SFLD", True),
-    'J': ("CDD", True),
-    'z': ("PIRSR", False)
+    "B": ("SFLD", True),
+    "J": ("CDD", True),
+    "z": ("PIRSR", False)
 }
 
 
