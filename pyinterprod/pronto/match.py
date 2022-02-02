@@ -211,8 +211,20 @@ def import_matches(ora_url: str, pg_url: str, output: str,
     pg_cur.copy_from(file=CsvIO(iter(matches), sep='|'),
                      table="match",
                      sep='|')
+    pg_con.commit()
+    pg_cur.close()
+    pg_con.close()
+
+    logger.info("counting proteins per signature")
+    with open(output, "wb") as fh:
+        pickle.dump(matches.merge(), fh)
+
+    logger.info(f"disk usage: {matches.size / 1024 ** 2:,.0f} MB")
+    matches.remove()
 
     logger.info("indexing")
+    pg_con = psycopg2.connect(**url2dict(pg_url))
+    pg_cur = pg_con.cursor()
     pg_cur.execute(
         """
         CREATE INDEX match_protein_idx
@@ -224,16 +236,9 @@ def import_matches(ora_url: str, pg_url: str, output: str,
     logger.info("clustering")
     pg_cur.execute("CLUSTER interpro.match USING match_protein_idx")
     pg_con.commit()
-
     pg_cur.close()
     pg_con.close()
 
-    logger.info("counting proteins per signature")
-    with open(output, "wb") as fh:
-        pickle.dump(matches.merge(), fh)
-
-    logger.info(f"disk usage: {matches.size/1024**2:,.0f} MB")
-    matches.remove()
     logger.info("complete")
 
 
