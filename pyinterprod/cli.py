@@ -372,7 +372,7 @@ def run_match_update():
     # Base Mundone database on UniProt version and on the name/version
     # of updated member databases
     databases = set()
-    for db in member_dbs + feature_dbs + site_dbs:
+    for db in member_dbs + feature_dbs:
         databases.add((db.name.lower().replace(' ', ''), db.version))
 
     versions = [uniprot_version]
