@@ -509,8 +509,11 @@ def update_variant_matches(url: str):
 
     logger.info("updating VARSPLIC_MATCH")
     oracle.truncate_table(cur, "INTERPRO.VARSPLIC_MATCH", reuse_storage=True)
+
+    dbcodes = list(MATCH_PARTITIONS.keys())
+    params = ",".join([f":{i+1}" for i in range(len(dbcodes))])
     cur.execute(
-        """
+        f"""
         INSERT INTO INTERPRO.VARSPLIC_MATCH
         SELECT
           X.AC, MV.METHOD_AC, MV.SEQ_START, MV.SEQ_END, 'T' AS STATUS,
@@ -524,11 +527,11 @@ def update_variant_matches(url: str):
         INNER JOIN INTERPRO.METHOD M
           ON MV.METHOD_AC = M.METHOD_AC
         WHERE X.DBID = 24
-        AND X.DELETED = 'N'
-        -- Exclude MobiDB-Lite, Phobius, SignalP (Euk, Gram+, Gram-), TMHMM, COILS
-        AND I2D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
-        AND M.SKIP_FLAG = 'N'
-        """
+          AND X.DELETED = 'N'
+          AND I2D.DBCODE IN ({params})
+          AND M.SKIP_FLAG = 'N'
+        """,
+        dbcodes
     )
     logger.info(f"{cur.rowcount} rows inserted")
     con.commit()
