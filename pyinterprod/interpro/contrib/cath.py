@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import re
 from typing import List
 
@@ -40,24 +38,26 @@ def parse_superfamilies(filepath: str) -> List[Method]:
 def parse_functional_families(filepath: str) -> List[Method]:
     """
     Parse the FunFam HMM file distributed with CATH-Gene3D releases.
-    Version 4.3.0: http://download.cathdb.info/cath/releases/latest-release/sequence-data/funfam-hmm3.lib.gz
+    Version 4.3.0:
+        - http://download.cathdb.info/cath/releases/latest-release/sequence-data/funfam-hmm3.lib.gz
+        - ftp://orengoftp.biochem.ucl.ac.uk//cath/releases/latest-release/sequence-data/funfam-hmm3.lib.gz
 
     :param filepath:
     :return:
     """
 
     signatures = []
-    reg_name = re.compile(r"^NAME\s+(.+)$")
     with open(filepath, "rt") as fh:
-        funfam = None
+        supfam = funfam = None
         for line in fh:
             if line[:2] == "//":
-                signatures.append(Method(funfam, _TYPE_FUNFAM))
-                funfam = None
+                accession = f"{_PREFIX}{supfam}:FF:{funfam}"
+                signatures.append(Method(accession, _TYPE_FUNFAM))
+                supfam = funfam = None
                 continue
 
-            m = reg_name.match(line)
+            m = re.search(r"^NAME\s+(\d+\.\d+\.\d+\.\d+)-FF-(\d+)$", line)
             if m:
-                funfam = m.group(1)
+                supfam, funfam = m.groups()
 
     return signatures

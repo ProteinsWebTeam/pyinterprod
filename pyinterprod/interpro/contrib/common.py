@@ -8,8 +8,8 @@ from typing import List, Optional
 class Method:
     accession: str
     sig_type: Optional[str]
-    name: str = None
-    description: str = None
+    name: Optional[str] = None
+    description: Optional[str] = None
     abstract: Optional[str] = None
     date: Optional[datetime] = None
 
