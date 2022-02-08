@@ -445,7 +445,10 @@ def run_member_db_update():
     databases = interpro.database.get_databases(url=ora_interpro_url,
                                                 names=db_names,
                                                 expects_new=True)
-    updates = []
+    mem_updates = []
+    non_mem_updates = []
+    site_updates = []
+    sources = {}
     for dbname, db in databases.items():
         try:
             props = options[dbname]
@@ -458,120 +461,155 @@ def run_member_db_update():
         except KeyError:
             sig_source = None
 
-        if sig_source:
-            updates.append((db, sig_source))
-        else:
+        if not sig_source:
             parser.error(f"{config['misc']['members']}: "
                          f"'signatures' property missing "
                          f"or empty for database '{dbname}'")
+        elif db.is_member_db:
+            mem_updates.append(db)
+            sources[db.identifier] = sig_source
+        elif db.is_feature_db:
+            non_mem_updates.append(db)
+            sources[db.identifier] = sig_source
 
-    databases = list(databases.values())
-    os.makedirs(data_dir, exist_ok=True)
+        if db.has_site_matches:
+            site_updates.append(db)
+
     tasks = [
-        Task(
-            fn=interpro.signature.add_staging,
-            args=(ora_interpro_url, updates),
-            name="load-signatures",
-            scheduler=dict(queue=lsf_queue)
-        ),
-        Task(
-            fn=interpro.signature.track_signature_changes,
-            args=(ora_interpro_url, pg_url, databases, data_dir),
-            name="track-changes",
-            scheduler=dict(mem=4000, queue=lsf_queue),
-            requires=["load-signatures"]
-        ),
-        Task(
-            fn=interpro.signature.delete_obsoletes,
-            args=(ora_interpro_url, databases),
-            name="delete-obsoletes",
-            scheduler=dict(queue=lsf_queue),
-            requires=["track-changes"]
-        ),
-        Task(
-            fn=interpro.signature.update_signatures,
-            args=(ora_interpro_url,),
-            name="update-signatures",
-            scheduler=dict(queue=lsf_queue),
-            requires=["delete-obsoletes"]
-        ),
         Task(
             fn=iprscan.import_matches,
             args=(ora_iprscan_url,),
-            kwargs=dict(databases=databases, force_import=True, threads=8),
+            kwargs=dict(databases=mem_updates + non_mem_updates,
+                        force_import=True, threads=8),
             name="import-matches",
             scheduler=dict(queue=lsf_queue)
-        ),
-        Task(
-            fn=interpro.match.update_database_matches,
-            args=(ora_interpro_url, databases),
-            name="update-matches",
-            scheduler=dict(queue=lsf_queue),
-            requires=["import-matches", "update-signatures"]
-        ),
-        Task(
-            fn=interpro.match.update_variant_matches,
-            args=(ora_interpro_url,),
-            name="update-varsplic",
-            scheduler=dict(queue=lsf_queue),
-            requires=["import-matches", "update-signatures"]
         )
     ]
 
-    site_databases = [db for db in databases if db.has_site_matches]
-    if site_databases:
+    if mem_updates:
+        tasks += [
+            Task(
+                fn=interpro.signature.add_staging,
+                args=(ora_interpro_url, [(db, sources[db.identifier])
+                                         for db in mem_updates]),
+                name="load-signatures",
+                scheduler=dict(queue=lsf_queue)
+            ),
+            Task(
+                fn=interpro.signature.track_signature_changes,
+                args=(ora_interpro_url, pg_url, mem_updates, data_dir),
+                name="track-changes",
+                scheduler=dict(mem=4000, queue=lsf_queue),
+                requires=["load-signatures"]
+            ),
+            Task(
+                fn=interpro.signature.delete_obsoletes,
+                args=(ora_interpro_url, mem_updates),
+                name="delete-obsoletes",
+                scheduler=dict(queue=lsf_queue),
+                requires=["track-changes"]
+            ),
+            Task(
+                fn=interpro.signature.update_signatures,
+                args=(ora_interpro_url,),
+                name="update-signatures",
+                scheduler=dict(queue=lsf_queue),
+                requires=["delete-obsoletes"]
+            ),
+            Task(
+                fn=interpro.match.update_database_matches,
+                args=(ora_interpro_url, databases),
+                name="update-matches",
+                scheduler=dict(queue=lsf_queue),
+                requires=["import-matches", "update-signatures"]
+            ),
+            Task(
+                fn=interpro.match.update_variant_matches,
+                args=(ora_interpro_url,),
+                name="update-varsplic",
+                scheduler=dict(queue=lsf_queue),
+                requires=["import-matches", "update-signatures"]
+            )
+        ]
+
+    if non_mem_updates:
+        tasks += [
+            Task(
+                fn=interpro.signature.update_features,
+                args=(ora_interpro_url, [(db, sources[db.identifier])
+                                         for db in non_mem_updates]),
+                name="update-features",
+                scheduler=dict(queue=lsf_queue),
+                requires=["import-matches"]
+            ),
+            Task(
+                fn=interpro.match.update_database_feature_matches,
+                args=(ora_interpro_url, non_mem_updates),
+                name="update-fmatches",
+                scheduler=dict(queue=lsf_queue),
+                requires=["update-features"]
+            )
+        ]
+
+    if site_updates:
+        if mem_updates:
+            req = ["import-sites", "update-matches"]
+        else:
+            req = ["import-sites"]
+
         tasks += [
             Task(
                 fn=iprscan.import_sites,
                 args=(ora_iprscan_url,),
-                kwargs=dict(databases=site_databases, force_import=True,
+                kwargs=dict(databases=site_updates, force_import=True,
                             threads=2),
                 name="import-sites",
                 scheduler=dict(queue=lsf_queue)
             ),
             Task(
                 fn=interpro.match.update_database_site_matches,
-                args=(ora_interpro_url, site_databases),
+                args=(ora_interpro_url, site_updates),
                 name="update-sites",
                 scheduler=dict(queue=lsf_queue),
-                requires=["import-sites", "update-matches"]
+                requires=req
             )
         ]
 
-    # Adding Pronto tasks
-    after_pronto = set()
-    for t in get_pronto_tasks(ora_interpro_url, ora_swpread_url, ora_goa_url,
-                              pg_url, data_dir, lsf_queue):
-        # Adding 'pronto-' prefix
-        t.name = f"pronto-{t.name}"
-        if t.requires:
-            t.requires = {f"pronto-{r}" for r in t.requires}
-        else:
-            # Task without dependency:
-            # add one so it's submitted at the end of the protein update
-            t.requires = {"update-matches"}
+    if mem_updates:
+        # Adding Pronto tasks
+        after_pronto = set()
+        for t in get_pronto_tasks(ora_interpro_url, ora_swpread_url,
+                                  ora_goa_url, pg_url, data_dir, lsf_queue):
+            # Adding 'pronto-' prefix
+            t.name = f"pronto-{t.name}"
+            if t.requires:
+                t.requires = {f"pronto-{r}" for r in t.requires}
+            else:
+                # Task without dependency:
+                # add one so it's submitted at the end of the protein update
+                t.requires = {"update-matches"}
 
-        tasks.append(t)
-        after_pronto.add(t.name)
+            tasks.append(t)
+            after_pronto.add(t.name)
 
-    tasks += [
-        Task(
-            fn=interpro.report.send_db_update_report,
-            args=(ora_interpro_url, pg_url, databases, data_dir, pronto_url,
-                  emails),
-            name="send-report",
-            scheduler=dict(mem=4000, queue=lsf_queue),
-            requires=after_pronto
-        ),
-    ]
+        tasks += [
+            Task(
+                fn=interpro.report.send_db_update_report,
+                args=(ora_interpro_url, pg_url, mem_updates, data_dir,
+                      pronto_url, emails),
+                name="send-report",
+                scheduler=dict(mem=4000, queue=lsf_queue),
+                requires=after_pronto
+            ),
+        ]
 
     # Base Mundone database on UniProt version and on the name/version
     # of updated member databases
     versions = [uniprot_version]
-    for db in databases:
+    for db in sorted(databases.values(), key=lambda k: k.name.lower()):
         versions.append(f"{db.name.lower().replace(' ', '')}{db.version}")
 
-    database = os.path.join(workflow_dir, f"{'.'.join(versions)}.sqlite")
+    database = os.path.join(workflow_dir, f"{'_'.join(versions)}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as wf:
         if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
             sys.exit(0)
