@@ -6,7 +6,6 @@ import cx_Oracle
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
-from .database import Database
 
 
 FILE_ENTRY_PROT_COUNTS = "entries.prot.counts.pickle"
@@ -49,7 +48,13 @@ def export_entries_protein_counts(cur: cx_Oracle.Cursor, data_dir: str):
         pickle.dump(_get_entries_protein_counts(cur), fh)
 
 
-def update_database_matches(url: str, databases: Sequence[Database]):
+def update_database_matches(url: str, databases: Sequence):
+    """
+
+    :param url:
+    :param databases: Sequence of Database objects
+    :return:
+    """
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -206,7 +211,13 @@ def update_database_matches(url: str, databases: Sequence[Database]):
     logger.info("complete")
 
 
-def update_database_feature_matches(url: str, databases: Sequence[Database]):
+def update_database_feature_matches(url: str, databases: Sequence):
+    """
+
+    :param url:
+    :param databases: Sequence of Database objects
+    :return:
+    """
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -309,7 +320,13 @@ def update_database_feature_matches(url: str, databases: Sequence[Database]):
     logger.info("complete")
 
 
-def update_database_site_matches(url: str, databases: Sequence[Database]):
+def update_database_site_matches(url: str, databases: Sequence):
+    """
+
+    :param url:
+    :param databases: Sequence of Database objects
+    :return:
+    """
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 

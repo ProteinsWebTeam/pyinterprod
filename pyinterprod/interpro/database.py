@@ -1,10 +1,10 @@
-# -*- coding: utf-8 -*-
-
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Sequence
 
 import cx_Oracle
+
+from .match import MATCH_PARTITIONS, FEATURE_MATCH_PARTITIONS
 
 
 @dataclass
@@ -68,8 +68,10 @@ def get_databases(url: str, names: Sequence[str], expects_new: bool = False) -> 
                       date=row[4],
                       analysis_id=row[5],
                       has_site_matches=row[7] is not None,
-                      is_member_db=cnt_signatures.get(row[0], 0) > 0,
-                      is_feature_db=cnt_features.get(row[0], 0) > 0)
+                      is_member_db=(cnt_signatures.get(row[0], 0) > 0
+                                    or row[0] in MATCH_PARTITIONS),
+                      is_feature_db=(cnt_features.get(row[0], 0) > 0
+                                     or row[0] in FEATURE_MATCH_PARTITIONS))
 
         databases[row[1]] = db
 
