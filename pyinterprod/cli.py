@@ -450,36 +450,41 @@ def run_member_db_update():
     site_updates = []
     sources = {}
     for dbname, db in databases.items():
-        try:
-            props = options[dbname]
-        except KeyError:
-            parser.error(f"{config['misc']['members']}: "
-                         f"missing database '{dbname}'")
+        if db.is_member_db or db.is_feature_db:
+            # We need a source for signatures
+            try:
+                props = options[dbname]
+            except KeyError:
+                parser.error(f"{config['misc']['members']}: "
+                             f"missing database '{dbname}'")
 
-        try:
-            sig_source = props["signatures"]
-        except KeyError:
-            sig_source = None
+            try:
+                sig_source = props["signatures"]
+            except KeyError:
+                sig_source = None
 
-        if not sig_source:
-            parser.error(f"{config['misc']['members']}: "
-                         f"'signatures' property missing "
-                         f"or empty for database '{dbname}'")
-        elif db.is_member_db:
-            mem_updates.append(db)
-            sources[db.identifier] = sig_source
-        elif db.is_feature_db:
-            non_mem_updates.append(db)
-            sources[db.identifier] = sig_source
+            if not sig_source:
+                parser.error(f"{config['misc']['members']}: "
+                             f"'signatures' property missing "
+                             f"or empty for database '{dbname}'")
+            elif db.is_member_db:
+                mem_updates.append(db)
+                sources[db.identifier] = sig_source
+            elif db.is_feature_db:
+                non_mem_updates.append(db)
+                sources[db.identifier] = sig_source
 
         if db.has_site_matches:
             site_updates.append(db)
+
+    if not mem_updates and not non_mem_updates and not site_updates:
+        parser.error("No database to update")
 
     tasks = [
         Task(
             fn=iprscan.import_matches,
             args=(ora_iprscan_url,),
-            kwargs=dict(databases=mem_updates + non_mem_updates,
+            kwargs=dict(databases=mem_updates + non_mem_updates + site_updates,
                         force_import=True, threads=8),
             name="import-matches",
             scheduler=dict(queue=lsf_queue)
