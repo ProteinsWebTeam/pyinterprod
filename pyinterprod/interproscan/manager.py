@@ -74,7 +74,6 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
 
     with Pool(temp_dir, max_running_jobs) as pool:
         n_tasks = 0
-        max_jobs //= len(analyses)
         for analysis_id, analysis in analyses.items():
             name = analysis["name"]
             version = analysis["version"]
@@ -120,10 +119,10 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
                 n_tasks += 1
                 n_tasks_analysis += 1
 
-                if n_tasks_analysis == max_jobs:
+                if n_tasks == max_jobs:
                     break
 
-            if n_tasks_analysis == max_jobs:
+            if max_jobs and n_tasks == max_jobs:
                 logger.debug(f"{name} {version}: "
                              f"{n_tasks_analysis} tasks submitted")
                 continue
@@ -153,7 +152,7 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
                 n_tasks += 1
                 n_tasks_analysis += 1
 
-                if n_tasks_analysis == max_jobs:
+                if n_tasks == max_jobs:
                     break
 
             logger.debug(f"{name} {version}: "
