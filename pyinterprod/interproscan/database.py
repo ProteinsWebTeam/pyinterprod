@@ -323,8 +323,8 @@ def prepare_jobs(uri: str, job_size: int = 10000, top_up: bool = False):
             CREATE TABLE IPRSCAN.ANALYSIS_ALL_JOBS
             (
                 UPI_FROM VARCHAR2(13) NOT NULL,
-                UPI_TO VARCHAR2(13) NOT NULL
-                CONSTRAINT ANALYSIS_ALL_JOBS_PK 
+                UPI_TO VARCHAR2(13) NOT NULL,
+                CONSTRAINT ANALYSIS_ALL_JOBS_PK
                     PRIMARY KEY (UPI_FROM, UPI_TO)
             )
             """
