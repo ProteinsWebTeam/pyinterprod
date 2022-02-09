@@ -501,7 +501,7 @@ def update_features(url: str, update: Sequence[Tuple[Database, str]]):
             INSERT INTO INTERPRO.FEATURE_METHOD 
                 (METHOD_AC, NAME, DBCODE, METHOD_DATE, TIMESTAMP, USERSTAMP, 
                 DESCRIPTION, ABSTRACT) 
-            VALUES (:1, :2, :3, SYSDATE, SYSDATE, USER, :4. :6)
+            VALUES (:1, :2, :3, SYSDATE, SYSDATE, USER, :4, :5)
             """,
             params
         )
