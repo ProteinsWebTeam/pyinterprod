@@ -1,6 +1,7 @@
 from typing import Optional, Sequence
 
 import cx_Oracle
+from mundone.task import Task
 
 from pyinterprod.utils import oracle
 
@@ -109,9 +110,11 @@ def init_tables(ippro_uri: str, ispro_uri: str, i5_dir: str, others=None):
                 REFERENCES ANALYSIS (ID),
             UPI_FROM VARCHAR2(13) NOT NULL,
             UPI_TO VARCHAR2(13) NOT NULL,
+            SUBMIT_TIME DATE DEFAULT NULL,
             START_TIME DATE DEFAULT NULL,
             END_TIME DATE DEFAULT NULL,
             MAX_MEMORY NUMBER(6) DEFAULT NULL,
+            LIM_MEMORY NUMBER(6) DEFAULT NULL,
             CONSTRAINT ANALYSIS_JOBS_PK
                 PRIMARY KEY (ANALYSIS_ID, UPI_FROM, UPI_TO)
         )
@@ -424,20 +427,23 @@ def add_job(cur: cx_Oracle, analysis_id: int, upi_from: str, upi_to: str):
 
 
 def update_job(uri: str, analysis_id: int, upi_from: str, upi_to: str,
-               start_time, end_time, max_mem: int):
+               task: Task, max_mem: int):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
         UPDATE IPRSCAN.ANALYSIS_JOBS
-        SET START_TIME = :1,
-            END_TIME = :2,
-            MAX_MEMORY = :3
-        WHERE ANALYSIS_ID = :4
-            AND UPI_FROM = :5
-            AND UPI_TO = :6
+        SET SUBMIT_TIME = :1,
+            START_TIME = :2,
+            END_TIME = :3,
+            MAX_MEMORY = :4,
+            LIM_MEMORY = :5
+        WHERE ANALYSIS_ID = :6
+            AND UPI_FROM = :7
+            AND UPI_TO = :8
         """,
-        (start_time, end_time, max_mem, analysis_id, upi_from, upi_to)
+        [task.submit_time, task.start_time, task.end_time, max_mem,
+         int(task.scheduler["mem"]), analysis_id, upi_from, upi_to]
     )
     con.commit()
     cur.close()

@@ -187,8 +187,7 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
                     n_completed += 1
 
                     database.update_job(uri, analysis_id, upi_from, upi_to,
-                                        task.start_time, task.end_time,
-                                        max_mem)
+                                        task, max_mem)
                 else:
                     with open(logfile, "wt") as fh:
                         fh.write(task.stdout)
