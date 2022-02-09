@@ -9,7 +9,7 @@ from typing import Callable, Optional
 import cx_Oracle
 from mundone import Pool, Task
 
-from . import persistence
+from . import database, persistence
 
 """
 Key   -> analysis name in the database
@@ -50,13 +50,14 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
     job_size = kwargs.get("job_size", 100000)
     job_cpu = kwargs.get("job_cpu", 8)
     job_mem = kwargs.get("job_mem", 8000)
-    max_jobs = kwargs.get("max_jobs", 1000)
+    max_running_jobs = kwargs.get("max_running_jobs", 1000)
+    max_jobs = kwargs.get("max_jobs", 0)
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     analyses = {}
-    for analysis_id, analysis in get_analyses(cur).items():
+    for analysis_id, analysis in database.get_analyses(cur).items():
         if not analysis_ids or analysis_id in analysis_ids:
             analyses[analysis_id] = analysis
 
@@ -83,8 +84,9 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     highest_upi, = cur.fetchone()
 
-    with Pool(temp_dir, max_jobs) as pool:
+    with Pool(temp_dir, max_running_jobs) as pool:
         n_tasks = 0
+        max_jobs //= len(analyses)
         for analysis_id, analysis in analyses.items():
             name = analysis["name"]
             version = analysis["version"]
@@ -92,7 +94,7 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
             i5_dir = analysis["i5_dir"]
             match_table = analysis["tables"]["matches"]
             site_table = analysis["tables"]["sites"]
-            appl, parse_matches, parse_sites = DB2I5[name]
+            appl, parse_matches, parse_sites = _DB_TO_I5[name]
 
             sys.stderr.write(f"submit jobs for {name} {version}\n")
 
@@ -188,7 +190,7 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
                 )
                 con.commit()
 
-                if n_tasks == 100:
+                if n_tasks == max_jobs:
                     break
 
         cur.close()
