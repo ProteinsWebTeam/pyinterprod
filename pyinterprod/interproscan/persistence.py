@@ -283,7 +283,7 @@ def mobidb_lite_matches(uri: str, file: str, analysis_id: int, table: str):
             values.append({
                 "analysis_id": analysis_id,
                 "analysis_name": cols[0],
-                "relno_major": cols[1],
+                "relno_major": int(cols[1]),
                 "relno_minor": cols[2],
                 "upi": cols[3],
                 "method_ac": cols[4],
@@ -349,56 +349,6 @@ def panther_matches(uri: str, file: str, analysis_id: int, table: str):
                 "env_start": int(cols[15]),
                 "env_end": int(cols[16]),
                 "an_node_id": cols[17]
-            })
-
-            if len(values) == _COMMIT_SIZE:
-                cur.executemany(sql, values)
-                con.commit()
-                values.clear()
-
-    if values:
-        cur.executemany(sql, values)
-        con.commit()
-
-    cur.close()
-    con.close()
-
-
-def phobius_matches(uri: str, file: str, analysis_id: int, table: str):
-    sql = f"""
-        INSERT /*+ APPEND */ INTO {table} (
-            ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
-            UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS
-        )
-        VALUES (:analysis_id, :analysis_name, :relno_major, :relno_minor,
-                :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments)
-    """
-
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
-
-    values = []
-    with open(file, "rt") as fh:
-        for line in fh:
-            cols = line.rstrip().split('\t')
-
-            try:
-                seq_feature = cols[9].strip()
-            except IndexError:
-                seq_feature = None
-
-            values.append({
-                "analysis_id": analysis_id,
-                "analysis_name": cols[0],
-                "relno_major": cols[1],
-                "relno_minor": cols[2],
-                "upi": cols[3],
-                "method_ac": cols[4],
-                "model_ac": cols[5],
-                "seq_start": int(cols[6]),
-                "seq_end": int(cols[7]),
-                "fragments": cols[8],
-                "seq_feature": seq_feature
             })
 
             if len(values) == _COMMIT_SIZE:
@@ -524,15 +474,15 @@ def prosite_patterns_matches(uri: str, file: str, analysis_id: int,
 def signalp_tmhmm_matches(uri: str, file: str, analysis_id: int, table: str,
                           relno_maj_as_int: bool):
     sql = f"""
-            INSERT /*+ APPEND */ INTO {table} (
-                ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
-                UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
-                SEQSCORE
-            )
-            VALUES (:analysis_id, :analysis_name, :relno_major, :relno_minor,
-                    :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments,
-                    :seq_score)
-        """
+        INSERT /*+ APPEND */ INTO {table} (
+            ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
+            UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
+            SEQSCORE
+        )
+        VALUES (:analysis_id, :analysis_name, :relno_major, :relno_minor,
+                :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments,
+                :seq_score)
+    """
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
