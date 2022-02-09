@@ -412,7 +412,7 @@ def add_job(cur: cx_Oracle, analysis_id: int, upi_from: str, upi_to: str):
         """
         UPDATE IPRSCAN.ANALYSIS
         SET MAX_UPI = :upi
-        WHERE ID = :analysis_id AND MAX_UPI < :upi
+        WHERE ID = :analysis_id AND (MAX_UPI IS NULL OR MAX_UPI < :upi)
         """,
         analysis_id=analysis_id, upi=upi_to
     )
