@@ -22,28 +22,31 @@ Value -> tuple of three items
 _DB_TO_I5 = {
     "AntiFam": ("AntiFam", persistence.hmmer3_matches, None),
     "CATH-Gene3D": ("Gene3D", persistence.hmmer3_matches, None),
-    "CDD": ("CDD", persistence.cdd_sites, persistence.cdd_sites),
-    "COILS": ("Coils", persistence.coils_matches, None),
+    "CDD": ("CDD", persistence.cdd_matches, persistence.sites),
+    "COILS": ("Coils", persistence.coils_phobius_matches, None),
     "FunFam": ("FunFam", persistence.hmmer3_matches, None),
     "HAMAP": ("Hamap", persistence.hamap_matches, None),
     "MobiDB Lite": ("MobiDBLite", persistence.mobidb_lite_matches, None),
-    "PANTHER": ("PANTHER", None, None),
+    "PANTHER": ("PANTHER", persistence.panther_matches, None),
     "Pfam": ("Pfam", persistence.hmmer3_matches, None),
-    "Phobius": ("Phobius", None, None),
+    "Phobius": ("Phobius", persistence.coils_phobius_matches, None),
     "PIRSF": ("PIRSF", persistence.hmmer3_matches, None),
-    "PIRSR": ("PIRSR", persistence.hmmer3_matches, None),
+    "PIRSR": ("PIRSR", persistence.pirsr_matches, persistence.sites),
     "PRINTS": ("PRINTS", persistence.prints_matches, None),
-    "PROSITE patterns": ("ProSitePatterns", None, None),
+    "PROSITE patterns": ("ProSitePatterns",
+                         persistence.prosite_patterns_matches, None),
     "PROSITE profiles": ("ProSiteProfiles",
                          persistence.prosite_profiles_matches, None),
-    "SFLD": ("SFLD", persistence.hmmer3_matches, None),
-    "SignalP_Euk": ("SignalP_EUK", None, None),
-    "SignalP_Gram_positive": ("SignalP_GRAM_POSITIVE", None, None),
-    "SignalP_Gram_negative": ("SignalP_GRAM_NEGATIVE", None, None),
-    "SMART": ("SMART", None, None),
-    "SUPERFAMILY": ("SUPERFAMILY", None, None),
+    "SFLD": ("SFLD", persistence.hmmer3_matches, persistence.sites),
+    "SignalP_Euk": ("SignalP_EUK", persistence.signalp_matches, None),
+    "SignalP_Gram_positive": ("SignalP_GRAM_POSITIVE",
+                              persistence.signalp_matches, None),
+    "SignalP_Gram_negative": ("SignalP_GRAM_NEGATIVE",
+                              persistence.signalp_matches, None),
+    "SMART": ("SMART", persistence.smart_matches, None),
+    "SUPERFAMILY": ("SUPERFAMILY", persistence.superfamily_matches, None),
     "TIGRFAMs": ("TIGRFAM", persistence.hmmer3_matches, None),
-    "TMHMM": ("TMHMM", None, None),
+    "TMHMM": ("TMHMM", persistence.tmhmm_matches, None),
 }
 
 
@@ -260,24 +263,19 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str,
     process = subprocess.run(args)
 
     ok = True
-    keep = False
     if process.returncode != 0:
         ok = False
     elif not os.path.isfile(matches_output):
         ok = False
     elif site_table is not None and not os.path.isfile(sites_output):
         ok = False
-    elif parse_matches is None:
-        # TODO: remove
-        keep = True
     else:
         parse_matches(uri, matches_output, analysis_id, match_table)
 
-        if site_table is not None and parse_sites is not None:
+        if site_table is not None:
             parse_sites(uri, sites_output, analysis_id, site_table)
 
-    if not keep:
-        shutil.rmtree(temp_dir)
+    shutil.rmtree(temp_dir)
 
     if not ok:
         raise RuntimeError()
