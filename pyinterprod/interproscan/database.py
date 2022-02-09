@@ -306,3 +306,56 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
 
     cur.close()
     con.close()
+
+
+def prepare_jobs(uri: str, job_size: int = 10000, top_up: bool = False):
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+
+    if top_up:
+        cur.execute("SELECT MAX(UPI_TO) FROM IPRSCAN.ANALYSIS_ALL_JOBS")
+        max_upi, = cur.fetchone()
+    else:
+        max_upi = None
+        oracle.drop_table(cur, "IPRSCAN.ANALYSIS_ALL_JOBS", purge=True)
+        cur.execute(
+            """
+            CREATE TABLE IPRSCAN.ANALYSIS_ALL_JOBS
+            (
+                UPI_FROM VARCHAR2(13) NOT NULL,
+                UPI_TO VARCHAR2(13) NOT NULL
+                CONSTRAINT ANALYSIS_ALL_JOBS_PK 
+                    PRIMARY KEY (UPI_FROM, UPI_TO)
+            )
+            """
+        )
+
+    if max_upi is not None:
+        cur.execute("SELECT UPI FROM UNIPARC.PROTEIN "
+                    "WHERE UPI > :1 ORDER BY UPI", max_upi)
+    else:
+        cur.execute("SELECT UPI FROM UNIPARC.PROTEIN ORDER BY UPI")
+
+    i = 0
+    upi_from = upi_to = None
+    values = []
+    for upi, in cur:
+        if i == job_size:
+            values.append((upi_from, upi_to))
+            upi_from = None
+            i = 0
+
+        if upi_from is None:
+            upi_from = upi
+
+        upi_to = upi
+        i += 1
+
+    if upi_from != upi_to:
+        values.append((upi_from, upi_to))
+
+    cur.executemany("INSERT INTO IPRSCAN.ANALYSIS_ALL_JOBS VALUES (:1, :2)",
+                    values)
+    con.commit()
+    cur.close()
+    con.close()
