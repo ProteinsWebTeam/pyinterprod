@@ -365,7 +365,7 @@ def get_incomplete_jobs(cur: cx_Oracle.Cursor) -> dict:
     cur.execute(
         """
         SELECT ANALYSIS_ID, UPI_FROM, UPI_TO
-        FROM IPRSCAN.IPM2_JOBS
+        FROM IPRSCAN.ANALYSIS_JOBS
         WHERE END_TIME IS NULL
         """
     )
