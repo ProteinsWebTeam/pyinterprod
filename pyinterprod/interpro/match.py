@@ -306,7 +306,7 @@ def update_database_feature_matches(url: str, databases: Sequence):
         )
         oracle.drop_table(cur, "INTERPRO.FEATURE_MATCH_NEW", purge=True)
 
-        logger.info("\tgathering statistics")
+        logger.debug("\tgathering statistics")
         oracle.gather_stats(cur, "INTERPRO", "FEATURE_MATCH", partition)
 
     for index in oracle.get_indexes(cur, "INTERPRO", "FEATURE_MATCH"):
