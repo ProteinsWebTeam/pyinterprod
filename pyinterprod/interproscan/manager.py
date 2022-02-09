@@ -48,7 +48,6 @@ _DB_TO_I5 = {
 
 def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
     analysis_ids = kwargs.get("analyses", [])
-    job_size = kwargs.get("job_size", 100000)
     job_cpu = kwargs.get("job_cpu", 8)
     job_mem = kwargs.get("job_mem", 8000)
     max_running_jobs = kwargs.get("max_running_jobs", 1000)
@@ -67,23 +66,7 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
         con.close()
         sys.stderr.write("No analyses to process: exit\n")
 
-    cur.execute(
-        """
-        SELECT ANALYSIS_ID, UPI_FROM, UPI_TO
-        FROM IPRSCAN.IPM2_JOBS
-        WHERE END_TIME IS NULL
-        """
-    )
-
-    incomplete_jobs = {}
-    for analysis_id, upi_from, upi_to in cur:
-        try:
-            incomplete_jobs[analysis_id].append((upi_from, upi_to))
-        except KeyError:
-            incomplete_jobs[analysis_id] = [(upi_from, upi_to)]
-
-    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
-    highest_upi, = cur.fetchone()
+    incomplete_jobs = database.get_incomplete_jobs(cur)
 
     with Pool(temp_dir, max_running_jobs) as pool:
         n_tasks = 0
@@ -91,7 +74,7 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
         for analysis_id, analysis in analyses.items():
             name = analysis["name"]
             version = analysis["version"]
-            max_upi = analysis["max_upi"] or int_to_upi(0)
+            max_upi = analysis["max_upi"]
             i5_dir = analysis["i5_dir"]
             match_table = analysis["tables"]["matches"]
             site_table = analysis["tables"]["sites"]
@@ -133,24 +116,7 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
                 pool.submit(task)
                 n_tasks += 1
 
-            while max_upi < highest_upi:
-                upi_from = int_to_upi(upi_to_int(max_upi) + 1)
-                upi_to = int_to_upi(upi_to_int(max_upi) + job_size)
-                max_upi = upi_to
-
-                cur.execute(
-                    """
-                    SELECT COUNT(*)
-                    FROM UNIPARC.PROTEIN
-                    WHERE UPI BETWEEN :1 AND :2
-                    """,
-                    (upi_from, upi_to)
-                )
-                num_sequences, = cur.fetchone()
-
-                if num_sequences == 0:
-                    continue
-
+            for upi_from, upi_to in database.get_runnable_jobs(cur, max_upi):
                 task = Task(
                     fn=run_job,
                     args=(
@@ -171,25 +137,8 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
                     random_suffix=False
                 )
                 pool.submit(task)
+                database.add_job(cur, analysis_id, upi_from, upi_to)
                 n_tasks += 1
-
-                cur.execute(
-                    """
-                    UPDATE IPRSCAN.IPM2_ANALYSIS
-                    SET MAX_UPI = :1
-                    WHERE ID = :2
-                    """,
-                    (max_upi, analysis_id)
-                )
-                cur.execute(
-                    """
-                    INSERT INTO IPRSCAN.IPM2_JOBS
-                        (ANALYSIS_ID, UPI_FROM, UPI_TO)
-                    VALUES (:1, :2, :3)
-                    """,
-                    (analysis_id, upi_from, upi_to)
-                )
-                con.commit()
 
                 if n_tasks == max_jobs:
                     break
@@ -212,25 +161,12 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
 
                 max_mem = get_lsf_max_memory(task.stdout)
 
-                con = cx_Oracle.connect(uri)
-                cur = con.cursor()
-
                 if task.completed():
                     n_completed += 1
 
-                    cur.execute(
-                        """
-                        UPDATE IPRSCAN.IPM2_JOBS
-                        SET START_TIME = :1,
-                            END_TIME = :2,
-                            MAX_MEMORY = :3
-                        WHERE ANALYSIS_ID = :4
-                            AND UPI_FROM = :5
-                            AND UPI_TO = :6
-                        """,
-                        (task.start_time, task.end_time, max_mem, analysis_id,
-                         upi_from, upi_to)
-                    )
+                    database.update_job(uri, analysis_id, upi_from, upi_to,
+                                        task.start_time, task.end_time,
+                                        max_mem)
                 else:
                     with open(logfile, "wt") as fh:
                         fh.write(task.stdout)
@@ -245,10 +181,6 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
                     else:
                         # TODO: decide what to do
                         n_completed += 1
-
-                con.commit()
-                cur.close()
-                con.close()
 
                 sys.stderr.write(f"{n_completed:>10} / {n_tasks}\r")
 
@@ -349,5 +281,3 @@ def kill_lsf_job(name: str) -> bool:
                              stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL)
     return process.returncode == 0
-
-

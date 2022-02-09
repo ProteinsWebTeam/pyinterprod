@@ -359,3 +359,77 @@ def prepare_jobs(uri: str, job_size: int = 10000, top_up: bool = False):
     con.commit()
     cur.close()
     con.close()
+
+
+def get_incomplete_jobs(cur: cx_Oracle.Cursor) -> dict:
+    cur.execute(
+        """
+        SELECT ANALYSIS_ID, UPI_FROM, UPI_TO
+        FROM IPRSCAN.IPM2_JOBS
+        WHERE END_TIME IS NULL
+        """
+    )
+
+    incomplete_jobs = {}
+    for analysis_id, upi_from, upi_to in cur:
+        try:
+            incomplete_jobs[analysis_id].append((upi_from, upi_to))
+        except KeyError:
+            incomplete_jobs[analysis_id] = [(upi_from, upi_to)]
+
+    return incomplete_jobs
+
+
+def get_runnable_jobs(cur: cx_Oracle.Cursor,
+                      greater_than: Optional[str] = None):
+    cur.execute(
+        """
+        SELECT UPI_FROM, UPI_TO
+        FROM IPRSCAN.ANALYSIS_ALL_JOBS
+        ORDER BY UPI_FROM
+        """
+    )
+
+    return [(upi_from, upi_to)
+            for upi_from, upi_to in cur
+            if upi_from > greater_than]
+
+
+def add_job(cur: cx_Oracle, analysis_id: int, upi_from: str, upi_to: str):
+    cur.execute(
+        """
+        UPDATE IPRSCAN.ANALYSIS
+        SET MAX_UPI = :upi
+        WHERE ID = :analysis_id AND MAX_UPI < :upi
+        """,
+        analysis_id=analysis_id, upi=upi_to
+    )
+    cur.execute(
+        """
+        INSERT INTO IPRSCAN.ANALYSIS_JOBS (ANALYSIS_ID, UPI_FROM, UPI_TO)
+        VALUES (:1, :2, :3)
+        """,
+        (analysis_id, upi_from, upi_to)
+    )
+    cur.connection.commit()
+
+
+def update_job(uri: str, analysis_id: int, upi_from: str, upi_to: str,
+               start_time, end_time, max_mem: int):
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        UPDATE IPRSCAN.ANALYSIS_JOBS
+        SET START_TIME = :1,
+            END_TIME = :2,
+            MAX_MEMORY = :3
+        WHERE ANALYSIS_ID = :4
+            AND UPI_FROM = :5
+            AND UPI_TO = :6
+        """,
+        (start_time, end_time, max_mem, analysis_id, upi_from, upi_to)
+    )
+    con.commit()
+    cur.close()
+    con.close()
