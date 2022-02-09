@@ -181,6 +181,8 @@ class MatchIterator:
 
 def import_matches(ora_url: str, pg_url: str, output: str,
                    tmpdir: Optional[str] = None):
+    os.makedirs(os.path.dirname(output), exist_ok=True)
+
     logger.info("populating")
     pg_con = psycopg2.connect(**pg.url2dict(pg_url))
     pg_cur = pg_con.cursor()

@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import os
 import pickle
 import sqlite3
@@ -88,6 +86,7 @@ def export_proteins(url: str, outdir: str, buffer_size: int = 1000000) -> List[s
 
 def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
                   data_dir: str, tmpdir: Optional[str] = None):
+    os.makedirs(data_dir, exist_ok=True)
     workdir = mkdtemp(dir=tmpdir)
 
     con = cx_Oracle.connect(url)

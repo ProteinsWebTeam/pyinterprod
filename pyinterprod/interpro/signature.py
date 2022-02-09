@@ -119,6 +119,8 @@ def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
 
 def track_signature_changes(ora_url: str, pg_url: str,
                             databases: Sequence[Database], data_dir: str):
+    os.makedirs(data_dir, exist_ok=True)
+
     # First, get the SwissProt descriptions (before the update)
     all_sig2descs = get_swissprot_descriptions(pg_url)
 

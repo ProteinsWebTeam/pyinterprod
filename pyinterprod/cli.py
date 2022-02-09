@@ -487,7 +487,6 @@ def run_pronto_update():
     lsf_queue = config["misc"]["lsf_queue"]
     workflow_dir = config["misc"]["workflow_dir"]
 
-    os.makedirs(data_dir, exist_ok=True)
     tasks = get_pronto_tasks(ora_interpro_url, ora_swpread_url, ora_goa_url,
                              pg_url, data_dir, lsf_queue)
 
@@ -545,7 +544,6 @@ def run_uniprot_update():
     lsf_queue = config["misc"]["lsf_queue"]
     workflow_dir = config["misc"]["workflow_dir"]
 
-    os.makedirs(data_dir, exist_ok=True)
     tasks = [
         # Data from UAREAD
         Task(
