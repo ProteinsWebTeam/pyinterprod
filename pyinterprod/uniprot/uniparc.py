@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import cx_Oracle
 
 from pyinterprod import logger

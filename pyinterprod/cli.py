@@ -6,8 +6,8 @@ from typing import List
 
 from mundone import Task, Workflow
 
-from pyinterprod import __version__, iprscan
-from pyinterprod import interpro, pronto, uniparc, uniprot
+from pyinterprod import __version__
+from pyinterprod import interpro, pronto, uniprot
 from pyinterprod.interpro.clan import update_cdd_clans, update_hmm_clans
 
 
@@ -113,7 +113,7 @@ def check_ispro():
     config.read(args.config)
 
     ora_iprscan_url = config["oracle"]["iprscan"]
-    iprscan.check_ispro(ora_iprscan_url, args.type, args.status)
+    interpro.iprscan.check_ispro(ora_iprscan_url, args.type, args.status)
 
 
 def run_clan_update():
@@ -310,7 +310,7 @@ def run_member_db_update():
 
     tasks = [
         Task(
-            fn=iprscan.import_matches,
+            fn=interpro.iprscan.import_matches,
             args=(ora_iprscan_url,),
             kwargs=dict(databases=mem_updates + non_mem_updates + site_updates,
                         force_import=True, threads=8),
@@ -392,7 +392,7 @@ def run_member_db_update():
 
         tasks += [
             Task(
-                fn=iprscan.import_sites,
+                fn=interpro.iprscan.import_sites,
                 args=(ora_iprscan_url,),
                 kwargs=dict(databases=site_updates, force_import=True,
                             threads=2),
@@ -547,7 +547,7 @@ def run_uniprot_update():
     tasks = [
         # Data from UAREAD
         Task(
-            fn=uniparc.update,
+            fn=uniprot.uniparc.update,
             args=(ora_uniparc_url, ora_uaread_url),
             name="update-uniparc",
             scheduler=dict(queue=lsf_queue)
@@ -563,7 +563,7 @@ def run_uniprot_update():
 
         # Data from ISPRO
         Task(
-            fn=iprscan.import_matches,
+            fn=interpro.iprscan.import_matches,
             args=(ora_iprscan_url,),
             kwargs=dict(threads=8),
             name="import-matches",
@@ -571,7 +571,7 @@ def run_uniprot_update():
             requires=["update-uniparc"]
         ),
         Task(
-            fn=iprscan.import_sites,
+            fn=interpro.iprscan.import_sites,
             args=(ora_iprscan_url,),
             kwargs=dict(threads=2),
             name="import-sites",
