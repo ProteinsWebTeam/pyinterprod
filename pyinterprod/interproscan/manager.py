@@ -2,14 +2,15 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import time
 from typing import Callable, Optional
 
 import cx_Oracle
 from mundone import Pool, Task
 
+from pyinterprod import logger
 from . import database, persistence
+
 
 """
 Key   -> analysis name in the database
@@ -64,7 +65,7 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
     if not analyses:
         cur.close()
         con.close()
-        sys.stderr.write("No analyses to process: exit\n")
+        logger.error("No analyses to process: exit")
 
     incomplete_jobs = database.get_incomplete_jobs(cur)
 
@@ -80,8 +81,6 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
             site_table = analysis["tables"]["sites"]
             appl, parse_matches, parse_sites = _DB_TO_I5[name]
 
-            sys.stderr.write(f"submit jobs for {name} {version}\n")
-
             to_restart = incomplete_jobs.get(analysis_id, [])
             killed_jobs = 0
 
@@ -93,6 +92,7 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
             if killed_jobs:
                 time.sleep(5)
 
+            n_tasks_analysis = 0
             for upi_from, upi_to in to_restart:
                 task = Task(
                     fn=run_job,
@@ -115,6 +115,15 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
                 )
                 pool.submit(task)
                 n_tasks += 1
+                n_tasks_analysis += 1
+
+                if n_tasks_analysis == max_jobs:
+                    break
+
+            if n_tasks_analysis == max_jobs:
+                logger.debug(f"{name} {version}: "
+                             f"{n_tasks_analysis} tasks submitted")
+                continue
 
             for upi_from, upi_to in database.get_runnable_jobs(cur, max_upi):
                 task = Task(
@@ -139,16 +148,26 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
                 pool.submit(task)
                 database.add_job(cur, analysis_id, upi_from, upi_to)
                 n_tasks += 1
+                n_tasks_analysis += 1
 
-                if n_tasks == max_jobs:
+                if n_tasks_analysis == max_jobs:
                     break
+
+            logger.debug(f"{name} {version}: "
+                         f"{n_tasks_analysis} tasks submitted")
 
         cur.close()
         con.close()
 
+        logger.info(f"Tasks submitted: {n_tasks:,}")
+
         n_completed = 0
+        progress = 0
+        step = 5
         while n_completed < n_tasks:
             for task in pool.as_completed(wait=True):
+                logger.debug(f"{task.name}: {task.state}")
+
                 upi_from = task.args[1]
                 upi_to = task.args[2]
                 analysis_id = task.args[6]
@@ -182,9 +201,11 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
                         # TODO: decide what to do
                         n_completed += 1
 
-                sys.stderr.write(f"{n_completed:>10} / {n_tasks}\r")
+                if (n_completed * 100 // n_tasks) >= (progress + step):
+                    logger.info(f"Progress: {progress + step:>3.0}%")
+                    progress += step
 
-        sys.stderr.write("\n")
+        logger.info("complete")
 
 
 def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str,
