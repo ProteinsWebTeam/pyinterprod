@@ -17,7 +17,14 @@ python setup.py install
 
 ## Configuration
 
-The `pyinterprod` package include command line tools, which expect an INI config file. Properties are described bellow:
+The `pyinterprod` package relies on two configuration files:
+
+- `main.conf`: contains database connection strings, paths to files provided by/to UniProtKB, and various workflow parameters.
+- `members.conf`: contains path to files used to update InterPro's member databases (e.g. files containing signatures, HMM files, etc.).
+ 
+Both files can be renamed. `main.conf` is passed as an command line argument, and the path to `members.conf` is defined in `main.conf`.  
+
+### main.conf
 
 > The expected format for database connection strings is `user/password@host:port/service`. 
 > For Oracle databases, `user/password@service` may work as well, depending on `tnsnames.ora`.
@@ -30,7 +37,7 @@ The `pyinterprod` package include command line tools, which expect an INI config
     - **swpread**: connection string for the Swiss-Prot database
     - **uaread**: connection string for the UniParc database
 - **postgresql**:
-    - **pronto**: connection string (format: `user/password@host:port/database`)
+    - **pronto**: connection string
 - **uniprot**:
     - **version**: release number (e.g. `2019_08`)
     - **date**: date for the *public* release (e.g. `18-Sep-2019`)
@@ -49,10 +56,34 @@ The `pyinterprod` package include command line tools, which expect an INI config
     - **unirule**: email address of the UniRule team (curators from EMBL-EBI, SIB, and PIR)
     - **sib**: email address of the Swiss-Prot team
 - **misc**:
+    - **members**: path to the `members.conf`
     - **pronto_url**: URL of the Pronto curation application
     - **data_dir**: directory where to store staging files
     - **lsf_queue**: name of the LSF queue to submit jobs to
     - **workflow_dir**: directory for temporary files (e.g. job input/output)
+    
+### members.conf
+
+Each section corresponds to a member database (or a sequence feature database), e.g.
+
+```
+[pfam]
+hmm =
+members =
+signatures =
+```
+
+The most common properties are:
+
+- `hmm`: path the HMM file (only for databases using HMMER3-based models). Required when running `ipr-hmm`.
+- `members`: path to the file containing the clan-signature mapping. Required when running `ipr-clans`.
+- `signatures`: path to the source of the database signatures (database connection string for Pfam, file for other resources).
+
+Additional properties:
+
+- `summary`: CDD only, information on superfamilies
+- `mapping`: Cath-Gene3D only, family-model mapping file
+
 
 ## Usage
 
@@ -61,7 +92,7 @@ The `pyinterprod` package include command line tools, which expect an INI config
 Update proteins and matches to the latest private UniProt release.
 
 ```bash
-$ ipr-uniprot [OPTIONS] config.ini
+$ ipr-uniprot [OPTIONS] main.conf
 ```
 
 The optional arguments are:
@@ -148,16 +179,6 @@ The optional arguments are:
     <td>update-matches</td>
 </tr>
 <tr>
-    <td>update-varsplic</td>
-    <td>Update splice variant matches</td>
-    <td>import-matches</td>
-</tr>
-<tr>
-    <td>update-sites</td>
-    <td>Update residue annotations</td>
-    <td>import-sites, update-matches</td>
-</tr>
-<tr>
     <td>xref-summary</td>
     <td>Build the XREF_SUMMARY table for the Automatic Annotation team (contains protein matches for integrated member database signatures)</td>
     <td>report-changes</td>
@@ -183,6 +204,16 @@ The optional arguments are:
     <td></td>
 </tr>
 <tr>
+    <td>update-varsplic</td>
+    <td>Update splice variant matches</td>
+    <td>import-matches</td>
+</tr>
+<tr>
+    <td>update-sites</td>
+    <td>Update residue annotations</td>
+    <td>import-sites, update-matches</td>
+</tr>
+<tr>
     <td><a href="#ipr-pronto-tasks">Pronto</a></td>
     <td>Update the Pronto PostgreSQL table</td>
     <td>taxonomy, update-fmatches, swissprot-de, unirule</td>
@@ -199,29 +230,16 @@ The optional arguments are:
 
 Update models and protein matches for one or more member databases.
 
-#### Updating the member database info
-
-This command must be repeated for each member database. `-n` is the name of the database (case-insensitive), `-d` is the release date (of the member database), and `-v` is the release version.
+Before running the update, this command must be repeated for each member database. `-n` is the name of the database (case-insensitive), `-d` is the release date (of the member database), and `-v` is the release version.
 
 ```bash
-$ ipr-pre-memdb config.ini -n DATABASE -d YYYY-MM-DD -v VERSION
+$ ipr-pre-memdb main.conf -n DATABASE -d YYYY-MM-DD -v VERSION
 ```
 
-#### Preparing the signatures
-
-A TSV file must be created, containing one line per member database to update. Each line has two values, separated by a tab:
-1. name of the database (as used in `ipr-pre-memdb`)
-2. source for the signatures, i.e. a file (e.g. `hamap.prf` for HAMAP) or a URL (e.g. connection string for the Pfam MySQL database)
+Then, the actual update can be run:
 
 ```bash
-$ echo -e "cathgene3d\tcath_release/CathNames.txt" > sources.tsv
-$ echo -e "hamap\tHAMAP/2020_05/hamap.prf" >> sources.tsv
-```
-
-#### Running the workflow
-
-```bash
-$ ipr-memdb [OPTIONS] config.ini sources.tsv
+$ ipr-memdb [OPTIONS] main.conf database [database ...]
 ```
 
 The optional arguments are:
@@ -243,6 +261,11 @@ The optional arguments are:
 </thead>
 <tbody>
 <tr>
+    <td>import-matches</td>
+    <td>Import protein matches from ISPRO</td>
+    <td></td>
+</tr>
+<tr>
     <td>load-signatures</td>
     <td>Import member database signatures for the version to update to</td>
     <td></td>
@@ -263,11 +286,6 @@ The optional arguments are:
     <td>delete-obsoletes</td>
 </tr>
 <tr>
-    <td>import-matches</td>
-    <td>Import protein matches from ISPRO</td>
-    <td></td>
-</tr>
-<tr>
     <td>update-matches</td>
     <td>Update and check matches in production tables</td>
     <td>import-matches, delete-obsoletes</td>
@@ -278,6 +296,16 @@ The optional arguments are:
     <td>import-matches, delete-obsoletes</td>
 </tr>
 <tr>
+    <td>update-features</td>
+    <td>Update sequence features for non-member databases (e.g. MobiDB-lite, COILS, etc.)</td>
+    <td>import-matches</td>
+</tr>
+<tr>
+    <td>update-fmatches</td>
+    <td>Update matches for sequence features</td>
+    <td>import-features</td>
+</tr>
+<tr>
     <td>import-sites</td>
     <td>Import residue annotations from ISPRO (if updating a member database with residue annotations)</td>
     <td></td>
@@ -285,7 +313,7 @@ The optional arguments are:
 <tr>
     <td>update-sites</td>
     <td>Update residue annotations (if updating a member database with residue annotations)</td>
-    <td>import-matches, import-sites</td>
+    <td>import-matches, import-sites, update-matches</td>
 </tr>
 <tr>
     <td><a href="#ipr-pronto-tasks">Pronto</a></td>
@@ -300,75 +328,10 @@ The optional arguments are:
 </tbody>
 </table>
 
-### Matches update
-
-Used to update matches, but not signatures. Useful to update non-member databases, 
-i.e. databases whose models are not integrated but provide useful annotations nonetheless (e.g. MobiDB, SignalP, etc.).
-
-```bash
-$ ipr-matches [OPTIONS] config.ini database [databases]
-```
-
-The optional arguments are:
-
-- `-t, --tasks`: list of tasks to run, by default all tasks are run (see [Tasks](#ipr-matches-tasks) for a description of available tasks)
-- `--dry-run`: do not run tasks, only list those about to be run
-
-<a name="ipr-matches-tasks"></a>
-
-#### Tasks
-
-<table>
-<thead>
-<tr>
-    <th>Name</th>
-    <th>Description</th>
-    <th>Dependencies</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-    <td>import-matches</td>
-    <td>Import protein matches from ISPRO</td>
-    <td></td>
-</tr>
-<tr>
-    <td>track-changes</td>
-    <td>Compare signatures between versions (e.g. name, description, matched proteins)</td>
-    <td></td>
-</tr>
-<tr>
-    <td>update-matches</td>
-    <td>Update and check matches in production tables</td>
-    <td>import-matches, track-changes</td>
-</tr>
-<tr>
-    <td>update-varsplic</td>
-    <td>Update splice variant matches</td>
-    <td>import-matches</td>
-</tr>
-<tr>
-    <td>update-fmatches</td>
-    <td>Update protein matches for sequence features (e.g. MobiDB-lite, Coils, etc.)</td>
-    <td>update-matches</td>
-</tr>
-<tr>
-    <td>import-sites</td>
-    <td>Import residue annotations from ISPRO (if updating a member database with residue annotations)</td>
-    <td></td>
-</tr>
-<tr>
-    <td>update-sites</td>
-    <td>Update residue annotations (if updating a member database with residue annotations)</td>
-    <td>import-matches, import-sites</td>
-</tr>
-</tbody>
-</table>
-
 ### Pronto
 
 ```bash
-$ ipr-pronto [OPTIONS] config.ini
+$ ipr-pronto [OPTIONS] main.conf
 ```
 
 The optional arguments are:
@@ -436,3 +399,24 @@ The optional arguments are:
     </tr>
 </tbody>
 </table>
+
+### Clans update
+
+Update clans and run profile-profile alignments.
+
+```bash
+$ ipr-clans [OPTIONS] main.conf database [database ...]
+```
+
+The optional arguments are:
+
+- `-t, --threads`: number of alignment workers
+- `-T, --tempdir`: directory to use for temporary files
+
+### HMMs update
+
+Load HMMs in the database.
+
+```bash
+$ ipr-hmms main.conf database [database ...]
+```
