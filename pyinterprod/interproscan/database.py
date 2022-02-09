@@ -382,17 +382,26 @@ def get_incomplete_jobs(cur: cx_Oracle.Cursor) -> dict:
 
 def get_runnable_jobs(cur: cx_Oracle.Cursor,
                       greater_than: Optional[str] = None):
-    cur.execute(
-        """
-        SELECT UPI_FROM, UPI_TO
-        FROM IPRSCAN.ANALYSIS_ALL_JOBS
-        ORDER BY UPI_FROM
-        """
-    )
+    if greater_than:
+        cur.execute(
+            """
+            SELECT UPI_FROM, UPI_TO
+            FROM IPRSCAN.ANALYSIS_ALL_JOBS
+            WHERE UPI_FROM > :1
+            ORDER BY UPI_FROM
+            """,
+            greater_than,
+        )
+    else:
+        cur.execute(
+            """
+            SELECT UPI_FROM, UPI_TO
+            FROM IPRSCAN.ANALYSIS_ALL_JOBS
+            ORDER BY UPI_FROM
+            """
+        )
 
-    return [(upi_from, upi_to)
-            for upi_from, upi_to in cur
-            if upi_from > greater_than]
+    return [(upi_from, upi_to) for upi_from, upi_to in cur]
 
 
 def add_job(cur: cx_Oracle, analysis_id: int, upi_from: str, upi_to: str):
