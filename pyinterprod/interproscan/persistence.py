@@ -1,6 +1,9 @@
 import cx_Oracle
 
 
+_COMMIT_SIZE = 10000
+
+
 def cdd_matches(uri: str, file: str, analysis_id: int, table: str):
     sql = f"""
         INSERT /*+ APPEND */ INTO {table} (
@@ -36,7 +39,7 @@ def cdd_matches(uri: str, file: str, analysis_id: int, table: str):
                 "seq_evalue": float(cols[10])
             })
 
-            if len(values) == 1000:
+            if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
                 con.commit()
                 values.clear()
@@ -85,7 +88,7 @@ def cdd_sites(uri: str, file: str, analysis_id: int, table: str):
                 "description": cols[11]
             })
 
-            if len(values) == 1000:
+            if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
                 con.commit()
                 values.clear()
@@ -96,6 +99,99 @@ def cdd_sites(uri: str, file: str, analysis_id: int, table: str):
 
     cur.close()
     con.close()
+
+
+def coils_matches(uri: str, file: str, analysis_id: int, table: str):
+    sql = f"""
+        INSERT /*+ APPEND */ INTO {table} (
+            ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
+            UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS
+        )
+        VALUES (:analysis_id, :analysis_name, :relno_major, :relno_minor,
+                :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments)
+    """
+
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+
+    values = []
+    with open(file, "rt") as fh:
+        for line in fh:
+            cols = line.rstrip().split('\t')
+            values.append({
+                "analysis_id": analysis_id,
+                "analysis_name": cols[0],
+                "relno_major": cols[1],
+                "relno_minor": cols[2],
+                "upi": cols[3],
+                "method_ac": cols[4],
+                "model_ac": cols[5],
+                "seq_start": int(cols[6]),
+                "seq_end": int(cols[7]),
+                "fragments": cols[8]
+            })
+
+            if len(values) == _COMMIT_SIZE:
+                cur.executemany(sql, values)
+                con.commit()
+                values.clear()
+
+    if values:
+        cur.executemany(sql, values)
+        con.commit()
+
+    cur.close()
+    con.close()
+
+
+def hamap_matches(uri: str, file: str, analysis_id: int, table: str):
+    sql = f"""
+        INSERT /*+ APPEND */ INTO {table} (
+            ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
+            UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
+            SEQSCORE, ALIGNMENT
+        )
+        VALUES (:analysis_id, :analysis_name, :relno_major, :relno_minor,
+                :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments,
+                :seq_score, :alignment)
+    """
+
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+
+    values = []
+    with open(file, "rt") as fh:
+        for line in fh:
+            cols = line.rstrip().split('\t')
+            values.append({
+                "analysis_id": analysis_id,
+                "analysis_name": cols[0],
+                "relno_major": cols[1],
+                "relno_minor": cols[2],
+                "upi": cols[3],
+                "method_ac": cols[4],
+                "model_ac": cols[5],
+                "seq_start": int(cols[6]),
+                "seq_end": int(cols[7]),
+                "fragments": cols[8],
+                "seq_score": float(cols[9]),
+                "alignment": cols[10]
+            })
+
+            if len(values) == _COMMIT_SIZE:
+                cur.executemany(sql, values)
+                con.commit()
+                values.clear()
+
+    if values:
+        cur.executemany(sql, values)
+        con.commit()
+
+    cur.close()
+    con.close()
+
+
+prosite_profiles_matches = hamap_matches
 
 
 def hmmer3_matches(uri: str, file: str, analysis_id: int, table: str):
@@ -144,7 +240,170 @@ def hmmer3_matches(uri: str, file: str, analysis_id: int, table: str):
                 "evalue": float(cols[18])
             })
 
-            if len(values) == 1000:
+            if len(values) == _COMMIT_SIZE:
+                cur.executemany(sql, values)
+                con.commit()
+                values.clear()
+
+    if values:
+        cur.executemany(sql, values)
+        con.commit()
+
+    cur.close()
+    con.close()
+
+
+def mobidb_lite_matches(uri: str, file: str, analysis_id: int, table: str):
+    sql = f"""
+        INSERT /*+ APPEND */ INTO {table} (
+            ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
+            UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
+            SEQ_FEATURE
+        )
+        VALUES (:analysis_id, :analysis_name, :relno_major, :relno_minor,
+                :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments,
+                :seq_feature)
+    """
+
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+
+    values = []
+    with open(file, "rt") as fh:
+        for line in fh:
+            cols = line.rstrip().split('\t')
+
+            try:
+                seq_feature = cols[9].strip()
+            except IndexError:
+                seq_feature = None
+
+            values.append({
+                "analysis_id": analysis_id,
+                "analysis_name": cols[0],
+                "relno_major": cols[1],
+                "relno_minor": cols[2],
+                "upi": cols[3],
+                "method_ac": cols[4],
+                "model_ac": cols[5],
+                "seq_start": int(cols[6]),
+                "seq_end": int(cols[7]),
+                "fragments": cols[8],
+                "seq_feature": seq_feature
+            })
+
+            if len(values) == _COMMIT_SIZE:
+                cur.executemany(sql, values)
+                con.commit()
+                values.clear()
+
+    if values:
+        cur.executemany(sql, values)
+        con.commit()
+
+    cur.close()
+    con.close()
+
+
+def panther_matches(uri: str, file: str, analysis_id: int, table: str):
+    sql = f"""
+        INSERT /*+ APPEND */ INTO {table} (
+            ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
+            UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
+            SEQSCORE, SEQEVALUE, HMM_BOUNDS, HMM_START, HMM_END,
+            HMM_LENGTH, ENV_START, ENV_END, AN_NODE_ID
+        )
+        VALUES (:analysis_id, :analysis_name, :relno_major, :relno_minor,
+                :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments,
+                :seq_score, :seq_evalue, :hmm_bounds, :hmm_start, :hmm_end,
+                :hmm_length, :env_start, :env_end, :score, :evalue)
+    """
+
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE,
+                      evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+
+    values = []
+    with open(file, "rt") as fh:
+        for line in fh:
+            cols = line.rstrip().split('\t')
+            values.append({
+                "analysis_id": analysis_id,
+                "analysis_name": cols[0],
+                "relno_major": cols[1],
+                "relno_minor": cols[2],
+                "upi": cols[3],
+                "method_ac": cols[4],
+                "model_ac": cols[5],
+                "seq_start": int(cols[6]),
+                "seq_end": int(cols[7]),
+                "fragments": cols[8],
+                "seq_score": float(cols[9]),
+                "seq_evalue": float(cols[10]),
+                "hmm_bounds": cols[11],
+                "hmm_start": int(cols[12]),
+                "hmm_end": int(cols[13]),
+                "hmm_length": int(cols[14]),
+                "env_start": int(cols[15]),
+                "env_end": int(cols[16]),
+                "score": float(cols[17]),
+                "evalue": float(cols[18])
+            })
+
+            if len(values) == _COMMIT_SIZE:
+                cur.executemany(sql, values)
+                con.commit()
+                values.clear()
+
+    if values:
+        cur.executemany(sql, values)
+        con.commit()
+
+    cur.close()
+    con.close()
+
+
+def prints_matches(uri: str, file: str, analysis_id: int, table: str):
+    sql = f"""
+        INSERT /*+ APPEND */ INTO {table} (
+            ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
+            UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
+            SEQSCORE, SEQEVALUE, MOTIF_NUMBER, PVALUE, GRAPHSCAN
+        )
+        VALUES (:analysis_id, :analysis_name, :relno_major, :relno_minor,
+                :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments,
+                :seq_score, :seq_evalue, :motif_number, :pvalue, :graphscan)
+    """
+
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE,
+                      pvalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+
+    values = []
+    with open(file, "rt") as fh:
+        for line in fh:
+            cols = line.rstrip().split('\t')
+            values.append({
+                "analysis_id": analysis_id,
+                "analysis_name": cols[0],
+                "relno_major": cols[1],
+                "relno_minor": cols[2],
+                "upi": cols[3],
+                "method_ac": cols[4],
+                "model_ac": cols[5],
+                "seq_start": int(cols[6]),
+                "seq_end": int(cols[7]),
+                "fragments": cols[8],
+                "seq_score": float(cols[9]),
+                "seq_evalue": float(cols[10]),
+                "motif_number": int(cols[11]),
+                "pvalue": float(cols[12]),
+                "graphscan": cols[13]
+            })
+
+            if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
                 con.commit()
                 values.clear()
