@@ -30,14 +30,13 @@ setup(
     install_requires=get_requirements(),
     entry_points={
         "console_scripts": [
+            "ipr-ispro = pyinterprod.cli:check_ispro",
+            "ipr-uniprot = pyinterprod.cli:run_uniprot_update",
+            "ipr-pre-memdb = pyinterprod.cli:update_database",
+            "ipr-memdb = pyinterprod.cli:run_member_db_update",
             "ipr-clans = pyinterprod.cli:run_clan_update",
             "ipr-hmms = pyinterprod.cli:run_hmm_update",
-            "ipr-ispro = pyinterprod.cli:check_ispro",
-            "ipr-pre-memdb = pyinterprod.cli:update_database",
-            "ipr-matches = pyinterprod.cli:run_match_update",
-            "ipr-memdb = pyinterprod.cli:run_member_db_update",
             "ipr-pronto = pyinterprod.cli:run_pronto_update",
-            "ipr-uniprot = pyinterprod.cli:run_uniprot_update"
         ]
     }
 )
