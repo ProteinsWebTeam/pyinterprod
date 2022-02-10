@@ -51,19 +51,31 @@ _DB_TO_I5 = {
 
 
 def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
-    analysis_ids = kwargs.get("analyses", [])
-    job_cpu = kwargs.get("job_cpu", 8)
-    job_mem = kwargs.get("job_mem", 8000)
+    base_config = {
+        "job_cpu": kwargs.get("job_cpu", 8),
+        "job_mem": kwargs.get("job_mem", 8000),
+        "job_size": kwargs.get("job_size", 10000)
+    }
+    custom_configs = kwargs.get("config", {})
     max_running_jobs = kwargs.get("max_running_jobs", 1000)
-    max_jobs = kwargs.get("max_jobs", 0)
+    max_jobs_per_analysis = kwargs.get("max_jobs_per_analysis", 0)
+    pool_threads = kwargs.get("pool_threads", 4)
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     analyses = {}
+    configs = {}
     for analysis_id, analysis in database.get_analyses(cur).items():
-        if not analysis_ids or analysis_id in analysis_ids:
+        if not custom_configs or analysis_id in custom_configs:
             analyses[analysis_id] = analysis
+
+            # Default config
+            configs[analysis_id] = base_config.copy()
+
+            # Override with custom config (if any)
+            for key, val in custom_configs.get(analysis_id, {}).items():
+                configs[analysis_id][key] = val
 
     if not analyses:
         cur.close()
@@ -72,8 +84,9 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
 
     incomplete_jobs = database.get_incomplete_jobs(cur)
 
-    with Pool(temp_dir, max_running_jobs) as pool:
+    with Pool(temp_dir, max_running_jobs, pool_threads) as pool:
         n_tasks = 0
+        n_tasks_analysis = 0
         for analysis_id, analysis in analyses.items():
             name = analysis["name"]
             version = analysis["version"]
@@ -94,6 +107,8 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
             if killed_jobs:
                 time.sleep(5)
 
+            config = configs[analysis_id]
+
             n_tasks_analysis = 0
             for upi_from, upi_to in to_restart:
                 task = Task(
@@ -112,22 +127,26 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
                         parse_sites
                     ),
                     name=f"IPM_{appl}_{version}_{upi_from}_{upi_to}",
-                    scheduler=dict(cpu=job_cpu, mem=job_mem, queue=lsf_queue),
+                    scheduler=dict(cpu=config["job_cpu"],
+                                   mem=config["job_mem"],
+                                   queue=lsf_queue),
                     random_suffix=False
                 )
                 pool.submit(task)
                 n_tasks += 1
                 n_tasks_analysis += 1
 
-                if n_tasks == max_jobs:
+                if n_tasks_analysis == max_jobs_per_analysis:
                     break
 
-            if max_jobs and n_tasks == max_jobs:
+            if (max_jobs_per_analysis
+                    and n_tasks_analysis == max_jobs_per_analysis):
                 logger.debug(f"{name} {version}: "
                              f"{n_tasks_analysis} tasks submitted")
                 continue
 
-            for upi_from, upi_to in database.get_runnable_jobs(cur, max_upi):
+            for upi_from, upi_to in database.get_jobs(cur, config["job_size"],
+                                                      max_upi):
                 task = Task(
                     fn=run_job,
                     args=(
@@ -144,7 +163,9 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
                         parse_sites
                     ),
                     name=f"IPM_{appl}_{version}_{upi_from}_{upi_to}",
-                    scheduler=dict(cpu=job_cpu, mem=job_mem, queue=lsf_queue),
+                    scheduler=dict(cpu=config["job_cpu"],
+                                   mem=config["job_mem"],
+                                   queue=lsf_queue),
                     random_suffix=False
                 )
                 pool.submit(task)
@@ -152,7 +173,7 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
                 n_tasks += 1
                 n_tasks_analysis += 1
 
-                if n_tasks == max_jobs:
+                if n_tasks_analysis == max_jobs_per_analysis:
                     break
 
             logger.debug(f"{name} {version}: "
@@ -168,8 +189,6 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
         step = 5
         while n_completed < n_tasks:
             for task in pool.as_completed(wait=True):
-                logger.debug(f"{task.name}: {task.state}")
-
                 upi_from = task.args[1]
                 upi_to = task.args[2]
                 analysis_id = task.args[6]
