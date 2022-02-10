@@ -324,14 +324,6 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str,
         raise RuntimeError()
 
 
-def int_to_upi(i):
-    return f"UPI{i:010x}".upper()
-
-
-def upi_to_int(upi):
-    return int(upi[3:], 16)
-
-
 def get_lsf_max_memory(stdout: str) -> int:
     match = re.search(r"^\s*Max Memory :\s+(\d+\sMB|-)$", stdout, re.M)
     group = match.group(1)

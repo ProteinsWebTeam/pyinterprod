@@ -337,9 +337,8 @@ def prepare_jobs(uri: str, job_size: int = 10000, reset: bool = True,
         cur.execute("SELECT MIN(UPI) FROM UNIPARC.PROTEIN")
         upi_from, = cur.fetchone()
 
-    upi_to = None
     values = []
-    while upi_from != upi_to:
+    while True:
         cur.execute(
             """
             SELECT MAX(UPI)
@@ -348,22 +347,35 @@ def prepare_jobs(uri: str, job_size: int = 10000, reset: bool = True,
                 FROM (
                     SELECT UPI
                     FROM UNIPARC.PROTEIN
-                    WHERE UPI > :1
+                    WHERE UPI >= :1
                     ORDER BY UPI
                 )
                 WHERE ROWNUM <= :2
-            )       
+            )    
             """,
             (upi_from, job_size)
         )
         upi_to, = cur.fetchone()
+
+        if upi_from == upi_to:
+            break
+
         values.append((upi_from, upi_to, job_size))
+        upi_from = int_to_upi(upi_to_int(upi_to) + 1)
 
     cur.executemany("INSERT INTO IPRSCAN.ANALYSIS_ALL_JOBS "
                     "VALUES (:1, :2. :3)", values)
     con.commit()
     cur.close()
     con.close()
+
+
+def int_to_upi(i):
+    return f"UPI{i:010x}".upper()
+
+
+def upi_to_int(upi):
+    return int(upi[3:], 16)
 
 
 def get_incomplete_jobs(cur: cx_Oracle.Cursor) -> dict:
