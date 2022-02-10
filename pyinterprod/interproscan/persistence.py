@@ -66,8 +66,6 @@ def sites(uri: str, file: str, analysis_id: int, table: str):
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
-    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
-
     values = []
     with open(file, "rt") as fh:
         for line in fh:
