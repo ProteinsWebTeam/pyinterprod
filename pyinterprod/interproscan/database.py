@@ -1,4 +1,4 @@
-from typing import Optional, Sequence
+from typing import Optional
 
 import cx_Oracle
 from mundone.task import Task
@@ -213,25 +213,6 @@ def clean_tables(uri: str):
     con.close()
 
 
-def reset_max_upi(uri: str, analyses: Sequence[int]):
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
-
-    for analysis_id in analyses:
-        cur.execute(
-            """
-            UPDATE IPRSCAN.ANALYSIS
-            SET MAX_UPI = NULL
-            WHERE ID = :1
-            """,
-            (analysis_id,)
-        )
-
-    con.commit()
-    cur.close()
-    con.close()
-
-
 def iter_proteins(uri: str, greather_than: Optional[str] = None):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
@@ -311,15 +292,12 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
     con.close()
 
 
-def prepare_jobs(uri: str, job_size: int = 10000, top_up: bool = False):
+def prepare_jobs(uri: str, job_size: int = 10000, reset: bool = True,
+                 topup: bool = False):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
-    if top_up:
-        cur.execute("SELECT MAX(UPI_TO) FROM IPRSCAN.ANALYSIS_ALL_JOBS")
-        max_upi, = cur.fetchone()
-    else:
-        max_upi = None
+    if reset:
         oracle.drop_table(cur, "IPRSCAN.ANALYSIS_ALL_JOBS", purge=True)
         cur.execute(
             """
@@ -327,38 +305,62 @@ def prepare_jobs(uri: str, job_size: int = 10000, top_up: bool = False):
             (
                 UPI_FROM VARCHAR2(13) NOT NULL,
                 UPI_TO VARCHAR2(13) NOT NULL,
+                NUM_SEQUENCES NUMBER(7) NOT NULL,
                 CONSTRAINT ANALYSIS_ALL_JOBS_PK
-                    PRIMARY KEY (UPI_FROM, UPI_TO)
+                    PRIMARY KEY (UPI_FROM, UPI_TO, NUM_SEQUENCES)
             )
             """
         )
 
-    if max_upi is not None:
-        cur.execute("SELECT UPI FROM UNIPARC.PROTEIN "
-                    "WHERE UPI > :1 ORDER BY UPI", max_upi)
+    if topup:
+        cur.execute(
+            """
+            SELECT MIN(UPI)
+            FROM UNIPARC.PROTEIN
+            WHERE UPI > (
+                SELECT MAX(UPI)
+                FROM IPRSCAN.ANALYSIS_ALL_JOBS
+                WHERE NUM_SEQUENCES = :1
+            )
+            """,
+            (job_size,)
+        )
+        upi_from, = cur.fetchone()
     else:
-        cur.execute("SELECT UPI FROM UNIPARC.PROTEIN ORDER BY UPI")
+        cur.execute(
+            """
+            DELETE FROM IPRSCAN.ANALYSIS_ALL_JOBS
+            WHERE NUM_SEQUENCES = :1
+            """,
+            (job_size,)
+        )
+        cur.execute("SELECT MIN(UPI) FROM UNIPARC.PROTEIN")
+        upi_from, = cur.fetchone()
 
-    i = 0
-    upi_from = upi_to = None
+    upi_to = None
     values = []
-    for upi, in cur:
-        if i == job_size:
-            values.append((upi_from, upi_to))
-            upi_from = None
-            i = 0
+    while upi_from != upi_to:
+        cur.execute(
+            """
+            SELECT MAX(UPI)
+            FROM (
+                     SELECT *
+                     FROM (
+                              SELECT UPI
+                              FROM UNIPARC.PROTEIN
+                              WHERE UPI > :1
+                              ORDER BY UPI
+                          )
+                     WHERE ROWNUM <= :2
+                 )       
+            """,
+            (upi_from, job_size)
+        )
+        upi_to, = cur.fetchone()
+        values.append((upi_from, upi_to, job_size))
 
-        if upi_from is None:
-            upi_from = upi
-
-        upi_to = upi
-        i += 1
-
-    if upi_from != upi_to:
-        values.append((upi_from, upi_to))
-
-    cur.executemany("INSERT INTO IPRSCAN.ANALYSIS_ALL_JOBS VALUES (:1, :2)",
-                    values)
+    cur.executemany("INSERT INTO IPRSCAN.ANALYSIS_ALL_JOBS "
+                    "VALUES (:1, :2. :3)", values)
     con.commit()
     cur.close()
     con.close()
@@ -383,25 +385,28 @@ def get_incomplete_jobs(cur: cx_Oracle.Cursor) -> dict:
     return incomplete_jobs
 
 
-def get_runnable_jobs(cur: cx_Oracle.Cursor,
-                      greater_than: Optional[str] = None):
+def get_jobs(cur: cx_Oracle.Cursor, job_size: int,
+             greater_than: Optional[str] = None):
     if greater_than:
         cur.execute(
             """
             SELECT UPI_FROM, UPI_TO
             FROM IPRSCAN.ANALYSIS_ALL_JOBS
-            WHERE UPI_FROM > :1
+            WHERE NUM_SEQUENCES = :1
+             AND UPI_FROM > :1
             ORDER BY UPI_FROM
             """,
-            greater_than,
+            (job_size, greater_than),
         )
     else:
         cur.execute(
             """
             SELECT UPI_FROM, UPI_TO
             FROM IPRSCAN.ANALYSIS_ALL_JOBS
+            WHERE NUM_SEQUENCES = :1
             ORDER BY UPI_FROM
-            """
+            """,
+            (job_size,)
         )
 
     return cur.fetchall()
