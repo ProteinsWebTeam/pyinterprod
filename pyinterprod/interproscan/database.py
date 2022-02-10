@@ -393,7 +393,7 @@ def get_jobs(cur: cx_Oracle.Cursor, job_size: int,
             SELECT UPI_FROM, UPI_TO
             FROM IPRSCAN.ANALYSIS_ALL_JOBS
             WHERE NUM_SEQUENCES = :1
-             AND UPI_FROM > :1
+              AND UPI_FROM > :1
             ORDER BY UPI_FROM
             """,
             (job_size, greater_than),
