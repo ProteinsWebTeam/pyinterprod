@@ -105,7 +105,7 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
             raise ValueError(f"Invalid analysis name '{name}'")
 
         for analysis_id in name2id[key]:
-            if analysis_id not in configs:
+            if analysis_id in configs:
                 for key, value in custom_configs[name].items():
                     configs[analysis_id][key] = value
 
