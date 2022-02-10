@@ -404,7 +404,7 @@ def get_runnable_jobs(cur: cx_Oracle.Cursor,
             """
         )
 
-    return [(upi_from, upi_to) for upi_from, upi_to in cur]
+    return cur.fetchall()
 
 
 def add_job(cur: cx_Oracle, analysis_id: int, upi_from: str, upi_to: str):
