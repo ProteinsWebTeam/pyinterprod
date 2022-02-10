@@ -344,15 +344,15 @@ def prepare_jobs(uri: str, job_size: int = 10000, reset: bool = True,
             """
             SELECT MAX(UPI)
             FROM (
-                     SELECT *
-                     FROM (
-                              SELECT UPI
-                              FROM UNIPARC.PROTEIN
-                              WHERE UPI > :1
-                              ORDER BY UPI
-                          )
-                     WHERE ROWNUM <= :2
-                 )       
+                SELECT *
+                FROM (
+                    SELECT UPI
+                    FROM UNIPARC.PROTEIN
+                    WHERE UPI > :1
+                    ORDER BY UPI
+                )
+                WHERE ROWNUM <= :2
+            )       
             """,
             (upi_from, job_size)
         )
