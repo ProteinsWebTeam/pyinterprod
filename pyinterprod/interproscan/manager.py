@@ -202,8 +202,8 @@ def run(uri: str, work_dir: str, temp_dir: str, lsf_queue: str, **kwargs):
                         # TODO: decide what to do
                         n_completed += 1
 
-                if (n_completed * 100 // n_tasks) >= (progress + step):
-                    logger.info(f"Progress: {progress + step:>3.0}%")
+                if (n_completed * 100 / n_tasks) >= (progress + step):
+                    logger.info(f"Progress: {progress + step:>3}%")
                     progress += step
 
         logger.info("complete")
