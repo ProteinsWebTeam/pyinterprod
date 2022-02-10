@@ -69,8 +69,10 @@ def init_tables(ippro_uri: str, ispro_uri: str, i5_dir: str, others=None):
     )
     hwm = dict(cur.fetchall())
 
-    for table in ("ANALYSIS_JOBS", "ANALYSIS", "ANALYSIS_TABLES"):
-        oracle.drop_table(cur, f"IPRSCAN.{table}", purge=True)
+    oracle.drop_table(cur, "IPRSCAN.ANALYSIS_JOBS", purge=True)
+    oracle.drop_table(cur, "IPRSCAN.ANALYSIS", purge=True)
+    oracle.drop_table(cur, "IPRSCAN.ANALYSIS_TABLES", purge=True)
+    oracle.drop_table(cur, "IPRSCAN.ANALYSIS_ALL_JOBS", purge=True)
 
     cur.execute(
         """
@@ -117,6 +119,19 @@ def init_tables(ippro_uri: str, ispro_uri: str, i5_dir: str, others=None):
             LIM_MEMORY NUMBER(6) DEFAULT NULL,
             CONSTRAINT ANALYSIS_JOBS_PK
                 PRIMARY KEY (ANALYSIS_ID, UPI_FROM, UPI_TO)
+        )
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IPRSCAN.ANALYSIS_ALL_JOBS
+        (
+            UPI_FROM VARCHAR2(13) NOT NULL,
+            UPI_TO VARCHAR2(13) NOT NULL,
+            NUM_SEQUENCES NUMBER(7) NOT NULL,
+            CONSTRAINT ANALYSIS_ALL_JOBS_PK
+                PRIMARY KEY (UPI_FROM, UPI_TO, NUM_SEQUENCES)
         )
         """
     )
@@ -225,10 +240,10 @@ def iter_proteins(uri: str, greather_than: Optional[str] = None):
     """
 
     if greather_than is not None:
-        sql += "WHERE UPI > :upi"
-        params = {"upi": greather_than}
+        sql += "WHERE UPI > :1"
+        params = [greather_than]
     else:
-        params = {}
+        params = []
 
     cur.execute(sql, params)
     yield from cur
@@ -285,45 +300,35 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
         records.clear()
 
     if not top_up:
-        cur.execute(f"GRANT SELECT ON UNIPARC.PROTEIN TO PUBLIC")
+        cur.execute("GRANT SELECT ON UNIPARC.PROTEIN TO PUBLIC")
         cur.execute("CREATE UNIQUE INDEX PK_PROTEIN ON UNIPARC.PROTEIN (UPI)")
 
     cur.close()
     con.close()
 
 
-def prepare_jobs(uri: str, job_size: int = 10000, reset: bool = True,
-                 topup: bool = False):
+def prepare_jobs(uri: str, job_size: int = 10000, topup: bool = False):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
-    if reset:
-        oracle.drop_table(cur, "IPRSCAN.ANALYSIS_ALL_JOBS", purge=True)
-        cur.execute(
-            """
-            CREATE TABLE IPRSCAN.ANALYSIS_ALL_JOBS
-            (
-                UPI_FROM VARCHAR2(13) NOT NULL,
-                UPI_TO VARCHAR2(13) NOT NULL,
-                NUM_SEQUENCES NUMBER(7) NOT NULL,
-                CONSTRAINT ANALYSIS_ALL_JOBS_PK
-                    PRIMARY KEY (UPI_FROM, UPI_TO, NUM_SEQUENCES)
-            )
-            """
-        )
+    cur.execute(
+        """
+        SELECT MAX(UPI_TO) 
+        FROM IPRSCAN.ANALYSIS_ALL_JOBS
+        WHERE NUM_SEQUENCES = :1
+        """,
+        (job_size, )
+    )
+    max_upi, = cur.fetchone()
 
-    if topup:
+    if topup and max_upi:
         cur.execute(
             """
             SELECT MIN(UPI)
             FROM UNIPARC.PROTEIN
-            WHERE UPI > (
-                SELECT MAX(UPI)
-                FROM IPRSCAN.ANALYSIS_ALL_JOBS
-                WHERE NUM_SEQUENCES = :1
-            )
+            WHERE UPI > :1
             """,
-            (job_size,)
+            (max_upi,)
         )
         upi_from, = cur.fetchone()
     else:
@@ -337,8 +342,11 @@ def prepare_jobs(uri: str, job_size: int = 10000, reset: bool = True,
         cur.execute("SELECT MIN(UPI) FROM UNIPARC.PROTEIN")
         upi_from, = cur.fetchone()
 
+    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
+    max_upi, = cur.fetchone()
+
     values = []
-    while True:
+    while upi_from <= max_upi:
         cur.execute(
             """
             SELECT MAX(UPI)
@@ -351,20 +359,16 @@ def prepare_jobs(uri: str, job_size: int = 10000, reset: bool = True,
                     ORDER BY UPI
                 )
                 WHERE ROWNUM <= :2
-            )    
+            )
             """,
             (upi_from, job_size)
         )
         upi_to, = cur.fetchone()
-
-        if upi_from == upi_to:
-            break
-
         values.append((upi_from, upi_to, job_size))
         upi_from = int_to_upi(upi_to_int(upi_to) + 1)
 
     cur.executemany("INSERT INTO IPRSCAN.ANALYSIS_ALL_JOBS "
-                    "VALUES (:1, :2. :3)", values)
+                    "VALUES (:1, :2, :3)", values)
     con.commit()
     cur.close()
     con.close()
