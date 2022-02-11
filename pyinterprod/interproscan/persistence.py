@@ -327,6 +327,12 @@ def panther_matches(uri: str, file: str, analysis_id: int, table: str):
     with open(file, "rt") as fh:
         for line in fh:
             cols = line.rstrip().split('\t')
+
+            try:
+                an_node_id = cols[17].strip()
+            except IndexError:
+                an_node_id = None
+
             values.append({
                 "analysis_id": analysis_id,
                 "analysis_name": cols[0],
@@ -346,7 +352,7 @@ def panther_matches(uri: str, file: str, analysis_id: int, table: str):
                 "hmm_length": int(cols[14]),
                 "env_start": int(cols[15]),
                 "env_end": int(cols[16]),
-                "an_node_id": cols[17]
+                "an_node_id": an_node_id
             })
 
             if len(values) == _COMMIT_SIZE:
