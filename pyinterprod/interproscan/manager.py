@@ -122,6 +122,12 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     configs = {}
     name2id = {}
     for analysis_id, analysis in database.get_analyses(cur).items():
+        name = sanitize_name(analysis["name"])
+        try:
+            name2id[name].append(analysis_id)
+        except KeyError:
+            name2id[name] = [analysis_id]
+
         if to_run and analysis_id not in to_run:
             continue
 
@@ -129,12 +135,6 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
         # Default config
         configs[analysis_id] = base_config.copy()
-
-        name = sanitize_name(analysis["name"])
-        try:
-            name2id[name].append(analysis_id)
-        except KeyError:
-            name2id[name] = [analysis_id]
 
     if not analyses:
         cur.close()
