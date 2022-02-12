@@ -218,41 +218,41 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
         logger.info(f"Tasks submitted: {n_tasks:,}")
 
-        n_completed = 0
-        progress = 0
+        n_completed = n_failed = progress = 0
         step = 5
         retries = {}
-        while n_completed < n_tasks:
+        while (n_completed + n_failed) < n_tasks:
             for task in pool.as_completed(wait=True):
                 upi_from = task.args[1]
                 upi_to = task.args[2]
                 analysis_id = task.args[6]
 
-                # Remove the log file for a previous run of this task
                 logfile = os.path.join(temp_dir, f"{task.name}.log")
-                try:
-                    os.unlink(logfile)
-                except FileNotFoundError:
-                    pass
 
                 # Check how much memory was used
                 max_mem = get_lsf_max_memory(task.stdout)
 
                 if task.completed():
-                    # Success! Flag job as completed in the database
-                    n_completed += 1
+                    # Remove the log file (exists if a previous run failed)
+                    try:
+                        os.unlink(logfile)
+                    except FileNotFoundError:
+                        pass
 
+                    # Flag the job as completed in the database
                     database.update_job(uri, analysis_id, upi_from, upi_to,
                                         task, max_mem)
+
+                    n_completed += 1
                 else:
-                    # Write new log file (with this run's output/error)
-                    with open(logfile, "wt") as fh:
+                    # Write to log file (with this run's output/error)
+                    with open(logfile, "at") as fh:
                         fh.write(task.stdout)
                         fh.write(task.stderr)
 
                     if retries.get(task.name, 0) == max_retries:
                         # Max number of retries reached
-                        n_completed += 1
+                        n_failed += 1
                         continue
                     elif max_mem >= task.scheduler["mem"]:
                         # Increase memory requirement
@@ -263,11 +263,15 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     pool.submit(task)
                     retries[task.name] = retries.get(task.name, 0) + 1
 
-                if (n_completed * 100 / n_tasks) >= (progress + step):
+                pc = (n_completed + n_failed) * 100 / n_tasks
+                if pc >= (progress + step):
                     logger.info(f"Progress: {progress + step:>3}%")
                     progress += step
 
-        logger.info("complete")
+        if n_failed:
+            logger.error(f"{n_failed} task(s) failed")
+        else:
+            logger.info("complete")
 
 
 def export_fasta(uri: str, fasta_file: str, upi_from: str, upi_to: str):
