@@ -240,8 +240,9 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         pass
 
                     # Flag the job as completed in the database
+                    cpu_time = get_lsf_cpu_time(task.stdout)
                     database.update_job(uri, analysis_id, upi_from, upi_to,
-                                        task, max_mem)
+                                        task, max_mem, cpu_time)
 
                     n_completed += 1
                 else:
@@ -357,6 +358,11 @@ def get_lsf_max_memory(stdout: str) -> int:
     match = re.search(r"^\s*Max Memory :\s+(\d+\sMB|-)$", stdout, re.M)
     group = match.group(1)
     return 0 if group == "-" else int(group.split()[0])
+
+
+def get_lsf_cpu_time(stdout: str) -> int:
+    match = re.search(r"^\s*CPU time :\s+(\d+)\.\d+ sec.$", stdout, re.M)
+    return int(match.group(1))
 
 
 def kill_lsf_job(name: str) -> bool:

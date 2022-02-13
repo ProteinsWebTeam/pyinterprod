@@ -117,6 +117,7 @@ def init_tables(ippro_uri: str, ispro_uri: str, i5_dir: str, others=None):
             END_TIME DATE DEFAULT NULL,
             MAX_MEMORY NUMBER(6) DEFAULT NULL,
             LIM_MEMORY NUMBER(6) DEFAULT NULL,
+            CPU_TIME NUMBER(9) DEFAULT NULL,
             CONSTRAINT ANALYSIS_JOBS_PK
                 PRIMARY KEY (ANALYSIS_ID, UPI_FROM, UPI_TO)
         )
@@ -448,7 +449,7 @@ def add_job(cur: cx_Oracle, analysis_id: int, upi_from: str, upi_to: str):
 
 
 def update_job(uri: str, analysis_id: int, upi_from: str, upi_to: str,
-               task: Task, max_mem: int):
+               task: Task, max_mem: int, cpu_time: int):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
     cur.execute(
@@ -458,13 +459,14 @@ def update_job(uri: str, analysis_id: int, upi_from: str, upi_to: str,
             START_TIME = :2,
             END_TIME = :3,
             MAX_MEMORY = :4,
-            LIM_MEMORY = :5
-        WHERE ANALYSIS_ID = :6
-            AND UPI_FROM = :7
-            AND UPI_TO = :8
+            LIM_MEMORY = :5,
+            CPU_TIME = :6
+        WHERE ANALYSIS_ID = :7
+            AND UPI_FROM = :8
+            AND UPI_TO = :9
         """,
         [task.submit_time, task.start_time, task.end_time, max_mem,
-         int(task.scheduler["mem"]), analysis_id, upi_from, upi_to]
+         int(task.scheduler["mem"]), cpu_time, analysis_id, upi_from, upi_to]
     )
     con.commit()
     cur.close()
