@@ -255,10 +255,10 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         # Max number of retries reached
                         n_failed += 1
                         continue
-                    elif max_mem >= task.scheduler["mem"]:
-                        # Increase memory requirement
-                        while task.scheduler["mem"] < max_mem:
-                            task.scheduler["mem"] *= 1.5
+
+                    # Increase memory requirement
+                    while task.scheduler["mem"] < max_mem:
+                        task.scheduler["mem"] *= 1.5
 
                     # Resubmit task
                     pool.submit(task)
