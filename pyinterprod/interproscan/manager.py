@@ -317,7 +317,7 @@ def run_i5(i5_dir: str, fasta_file: str, analysis_name: str, output: str,
     ]
 
     process = subprocess.run(args, timeout=timeout)
-    return process.returncode == 0 and os.path.isfile(output)
+    return process.returncode == 0
 
 
 def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
@@ -340,10 +340,11 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
 
         if not run_i5(i5_dir, fasta_file, appl, matches_output,
                       timeout=timeout):
-            raise RuntimeError()
-
-        if site_table and not os.path.isfile(sites_output):
-            raise RuntimeError()
+            raise RuntimeError("InterProScan error")
+        elif not os.path.isfile(matches_output):
+            raise RuntimeError(f"Cannot access output matches tsv-pro")
+        elif site_table and not os.path.isfile(sites_output):
+            raise RuntimeError(f"Cannot access output sites tsv-pro")
 
         parse_matches(uri, matches_output, analysis_id, match_table)
         if site_table:
