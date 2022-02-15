@@ -365,7 +365,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
     for entry_acc, descs_then in entries_then.items():
         changes[entry_acc] = ([], descs_then)
 
-    # Write entries with changes (two different files: families/others)
+    # Write entries with changes (by entry type: families, domains, others)
     tmpdir = mkdtemp()
     files = {}
     header = ("Accession\tLink\tName\tChecked\t# Lost\t# Gained"
