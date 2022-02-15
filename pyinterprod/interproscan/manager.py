@@ -108,6 +108,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         "timeout": kwargs.get("timeout")
     }
     custom_configs = kwargs.get("config", {})
+    infinite_mem = kwargs.get("infinite_mem", False)
     max_retries = kwargs.get("max_retries", 0)
     max_running_jobs = kwargs.get("max_running_jobs", 1000)
     max_jobs_per_analysis = kwargs.get("max_jobs_per_analysis", 0)
@@ -256,13 +257,23 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         n_failed += 1
                         continue
 
+                    # Did the job reached the memory usage limit?
+                    mem_ok = max_mem < task.scheduler["mem"]
+
                     # Increase memory requirement
                     while task.scheduler["mem"] < max_mem:
                         task.scheduler["mem"] *= 1.5
 
                     # Resubmit task
                     pool.submit(task)
-                    retries[task.name] = retries.get(task.name, 0) + 1
+
+                    if mem_ok or not infinite_mem:
+                        """
+                        Increase the number of attempts if either:
+                          - this failure is not memory-related
+                          - we don't allow "infinite" memory
+                        """
+                        retries[task.name] = retries.get(task.name, 0) + 1
 
                 pc = (n_completed + n_failed) * 100 / n_tasks
                 if pc >= (progress + step):
