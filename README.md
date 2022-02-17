@@ -32,6 +32,7 @@ Both files can be renamed. `main.conf` is passed as an command line argument, an
 - **oracle**
     - **interpro**: connection string for the `interpro` user in the InterPro database
     - **iprscan**: connection string for the `iprscan` user in the InterPro database
+    - **interproscan**: connection string for the `iprscan` user in the InterProScan database
     - **uniparc**: connection string for the `uniparc` user in the InterPro database
     - **goapro**: connection string for the GOA database
     - **swpread**: connection string for the Swiss-Prot database
@@ -56,11 +57,12 @@ Both files can be renamed. `main.conf` is passed as an command line argument, an
     - **unirule**: email address of the UniRule team (curators from EMBL-EBI, SIB, and PIR)
     - **sib**: email address of the Swiss-Prot team
 - **misc**:
+    - **lsf_queue**: name of the LSF queue to submit jobs to
     - **members**: path to the `members.conf`
     - **pronto_url**: URL of the Pronto curation application
     - **data_dir**: directory where to store staging files
-    - **lsf_queue**: name of the LSF queue to submit jobs to
-    - **workflow_dir**: directory for temporary files (e.g. job input/output)
+    - **temp_dir**: directory for temporary files (e.g. job input/output)
+    - **work_dir**: directory where to run InterProScan match calculations
     
 ### members.conf
 
