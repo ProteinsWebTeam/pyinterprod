@@ -92,7 +92,7 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
 def check_ispro():
     parser = ArgumentParser(description="Check matches/sites status in ISPRO")
     parser.add_argument("config",
-                        metavar="config.ini",
+                        metavar="main.conf",
                         help="configuration file")
     parser.add_argument("-t", "--type",
                         default="matches",
@@ -120,7 +120,7 @@ def run_clan_update():
     parser = ArgumentParser(description="Update clans and run "
                                         "profile-profile alignments")
     parser.add_argument("config",
-                        metavar="config.ini",
+                        metavar="main.conf",
                         help="global configuration file")
     parser.add_argument("databases",
                         metavar="DATABASE",
@@ -180,7 +180,7 @@ def run_clan_update():
 def run_hmm_update():
     parser = ArgumentParser(description="Update HMMs")
     parser.add_argument("config",
-                        metavar="config.ini",
+                        metavar="main.conf",
                         help="global configuration file")
     parser.add_argument("databases",
                         metavar="DATABASE",
@@ -218,7 +218,7 @@ def run_hmm_update():
 def run_member_db_update():
     parser = ArgumentParser(description="InterPro member database update")
     parser.add_argument("config",
-                        metavar="config.ini",
+                        metavar="main.conf",
                         help="global configuration file")
     parser.add_argument("databases",
                         metavar="DATABASE",
@@ -453,7 +453,7 @@ def run_member_db_update():
 def run_pronto_update():
     parser = ArgumentParser(description="InterPro Pronto update")
     parser.add_argument("config",
-                        metavar="config.ini",
+                        metavar="main.conf",
                         help="configuration file")
     parser.add_argument("-t", "--tasks",
                         nargs="*",
@@ -501,7 +501,7 @@ def run_pronto_update():
 def run_uniprot_update():
     parser = ArgumentParser(description="InterPro protein update")
     parser.add_argument("config",
-                        metavar="config.ini",
+                        metavar="main.conf",
                         help="configuration file")
     parser.add_argument("-t", "--tasks",
                         nargs="*",
@@ -750,7 +750,7 @@ def run_uniprot_update():
 
 def update_database():
     parser = ArgumentParser(description="InterPro pre-member database update")
-    parser.add_argument("config", metavar="config.ini",
+    parser.add_argument("config", metavar="main.conf",
                         help="Configuration file.")
     parser.add_argument("-n", "--name", required=True,
                         help="Name of member database.")
@@ -779,7 +779,7 @@ def update_database():
 
 def run_interproscan_manager():
     parser = ArgumentParser(description="InterProScan matches calculation")
-    parser.add_argument("config", metavar="config.ini",
+    parser.add_argument("config", metavar="main.conf",
                         help="Configuration file.")
     parser.add_argument("-a", "--analyses", nargs="*", default=[], type=int,
                         help="ID of analyses to run")
