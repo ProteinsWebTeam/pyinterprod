@@ -7,7 +7,7 @@ from typing import List
 from mundone import Task, Workflow
 
 from pyinterprod import __version__
-from pyinterprod import interpro, pronto, uniprot
+from pyinterprod import interpro, interproscan, pronto, uniprot
 from pyinterprod.interpro.clan import update_cdd_clans, update_hmm_clans
 
 
@@ -268,7 +268,7 @@ def run_member_db_update():
     pronto_url = config["misc"]["pronto_url"]
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
-    workflow_dir = config["misc"]["workflow_dir"]
+    temp_dir = config["misc"]["temp_dir"]
 
     databases = interpro.database.get_databases(url=ora_interpro_url,
                                                 names=db_names,
@@ -442,8 +442,8 @@ def run_member_db_update():
     for db in sorted(databases.values(), key=lambda k: k.name.lower()):
         versions.append(f"{db.name.lower().replace(' ', '')}{db.version}")
 
-    database = os.path.join(workflow_dir, f"{'_'.join(versions)}.sqlite")
-    with Workflow(tasks, dir=workflow_dir, database=database) as wf:
+    database = os.path.join(temp_dir, f"{'_'.join(versions)}.sqlite")
+    with Workflow(tasks, dir=temp_dir, database=database) as wf:
         if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
             sys.exit(0)
         else:
@@ -485,13 +485,13 @@ def run_pronto_update():
     uniprot_version = config["uniprot"]["version"]
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
-    workflow_dir = config["misc"]["workflow_dir"]
+    temp_dir = config["misc"]["temp_dir"]
 
     tasks = get_pronto_tasks(ora_interpro_url, ora_swpread_url, ora_goa_url,
                              pg_url, data_dir, lsf_queue)
 
-    database = os.path.join(workflow_dir, f"{uniprot_version}.pronto.sqlite")
-    with Workflow(tasks, dir=workflow_dir, database=database) as wf:
+    database = os.path.join(temp_dir, f"{uniprot_version}.pronto.sqlite")
+    with Workflow(tasks, dir=temp_dir, database=database) as wf:
         if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
             sys.exit(0)
         else:
@@ -542,7 +542,7 @@ def run_uniprot_update():
     pronto_url = config["misc"]["pronto_url"]
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
-    workflow_dir = config["misc"]["workflow_dir"]
+    temp_dir = config["misc"]["temp_dir"]
 
     tasks = [
         # Data from UAREAD
@@ -740,8 +740,8 @@ def run_uniprot_update():
         ),
     ]
 
-    database = os.path.join(workflow_dir, f"{uniprot_version}.sqlite")
-    with Workflow(tasks, dir=workflow_dir, database=database) as wf:
+    database = os.path.join(temp_dir, f"{uniprot_version}.sqlite")
+    with Workflow(tasks, dir=temp_dir, database=database) as wf:
         if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
             sys.exit(0)
         else:
@@ -775,3 +775,75 @@ def update_database():
                                       version=args.version,
                                       date=args.date,
                                       confirm=args.confirm)
+
+
+def run_interproscan_manager():
+    parser = ArgumentParser(description="InterProScan matches calculation")
+    parser.add_argument("config", metavar="config.ini",
+                        help="Configuration file.")
+    parser.add_argument("-a", "--analyses", nargs="*", default=[], type=int,
+                        help="ID of analyses to run")
+    parser.add_argument("-e", "--exclude", nargs="*", default=[], type=int,
+                        help="ID of analyses to exclude")
+    parser.add_argument("-t", "--threads", type=int, default=8,
+                        help="number of job monitoring threads (default: 8)")
+    parser.add_argument("--run-jobs", type=int, default=1000,
+                        help="maximum number of concurrent running jobs "
+                             "(default: 1000)")
+    parser.add_argument("--max-jobs", type=int, default=-1,
+                        help="maximum number of job to run per analysis "
+                             "(default: off)")
+    parser.add_argument("--uniparc", action="store_true", default=False,
+                        help="import proteins from UniParc database "
+                             "(default: off)")
+    parser.add_argument("--pre-jobs", nargs="*", type=int, default=[],
+                        help="prepare fixed-size jobs of the passed number "
+                             "of sequences (disabled: off)")
+    parser.add_argument("--top-up", action="store_true", default=False,
+                        help="if used with --uniparc: only import proteins "
+                             "not already in the InterProScan database; if "
+                             "used with --pre-jobs: only prepare jobs not "
+                             "already in the database (default: off)")
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': no such file or directory")
+
+    config = ConfigParser()
+    config.read(args.config)
+
+    if not os.path.isfile(config["misc"]["analyses"]):
+        parser.error(f"cannot open '{config['misc']['members']}': "
+                     f"no such file or directory")
+
+    analyses_config = ConfigParser()
+    analyses_config.read(config["misc"]["analyses"])
+
+    analyses_configs = {k: dict(analyses_config.items(k))
+                        for k in analyses_config.sections()}
+
+    interproscan_uri = config["oracle"]["interproscan"]
+    uniparc_uri = config["oracle"]["uaread"]
+
+    if args.uniparc:
+        interproscan.database.import_uniparc(ispro_uri=interproscan_uri,
+                                             uniparc_uri=uniparc_uri,
+                                             top_up=args.top_up)
+
+    for job_size in args.pre_jobs:
+        interproscan.database.prepare_jobs(uri=interproscan_uri,
+                                           job_size=job_size,
+                                           top_up=args.top_up)
+
+    interproscan.manager.run(uri=interproscan_uri,
+                             work_dir=config["misc"]["work_dir"],
+                             temp_dir=config["misc"]["temp_dir"],
+                             lsf_queue=config["misc"]["lsf_queue"],
+                             config=analyses_configs,
+                             infinite_mem=True,
+                             max_retries=4,
+                             max_running_jobs=args.run_jobs,
+                             max_jobs_per_analysis=args.max_jobs,
+                             pool_threads=args.threads,
+                             analyses=args.analyses,
+                             exclude=args.exclude)
