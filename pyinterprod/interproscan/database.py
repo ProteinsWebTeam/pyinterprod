@@ -308,7 +308,7 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
     con.close()
 
 
-def prepare_jobs(uri: str, job_size: int = 10000, topup: bool = False):
+def prepare_jobs(uri: str, job_size: int = 10000, top_up: bool = False):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
@@ -322,7 +322,7 @@ def prepare_jobs(uri: str, job_size: int = 10000, topup: bool = False):
     )
     max_upi, = cur.fetchone()
 
-    if topup and max_upi:
+    if top_up and max_upi:
         cur.execute(
             """
             SELECT MIN(UPI)
