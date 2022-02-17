@@ -32,8 +32,8 @@ Both files can be renamed. `main.conf` is passed as an command line argument, an
 - **oracle**
     - **interpro**: connection string for the `interpro` user in the InterPro database
     - **iprscan**: connection string for the `iprscan` user in the InterPro database
-    - **interproscan**: connection string for the `iprscan` user in the InterProScan database
     - **uniparc**: connection string for the `uniparc` user in the InterPro database
+    - **interproscan**: connection string for the `iprscan` user in the InterProScan database
     - **goapro**: connection string for the GOA database
     - **swpread**: connection string for the Swiss-Prot database
     - **uaread**: connection string for the UniParc database
