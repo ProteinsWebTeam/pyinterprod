@@ -91,12 +91,15 @@ class TaskFactory:
                 self.parse_sites
             ),
             kwargs=dict(timeout=self.config["timeout"]),
-            name=f"IPM_{name}",
+            name=self.make_name(upi_from, upi_to),
             scheduler=dict(cpu=self.config["job_cpu"],
                            mem=self.config["job_mem"],
                            queue=self.config["lsf_queue"]),
             random_suffix=False
         )
+
+    def make_name(self, upi_from: str, upi_to: str) -> str:
+        return f"IPM_{self.appl}_{self.version}_{upi_from}_{upi_to}"
 
 
 def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
@@ -165,17 +168,6 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             max_upi = analysis["max_upi"]
             appl, parse_matches, parse_sites = _DB_TO_I5[name]
 
-            to_restart = incomplete_jobs.get(analysis_id, [])
-            killed_jobs = 0
-
-            for upi_from, upi_to in to_restart:
-                job_name = f"IPM_{appl}_{version}_{upi_from}_{upi_to}"
-                if kill_lsf_job(job_name):
-                    killed_jobs += 1
-
-            if killed_jobs:
-                time.sleep(5)
-
             config = configs[analysis_id]
             factory = TaskFactory(uri=uri, i5_dir=analysis["i5_dir"],
                                   appl=appl, version=version,
@@ -185,6 +177,17 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                                   parse_matches=parse_matches,
                                   site_table=analysis["tables"]["sites"],
                                   parse_sites=parse_sites)
+
+            to_restart = incomplete_jobs.get(analysis_id, [])
+            killed_jobs = 0
+
+            for upi_from, upi_to in to_restart:
+                job_name = factory.make_name(upi_from, upi_to)
+                if kill_lsf_job(job_name):
+                    killed_jobs += 1
+
+            if killed_jobs:
+                time.sleep(5)
 
             n_tasks_analysis = 0
             for upi_from, upi_to in to_restart:
@@ -378,7 +381,7 @@ def get_lsf_cpu_time(stdout: str) -> int:
 
 
 def kill_lsf_job(name: str) -> bool:
-    process = subprocess.run(["bkill", "-J", name],
+    process = subprocess.run(["bkill", "-r", "-J", name],
                              stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL)
     return process.returncode == 0
