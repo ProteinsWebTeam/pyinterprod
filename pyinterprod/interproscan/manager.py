@@ -114,7 +114,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     infinite_mem = kwargs.get("infinite_mem", False)
     max_retries = kwargs.get("max_retries", 0)
     max_running_jobs = kwargs.get("max_running_jobs", 1000)
-    max_jobs_per_analysis = kwargs.get("max_jobs_per_analysis", 0)
+    max_jobs_per_analysis = kwargs.get("max_jobs_per_analysis", -1)
     pool_threads = kwargs.get("pool_threads", 4)
     to_run = kwargs.get("analyses", [])
     to_exclude = kwargs.get("exclude", [])
@@ -194,28 +194,27 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
             n_tasks_analysis = 0
             for upi_from, upi_to in to_restart:
+                if n_tasks_analysis == max_jobs_per_analysis:
+                    break
+
                 pool.submit(factory.make(upi_from, upi_to))
                 n_tasks += 1
                 n_tasks_analysis += 1
 
-                if n_tasks_analysis == max_jobs_per_analysis:
-                    break
-
-            if (max_jobs_per_analysis
-                    and n_tasks_analysis == max_jobs_per_analysis):
+            if n_tasks_analysis == max_jobs_per_analysis:
                 logger.debug(f"{name} {version}: "
                              f"{n_tasks_analysis} tasks submitted")
                 continue
 
             for upi_from, upi_to in database.get_jobs(cur, config["job_size"],
                                                       max_upi):
+                if n_tasks_analysis == max_jobs_per_analysis:
+                    break
+
                 pool.submit(factory.make(upi_from, upi_to))
                 database.add_job(cur, analysis_id, upi_from, upi_to)
                 n_tasks += 1
                 n_tasks_analysis += 1
-
-                if n_tasks_analysis == max_jobs_per_analysis:
-                    break
 
             logger.debug(f"{name} {version}: "
                          f"{n_tasks_analysis} tasks submitted")
