@@ -819,8 +819,12 @@ def run_interproscan_manager():
     analyses_config = ConfigParser()
     analyses_config.read(config["misc"]["analyses"])
 
-    analyses_configs = {k: dict(analyses_config.items(k))
-                        for k in analyses_config.sections()}
+    analyses_configs = {}
+    for analysis in analyses_config.sections():
+        analyses_configs[analysis] = {}
+
+        for option, value in analyses_config.items(analysis):
+            analyses_configs[analysis][option] = int(value)
 
     interproscan_uri = config["oracle"]["interproscan"]
     uniparc_uri = config["oracle"]["uaread"]
