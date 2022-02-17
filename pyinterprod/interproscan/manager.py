@@ -117,6 +117,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     max_jobs_per_analysis = kwargs.get("max_jobs_per_analysis", 0)
     pool_threads = kwargs.get("pool_threads", 4)
     to_run = kwargs.get("analyses", [])
+    to_exclude = kwargs.get("exclude", [])
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
@@ -133,6 +134,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             name2id[name] = [analysis_id]
 
         if to_run and analysis_id not in to_run:
+            continue
+        elif analysis_id in to_exclude:
             continue
 
         analyses[analysis_id] = analysis
