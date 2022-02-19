@@ -229,15 +229,27 @@ def clean_tables(uri: str):
                 actions.append((f"ALTER TABLE {table} "
                                 f"DROP PARTITION {p['name']}", []))
             elif max_upi:
-                # Delete jobs after the max UPI
-                print(f"  - {name} {version}: delete jobs > {max_upi}")
-                actions.append((
+                cur.execute(
                     """
-                    DELETE FROM IPRSCAN.ANALYSIS_JOBS
+                    SELECT COUNT(*) 
+                    FROM IPRSCAN.ANALYSIS_JOBS 
                     WHERE ANALYSIS_ID = :1
-                    AND UPI_FROM > :2
+                      AND UPI_FROM > :2
                     """,
-                    [analysis_id, max_upi]))
+                    [analysis_id, max_upi]
+                )
+                cnt, = cur.fetchone()
+
+                if cnt > 0:
+                    # Delete jobs after the max UPI
+                    print(f"  - {name} {version}: delete jobs > {max_upi}")
+                    actions.append((
+                        """
+                        DELETE FROM IPRSCAN.ANALYSIS_JOBS
+                        WHERE ANALYSIS_ID = :1
+                        AND UPI_FROM > :2
+                        """,
+                        [analysis_id, max_upi]))
             else:
                 # No max UPI: remove data
                 print(f"  - {name} {version}: reset jobs and persisted data")
@@ -246,7 +258,7 @@ def clean_tables(uri: str):
                 actions.append((f"DELETE FROM IPRSCAN.ANALYSIS_JOBS "
                                 f"WHERE ANALYSIS_ID = :1", [analysis_id]))
 
-    if input("Proceed? [y/N]").lower().strip() == "y":
+    if input("Proceed? [y/N] ").lower().strip() == "y":
         for sql, params in actions:
             cur.execute(sql, params)
 
