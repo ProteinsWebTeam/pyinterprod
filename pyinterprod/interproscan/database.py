@@ -210,20 +210,49 @@ def clean_tables(uri: str):
             except KeyError:
                 table2analyses[table] = {analysis_id}
 
+    print("The following actions will be performed:")
+    actions = []
     for table in table2analyses:
         for p in oracle.get_partitions(cur, "IPRSCAN", table.upper()):
             if p["value"] == "DEFAULT":
                 continue
 
             analysis_id = int(p["value"])
+            analysis = analyses[analysis_id]
+            name = analysis["name"]
+            version = analysis["version"]
+            max_upi = analysis["max_upi"]
+
             if analysis_id not in table2analyses[table]:
                 # Obsolete analysis: remove data
-                cur.execute(f"ALTER TABLE {table} "
-                            f"DROP PARTITION {p['name']}")
-            elif not analyses[analysis_id]["max_upi"]:
+                print(f"  - {name} {version}: delete persisted data")
+                actions.append((f"ALTER TABLE {table} "
+                                f"DROP PARTITION {p['name']}", []))
+            elif max_upi:
+                # Delete jobs after the max UPI
+                print(f"  - {name} {version}: delete jobs > {max_upi}")
+                actions.append((
+                    """
+                    DELETE FROM IPRSCAN.ANALYSIS_JOBS
+                    WHERE ANALYSIS_ID = :1
+                    AND UPI_FROM > :2
+                    """,
+                    [analysis_id, max_upi]))
+            else:
                 # No max UPI: remove data
-                cur.execute(f"ALTER TABLE {table} "
-                            f"TRUNCATE PARTITION {p['name']}")
+                print(f"  - {name} {version}: reset jobs and persisted data")
+                actions.append((f"ALTER TABLE {table} "
+                                f"TRUNCATE PARTITION {p['name']}", []))
+                actions.append((f"DELETE FROM IPRSCAN.ANALYSIS_JOBS "
+                                f"WHERE ANALYSIS_ID = :1", [analysis_id]))
+
+    if input("Proceed? [y/N]").lower().strip() == "y":
+        for sql, params in actions:
+            cur.execute(sql, params)
+
+        con.commit()
+    else:
+        print("Canceled")
 
     cur.close()
     con.close()
