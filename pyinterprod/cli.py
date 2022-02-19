@@ -351,7 +351,7 @@ def run_member_db_update():
             ),
             Task(
                 fn=interpro.match.update_database_matches,
-                args=(ora_interpro_url, databases),
+                args=(ora_interpro_url, mem_updates),
                 name="update-matches",
                 scheduler=dict(queue=lsf_queue),
                 requires=["import-matches", "update-signatures"]
