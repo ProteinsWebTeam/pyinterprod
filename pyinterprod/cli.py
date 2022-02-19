@@ -793,6 +793,8 @@ def run_interproscan_manager():
     parser.add_argument("--max-jobs", type=int, default=-1,
                         help="maximum number of job to run per analysis "
                              "(default: off)")
+    parser.add_argument("--clean", action="store_true", default=False,
+                        help="delete obsolete data (defaulf: off)")
     parser.add_argument("--uniparc", action="store_true", default=False,
                         help="import proteins from UniParc database "
                              "(default: off)")
@@ -816,16 +818,6 @@ def run_interproscan_manager():
         parser.error(f"cannot open '{config['misc']['members']}': "
                      f"no such file or directory")
 
-    analyses_config = ConfigParser()
-    analyses_config.read(config["misc"]["analyses"])
-
-    analyses_configs = {}
-    for analysis in analyses_config.sections():
-        analyses_configs[analysis] = {}
-
-        for option, value in analyses_config.items(analysis):
-            analyses_configs[analysis][option] = int(value)
-
     interproscan_uri = config["oracle"]["interproscan"]
     uniparc_uri = config["oracle"]["uaread"]
 
@@ -838,6 +830,19 @@ def run_interproscan_manager():
         interproscan.database.prepare_jobs(uri=interproscan_uri,
                                            job_size=job_size,
                                            top_up=args.top_up)
+
+    if args.clean:
+        interproscan.database.clean_tables(interproscan_uri)
+
+    analyses_config = ConfigParser()
+    analyses_config.read(config["misc"]["analyses"])
+
+    analyses_configs = {}
+    for analysis in analyses_config.sections():
+        analyses_configs[analysis] = {}
+
+        for option, value in analyses_config.items(analysis):
+            analyses_configs[analysis][option] = int(value)
 
     interproscan.manager.run(uri=interproscan_uri,
                              work_dir=config["misc"]["work_dir"],
