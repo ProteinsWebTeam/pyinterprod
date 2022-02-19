@@ -197,7 +197,7 @@ def update_database_matches(url: str, databases: Sequence):
         )
         oracle.drop_table(cur, "INTERPRO.MATCH_NEW", purge=True)
 
-        logger.info("\tgathering statistics")
+        logger.debug("\tgathering statistics")
         oracle.gather_stats(cur, "INTERPRO", "MATCH", partition)
 
     for index in oracle.get_indexes(cur, "INTERPRO", "MATCH"):
