@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import os
 import sys
 from argparse import ArgumentParser
@@ -8,8 +6,8 @@ from typing import List
 
 from mundone import Task, Workflow
 
-from pyinterprod import __version__, iprscan
-from pyinterprod import interpro, pronto, uniparc, uniprot
+from pyinterprod import __version__
+from pyinterprod import interpro, interproscan, pronto, uniprot
 from pyinterprod.interpro.clan import update_cdd_clans, update_hmm_clans
 
 
@@ -42,7 +40,7 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
             fn=pronto.protein.import_protein_names,
             args=(ora_swp_url, pg_ipr_url,
                   os.path.join(data_dir, "names.sqlite")),
-            kwargs=dict(tmpdir="/tmp/"),
+            kwargs=dict(tmpdir="/tmp"),
             name="proteins-names",
             scheduler=dict(mem=8000, tmp=30000, queue=lsf_queue),
         ),
@@ -58,17 +56,17 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
             fn=pronto.match.import_matches,
             args=(ora_ipr_url, pg_ipr_url,
                   os.path.join(data_dir, "allseqs.dat")),
-            kwargs=dict(tmpdir="/tmp/"),
+            kwargs=dict(tmpdir="/tmp"),
             name="matches",
             scheduler=dict(mem=10000, tmp=20000, queue=lsf_queue),
             requires=["databases"]
         ),
         Task(
-            fn=pronto.match.proc_comp_seq_matches,
+            fn=pronto.match.create_signature2protein,
             args=(ora_ipr_url, pg_ipr_url,
                   os.path.join(data_dir, "names.sqlite"),
                   os.path.join(data_dir, "compseqs.dat")),
-            kwargs=dict(tmpdir="/tmp/", processes=8),
+            kwargs=dict(tmpdir="/tmp", processes=8),
             name="signature2proteins",
             scheduler=dict(cpu=8, mem=16000, tmp=30000, queue=lsf_queue),
             requires=["proteins-names"]
@@ -94,7 +92,7 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
 def check_ispro():
     parser = ArgumentParser(description="Check matches/sites status in ISPRO")
     parser.add_argument("config",
-                        metavar="config.ini",
+                        metavar="main.conf",
                         help="configuration file")
     parser.add_argument("-t", "--type",
                         default="matches",
@@ -115,14 +113,14 @@ def check_ispro():
     config.read(args.config)
 
     ora_iprscan_url = config["oracle"]["iprscan"]
-    iprscan.check_ispro(ora_iprscan_url, args.type, args.status)
+    interpro.iprscan.check_ispro(ora_iprscan_url, args.type, args.status)
 
 
 def run_clan_update():
     parser = ArgumentParser(description="Update clans and run "
                                         "profile-profile alignments")
     parser.add_argument("config",
-                        metavar="config.ini",
+                        metavar="main.conf",
                         help="global configuration file")
     parser.add_argument("databases",
                         metavar="DATABASE",
@@ -182,7 +180,7 @@ def run_clan_update():
 def run_hmm_update():
     parser = ArgumentParser(description="Update HMMs")
     parser.add_argument("config",
-                        metavar="config.ini",
+                        metavar="main.conf",
                         help="global configuration file")
     parser.add_argument("databases",
                         metavar="DATABASE",
@@ -217,154 +215,10 @@ def run_hmm_update():
         interpro.hmm.update(ora_interpro_url, database, hmmfile, mapfile)
 
 
-def run_match_update():
-    parser = ArgumentParser(description="InterPro match/site update")
-    parser.add_argument("config",
-                        metavar="config.ini",
-                        help="configuration file")
-    parser.add_argument("databases",
-                        metavar="DATABASE",
-                        nargs="+",
-                        help="databases to update")
-    parser.add_argument("-t", "--tasks",
-                        nargs="*",
-                        default=None,
-                        metavar="TASK",
-                        help="tasks to run")
-    parser.add_argument("--dry-run",
-                        action="store_true",
-                        default=False,
-                        help="list tasks to run and exit")
-    parser.add_argument("--detach",
-                        action="store_true",
-                        help="enqueue tasks to run and exit")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
-    args = parser.parse_args()
-
-    if not os.path.isfile(args.config):
-        parser.error(f"cannot open '{args.config}': "
-                     f"no such file or directory")
-
-    config = ConfigParser()
-    config.read(args.config)
-
-    ora_interpro_url = config["oracle"]["interpro"]
-    ora_iprscan_url = config["oracle"]["iprscan"]
-    pg_url = config["postgresql"]["pronto"]
-    uniprot_version = config["uniprot"]["version"]
-    data_dir = config["misc"]["data_dir"]
-    lsf_queue = config["misc"]["lsf_queue"]
-    workflow_dir = config["misc"]["workflow_dir"]
-
-    db_names = list(set(args.databases))
-    databases = interpro.database.get_databases(ora_interpro_url, db_names)
-    member_dbs = []
-    feature_dbs = []
-    site_dbs = []
-    for db in databases.values():
-        if db.is_member_db:
-            member_dbs.append(db)
-        elif db.is_feature_db:
-            feature_dbs.append(db)
-
-        if db.has_site_matches:
-            site_dbs.append(db)
-
-    if member_dbs or feature_dbs:
-        tasks = [
-            Task(
-                fn=iprscan.import_matches,
-                args=(ora_iprscan_url,),
-                kwargs=dict(databases=member_dbs+feature_dbs,
-                            force_import=True, threads=8),
-                name="import-matches",
-                scheduler=dict(queue=lsf_queue)
-            )
-        ]
-    else:
-        tasks = []
-
-    if member_dbs:
-        tasks += [
-            Task(
-                fn=interpro.signature.track_signature_changes,
-                args=(ora_interpro_url, pg_url, member_dbs, data_dir),
-                name="track-changes",
-                scheduler=dict(mem=4000, queue=lsf_queue),
-            ),
-            Task(
-                fn=interpro.match.update_database_matches,
-                args=(ora_interpro_url, member_dbs),
-                name="update-matches",
-                scheduler=dict(queue=lsf_queue),
-                requires=["import-matches", "track-changes"]
-            ),
-            Task(
-                fn=interpro.match.update_variant_matches,
-                args=(ora_interpro_url,),
-                name="update-varsplic",
-                scheduler=dict(queue=lsf_queue),
-                requires=["import-matches"]
-            )
-        ]
-
-    if feature_dbs:
-        tasks.append(Task(
-            fn=interpro.match.update_database_feature_matches,
-            args=(ora_interpro_url, feature_dbs),
-            name="update-fmatches",
-            scheduler=dict(queue=lsf_queue),
-            requires=["import-matches"]
-        ))
-
-    if site_dbs:
-        if member_dbs:
-            requires = ["import-sites", "update-matches"]
-        else:
-            requires = ["import-sites"]
-
-        tasks += [
-            Task(
-                fn=iprscan.import_sites,
-                args=(ora_iprscan_url,),
-                kwargs=dict(databases=site_dbs, force_import=True,
-                            threads=2),
-                name="import-sites",
-                scheduler=dict(queue=lsf_queue)
-            ),
-            Task(
-                fn=interpro.match.update_database_site_matches,
-                args=(ora_interpro_url, site_dbs),
-                name="update-sites",
-                scheduler=dict(queue=lsf_queue),
-                requires=requires
-            )
-        ]
-
-    # Base Mundone database on UniProt version and on the name/version
-    # of updated member databases
-    databases = set()
-    for db in member_dbs + feature_dbs + site_dbs:
-        databases.add((db.name.lower().replace(' ', ''), db.version))
-
-    versions = [uniprot_version]
-    for name, version in sorted(databases):
-        versions.append(f"{name}{version}")
-
-    database = os.path.join(workflow_dir, f"{'.'.join(versions)}.sqlite")
-    with Workflow(tasks, dir=workflow_dir, database=database) as wf:
-        if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
-            sys.exit(0)
-        else:
-            sys.exit(1)
-
-
 def run_member_db_update():
     parser = ArgumentParser(description="InterPro member database update")
     parser.add_argument("config",
-                        metavar="config.ini",
+                        metavar="main.conf",
                         help="global configuration file")
     parser.add_argument("databases",
                         metavar="DATABASE",
@@ -414,142 +268,182 @@ def run_member_db_update():
     pronto_url = config["misc"]["pronto_url"]
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
-    workflow_dir = config["misc"]["workflow_dir"]
+    temp_dir = config["misc"]["temp_dir"]
 
     databases = interpro.database.get_databases(url=ora_interpro_url,
                                                 names=db_names,
                                                 expects_new=True)
-    updates = []
+    mem_updates = []
+    non_mem_updates = []
+    site_updates = []
+    sources = {}
     for dbname, db in databases.items():
-        try:
-            props = options[dbname]
-        except KeyError:
-            parser.error(f"{config['misc']['members']}: "
-                         f"missing database '{dbname}'")
+        if db.is_member_db or db.is_feature_db:
+            # We need a source for signatures
+            try:
+                props = options[dbname]
+            except KeyError:
+                parser.error(f"{config['misc']['members']}: "
+                             f"missing database '{dbname}'")
 
-        try:
-            sig_source = props["signatures"]
-        except KeyError:
-            sig_source = None
+            try:
+                sig_source = props["signatures"]
+            except KeyError:
+                sig_source = None
 
-        if sig_source:
-            updates.append((db, sig_source))
-        else:
-            parser.error(f"{config['misc']['members']}: "
-                         f"'signatures' property missing "
-                         f"or empty for database '{dbname}'")
+            if not sig_source:
+                parser.error(f"{config['misc']['members']}: "
+                             f"'signatures' property missing "
+                             f"or empty for database '{dbname}'")
+            elif db.is_member_db:
+                mem_updates.append(db)
+                sources[db.identifier] = sig_source
+            elif db.is_feature_db:
+                non_mem_updates.append(db)
+                sources[db.identifier] = sig_source
 
-    databases = list(databases.values())
+        if db.has_site_matches:
+            site_updates.append(db)
 
-    if not os.path.isdir(data_dir):
-        os.makedirs(data_dir)
+    if not mem_updates and not non_mem_updates and not site_updates:
+        parser.error("No database to update")
 
     tasks = [
         Task(
-            fn=interpro.signature.add_staging,
-            args=(ora_interpro_url, updates),
-            name="load-signatures",
-            scheduler=dict(queue=lsf_queue)
-        ),
-        Task(
-            fn=interpro.signature.track_signature_changes,
-            args=(ora_interpro_url, pg_url, databases, data_dir),
-            name="track-changes",
-            scheduler=dict(mem=4000, queue=lsf_queue),
-            requires=["load-signatures"]
-        ),
-        Task(
-            fn=interpro.signature.delete_obsoletes,
-            args=(ora_interpro_url, databases),
-            name="delete-obsoletes",
-            scheduler=dict(queue=lsf_queue),
-            requires=["track-changes"]
-        ),
-        Task(
-            fn=interpro.signature.update_signatures,
-            args=(ora_interpro_url,),
-            name="update-signatures",
-            scheduler=dict(queue=lsf_queue),
-            requires=["delete-obsoletes"]
-        ),
-        Task(
-            fn=iprscan.import_matches,
+            fn=interpro.iprscan.import_matches,
             args=(ora_iprscan_url,),
-            kwargs=dict(databases=databases, force_import=True, threads=8),
+            kwargs=dict(databases=mem_updates + non_mem_updates + site_updates,
+                        force_import=True, threads=8),
             name="import-matches",
             scheduler=dict(queue=lsf_queue)
-        ),
-        Task(
-            fn=interpro.match.update_database_matches,
-            args=(ora_interpro_url, databases),
-            name="update-matches",
-            scheduler=dict(queue=lsf_queue),
-            requires=["import-matches", "update-signatures"]
-        ),
-        Task(
-            fn=interpro.match.update_variant_matches,
-            args=(ora_interpro_url,),
-            name="update-varsplic",
-            scheduler=dict(queue=lsf_queue),
-            requires=["import-matches", "update-signatures"]
         )
     ]
 
-    site_databases = [db for db in databases if db.has_site_matches]
-    if site_databases:
+    if mem_updates:
         tasks += [
             Task(
-                fn=iprscan.import_sites,
+                fn=interpro.signature.add_staging,
+                args=(ora_interpro_url, [(db, sources[db.identifier])
+                                         for db in mem_updates]),
+                name="load-signatures",
+                scheduler=dict(queue=lsf_queue)
+            ),
+            Task(
+                fn=interpro.signature.track_signature_changes,
+                args=(ora_interpro_url, pg_url, mem_updates, data_dir),
+                name="track-changes",
+                scheduler=dict(mem=4000, queue=lsf_queue),
+                requires=["load-signatures"]
+            ),
+            Task(
+                fn=interpro.signature.delete_obsoletes,
+                args=(ora_interpro_url, mem_updates),
+                name="delete-obsoletes",
+                scheduler=dict(queue=lsf_queue),
+                requires=["track-changes"]
+            ),
+            Task(
+                fn=interpro.signature.update_signatures,
+                args=(ora_interpro_url,),
+                name="update-signatures",
+                scheduler=dict(queue=lsf_queue),
+                requires=["delete-obsoletes"]
+            ),
+            Task(
+                fn=interpro.match.update_database_matches,
+                args=(ora_interpro_url, mem_updates),
+                name="update-matches",
+                scheduler=dict(queue=lsf_queue),
+                requires=["import-matches", "update-signatures"]
+            ),
+            Task(
+                fn=interpro.match.update_variant_matches,
+                args=(ora_interpro_url,),
+                name="update-varsplic",
+                scheduler=dict(queue=lsf_queue),
+                requires=["import-matches", "update-signatures"]
+            )
+        ]
+
+    if non_mem_updates:
+        tasks += [
+            Task(
+                fn=interpro.signature.update_features,
+                args=(ora_interpro_url, [(db, sources[db.identifier])
+                                         for db in non_mem_updates]),
+                name="update-features",
+                scheduler=dict(queue=lsf_queue),
+                requires=["import-matches"]
+            ),
+            Task(
+                fn=interpro.match.update_database_feature_matches,
+                args=(ora_interpro_url, non_mem_updates),
+                name="update-fmatches",
+                scheduler=dict(queue=lsf_queue),
+                requires=["update-features"]
+            )
+        ]
+
+    if site_updates:
+        if mem_updates:
+            req = ["import-sites", "update-matches"]
+        else:
+            req = ["import-sites"]
+
+        tasks += [
+            Task(
+                fn=interpro.iprscan.import_sites,
                 args=(ora_iprscan_url,),
-                kwargs=dict(databases=site_databases, force_import=True,
+                kwargs=dict(databases=site_updates, force_import=True,
                             threads=2),
                 name="import-sites",
                 scheduler=dict(queue=lsf_queue)
             ),
             Task(
                 fn=interpro.match.update_database_site_matches,
-                args=(ora_interpro_url, site_databases),
+                args=(ora_interpro_url, site_updates),
                 name="update-sites",
                 scheduler=dict(queue=lsf_queue),
-                requires=["import-sites", "update-matches"]
+                requires=req
             )
         ]
 
-    # Adding Pronto tasks
-    after_pronto = set()
-    for t in get_pronto_tasks(ora_interpro_url, ora_swpread_url, ora_goa_url,
-                              pg_url, data_dir, lsf_queue):
-        # Adding 'pronto-' prefix
-        t.name = f"pronto-{t.name}"
-        if t.requires:
-            t.requires = {f"pronto-{r}" for r in t.requires}
-        else:
-            # Task without dependency:
-            # add one so it's submitted at the end of the protein update
-            t.requires = {"update-matches"}
+    if mem_updates:
+        # Adding Pronto tasks
+        after_pronto = set()
+        for t in get_pronto_tasks(ora_interpro_url, ora_swpread_url,
+                                  ora_goa_url, pg_url, data_dir, lsf_queue):
+            # Adding 'pronto-' prefix
+            t.name = f"pronto-{t.name}"
+            if t.requires:
+                t.requires = {f"pronto-{r}" for r in t.requires}
+            else:
+                # Task without dependency:
+                # add one so it's submitted at the end of the protein update
+                t.requires = {"update-matches"}
 
-        tasks.append(t)
-        after_pronto.add(t.name)
+            tasks.append(t)
+            after_pronto.add(t.name)
 
-    tasks += [
-        Task(
-            fn=interpro.report.send_db_update_report,
-            args=(ora_interpro_url, pg_url, databases, data_dir, pronto_url,
-                  emails),
-            name="send-report",
-            scheduler=dict(mem=4000, queue=lsf_queue),
-            requires=after_pronto
-        ),
-    ]
+        tasks += [
+            Task(
+                fn=interpro.report.send_db_update_report,
+                args=(ora_interpro_url, pg_url, mem_updates, data_dir,
+                      pronto_url, emails),
+                name="send-report",
+                scheduler=dict(mem=4000, queue=lsf_queue),
+                requires=after_pronto
+            ),
+        ]
 
     # Base Mundone database on UniProt version and on the name/version
     # of updated member databases
     versions = [uniprot_version]
-    for db in databases:
+    for db in sorted(databases.values(), key=lambda k: k.name.lower()):
         versions.append(f"{db.name.lower().replace(' ', '')}{db.version}")
 
-    database = os.path.join(workflow_dir, f"{'.'.join(versions)}.sqlite")
-    with Workflow(tasks, dir=workflow_dir, database=database) as wf:
+    database = os.path.join(temp_dir, f"{'_'.join(versions)}.sqlite")
+    with Workflow(tasks, dir=temp_dir, database=database) as wf:
         if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
             sys.exit(0)
         else:
@@ -559,7 +453,7 @@ def run_member_db_update():
 def run_pronto_update():
     parser = ArgumentParser(description="InterPro Pronto update")
     parser.add_argument("config",
-                        metavar="config.ini",
+                        metavar="main.conf",
                         help="configuration file")
     parser.add_argument("-t", "--tasks",
                         nargs="*",
@@ -591,16 +485,13 @@ def run_pronto_update():
     uniprot_version = config["uniprot"]["version"]
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
-    workflow_dir = config["misc"]["workflow_dir"]
-
-    if not os.path.isdir(data_dir):
-        os.makedirs(data_dir)
+    temp_dir = config["misc"]["temp_dir"]
 
     tasks = get_pronto_tasks(ora_interpro_url, ora_swpread_url, ora_goa_url,
                              pg_url, data_dir, lsf_queue)
 
-    database = os.path.join(workflow_dir, f"{uniprot_version}.pronto.sqlite")
-    with Workflow(tasks, dir=workflow_dir, database=database) as wf:
+    database = os.path.join(temp_dir, f"{uniprot_version}.pronto.sqlite")
+    with Workflow(tasks, dir=temp_dir, database=database) as wf:
         if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
             sys.exit(0)
         else:
@@ -610,7 +501,7 @@ def run_pronto_update():
 def run_uniprot_update():
     parser = ArgumentParser(description="InterPro protein update")
     parser.add_argument("config",
-                        metavar="config.ini",
+                        metavar="main.conf",
                         help="configuration file")
     parser.add_argument("-t", "--tasks",
                         nargs="*",
@@ -651,15 +542,12 @@ def run_uniprot_update():
     pronto_url = config["misc"]["pronto_url"]
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
-    workflow_dir = config["misc"]["workflow_dir"]
-
-    if not os.path.isdir(data_dir):
-        os.makedirs(data_dir)
+    temp_dir = config["misc"]["temp_dir"]
 
     tasks = [
         # Data from UAREAD
         Task(
-            fn=uniparc.update,
+            fn=uniprot.uniparc.update,
             args=(ora_uniparc_url, ora_uaread_url),
             name="update-uniparc",
             scheduler=dict(queue=lsf_queue)
@@ -675,7 +563,7 @@ def run_uniprot_update():
 
         # Data from ISPRO
         Task(
-            fn=iprscan.import_matches,
+            fn=interpro.iprscan.import_matches,
             args=(ora_iprscan_url,),
             kwargs=dict(threads=8),
             name="import-matches",
@@ -683,7 +571,7 @@ def run_uniprot_update():
             requires=["update-uniparc"]
         ),
         Task(
-            fn=iprscan.import_sites,
+            fn=interpro.iprscan.import_sites,
             args=(ora_iprscan_url,),
             kwargs=dict(threads=2),
             name="import-sites",
@@ -700,7 +588,7 @@ def run_uniprot_update():
                   uniprot_version,
                   config["uniprot"]["date"],
                   data_dir),
-            kwargs=dict(tmpdir="/tmp/"),
+            kwargs=dict(tmpdir="/tmp"),
             name="update-proteins",
             scheduler=dict(mem=4000, queue=lsf_queue, tmp=40000),
         ),
@@ -852,8 +740,8 @@ def run_uniprot_update():
         ),
     ]
 
-    database = os.path.join(workflow_dir, f"{uniprot_version}.sqlite")
-    with Workflow(tasks, dir=workflow_dir, database=database) as wf:
+    database = os.path.join(temp_dir, f"{uniprot_version}.sqlite")
+    with Workflow(tasks, dir=temp_dir, database=database) as wf:
         if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
             sys.exit(0)
         else:
@@ -862,7 +750,7 @@ def run_uniprot_update():
 
 def update_database():
     parser = ArgumentParser(description="InterPro pre-member database update")
-    parser.add_argument("config", metavar="config.ini",
+    parser.add_argument("config", metavar="main.conf",
                         help="Configuration file.")
     parser.add_argument("-n", "--name", required=True,
                         help="Name of member database.")
@@ -887,3 +775,84 @@ def update_database():
                                       version=args.version,
                                       date=args.date,
                                       confirm=args.confirm)
+
+
+def run_interproscan_manager():
+    parser = ArgumentParser(description="InterProScan matches calculation")
+    parser.add_argument("config", metavar="main.conf",
+                        help="Configuration file.")
+    parser.add_argument("-a", "--analyses", nargs="*", default=[], type=int,
+                        help="ID of analyses to run")
+    parser.add_argument("-e", "--exclude", nargs="*", default=[], type=int,
+                        help="ID of analyses to exclude")
+    parser.add_argument("-t", "--threads", type=int, default=8,
+                        help="number of job monitoring threads (default: 8)")
+    parser.add_argument("--run-jobs", type=int, default=1000,
+                        help="maximum number of concurrent running jobs "
+                             "(default: 1000)")
+    parser.add_argument("--max-jobs", type=int, default=-1,
+                        help="maximum number of job to run per analysis "
+                             "(default: off)")
+    parser.add_argument("--clean", action="store_true", default=False,
+                        help="delete obsolete data (defaulf: off)")
+    parser.add_argument("--uniparc", action="store_true", default=False,
+                        help="import proteins from UniParc database "
+                             "(default: off)")
+    parser.add_argument("--pre-jobs", nargs="*", type=int, default=[],
+                        help="prepare fixed-size jobs of the passed number "
+                             "of sequences (disabled: off)")
+    parser.add_argument("--top-up", action="store_true", default=False,
+                        help="if used with --uniparc: only import proteins "
+                             "not already in the InterProScan database; if "
+                             "used with --pre-jobs: only prepare jobs not "
+                             "already in the database (default: off)")
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': no such file or directory")
+
+    config = ConfigParser()
+    config.read(args.config)
+
+    if not os.path.isfile(config["misc"]["analyses"]):
+        parser.error(f"cannot open '{config['misc']['members']}': "
+                     f"no such file or directory")
+
+    interproscan_uri = config["oracle"]["interproscan"]
+    uniparc_uri = config["oracle"]["uaread"]
+
+    if args.uniparc:
+        interproscan.database.import_uniparc(ispro_uri=interproscan_uri,
+                                             uniparc_uri=uniparc_uri,
+                                             top_up=args.top_up)
+
+    for job_size in args.pre_jobs:
+        interproscan.database.prepare_jobs(uri=interproscan_uri,
+                                           job_size=job_size,
+                                           top_up=args.top_up)
+
+    if args.clean:
+        interproscan.database.clean_tables(interproscan_uri)
+
+    analyses_config = ConfigParser()
+    analyses_config.read(config["misc"]["analyses"])
+
+    analyses_configs = {}
+    for analysis in analyses_config.sections():
+        analyses_configs[analysis] = {}
+
+        for option, value in analyses_config.items(analysis):
+            analyses_configs[analysis][option] = int(value)
+
+    interproscan.manager.run(uri=interproscan_uri,
+                             work_dir=config["misc"]["work_dir"],
+                             temp_dir=config["misc"]["temp_dir"],
+                             lsf_queue=config["misc"]["lsf_queue"],
+                             config=analyses_configs,
+                             infinite_mem=True,
+                             max_retries=4,
+                             max_running_jobs=args.run_jobs,
+                             max_jobs_per_analysis=args.max_jobs,
+                             pool_threads=args.threads,
+                             analyses=args.analyses,
+                             exclude=args.exclude)

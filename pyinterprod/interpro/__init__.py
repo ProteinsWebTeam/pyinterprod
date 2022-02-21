@@ -1,3 +1,2 @@
-# -*- coding: utf-8 -*-
-
-from . import database, hmm, match, protein, report, signature, taxonomy
+from . import database, hmm, iprscan, match, protein, report, signature
+from . import taxonomy

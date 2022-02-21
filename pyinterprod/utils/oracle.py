@@ -68,7 +68,7 @@ def get_child_tables(cur: Cursor, schema: str, name: str) -> List[tuple]:
             AND TABLE_NAME = :name
           )
         )
-        """, dict(schema=schema, name=name)
+        """, dict(schema=schema.upper(), name=name.upper())
     )
 
     return cur.fetchall()
@@ -87,7 +87,7 @@ def get_indexes(cur: Cursor, owner: str, name: str) -> List[dict]:
         WHERE I.TABLE_OWNER = :1
         AND I.TABLE_NAME = :2
         ORDER BY I.INDEX_NAME, IC.COLUMN_POSITION
-        """, (owner, name)
+        """, (owner.upper(), name.upper())
     )
 
     indexes = {}
@@ -125,7 +125,7 @@ def get_partitions(cur: Cursor, schema: str, table: str) -> List[dict]:
           AND P.TABLE_NAME = K.NAME
         WHERE P.TABLE_OWNER = :1 
         AND P.TABLE_NAME = :2
-        """, (schema, table)
+        """, (schema.upper(), table.upper())
     )
 
     partitions = {}
@@ -156,7 +156,7 @@ def get_subpartitions(cur: Cursor, schema: str, table: str, partition: str) -> L
         WHERE SP.TABLE_OWNER = :1
         AND SP.TABLE_NAME = :2
         AND SP.PARTITION_NAME = :3
-        """, (schema, table, partition)
+        """, (schema.upper(), table.upper(), partition.upper())
     )
 
     subpartitions = {}

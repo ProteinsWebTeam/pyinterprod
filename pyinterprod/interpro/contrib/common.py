@@ -1,19 +1,17 @@
-# -*- coding: utf-8 -*-
-
 from dataclasses import dataclass, field
 from datetime import datetime
 import xml.etree.ElementTree as ET
-from typing import List
+from typing import List, Optional
 
 
 @dataclass
 class Method:
     accession: str
-    sig_type: str
-    name: str = None
-    description: str = None
-    abstract: str = None
-    date: datetime = None
+    sig_type: Optional[str]
+    name: Optional[str] = None
+    description: Optional[str] = None
+    abstract: Optional[str] = None
+    date: Optional[datetime] = None
 
 
 @dataclass

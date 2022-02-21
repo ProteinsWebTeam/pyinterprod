@@ -1,7 +1,8 @@
-# -*- coding: utf-8 -*-
-
 import re
+import time
 from typing import Any, Iterator
+
+from psycopg2.errors import DiskFull
 
 
 class CsvIO:
@@ -61,3 +62,27 @@ def url2dict(url: str) -> dict:
         port=int(m.group(4)),
         dbname=m.group(5)
     )
+
+
+def cluster(con, table: str, index: str, **kwargs):
+    max_attempts = kwargs.get("max_attempts", 1)
+    seconds = kwargs.get("seconds", 600)
+
+    with con.cursor() as cur:
+        num_attempts = 0
+
+        while True:
+            num_attempts += 1
+            try:
+                cur.execute(f"CLUSTER {table} USING {index}")
+            except DiskFull:
+                con.rollback()
+
+                if num_attempts == max_attempts:
+                    con.close()
+                    raise
+
+                time.sleep(seconds)
+            else:
+                con.commit()
+                break

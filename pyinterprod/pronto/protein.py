@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import os
 import shutil
 from tempfile import mkstemp
@@ -82,6 +80,8 @@ def import_similarity_comments(swp_url: str, ipr_url: str):
 
 def import_protein_names(swp_url: str, ipr_url: str, database: str,
                          tmpdir: Optional[str] = None):
+    os.makedirs(os.path.dirname(database), exist_ok=True)
+
     logger.info("populating protein2name")
     fd, tmp_database = mkstemp(dir=tmpdir)
     os.close(fd)

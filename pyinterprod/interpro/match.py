@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import os
 import pickle
 from typing import Dict, Sequence
@@ -8,39 +6,40 @@ import cx_Oracle
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
-from .database import Database
 
 
 FILE_ENTRY_PROT_COUNTS = "entries.prot.counts.pickle"
 MATCH_PARTITIONS = {
-    'B': "MATCH_DBCODE_B",  # SFLD
-    'F': "MATCH_DBCODE_F",  # PRINTS
-    'H': "MATCH_DBCODE_H",  # Pfam
-    'J': "MATCH_DBCODE_J",  # CDD
-    'M': "MATCH_DBCODE_M",  # PROSITE profiles
-    'N': "MATCH_DBCODE_N",  # TIGRFAMs
-    'P': "MATCH_DBCODE_P",  # PROSITE patterns
-    'Q': "MATCH_DBCODE_Q",  # HAMAP
-    'R': "MATCH_DBCODE_R",  # SMART
-    'U': "MATCH_DBCODE_U",  # PIRSF
-    'V': "MATCH_DBCODE_V",  # PANTHER
-    'X': "MATCH_DBCODE_X",  # CATH-Gene3D
-    'Y': "MATCH_DBCODE_Y",  # SUPERFAMILY
+    "B": "MATCH_DBCODE_B",  # SFLD
+    "F": "MATCH_DBCODE_F",  # PRINTS
+    "H": "MATCH_DBCODE_H",  # Pfam
+    "J": "MATCH_DBCODE_J",  # CDD
+    "M": "MATCH_DBCODE_M",  # PROSITE profiles
+    "N": "MATCH_DBCODE_N",  # TIGRFAMs
+    "P": "MATCH_DBCODE_P",  # PROSITE patterns
+    "Q": "MATCH_DBCODE_Q",  # HAMAP
+    "R": "MATCH_DBCODE_R",  # SMART
+    "U": "MATCH_DBCODE_U",  # PIRSF
+    "V": "MATCH_DBCODE_V",  # PANTHER
+    "X": "MATCH_DBCODE_X",  # CATH-Gene3D
+    "Y": "MATCH_DBCODE_Y",  # SUPERFAMILY
 }
 FEATURE_MATCH_PARTITIONS = {
-    'g': "MOBIDBLITE",
-    'j': "PHOBIUS",
-    'n': "SIGNALP_E",
-    'q': "TMHMM",
-    's': "SIGNALP_GP",
-    'v': "SIGNALP_GN",
-    'x': "COILS"
+    "a": "ANTIFAM",
+    "f": "FUNFAM",
+    "g": "MOBIDBLITE",
+    "j": "PHOBIUS",
+    "n": "SIGNALP_E",
+    "q": "TMHMM",
+    "s": "SIGNALP_GP",
+    "v": "SIGNALP_GN",
+    "x": "COILS"
 }
 SITE_PARTITIONS = {
     # DB identifier -> (str:partition, bool:check against MATCH table)
-    'B': ("SFLD", True),
-    'J': ("CDD", True),
-    'z': ("PIRSR", False)
+    "B": ("SFLD", True),
+    "J": ("CDD", True),
+    "z": ("PIRSR", False)
 }
 
 
@@ -49,7 +48,13 @@ def export_entries_protein_counts(cur: cx_Oracle.Cursor, data_dir: str):
         pickle.dump(_get_entries_protein_counts(cur), fh)
 
 
-def update_database_matches(url: str, databases: Sequence[Database]):
+def update_database_matches(url: str, databases: Sequence):
+    """
+
+    :param url:
+    :param databases: Sequence of Database objects
+    :return:
+    """
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -192,7 +197,7 @@ def update_database_matches(url: str, databases: Sequence[Database]):
         )
         oracle.drop_table(cur, "INTERPRO.MATCH_NEW", purge=True)
 
-        logger.info("\tgathering statistics")
+        logger.debug("\tgathering statistics")
         oracle.gather_stats(cur, "INTERPRO", "MATCH", partition)
 
     for index in oracle.get_indexes(cur, "INTERPRO", "MATCH"):
@@ -206,7 +211,13 @@ def update_database_matches(url: str, databases: Sequence[Database]):
     logger.info("complete")
 
 
-def update_database_feature_matches(url: str, databases: Sequence[Database]):
+def update_database_feature_matches(url: str, databases: Sequence):
+    """
+
+    :param url:
+    :param databases: Sequence of Database objects
+    :return:
+    """
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -295,7 +306,7 @@ def update_database_feature_matches(url: str, databases: Sequence[Database]):
         )
         oracle.drop_table(cur, "INTERPRO.FEATURE_MATCH_NEW", purge=True)
 
-        logger.info("\tgathering statistics")
+        logger.debug("\tgathering statistics")
         oracle.gather_stats(cur, "INTERPRO", "FEATURE_MATCH", partition)
 
     for index in oracle.get_indexes(cur, "INTERPRO", "FEATURE_MATCH"):
@@ -309,7 +320,13 @@ def update_database_feature_matches(url: str, databases: Sequence[Database]):
     logger.info("complete")
 
 
-def update_database_site_matches(url: str, databases: Sequence[Database]):
+def update_database_site_matches(url: str, databases: Sequence):
+    """
+
+    :param url:
+    :param databases: Sequence of Database objects
+    :return:
+    """
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -336,9 +353,9 @@ def update_database_site_matches(url: str, databases: Sequence[Database]):
             f"""
             INSERT /*+ APPEND */ INTO INTERPRO.SITE_MATCH_NEW
             SELECT
-                X.AC, S.METHOD_AC, S.LOC_START, S.LOC_END, S.DESCRIPTION,
-                S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END, S.NUM_SITES,
-                D.DBCODE
+                X.AC, S.METHOD_AC, D.DBCODE, S.LOC_START, S.LOC_END, 
+                S.DESCRIPTION, S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END, 
+                S.NUM_SITES
             FROM IPRSCAN.SITE PARTITION ({site_partition}) S
             INNER JOIN UNIPARC.XREF X
               ON S.UPI = X.UPI
@@ -509,8 +526,11 @@ def update_variant_matches(url: str):
 
     logger.info("updating VARSPLIC_MATCH")
     oracle.truncate_table(cur, "INTERPRO.VARSPLIC_MATCH", reuse_storage=True)
+
+    dbcodes = list(MATCH_PARTITIONS.keys())
+    params = ",".join([f":{i+1}" for i in range(len(dbcodes))])
     cur.execute(
-        """
+        f"""
         INSERT INTO INTERPRO.VARSPLIC_MATCH
         SELECT
           X.AC, MV.METHOD_AC, MV.SEQ_START, MV.SEQ_END, 'T' AS STATUS,
@@ -524,11 +544,11 @@ def update_variant_matches(url: str):
         INNER JOIN INTERPRO.METHOD M
           ON MV.METHOD_AC = M.METHOD_AC
         WHERE X.DBID = 24
-        AND X.DELETED = 'N'
-        -- Exclude MobiDB-Lite, Phobius, SignalP (Euk, Gram+, Gram-), TMHMM, COILS
-        AND I2D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
-        AND M.SKIP_FLAG = 'N'
-        """
+          AND X.DELETED = 'N'
+          AND I2D.DBCODE IN ({params})
+          AND M.SKIP_FLAG = 'N'
+        """,
+        dbcodes
     )
     logger.info(f"{cur.rowcount} rows inserted")
     con.commit()
