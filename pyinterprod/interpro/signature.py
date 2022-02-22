@@ -508,6 +508,15 @@ def update_features(url: str, update: Sequence[Tuple[Database, str]]):
             params
         )
 
+        cur.execute(
+            """
+            UPDATE INTERPRO.DB_VERSION
+            SET ENTRY_COUNT = :1
+            WHERE DBCODE = :2
+            """,
+            (len(params), db.identifier)
+        )
+
     con.commit()
     cur.close()
     con.close()
