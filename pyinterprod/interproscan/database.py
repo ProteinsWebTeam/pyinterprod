@@ -210,7 +210,6 @@ def clean_tables(uri: str):
             except KeyError:
                 table2analyses[table] = {analysis_id}
 
-    print("The following actions will be performed:")
     actions = []
     for table in table2analyses:
         for p in oracle.get_partitions(cur, "IPRSCAN", table.upper()):
@@ -225,9 +224,12 @@ def clean_tables(uri: str):
 
             if analysis_id not in table2analyses[table]:
                 # Obsolete analysis: remove data
-                print(f"  - {name} {version}: delete persisted data")
-                actions.append((f"ALTER TABLE {table} "
-                                f"DROP PARTITION {p['name']}", []))
+                actions.append((
+                    f"  - {name} {version}: delete persisted data",
+                    [(
+                        f"ALTER TABLE {table} DROP PARTITION {p['name']}", []
+                    )]
+                ))
             elif max_upi:
                 cur.execute(
                     """
@@ -242,29 +244,44 @@ def clean_tables(uri: str):
 
                 if cnt > 0:
                     # Delete jobs after the max UPI
-                    print(f"  - {name} {version}: delete jobs > {max_upi}")
                     actions.append((
-                        """
-                        DELETE FROM IPRSCAN.ANALYSIS_JOBS
-                        WHERE ANALYSIS_ID = :1
-                        AND UPI_FROM > :2
-                        """,
-                        [analysis_id, max_upi]))
+                        f"  - {name} {version}: delete jobs > {max_upi}",
+                        [(
+                            """
+                            DELETE FROM IPRSCAN.ANALYSIS_JOBS
+                            WHERE ANALYSIS_ID = :1
+                            AND UPI_FROM > :2
+                            """,
+                            [analysis_id, max_upi]
+                        )]
+                    ))
             else:
                 # No max UPI: remove data
-                print(f"  - {name} {version}: reset jobs and persisted data")
-                actions.append((f"ALTER TABLE {table} "
-                                f"TRUNCATE PARTITION {p['name']}", []))
-                actions.append((f"DELETE FROM IPRSCAN.ANALYSIS_JOBS "
-                                f"WHERE ANALYSIS_ID = :1", [analysis_id]))
+                actions.append((
+                    f"  - {name} {version}: reset jobs and persisted data",
+                    [(
+                        f"ALTER TABLE {table} TRUNCATE PARTITION {p['name']}",
+                        []
+                    ), (
+                        f"DELETE FROM IPRSCAN.ANALYSIS_JOBS "
+                        f"WHERE ANALYSIS_ID = :1",
+                        [analysis_id]
+                    )]
+                ))
 
-    if input("Proceed? [y/N] ").lower().strip() == "y":
-        for sql, params in actions:
-            cur.execute(sql, params)
+    if actions:
+        print("The following actions will be performed:")
+        for descr, _ in actions:
+            print(descr)
 
-        con.commit()
-    else:
-        print("Canceled")
+        if input("Proceed? [y/N] ").lower().strip() == "y":
+            for queries in actions:
+                for sql, params in queries:
+                    cur.execute(sql, params)
+
+            con.commit()
+        else:
+            print("Canceled")
 
     cur.close()
     con.close()
