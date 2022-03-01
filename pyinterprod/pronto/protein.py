@@ -9,7 +9,7 @@ from psycopg2.extras import execute_values
 
 from pyinterprod import logger
 from pyinterprod.utils.kvdb import KVdb
-from pyinterprod.utils.pg import url2dict
+from pyinterprod.utils.pg import CsvIO, url2dict
 
 
 def import_similarity_comments(swp_url: str, ipr_url: str):
@@ -228,17 +228,17 @@ def import_proteins(ora_url: str, pg_url: str):
             FROM INTERPRO.PROTEIN
             """
         )
+        gen = ((row[0],
+                row[1],
+                row[2],
+                row[3],
+                row[4] == 'Y',
+                row[5] == 'S'
+                ) for row in ora_cur)
 
-        sql = "INSERT INTO protein VALUES %s"
-        execute_values(pg_cur, sql, ((
-            row[0],
-            row[1],
-            row[2],
-            row[3],
-            row[4] == 'Y',
-            row[5] == 'S'
-        ) for row in ora_cur), page_size=1000)
-
+        pg_cur.copy_from(file=CsvIO(gen, sep='|'),
+                         table="protein",
+                         sep='|')
         ora_cur.close()
         ora_con.close()
 
