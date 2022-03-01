@@ -271,11 +271,11 @@ def clean_tables(uri: str):
 
     if actions:
         print("The following actions will be performed:")
-        for descr, _ in actions:
+        for descr, queries in actions:
             print(descr)
 
         if input("Proceed? [y/N] ").lower().strip() == "y":
-            for queries in actions:
+            for descr, queries in actions:
                 for sql, params in queries:
                     cur.execute(sql, params)
 
