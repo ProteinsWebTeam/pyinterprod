@@ -90,7 +90,8 @@ class TaskFactory:
                 self.site_table,
                 self.parse_sites
             ),
-            kwargs=dict(timeout=self.config["timeout"]),
+            kwargs=dict(cpu=self.config["job_cpu"],
+                        timeout=self.config["timeout"]),
             name=self.make_name(upi_from, upi_to),
             scheduler=dict(cpu=self.config["job_cpu"],
                            mem=self.config["job_mem"],
@@ -317,20 +318,22 @@ def export_fasta(uri: str, fasta_file: str, upi_from: str, upi_to: str):
 
 
 def run_i5(i5_dir: str, fasta_file: str, analysis_name: str, output: str,
-           temp_dir: Optional[str] = None,
+           cpu: Optional[int] = None, temp_dir: Optional[str] = None,
            timeout: Optional[int] = None) -> bool:
-    if temp_dir is None:
-        temp_dir = os.path.dirname(output)
-
     args = [
         os.path.join(i5_dir, "interproscan.sh"),
         "-i", fasta_file,
-        "-T", temp_dir,
         "-appl", analysis_name,
         "-dp",
         "-f", "tsv-pro",
         "-o", output
     ]
+
+    if cpu is not None:
+        args += ["-cpu", str(cpu)]
+
+    if temp_dir is not None:
+        args += ["-T", temp_dir]
 
     process = subprocess.run(args, timeout=timeout)
     return process.returncode == 0
@@ -339,8 +342,8 @@ def run_i5(i5_dir: str, fasta_file: str, analysis_name: str, output: str,
 def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             outdir: str, analysis_id: int, match_table: str,
             parse_matches: Callable, site_table: Optional[str],
-            parse_sites: Optional[Callable], timeout: Optional[int] = None):
-
+            parse_sites: Optional[Callable], cpu: Optional[int] = None,
+            timeout: Optional[int] = None):
     try:
         shutil.rmtree(outdir)
     except FileNotFoundError:
@@ -355,6 +358,8 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
         export_fasta(uri, fasta_file, upi_from, upi_to)
 
         if not run_i5(i5_dir, fasta_file, appl, matches_output,
+                      cpu=cpu,
+                      temp_dir=outdir,
                       timeout=timeout):
             raise RuntimeError("InterProScan error")
         elif not os.path.isfile(matches_output):
