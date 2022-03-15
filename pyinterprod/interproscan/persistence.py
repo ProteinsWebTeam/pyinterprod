@@ -18,7 +18,7 @@ def cdd_matches(uri: str, file: str, analysis_id: int, table: str):
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
-    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    # cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
@@ -206,8 +206,8 @@ def _hmmer3_matches(uri: str, file: str, analysis_id: int, table: str,
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
-    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE,
-                      evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    # cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE,
+    #                   evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
@@ -321,7 +321,7 @@ def panther_matches(uri: str, file: str, analysis_id: int, table: str):
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
-    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    # cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
@@ -386,8 +386,8 @@ def prints_matches(uri: str, file: str, analysis_id: int, table: str):
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
-    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE,
-                      pvalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    # cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE,
+    #                   pvalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
@@ -543,8 +543,8 @@ def smart_matches(uri: str, file: str, analysis_id: int, table: str):
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
-    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE,
-                      evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    # cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE,
+    #                   evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
@@ -598,7 +598,7 @@ def superfamily_matches(uri: str, file: str, analysis_id: int, table: str):
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
-    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    # cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
