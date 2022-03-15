@@ -42,7 +42,7 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
                   os.path.join(data_dir, "names.sqlite")),
             kwargs=dict(tmpdir="/tmp"),
             name="proteins-names",
-            scheduler=dict(mem=8000, tmp=30000, queue=lsf_queue),
+            scheduler=dict(mem=2000, tmp=15000, queue=lsf_queue),
         ),
 
         # Data from IPPRO
@@ -58,7 +58,7 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
                   os.path.join(data_dir, "allseqs.dat")),
             kwargs=dict(tmpdir="/tmp"),
             name="matches",
-            scheduler=dict(mem=10000, tmp=20000, queue=lsf_queue),
+            scheduler=dict(mem=4000, tmp=30000, queue=lsf_queue),
             requires=["databases"]
         ),
         Task(
@@ -68,7 +68,7 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
                   os.path.join(data_dir, "compseqs.dat")),
             kwargs=dict(tmpdir="/tmp", processes=8),
             name="signature2proteins",
-            scheduler=dict(cpu=8, mem=16000, tmp=30000, queue=lsf_queue),
+            scheduler=dict(cpu=8, mem=16000, tmp=15000, queue=lsf_queue),
             requires=["proteins-names"]
         ),
         Task(
@@ -77,7 +77,7 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
                   os.path.join(data_dir, "allseqs.dat"),
                   os.path.join(data_dir, "compseqs.dat")),
             name="signatures",
-            scheduler=dict(mem=4000, queue=lsf_queue),
+            scheduler=dict(mem=1000, queue=lsf_queue),
             requires=["matches", "signature2proteins"]
         ),
         Task(
