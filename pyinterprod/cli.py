@@ -112,7 +112,7 @@ def check_ispro():
     config = ConfigParser()
     config.read(args.config)
 
-    ora_iprscan_url = config["oracle"]["iprscan"]
+    ora_iprscan_url = config["oracle"]["ipro-iprscan"]
     interpro.iprscan.check_ispro(ora_iprscan_url, args.type, args.status)
 
 
@@ -149,7 +149,7 @@ def run_clan_update():
     options = ConfigParser()
     options.read(config["misc"]["members"])
 
-    ora_interpro_url = config["oracle"]["interpro"]
+    ora_interpro_url = config["oracle"]["ipro-interpro"]
     db_names = list(set(args.databases))
     databases = interpro.database.get_databases(ora_interpro_url, db_names)
 
@@ -206,7 +206,7 @@ def run_hmm_update():
     options.read(config["misc"]["members"])
 
     db_names = list(set(args.databases))
-    ora_interpro_url = config["oracle"]["interpro"]
+    ora_interpro_url = config["oracle"]["ipro-interpro"]
     databases = interpro.database.get_databases(ora_interpro_url, db_names)
 
     for dbname, database in databases.items():
@@ -257,10 +257,10 @@ def run_member_db_update():
 
     db_names = list(set(args.databases))
 
-    ora_interpro_url = config["oracle"]["interpro"]
-    ora_iprscan_url = config["oracle"]["iprscan"]
-    ora_goa_url = config["oracle"]["goapro"]
-    ora_swpread_url = config["oracle"]["swpread"]
+    ora_interpro_url = config["oracle"]["ipro-interpro"]
+    ora_iprscan_url = config["oracle"]["ipro-iprscan"]
+    ora_goa_url = config["oracle"]["unpr-goapro"]
+    ora_swpread_url = config["oracle"]["unpr-swpread"]
     pg_url = config["postgresql"]["pronto"]
 
     uniprot_version = config["uniprot"]["version"]
@@ -478,9 +478,9 @@ def run_pronto_update():
     config = ConfigParser()
     config.read(args.config)
 
-    ora_interpro_url = config["oracle"]["interpro"]
-    ora_goa_url = config["oracle"]["goapro"]
-    ora_swpread_url = config["oracle"]["swpread"]
+    ora_interpro_url = config["oracle"]["ipro-interpro"]
+    ora_goa_url = config["oracle"]["unpr-goapro"]
+    ora_swpread_url = config["oracle"]["unpr-swpread"]
     pg_url = config["postgresql"]["pronto"]
     uniprot_version = config["uniprot"]["version"]
     data_dir = config["misc"]["data_dir"]
@@ -526,12 +526,12 @@ def run_uniprot_update():
     config = ConfigParser()
     config.read(args.config)
 
-    ora_interpro_url = config["oracle"]["interpro"]
-    ora_iprscan_url = config["oracle"]["iprscan"]
-    ora_uniparc_url = config["oracle"]["uniparc"]
-    ora_goa_url = config["oracle"]["goapro"]
-    ora_swpread_url = config["oracle"]["swpread"]
-    ora_uaread_url = config["oracle"]["uaread"]
+    ora_interpro_url = config["oracle"]["ipro-interpro"]
+    ora_iprscan_url = config["oracle"]["ipro-iprscan"]
+    ora_uniparc_url = config["oracle"]["ipro-uniparc"]
+    ora_goa_url = config["oracle"]["unpr-goapro"]
+    ora_swpread_url = config["oracle"]["unpr-swpread"]
+    ora_uaread_url = config["oracle"]["unpr-uaread"]
     pg_url = config["postgresql"]["pronto"]
 
     uniprot_version = config["uniprot"]["version"]
@@ -769,7 +769,7 @@ def update_database():
     config = ConfigParser()
     config.read(args.config)
 
-    ora_interpro_url = config["oracle"]["interpro"]
+    ora_interpro_url = config["oracle"]["ipro-interpro"]
     interpro.database.update_database(url=ora_interpro_url,
                                       name=args.name,
                                       version=args.version,
@@ -819,21 +819,22 @@ def run_interproscan_manager():
         parser.error(f"cannot open '{config['misc']['members']}': "
                      f"no such file or directory")
 
-    interproscan_uri = config["oracle"]["interproscan"]
-    uniparc_uri = config["oracle"]["uaread"]
+    iscn_iprscan_uri = config["oracle"]["iscn-iprscan"]
+    iscn_uniparc_uri = config["oracle"]["iscn-uniparc"]
+    unpr_uniparc_uri = config["oracle"]["unpr-uaread"]
 
     if args.import_sequences:
-        interproscan.database.import_uniparc(ispro_uri=interproscan_uri,
-                                             uniparc_uri=uniparc_uri,
+        interproscan.database.import_uniparc(ispro_uri=iscn_uniparc_uri,
+                                             uniparc_uri=unpr_uniparc_uri,
                                              top_up=args.top_up)
 
     for job_size in args.prepare_jobs:
-        interproscan.database.prepare_jobs(uri=interproscan_uri,
+        interproscan.database.prepare_jobs(uri=iscn_iprscan_uri,
                                            job_size=job_size,
                                            top_up=args.top_up)
 
     if args.clean:
-        interproscan.database.clean_tables(interproscan_uri)
+        interproscan.database.clean_tables(iscn_iprscan_uri)
 
     analyses_config = ConfigParser()
     analyses_config.read(config["misc"]["analyses"])
@@ -845,7 +846,7 @@ def run_interproscan_manager():
         for option, value in analyses_config.items(analysis):
             analyses_configs[analysis][option] = int(value)
 
-    interproscan.manager.run(uri=interproscan_uri,
+    interproscan.manager.run(uri=iscn_iprscan_uri,
                              work_dir=config["misc"]["work_dir"],
                              temp_dir=config["misc"]["temp_dir"],
                              # Options for analyses without custom config

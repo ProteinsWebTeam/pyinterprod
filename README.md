@@ -30,13 +30,14 @@ Both files can be renamed. `main.conf` is passed as an command line argument, an
 > For Oracle databases, `user/password@service` may work as well, depending on `tnsnames.ora`.
 
 - **oracle**
-    - **interpro**: connection string for the `interpro` user in the InterPro database
-    - **iprscan**: connection string for the `iprscan` user in the InterPro database
-    - **uniparc**: connection string for the `uniparc` user in the InterPro database
-    - **interproscan**: connection string for the `iprscan` user in the InterProScan database
-    - **goapro**: connection string for the GOA database
-    - **swpread**: connection string for the Swiss-Prot database
-    - **uaread**: connection string for the UniParc database
+    - **ipro-interpro**: connection string for the `interpro` user in the InterPro database
+    - **ipro-iprscan**: connection string for the `iprscan` user in the InterPro database
+    - **ipro-uniparc**: connection string for the `uniparc` user in the InterPro database
+    - **iscn-iprscan**: connection string for the `iprscan` user in the InterProScan database
+    - **iscn-uniparc**: connection string for the `uniparc` user in the InterProScan database
+    - **unpr-goapro**: connection string for the GOA database
+    - **unpr-swpread**: connection string for the Swiss-Prot database
+    - **unpr-uaread**: connection string for the UniParc database
 - **postgresql**:
     - **pronto**: connection string
 - **uniprot**:
