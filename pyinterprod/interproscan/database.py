@@ -3,6 +3,7 @@ from typing import Optional
 import cx_Oracle
 from mundone.task import Task
 
+from pyinterprod import logger
 from pyinterprod.utils import oracle
 
 
@@ -311,6 +312,7 @@ def iter_proteins(uri: str, greather_than: Optional[str] = None):
 
 
 def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
+    logger.info("importing sequences from UniParc")
     con = cx_Oracle.connect(ispro_uri)
     cur = con.cursor()
 
@@ -338,6 +340,7 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
             """
         )
 
+    cnt = 0
     records = []
     req = """
         INSERT /*+ APPEND */ 
@@ -347,6 +350,7 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
 
     for rec in iter_proteins(uniparc_uri, greather_than=max_upi):
         records.append(rec)
+        cnt += 1
 
         if len(records) == 1000:
             cur.executemany(req, records)
@@ -365,8 +369,11 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
     cur.close()
     con.close()
 
+    logger.info(f"\t{cnt:,} sequences imported")
 
-def prepare_jobs(uri: str, job_size: int = 10000, top_up: bool = False):
+
+def prepare_jobs(uri: str, job_size: int = 100000, top_up: bool = False):
+    logger.info(f"preparing fixed-size jobs of {job_size:,} sequences")
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
@@ -431,6 +438,8 @@ def prepare_jobs(uri: str, job_size: int = 10000, top_up: bool = False):
     con.commit()
     cur.close()
     con.close()
+
+    logger.info(f"\t{len(values):,} jobs added")
 
 
 def int_to_upi(i):
