@@ -92,7 +92,7 @@ def update_database_matches(url: str, databases: Sequence):
 
         # Add constraints/indexes to be able to exchange partition
         logger.debug("\tcreating indexes and constraints")
-        for col in ("DBCODE", "EVIDENCE", "STATUS", "METHOD_AC"):
+        for col in ("PROTEIN_AC", "METHOD_AC", "STATUS", "DBCODE", "EVIDENCE"):
             cur.execute(
                 f"""
                 CREATE INDEX MATCH_NEW${col[0]}
