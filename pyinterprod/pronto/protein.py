@@ -201,8 +201,15 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
     logger.info("complete")
 
 
-def import_proteins(ora_url: str, pg_url: str):
-    logger.info("populating")
+def import_proteins(ora_url: str, pg_url: str, database: str,
+                    tmpdir: Optional[str] = None):
+    os.makedirs(os.path.dirname(database), exist_ok=True)
+
+    logger.info("populating protein")
+    fd, tmp_database = mkstemp(dir=tmpdir)
+    os.close(fd)
+    os.remove(tmp_database)
+
     pg_con = psycopg2.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("DROP TABLE IF EXISTS protein")
@@ -224,24 +231,66 @@ def import_proteins(ora_url: str, pg_url: str):
         ora_cur = ora_con.cursor()
         ora_cur.execute(
             """
-            SELECT PROTEIN_AC, NAME, LEN, TAX_ID, FRAGMENT, DBCODE
-            FROM INTERPRO.PROTEIN
+            SELECT P.PROTEIN_AC, P.NAME, P.LEN, P.TAX_ID, P.FRAGMENT, P.DBCODE,
+                   E.LEFT_NUMBER
+            FROM INTERPRO.PROTEIN P
+            INNER JOIN INTERPRO.ETAXI E ON P.TAX_ID = E.TAX_ID
             """
         )
-        gen = ((row[0],
-                row[1],
-                row[2],
-                row[3],
-                row[4] == 'Y',
-                row[5] == 'S'
-                ) for row in ora_cur)
 
-        pg_cur.copy_from(file=CsvIO(gen, sep='|'),
-                         table="protein",
-                         sep='|')
+        i = 0
+        values = []
+        with KVdb(tmp_database, True) as proteindb:
+            for row in ora_cur:
+                is_fragment = row[4] == 'Y'
+                is_reviewed = row[5] == 'S'
+
+                values.append((row[0],
+                               row[1],
+                               row[2],
+                               row[3],
+                               is_fragment,
+                               is_reviewed))
+
+                if is_fragment:
+                    proteindb[row[0]] = (is_reviewed, row[6])
+
+                i += 1
+                if i % 100000 == 0:
+                    proteindb.sync()
+                    execute_values(
+                        cur=pg_cur,
+                        sql="INSERT INTO protein VALUES %s",
+                        argslist=values,
+                        page_size=1000
+                    )
+                    values = []
+
         ora_cur.close()
         ora_con.close()
 
+        if values:
+            execute_values(
+                cur=pg_cur,
+                sql="INSERT INTO protein VALUES %s",
+                argslist=values,
+                page_size=1000
+            )
+
+        pg_con.commit()
+
+    pg_con.close()
+
+    logger.info("copying database")
+    shutil.copyfile(tmp_database, database)
+    logger.info(f"disk usage: {os.path.getsize(tmp_database)/1024**2:.0f} MB")
+    os.remove(tmp_database)
+    logger.info("complete")
+
+
+def index_proteins(url: str):
+    pg_con = psycopg2.connect(**url2dict(url))
+    with pg_con.cursor() as pg_cur:
         pg_cur.execute(
             """
             CREATE UNIQUE INDEX protein_identifier_uidx
@@ -263,4 +312,3 @@ def import_proteins(ora_url: str, pg_url: str):
         pg_con.commit()
 
     pg_con.close()
-    logger.info("complete")
