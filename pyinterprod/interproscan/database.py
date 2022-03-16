@@ -212,7 +212,7 @@ def clean_tables(uri: str):
                 table2analyses[table] = {analysis_id}
 
     actions = []
-    for table in table2analyses:
+    for table in sorted(table2analyses):
         for p in oracle.get_partitions(cur, "IPRSCAN", table.upper()):
             if p["value"] == "DEFAULT":
                 continue
@@ -221,7 +221,7 @@ def clean_tables(uri: str):
             if analysis_id not in analyses:
                 # Obsolete analysis: remove data
                 actions.append((
-                    f"  - {table} {p['name']}: delete persisted data",
+                    f"  - {p['name']}: delete persisted data",
                     [(
                         f"ALTER TABLE {table} DROP PARTITION {p['name']}", []
                     )]
@@ -229,14 +229,12 @@ def clean_tables(uri: str):
                 continue
 
             analysis = analyses[analysis_id]
-            name = analysis["name"]
-            version = analysis["version"]
             max_upi = analysis["max_upi"]
 
             if analysis_id not in table2analyses[table]:
                 # Obsolete analysis: remove data
                 actions.append((
-                    f"  - {name} {version}: delete persisted data",
+                    f"  - {p['name']}: delete persisted data",
                     [(
                         f"ALTER TABLE {table} DROP PARTITION {p['name']}", []
                     )]
@@ -256,7 +254,7 @@ def clean_tables(uri: str):
                 if cnt > 0:
                     # Delete jobs after the max UPI
                     actions.append((
-                        f"  - {name} {version}: delete jobs > {max_upi}",
+                        f"  - {p['name']}: delete jobs > {max_upi}",
                         [(
                             """
                             DELETE FROM IPRSCAN.ANALYSIS_JOBS
@@ -269,7 +267,7 @@ def clean_tables(uri: str):
             else:
                 # No max UPI: remove data
                 actions.append((
-                    f"  - {name} {version}: reset jobs and persisted data",
+                    f"  - {p['name']}: reset jobs and persisted data",
                     [(
                         f"ALTER TABLE {table} TRUNCATE PARTITION {p['name']}",
                         []
