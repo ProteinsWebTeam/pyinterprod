@@ -218,6 +218,16 @@ def clean_tables(uri: str):
                 continue
 
             analysis_id = int(p["value"])
+            if analysis_id not in analyses:
+                # Obsolete analysis: remove data
+                actions.append((
+                    f"  - {table} {p['name']}: delete persisted data",
+                    [(
+                        f"ALTER TABLE {table} DROP PARTITION {p['name']}", []
+                    )]
+                ))
+                continue
+
             analysis = analyses[analysis_id]
             name = analysis["name"]
             version = analysis["version"]
