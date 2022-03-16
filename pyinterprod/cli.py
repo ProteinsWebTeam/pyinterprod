@@ -781,20 +781,6 @@ def run_interproscan_manager():
     parser = ArgumentParser(description="InterProScan matches calculation")
     parser.add_argument("config", metavar="main.conf",
                         help="Configuration file.")
-    parser.add_argument("-a", "--analyses", nargs="*", default=[], type=int,
-                        help="ID of analyses to run")
-    parser.add_argument("-e", "--exclude", nargs="*", default=[], type=int,
-                        help="ID of analyses to exclude")
-    parser.add_argument("-t", "--threads", type=int, default=8,
-                        help="number of job monitoring threads (default: 8)")
-    parser.add_argument("--run-jobs", type=int, default=1000,
-                        help="maximum number of concurrent running jobs "
-                             "(default: 1000)")
-    parser.add_argument("--max-jobs", type=int, default=-1,
-                        help="maximum number of job to run per analysis "
-                             "(default: off)")
-    parser.add_argument("--clean", action="store_true", default=False,
-                        help="delete obsolete data (defaulf: off)")
     parser.add_argument("--uniparc", action="store_true", default=False,
                         help="import proteins from UniParc database "
                              "(default: off)")
@@ -806,6 +792,20 @@ def run_interproscan_manager():
                              "not already in the InterProScan database; if "
                              "used with --pre-jobs: only prepare jobs not "
                              "already in the database (default: off)")
+    parser.add_argument("--clean", action="store_true", default=False,
+                        help="delete obsolete data (defaulf: off)")
+    parser.add_argument("-a", "--analyses", nargs="*", default=[], type=int,
+                        help="ID of analyses to run (default: all)")
+    parser.add_argument("-e", "--exclude", nargs="*", default=[], type=int,
+                        help="ID of analyses to exclude")
+    parser.add_argument("-t", "--threads", type=int, default=8,
+                        help="number of job monitoring threads (default: 8)")
+    parser.add_argument("--concurrent-jobs", type=int, default=1000,
+                        help="maximum number of concurrent running jobs "
+                             "(default: 1000)")
+    parser.add_argument("--max-jobs", type=int, default=-1,
+                        help="maximum number of job to run per analysis "
+                             "(default: off)")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -860,7 +860,7 @@ def run_interproscan_manager():
                              # Otherwise, allow one retry
                              max_retries=1,
                              # Concurrent jobs
-                             max_running_jobs=args.run_jobs,
+                             max_running_jobs=args.concurrent_jobs,
                              # Max jobs submitted per analysis
                              max_jobs_per_analysis=args.max_jobs,
                              # Number of monitoring threads
