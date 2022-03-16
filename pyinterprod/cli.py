@@ -847,12 +847,25 @@ def run_interproscan_manager():
     interproscan.manager.run(uri=interproscan_uri,
                              work_dir=config["misc"]["work_dir"],
                              temp_dir=config["misc"]["temp_dir"],
+                             # Options for analyses without custom config
+                             job_cpu=8,
+                             job_mem=8 * 1024,
+                             job_size=100000,
                              lsf_queue=config["misc"]["lsf_queue"],
+                             timeout=None,
+                             # Custom configs
                              config=analyses_configs,
+                             # Always resubmit if job failed due to memory
                              infinite_mem=True,
-                             max_retries=4,
+                             # Otherwise, allow one retry
+                             max_retries=1,
+                             # Concurrent jobs
                              max_running_jobs=args.run_jobs,
+                             # Max jobs submitted per analysis
                              max_jobs_per_analysis=args.max_jobs,
+                             # Number of monitoring threads
                              pool_threads=args.threads,
+                             # Analyses to perform
                              analyses=args.analyses,
+                             # Analyses to exclude
                              exclude=args.exclude)

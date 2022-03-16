@@ -134,14 +134,17 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         except KeyError:
             name2id[name] = [analysis_id]
 
-        if to_run and analysis_id not in to_run:
+        if analysis_id in to_exclude:
+            # Analysis flagged NOT to run
             continue
-        elif analysis_id in to_exclude:
+        elif to_run and analysis_id not in to_run:
+            # Analysis not in the list of analyses to run
             continue
 
+        # Either not list of analyses (i.e. run all), or part of this list
         analyses[analysis_id] = analysis
 
-        # Default config
+        # Apply default config
         configs[analysis_id] = base_config.copy()
 
     if not analyses:
@@ -149,7 +152,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         con.close()
         logger.error("No analyses to process: exit")
 
-    # Override with custom configs
+    # Override default config with custom configs
     for name in custom_configs:
         key = sanitize_name(name)
         if key not in name2id:
