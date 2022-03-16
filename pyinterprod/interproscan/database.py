@@ -213,7 +213,8 @@ def clean_tables(uri: str):
 
     actions = []
     for table in sorted(table2analyses):
-        for p in oracle.get_partitions(cur, "IPRSCAN", table.upper()):
+        table = table.upper()
+        for p in oracle.get_partitions(cur, "IPRSCAN", table):
             if p["value"] == "DEFAULT":
                 continue
 
@@ -221,7 +222,7 @@ def clean_tables(uri: str):
             if analysis_id not in analyses:
                 # Obsolete analysis: remove data
                 actions.append((
-                    f"  - {p['name']}: delete persisted data",
+                    f"  - {table}: {p['name']}: delete persisted data",
                     [(
                         f"ALTER TABLE {table} DROP PARTITION {p['name']}", []
                     )]
@@ -234,7 +235,7 @@ def clean_tables(uri: str):
             if analysis_id not in table2analyses[table]:
                 # Obsolete analysis: remove data
                 actions.append((
-                    f"  - {p['name']}: delete persisted data",
+                    f"  - {table}: {p['name']}: delete persisted data",
                     [(
                         f"ALTER TABLE {table} DROP PARTITION {p['name']}", []
                     )]
@@ -254,7 +255,7 @@ def clean_tables(uri: str):
                 if cnt > 0:
                     # Delete jobs after the max UPI
                     actions.append((
-                        f"  - {p['name']}: delete jobs > {max_upi}",
+                        f"  - {table}: {p['name']}: delete jobs > {max_upi}",
                         [(
                             """
                             DELETE FROM IPRSCAN.ANALYSIS_JOBS
@@ -267,7 +268,7 @@ def clean_tables(uri: str):
             else:
                 # No max UPI: remove data
                 actions.append((
-                    f"  - {p['name']}: reset jobs and persisted data",
+                    f"  - {table}: {p['name']}: reset jobs and persisted data",
                     [(
                         f"ALTER TABLE {table} TRUNCATE PARTITION {p['name']}",
                         []
