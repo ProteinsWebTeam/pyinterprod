@@ -781,17 +781,18 @@ def run_interproscan_manager():
     parser = ArgumentParser(description="InterProScan matches calculation")
     parser.add_argument("config", metavar="main.conf",
                         help="Configuration file.")
-    parser.add_argument("--uniparc", action="store_true", default=False,
-                        help="import proteins from UniParc database "
-                             "(default: off)")
-    parser.add_argument("--pre-jobs", nargs="*", type=int, default=[],
+    parser.add_argument("--import-sequences", action="store_true",
+                        default=False,
+                        help="import sequences from UniParc (default: off)")
+    parser.add_argument("--prepare-jobs", nargs="*", type=int, default=[],
                         help="prepare fixed-size jobs of the passed number "
                              "of sequences (disabled: off)")
     parser.add_argument("--top-up", action="store_true", default=False,
-                        help="if used with --uniparc: only import proteins "
-                             "not already in the InterProScan database; if "
-                             "used with --pre-jobs: only prepare jobs not "
-                             "already in the database (default: off)")
+                        help="if used with --import-sequences: only import "
+                             "sequences not already in the InterProScan "
+                             "database; if used with --prepare-jobs: only "
+                             "prepare jobs not already in the database "
+                             "(default: off)")
     parser.add_argument("--clean", action="store_true", default=False,
                         help="delete obsolete data (defaulf: off)")
     parser.add_argument("-a", "--analyses", nargs="*", default=[], type=int,
@@ -821,12 +822,12 @@ def run_interproscan_manager():
     interproscan_uri = config["oracle"]["interproscan"]
     uniparc_uri = config["oracle"]["uaread"]
 
-    if args.uniparc:
+    if args.import_sequences:
         interproscan.database.import_uniparc(ispro_uri=interproscan_uri,
                                              uniparc_uri=uniparc_uri,
                                              top_up=args.top_up)
 
-    for job_size in args.pre_jobs:
+    for job_size in args.prepare_jobs:
         interproscan.database.prepare_jobs(uri=interproscan_uri,
                                            job_size=job_size,
                                            top_up=args.top_up)
