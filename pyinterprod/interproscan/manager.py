@@ -71,6 +71,9 @@ class TaskFactory:
     parse_matches: Callable
     site_table: Optional[str] = None
     parse_sites: Optional[Callable] = None
+    keep_files: bool = False
+    lsf_queue: Optional[str] = None
+    timeout: Optional[int] = None
 
     def make(self, upi_from: str, upi_to: str) -> Task:
         name = f"{self.appl}_{self.version}_{upi_from}_{upi_to}"
@@ -91,11 +94,12 @@ class TaskFactory:
                 self.parse_sites
             ),
             kwargs=dict(cpu=self.config["job_cpu"],
-                        timeout=self.config["timeout"]),
+                        keep=self.keep_files,
+                        timeout=self.timeout),
             name=self.make_name(upi_from, upi_to),
             scheduler=dict(cpu=self.config["job_cpu"],
                            mem=self.config["job_mem"],
-                           queue=self.config["lsf_queue"]),
+                           queue=self.lsf_queue),
             random_suffix=False
         )
 
@@ -107,16 +111,18 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     base_config = {
         "job_cpu": kwargs.get("job_cpu", 8),
         "job_mem": kwargs.get("job_mem", 8 * 1024),
-        "job_size": kwargs.get("job_size", 100000),
-        "lsf_queue": kwargs.get("lsf_queue"),
-        "timeout": kwargs.get("timeout")
+        "job_size": kwargs.get("job_size", 100000)
     }
     custom_configs = kwargs.get("config", {})
     infinite_mem = kwargs.get("infinite_mem", False)
+    keep_files = kwargs.get("keep_files", False)
+    lsf_queue = kwargs.get("lsf_queue")
     max_retries = kwargs.get("max_retries", 0)
     max_running_jobs = kwargs.get("max_running_jobs", 1000)
     max_jobs_per_analysis = kwargs.get("max_jobs_per_analysis", -1)
     pool_threads = kwargs.get("pool_threads", 4)
+    resubmit_only = kwargs.get("resubmit_only", False)
+    timeout = kwargs.get("timeout")
     to_run = kwargs.get("analyses", [])
     to_exclude = kwargs.get("exclude", [])
 
@@ -183,7 +189,10 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                                   match_table=analysis["tables"]["matches"],
                                   parse_matches=parse_matches,
                                   site_table=analysis["tables"]["sites"],
-                                  parse_sites=parse_sites)
+                                  parse_sites=parse_sites,
+                                  keep_files=keep_files,
+                                  lsf_queue=lsf_queue,
+                                  timeout=timeout)
 
             to_restart = incomplete_jobs.get(analysis_id, [])
             killed_jobs = 0
@@ -205,7 +214,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 n_tasks += 1
                 n_tasks_analysis += 1
 
-            if n_tasks_analysis == max_jobs_per_analysis:
+            if resubmit_only or n_tasks_analysis == max_jobs_per_analysis:
                 logger.debug(f"{name} {version}: "
                              f"{n_tasks_analysis} tasks submitted")
                 continue
@@ -346,7 +355,7 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             outdir: str, analysis_id: int, match_table: str,
             parse_matches: Callable, site_table: Optional[str],
             parse_sites: Optional[Callable], cpu: Optional[int] = None,
-            timeout: Optional[int] = None):
+            keep: bool = False, timeout: Optional[int] = None):
     try:
         shutil.rmtree(outdir)
     except FileNotFoundError:
@@ -376,7 +385,8 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
     except Exception:
         raise
     finally:
-        shutil.rmtree(outdir)
+        if not keep:
+            shutil.rmtree(outdir)
 
 
 def get_lsf_max_memory(stdout: str) -> int:
