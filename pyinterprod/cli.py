@@ -807,6 +807,9 @@ def run_interproscan_manager():
     parser.add_argument("--max-jobs", type=int, default=-1,
                         help="maximum number of job to run per analysis "
                              "(default: off)")
+    parser.add_argument("--max-retries", type=int, default=-0,
+                        help="maximum number of attempts to re-run a job "
+                             "after it fails (default: 0)")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -846,21 +849,25 @@ def run_interproscan_manager():
         for option, value in analyses_config.items(analysis):
             analyses_configs[analysis][option] = int(value)
 
+    # Options for analyses without a custom config
+    job_cpu = int(analyses_config["DEFAULT"]["job_cpu"])
+    job_mem = int(analyses_config["DEFAULT"]["job_mem"])
+    job_size = int(analyses_config["DEFAULT"]["job_size"])
+
     interproscan.manager.run(uri=iscn_iprscan_uri,
                              work_dir=config["misc"]["work_dir"],
                              temp_dir=config["misc"]["temp_dir"],
-                             # Options for analyses without custom config
-                             job_cpu=8,
-                             job_mem=8 * 1024,
-                             job_size=100000,
+                             job_cpu=job_cpu,
+                             job_mem=job_mem,
+                             job_size=job_size,
                              lsf_queue=config["misc"]["lsf_queue"],
                              timeout=None,
                              # Custom configs
                              config=analyses_configs,
-                             # Always resubmit if job failed due to memory
+                             # Always resubmit a job if it fails due to memory
                              infinite_mem=True,
-                             # Otherwise, allow one retry
-                             max_retries=1,
+                             # Attempts to re-run a failed job (non-memory)
+                             max_retries=args.max_retries,
                              # Concurrent jobs
                              max_running_jobs=args.concurrent_jobs,
                              # Max jobs submitted per analysis
