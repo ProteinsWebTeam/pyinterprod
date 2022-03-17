@@ -412,6 +412,10 @@ def prepare_jobs(uri: str, job_size: int = 100000, top_up: bool = False):
             (max_upi,)
         )
         upi_from, = cur.fetchone()
+
+        if upi_from is None:
+            # already jobs for all proteins
+            upi_from = int_to_upi(upi_to_int(max_upi) + 1)
     else:
         cur.execute(
             """
@@ -448,8 +452,9 @@ def prepare_jobs(uri: str, job_size: int = 100000, top_up: bool = False):
         values.append((upi_from, upi_to, job_size))
         upi_from = int_to_upi(upi_to_int(upi_to) + 1)
 
-    cur.executemany("INSERT INTO IPRSCAN.ANALYSIS_ALL_JOBS "
-                    "VALUES (:1, :2, :3)", values)
+    if values:
+        cur.executemany("INSERT INTO IPRSCAN.ANALYSIS_ALL_JOBS "
+                        "VALUES (:1, :2, :3)", values)
     con.commit()
     cur.close()
     con.close()
