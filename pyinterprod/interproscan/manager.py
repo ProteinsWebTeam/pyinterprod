@@ -72,7 +72,7 @@ class TaskFactory:
     parse_matches: Callable
     site_table: Optional[str] = None
     parse_sites: Optional[Callable] = None
-    keep_files: bool = False
+    keep_files: Optional[str] = None
     lsf_queue: Optional[str] = None
     timeout: Optional[int] = None
 
@@ -95,7 +95,7 @@ class TaskFactory:
                 self.parse_sites
             ),
             kwargs=dict(cpu=self.config["job_cpu"],
-                        keep=self.keep_files,
+                        keep_files=self.keep_files,
                         timeout=self.timeout),
             name=self.make_name(upi_from, upi_to),
             scheduler=dict(cpu=self.config["job_cpu"],
@@ -116,7 +116,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     }
     custom_configs = kwargs.get("config", {})
     infinite_mem = kwargs.get("infinite_mem", False)
-    keep_files = kwargs.get("keep_files", False)
+    keep_files = kwargs.get("keep", None)
     lsf_queue = kwargs.get("lsf_queue")
     max_retries = kwargs.get("max_retries", 0)
     max_running_jobs = kwargs.get("max_running_jobs", 1000)
@@ -372,7 +372,7 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             outdir: str, analysis_id: int, match_table: str,
             parse_matches: Callable, site_table: Optional[str],
             parse_sites: Optional[Callable], cpu: Optional[int] = None,
-            keep: bool = False, timeout: Optional[int] = None):
+            keep_files: Optional[str] = None, timeout: Optional[int] = None):
     try:
         shutil.rmtree(outdir)
     except FileNotFoundError:
@@ -383,6 +383,7 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
     matches_output = os.path.join(outdir, "output.tsv-pro")
     sites_output = matches_output + ".sites"
 
+    ok = True
     try:
         export_fasta(uri, fasta_file, upi_from, upi_to)
 
@@ -400,9 +401,10 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
         if site_table:
             parse_sites(uri, sites_output, analysis_id, site_table)
     except Exception:
+        ok = False
         raise
     finally:
-        if not keep:
+        if keep_files != "all" and (keep_files != "failed" or ok):
             shutil.rmtree(outdir)
 
 
