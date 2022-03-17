@@ -116,7 +116,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     }
     custom_configs = kwargs.get("config", {})
     infinite_mem = kwargs.get("infinite_mem", False)
-    keep_files = kwargs.get("keep", None)
+    keep_files = kwargs.get("keep_files", None)
     lsf_queue = kwargs.get("lsf_queue")
     max_retries = kwargs.get("max_retries", 0)
     max_running_jobs = kwargs.get("max_running_jobs", 1000)
