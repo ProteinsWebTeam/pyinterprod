@@ -222,7 +222,7 @@ def clean_tables(uri: str):
             if analysis_id not in analyses:
                 # Obsolete analysis: remove data
                 actions.append((
-                    f"  - {table}: {p['name']}: delete persisted data",
+                    f"  - {p['name']:<30}: drop partition",
                     [(
                         f"ALTER TABLE {table} DROP PARTITION {p['name']}", []
                     )]
@@ -235,7 +235,7 @@ def clean_tables(uri: str):
             if analysis_id not in table2analyses[table]:
                 # Obsolete analysis: remove data
                 actions.append((
-                    f"  - {table}: {p['name']}: delete persisted data",
+                    f"  - {p['name']:<30}: drop partition",
                     [(
                         f"ALTER TABLE {table} DROP PARTITION {p['name']}", []
                     )]
@@ -255,7 +255,7 @@ def clean_tables(uri: str):
                 if cnt > 0:
                     # Delete jobs after the max UPI
                     actions.append((
-                        f"  - {table}: {p['name']}: delete jobs > {max_upi}",
+                        f"  - {p['name']:<30}: delete jobs > {max_upi}",
                         [(
                             """
                             DELETE FROM IPRSCAN.ANALYSIS_JOBS
@@ -263,19 +263,25 @@ def clean_tables(uri: str):
                             AND UPI_FROM > :2
                             """,
                             [analysis_id, max_upi]
+                        ), (
+                            f"""
+                            DELETE FROM {table} PARTITION ({p['name']})
+                            WHERE UPI_FROM > :1
+                            """,
+                            [max_upi]
                         )]
                     ))
             else:
                 # No max UPI: remove data
                 actions.append((
-                    f"  - {table}: {p['name']}: reset jobs and persisted data",
+                    f"  - {p['name']:<30}: delete jobs",
                     [(
-                        f"ALTER TABLE {table} TRUNCATE PARTITION {p['name']}",
-                        []
-                    ), (
                         f"DELETE FROM IPRSCAN.ANALYSIS_JOBS "
                         f"WHERE ANALYSIS_ID = :1",
                         [analysis_id]
+                    ), (
+                        f"ALTER TABLE {table} TRUNCATE PARTITION {p['name']}",
+                        []
                     )]
                 ))
 
