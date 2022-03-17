@@ -1,4 +1,5 @@
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -174,6 +175,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     incomplete_jobs = database.get_incomplete_jobs(cur)
 
     with Pool(temp_dir, max_running_jobs, pool_threads) as pool:
+        to_run = []
         n_tasks = 0
         for analysis_id, analysis in analyses.items():
             name = analysis["name"]
@@ -210,7 +212,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 if n_tasks_analysis == max_jobs_per_analysis:
                     break
 
-                pool.submit(factory.make(upi_from, upi_to))
+                to_run.append(factory.make(upi_from, upi_to))
                 n_tasks += 1
                 n_tasks_analysis += 1
 
@@ -224,7 +226,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 if n_tasks_analysis == max_jobs_per_analysis:
                     break
 
-                pool.submit(factory.make(upi_from, upi_to))
+                to_run.append(factory.make(upi_from, upi_to))
                 database.add_job(cur, analysis_id, upi_from, upi_to)
                 n_tasks += 1
                 n_tasks_analysis += 1
@@ -234,6 +236,21 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
         cur.close()
         con.close()
+
+        """
+        Tasks in the list are grouped by analysis, so if we submit them 
+        in order, tasks from the "first" analysis will start to run first, 
+        and tasks from other analyses will be pending for a while.
+        By randomly selecting tasks to submit, we hope that each analysis 
+        will rapidly have some tasks running.
+        We could use random.shuffle, but we do not need the entire list 
+        re-arranged, so we use random.randint to destructively iterate 
+        over the list.
+        """
+        while to_run:
+            i = random.randrange(len(to_run))  # 0 <= i < len(to_run)
+            task = to_run.pop(i)
+            pool.submit(task)
 
         logger.info(f"Tasks submitted: {n_tasks:,}")
 
