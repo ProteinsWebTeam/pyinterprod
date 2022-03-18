@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import cx_Oracle
 
 
@@ -18,7 +20,7 @@ def cdd_matches(uri: str, file: str, analysis_id: int, table: str):
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
-    # cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
@@ -35,8 +37,8 @@ def cdd_matches(uri: str, file: str, analysis_id: int, table: str):
                 "seq_start": int(cols[6]),
                 "seq_end": int(cols[7]),
                 "fragments": cols[8],
-                "seq_score": float(cols[9]),
-                "seq_evalue": float(cols[10])
+                "seq_score": Decimal(cols[9]),
+                "seq_evalue": Decimal(cols[10])
             })
 
             if len(values) == _COMMIT_SIZE:
@@ -172,7 +174,7 @@ def hamap_matches(uri: str, file: str, analysis_id: int, table: str):
                 "seq_start": int(cols[6]),
                 "seq_end": int(cols[7]),
                 "fragments": cols[8],
-                "seq_score": float(cols[9]),
+                "seq_score": Decimal(cols[9]),
                 "alignment": cols[10]
             })
 
@@ -206,8 +208,8 @@ def _hmmer3_matches(uri: str, file: str, analysis_id: int, table: str,
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
-    # cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE,
-    #                   evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE,
+                      evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
@@ -224,16 +226,16 @@ def _hmmer3_matches(uri: str, file: str, analysis_id: int, table: str,
                 "seq_start": int(cols[6]),
                 "seq_end": int(cols[7]),
                 "fragments": cols[8],
-                "seq_score": float(cols[9]),
-                "seq_evalue": float(cols[10]),
+                "seq_score": Decimal(cols[9]),
+                "seq_evalue": Decimal(cols[10]),
                 "hmm_bounds": cols[11],
                 "hmm_start": int(cols[12]),
                 "hmm_end": int(cols[13]),
                 "hmm_length": int(cols[14]),
                 "env_start": int(cols[15]),
                 "env_end": int(cols[16]),
-                "score": float(cols[17]),
-                "evalue": float(cols[18])
+                "score": Decimal(cols[17]),
+                "evalue": Decimal(cols[18])
             })
 
             if len(values) == _COMMIT_SIZE:
@@ -321,7 +323,7 @@ def panther_matches(uri: str, file: str, analysis_id: int, table: str):
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
-    # cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
@@ -344,8 +346,8 @@ def panther_matches(uri: str, file: str, analysis_id: int, table: str):
                 "seq_start": int(cols[6]),
                 "seq_end": int(cols[7]),
                 "fragments": cols[8],
-                "seq_score": float(cols[9]),
-                "seq_evalue": float(cols[10]),
+                "seq_score": Decimal(cols[9]),
+                "seq_evalue": Decimal(cols[10]),
                 "hmm_bounds": cols[11],
                 "hmm_start": int(cols[12]),
                 "hmm_end": int(cols[13]),
@@ -386,8 +388,8 @@ def prints_matches(uri: str, file: str, analysis_id: int, table: str):
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
-    # cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE,
-    #                   pvalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE,
+                      pvalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
@@ -404,10 +406,10 @@ def prints_matches(uri: str, file: str, analysis_id: int, table: str):
                 "seq_start": int(cols[6]),
                 "seq_end": int(cols[7]),
                 "fragments": cols[8],
-                "seq_score": float(cols[9]),
-                "seq_evalue": float(cols[10]),
+                "seq_score": Decimal(cols[9]),
+                "seq_evalue": Decimal(cols[10]),
                 "motif_number": int(cols[11]),
-                "pvalue": float(cols[12]),
+                "pvalue": Decimal(cols[12]),
                 "graphscan": cols[13]
             })
 
@@ -506,7 +508,7 @@ def signalp_tmhmm_matches(uri: str, file: str, analysis_id: int, table: str,
                 "seq_start": int(cols[6]),
                 "seq_end": int(cols[7]),
                 "fragments": cols[8],
-                "seq_score": float(cols[9])
+                "seq_score": Decimal(cols[9])
             })
 
             if len(values) == _COMMIT_SIZE:
@@ -543,8 +545,8 @@ def smart_matches(uri: str, file: str, analysis_id: int, table: str):
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
-    # cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE,
-    #                   evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE,
+                      evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
@@ -561,14 +563,14 @@ def smart_matches(uri: str, file: str, analysis_id: int, table: str):
                 "seq_start": int(cols[6]),
                 "seq_end": int(cols[7]),
                 "fragments": cols[8],
-                "seq_score": float(cols[9]),
-                "seq_evalue": float(cols[10]),
+                "seq_score": Decimal(cols[9]),
+                "seq_evalue": Decimal(cols[10]),
                 "hmm_bounds": cols[11],
                 "hmm_start": int(cols[12]),
                 "hmm_end": int(cols[13]),
                 "hmm_length": int(cols[14]),
-                "score": float(cols[15]),
-                "evalue": float(cols[16])
+                "score": Decimal(cols[15]),
+                "evalue": Decimal(cols[16])
             })
 
             if len(values) == _COMMIT_SIZE:
@@ -598,7 +600,7 @@ def superfamily_matches(uri: str, file: str, analysis_id: int, table: str):
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
-    # cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
@@ -615,7 +617,7 @@ def superfamily_matches(uri: str, file: str, analysis_id: int, table: str):
                 "seq_start": int(cols[6]),
                 "seq_end": int(cols[7]),
                 "fragments": cols[8],
-                "seq_evalue": float(cols[9]),
+                "seq_evalue": Decimal(cols[9]),
                 "hmm_length": int(cols[10]),
             })
 
