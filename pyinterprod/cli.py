@@ -810,8 +810,9 @@ def run_interproscan_manager():
     parser.add_argument("--max-retries", type=int, default=-0,
                         help="maximum number of attempts to re-run a job "
                              "after it fails (default: 0)")
-    parser.add_argument("--keep", choices=["all", "failed"], default=None,
-                        help="keep input/output files (default: off)")
+    parser.add_argument("--keep", choices=["none", "failed", "all"],
+                        default="none",
+                        help="keep jobs' input/output files (default: none)")
     parser.add_argument("--resubmit-only", action="store_true", default=False,
                         help="do not submit new jobs, only submit jobs that "
                              "failed in a previous run (default: off)")
