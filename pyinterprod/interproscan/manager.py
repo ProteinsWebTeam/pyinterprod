@@ -287,28 +287,27 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         fh.write(task.stdout)
                         fh.write(task.stderr)
 
-                    if retries.get(task.name, 0) == max_retries:
-                        # Max number of retries reached
-                        n_failed += 1
-                        continue
+                    # Number of times the task was re-submitted
+                    num_retries = retries.get(task.name, 0)
 
                     # Did the job reached the memory usage limit?
-                    mem_ok = max_mem < task.scheduler["mem"]
+                    mem_err = max_mem >= task.scheduler["mem"]
 
-                    # Increase memory requirement
-                    while task.scheduler["mem"] < max_mem:
-                        task.scheduler["mem"] *= 1.5
+                    if num_retries < max_retries or (mem_err and infinite_mem):
+                        # Task allowed to be re-submitted
 
-                    # Resubmit task
-                    pool.submit(task)
+                        # Increase memory requirement if needed
+                        while task.scheduler["mem"] < max_mem:
+                            task.scheduler["mem"] *= 1.5
 
-                    if mem_ok or not infinite_mem:
-                        """
-                        Increase the number of attempts if either:
-                          - this failure is not memory-related
-                          - we don't allow "infinite" memory
-                        """
-                        retries[task.name] = retries.get(task.name, 0) + 1
+                        # Resubmit task
+                        pool.submit(task)
+
+                        # Increment retries counter
+                        retries[task.name] = num_retries + 1
+                    else:
+                        # Max number of retries reached
+                        n_failed += 1
 
                 pc = (n_completed + n_failed) * 100 / n_tasks
                 if pc >= (progress + step):
