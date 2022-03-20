@@ -382,7 +382,7 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
     matches_output = os.path.join(outdir, "output.tsv-pro")
     sites_output = matches_output + ".sites"
 
-    ok = True
+    ok = False
     try:
         export_fasta(uri, fasta_file, upi_from, upi_to)
 
@@ -400,8 +400,9 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
         if site_table:
             parse_sites(uri, sites_output, analysis_id, site_table)
     except Exception:
-        ok = False
         raise
+    else:
+        ok = True
     finally:
         if keep_files != "all" and (keep_files != "failed" or ok):
             shutil.rmtree(outdir)
