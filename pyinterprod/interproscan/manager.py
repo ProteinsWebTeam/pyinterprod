@@ -3,6 +3,7 @@ import random
 import re
 import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from typing import Callable, Optional
@@ -50,6 +51,9 @@ _DB_TO_I5 = {
     "TIGRFAMs": ("TIGRFAM", persistence.hmmer3_matches, None),
     "TMHMM": ("TMHMM", persistence.tmhmm_matches, None),
 }
+
+# String printed by I5 on successful completion
+_I5_SUCCESS = "100% done:  InterProScan analyses completed"
 
 
 def sanitize_name(string: str) -> str:
@@ -254,8 +258,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
         logger.info(f"Tasks submitted: {n_tasks:,}")
 
-        n_completed = n_failed = progress = 0
-        step = 5
+        n_completed = n_failed = 0
+        milestone = step = 5
         retries = {}
         while (n_completed + n_failed) < n_tasks:
             for task in pool.as_completed(wait=True):
@@ -264,16 +268,19 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 analysis_id = task.args[6]
 
                 logfile = os.path.join(temp_dir, f"{task.name}.log")
+                with open(logfile, "wt") as fh:
+                    fh.write(task.stdout)
+                    fh.write(task.stderr)
 
                 # Check how much memory was used
                 max_mem = get_lsf_max_memory(task.stdout)
 
                 if task.completed():
-                    # Remove the log file (exists if a previous run failed)
-                    try:
-                        os.unlink(logfile)
-                    except FileNotFoundError:
-                        pass
+                    # # Remove the log file (exists if a previous run failed)
+                    # try:
+                    #     os.unlink(logfile)
+                    # except FileNotFoundError:
+                    #     pass
 
                     # Flag the job as completed in the database
                     cpu_time = get_lsf_cpu_time(task.stdout)
@@ -282,10 +289,10 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
                     n_completed += 1
                 else:
-                    # Write to log file (with this run's output/error)
-                    with open(logfile, "at") as fh:
-                        fh.write(task.stdout)
-                        fh.write(task.stderr)
+                    # # Write to log file (with this run's output/error)
+                    # with open(logfile, "at") as fh:
+                    #     fh.write(task.stdout)
+                    #     fh.write(task.stderr)
 
                     # Number of times the task was re-submitted
                     num_retries = retries.get(task.name, 0)
@@ -309,10 +316,16 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         # Max number of retries reached
                         n_failed += 1
 
-                pc = (n_completed + n_failed) * 100 / n_tasks
-                if pc >= (progress + step):
-                    logger.info(f"Progress: {progress + step:>3}%")
-                    progress += step
+                progress = (n_completed + n_failed) * 100 / n_tasks
+                if progress >= milestone:
+                    """
+                    Skip intermediate milestones  (e.g. progress went 
+                    from 0 to 10%): we don't want to print 5%
+                    """
+                    while progress >= milestone:
+                        milestone += step
+
+                    logger.info(f"Progress: {milestone - step:>3}%")
 
         if n_failed:
             logger.error(f"{n_failed} task(s) failed")
@@ -347,7 +360,7 @@ def export_fasta(uri: str, fasta_file: str, upi_from: str, upi_to: str):
 
 def run_i5(i5_dir: str, fasta_file: str, analysis_name: str, output: str,
            cpu: Optional[int] = None, temp_dir: Optional[str] = None,
-           timeout: Optional[int] = None) -> bool:
+           timeout: Optional[int] = None) -> tuple[bool, str, str]:
     args = [
         os.path.join(i5_dir, "interproscan.sh"),
         "-i", fasta_file,
@@ -363,8 +376,12 @@ def run_i5(i5_dir: str, fasta_file: str, analysis_name: str, output: str,
     if temp_dir is not None:
         args += ["-T", temp_dir]
 
-    process = subprocess.run(args, timeout=timeout)
-    return process.returncode == 0
+    process = subprocess.run(args, capture_output=True, timeout=timeout)
+    return (
+        process.returncode == 0,
+        process.stdout.decode("utf-8"),
+        process.stderr.decode("utf-8")
+    )
 
 
 def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
@@ -386,10 +403,14 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
     try:
         export_fasta(uri, fasta_file, upi_from, upi_to)
 
-        if not run_i5(i5_dir, fasta_file, appl, matches_output,
-                      cpu=cpu,
-                      temp_dir=outdir,
-                      timeout=timeout):
+        ok, stdout, stderr = run_i5(i5_dir, fasta_file, appl, matches_output,
+                                    cpu=cpu, temp_dir=outdir, timeout=timeout)
+
+        # Write captured streams
+        sys.stdout.write(stdout)
+        sys.stderr.write(stderr)
+
+        if not ok or _I5_SUCCESS not in stdout:
             raise RuntimeError("InterProScan error")
         elif not os.path.isfile(matches_output):
             raise RuntimeError(f"Cannot access output matches tsv-pro")
