@@ -502,10 +502,10 @@ def update_cdd_clans(url: str, database: Database, cddmasters: str,
             id2acc[model_id] = model_acc
 
     logger.info("building profile database")
-    fd, database = mkstemp(dir=workdir)
+    fd, profile_db = mkstemp(dir=workdir)
     os.close(fd)
-    os.remove(database)
-    sp.run(["mk_compass_db", "-i", files_list, "-o", database],
+    os.remove(profile_db)
+    sp.run(["mk_compass_db", "-i", files_list, "-o", profile_db],
            stderr=sp.DEVNULL, stdout=sp.DEVNULL, check=True)
 
     with futures.ThreadPoolExecutor(max_workers=threads) as executor:
@@ -514,7 +514,7 @@ def update_cdd_clans(url: str, database: Database, cddmasters: str,
         for model_acc, prefix in seqfiles.items():
             seqfile = prefix + SEQ_SUFFIX
             outfile = prefix + OUT_SUFFIX
-            f = executor.submit(run_compass, seqfile, database, outfile)
+            f = executor.submit(run_compass, seqfile, profile_db, outfile)
             fs[f] = (model_acc, prefix)
 
         con = cx_Oracle.connect(url)
