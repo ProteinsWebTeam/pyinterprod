@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 import cx_Oracle
 from mundone.task import Task
@@ -162,7 +162,14 @@ def init_tables(ippro_uri: str, ispro_uri: str, i5_dir: str, others=None):
     con.close()
 
 
-def get_analyses(cur: cx_Oracle.Cursor) -> dict:
+def get_analyses(obj: Union[str, cx_Oracle.Cursor]) -> dict:
+    if isinstance(obj, str):
+        con = cx_Oracle.connect(obj)
+        cur = con.cursor()
+    else:
+        con = None
+        cur = obj
+
     cur.execute(
         """
         SELECT A.ID, A.NAME, A.VERSION, A.MAX_UPI, A.I5_DIR,
@@ -186,6 +193,10 @@ def get_analyses(cur: cx_Oracle.Cursor) -> dict:
                 "sites": row[6],
             }
         }
+
+    if con is not None:
+        cur.close()
+        con.close()
 
     return analyses
 
