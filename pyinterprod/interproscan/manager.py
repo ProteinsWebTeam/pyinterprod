@@ -55,6 +55,8 @@ _DB_TO_I5 = {
 # String printed by I5 on successful completion
 _I5_SUCCESS = "100% done:  InterProScan analyses completed"
 
+_JOB_PREFIX = "IPM_"
+
 
 def sanitize_name(string: str) -> str:
     for c in [" ", "-", "_"]:
@@ -81,8 +83,6 @@ class TaskFactory:
     timeout: Optional[int] = None
 
     def make(self, upi_from: str, upi_to: str) -> Task:
-        name = f"{self.appl}_{self.version}_{upi_from}_{upi_to}"
-
         return Task(
             fn=run_job,
             args=(
@@ -91,7 +91,7 @@ class TaskFactory:
                 upi_to,
                 self.i5_dir,
                 self.appl,
-                os.path.join(self.work_dir, name),
+                os.path.join(self.work_dir, f"{upi_from}_{upi_to}"),
                 self.analysis_id,
                 self.match_table,
                 self.parse_matches,
@@ -109,7 +109,7 @@ class TaskFactory:
         )
 
     def make_name(self, upi_from: str, upi_to: str) -> str:
-        return f"IPM_{self.appl}_{self.version}_{upi_from}_{upi_to}"
+        return f"{_JOB_PREFIX}{self.appl}_{self.version}_{upi_from}_{upi_to}"
 
 
 def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
@@ -187,10 +187,14 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             max_upi = analysis["max_upi"]
             appl, parse_matches, parse_sites = _DB_TO_I5[name]
 
+            analysis_work_dir = os.path.join(work_dir, appl, version)
+            os.makedirs(analysis_work_dir, exist_ok=True)
+
             config = configs[analysis_id]
             factory = TaskFactory(uri=uri, i5_dir=analysis["i5_dir"],
                                   appl=appl, version=version,
-                                  work_dir=work_dir, analysis_id=analysis_id,
+                                  work_dir=analysis_work_dir,
+                                  analysis_id=analysis_id,
                                   config=config,
                                   match_table=analysis["tables"]["matches"],
                                   parse_matches=parse_matches,
@@ -268,19 +272,16 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 analysis_id = task.args[6]
 
                 logfile = os.path.join(temp_dir, f"{task.name}.log")
-                with open(logfile, "wt") as fh:
-                    fh.write(task.stdout)
-                    fh.write(task.stderr)
 
                 # Check how much memory was used
                 max_mem = get_lsf_max_memory(task.stdout)
 
                 if task.completed():
-                    # # Remove the log file (exists if a previous run failed)
-                    # try:
-                    #     os.unlink(logfile)
-                    # except FileNotFoundError:
-                    #     pass
+                    # Remove the log file (exists if a previous run failed)
+                    try:
+                        os.unlink(logfile)
+                    except FileNotFoundError:
+                        pass
 
                     # Flag the job as completed in the database
                     cpu_time = get_lsf_cpu_time(task.stdout)
@@ -289,10 +290,10 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
                     n_completed += 1
                 else:
-                    # # Write to log file (with this run's output/error)
-                    # with open(logfile, "at") as fh:
-                    #     fh.write(task.stdout)
-                    #     fh.write(task.stderr)
+                    # Write to log file
+                    with open(logfile, "wt") as fh:
+                        fh.write(task.stdout)
+                        fh.write(task.stderr)
 
                     # Number of times the task was re-submitted
                     num_retries = retries.get(task.name, 0)
