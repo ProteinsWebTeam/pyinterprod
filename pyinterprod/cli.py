@@ -794,7 +794,9 @@ def run_interproscan_manager():
                              "prepare jobs not already in the database "
                              "(default: off)")
     parser.add_argument("--clean", action="store_true", default=False,
-                        help="delete obsolete data (defaulf: off)")
+                        help="delete obsolete data (default: off)")
+    parser.add_argument("-l", "--list", action="store_true", default=False,
+                        help="list active analyses and exit (default: off)")
     parser.add_argument("-a", "--analyses", nargs="*", default=[], type=int,
                         help="ID of analyses to run (default: all)")
     parser.add_argument("-e", "--exclude", nargs="*", default=[], type=int,
@@ -831,6 +833,16 @@ def run_interproscan_manager():
     iscn_iprscan_uri = config["oracle"]["iscn-iprscan"]
     iscn_uniparc_uri = config["oracle"]["iscn-uniparc"]
     unpr_uniparc_uri = config["oracle"]["unpr-uaread"]
+
+    if args.list:
+        analyses = interproscan.database.get_analyses(iscn_iprscan_uri)
+        for analysis_id in sorted(analyses,
+                                  key=lambda k: (analyses[k]["name"], k)):
+            name = analyses[analysis_id]["name"]
+            version = analyses[analysis_id]["version"]
+            print(f"{analysis_id:>4}\t{name:<30}\t{version}")
+
+        return
 
     if args.import_sequences:
         interproscan.database.import_uniparc(ispro_uri=iscn_uniparc_uri,
