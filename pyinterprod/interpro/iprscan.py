@@ -366,10 +366,10 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
 
             if upi and upi >= max_upi:
                 # Data in `partitioned_table` >= UniParc: no need to refresh
-                logger.debug(f"{partition} ({analysis_id}): up-to-date")
+                logger.info(f"{partition} ({analysis_id}): up-to-date")
                 up_to_date += 1
             else:
-                logger.debug(f"{partition} ({analysis_id}): outdated")
+                logger.info(f"{partition} ({analysis_id}): outdated")
 
     if up_to_date == len(analyses):
         cur.close()
@@ -398,11 +398,11 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
         All analyses for this table are imported
             (i.e. previous versions are not ignored)
         """
-        logger.debug(f"importing {remote_table}@ISPRO -> {local_table}")
+        logger.info(f"importing {remote_table}@ISPRO -> {local_table}")
         import_from_ispro(cur, remote_table, local_table)
 
     for analysis_id, partition, columns in analyses:
-        logger.debug(f"{partition} ({analysis_id}): updating")
+        logger.info(f"{partition} ({analysis_id}): updating")
 
         # Create temporary table for the partition exchange
         tmp_table = f"IPRSCAN.{remote_table}"
@@ -455,8 +455,8 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
             2. Modify the partition (remove old value)
             3. Modify the partition (add new value)
             """
-            logger.debug(f"{partitioned_table} ({partition}): "
-                         f"{prev_val} -> {new_val}")
+            logger.info(f"{partitioned_table} ({partition}): "
+                        f"{prev_val} -> {new_val}")
             cur.execute(
                 f"""
                 ALTER TABLE IPRSCAN.{partitioned_table}
