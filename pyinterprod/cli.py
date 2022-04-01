@@ -229,6 +229,10 @@ def run_member_db_update():
                         default=None,
                         metavar="TASK",
                         help="tasks to run")
+    parser.add_argument("-f", "--force",
+                        action="store_true",
+                        default=False,
+                        help="force matches import (default: off)")
     parser.add_argument("--dry-run",
                         action="store_true",
                         default=False,
@@ -313,7 +317,7 @@ def run_member_db_update():
             fn=interpro.iprscan.import_matches,
             args=(ora_iprscan_url,),
             kwargs=dict(databases=mem_updates + non_mem_updates + site_updates,
-                        force_import=True, threads=8),
+                        force_import=args.force, threads=8),
             name="import-matches",
             scheduler=dict(queue=lsf_queue)
         )
@@ -394,8 +398,8 @@ def run_member_db_update():
             Task(
                 fn=interpro.iprscan.import_sites,
                 args=(ora_iprscan_url,),
-                kwargs=dict(databases=site_updates, force_import=True,
-                            threads=2),
+                kwargs=dict(databases=site_updates,
+                            force_import=args.force, threads=2),
                 name="import-sites",
                 scheduler=dict(queue=lsf_queue)
             ),
