@@ -1,8 +1,9 @@
-from typing import Optional
+from typing import Optional, Union
 
 import cx_Oracle
 from mundone.task import Task
 
+from pyinterprod import logger
 from pyinterprod.utils import oracle
 
 
@@ -161,7 +162,14 @@ def init_tables(ippro_uri: str, ispro_uri: str, i5_dir: str, others=None):
     con.close()
 
 
-def get_analyses(cur: cx_Oracle.Cursor) -> dict:
+def get_analyses(obj: Union[str, cx_Oracle.Cursor]) -> dict:
+    if isinstance(obj, str):
+        con = cx_Oracle.connect(obj)
+        cur = con.cursor()
+    else:
+        con = None
+        cur = obj
+
     cur.execute(
         """
         SELECT A.ID, A.NAME, A.VERSION, A.MAX_UPI, A.I5_DIR,
@@ -185,6 +193,10 @@ def get_analyses(cur: cx_Oracle.Cursor) -> dict:
                 "sites": row[6],
             }
         }
+
+    if con is not None:
+        cur.close()
+        con.close()
 
     return analyses
 
@@ -210,24 +222,35 @@ def clean_tables(uri: str):
             except KeyError:
                 table2analyses[table] = {analysis_id}
 
-    print("The following actions will be performed:")
     actions = []
-    for table in table2analyses:
-        for p in oracle.get_partitions(cur, "IPRSCAN", table.upper()):
+    for table in sorted(table2analyses):
+        table = table.upper()
+        for p in oracle.get_partitions(cur, "IPRSCAN", table):
             if p["value"] == "DEFAULT":
                 continue
 
             analysis_id = int(p["value"])
+            if analysis_id not in analyses:
+                # Obsolete analysis: remove data
+                actions.append((
+                    f"  - {p['name']:<30}: drop partition",
+                    [(
+                        f"ALTER TABLE {table} DROP PARTITION {p['name']}", []
+                    )]
+                ))
+                continue
+
             analysis = analyses[analysis_id]
-            name = analysis["name"]
-            version = analysis["version"]
             max_upi = analysis["max_upi"]
 
             if analysis_id not in table2analyses[table]:
                 # Obsolete analysis: remove data
-                print(f"  - {name} {version}: delete persisted data")
-                actions.append((f"ALTER TABLE {table} "
-                                f"DROP PARTITION {p['name']}", []))
+                actions.append((
+                    f"  - {p['name']:<30}: drop partition",
+                    [(
+                        f"ALTER TABLE {table} DROP PARTITION {p['name']}", []
+                    )]
+                ))
             elif max_upi:
                 cur.execute(
                     """
@@ -242,29 +265,50 @@ def clean_tables(uri: str):
 
                 if cnt > 0:
                     # Delete jobs after the max UPI
-                    print(f"  - {name} {version}: delete jobs > {max_upi}")
                     actions.append((
-                        """
-                        DELETE FROM IPRSCAN.ANALYSIS_JOBS
-                        WHERE ANALYSIS_ID = :1
-                        AND UPI_FROM > :2
-                        """,
-                        [analysis_id, max_upi]))
+                        f"  - {p['name']:<30}: delete jobs > {max_upi}",
+                        [(
+                            """
+                            DELETE FROM IPRSCAN.ANALYSIS_JOBS
+                            WHERE ANALYSIS_ID = :1
+                            AND UPI_FROM > :2
+                            """,
+                            [analysis_id, max_upi]
+                        ), (
+                            f"""
+                            DELETE FROM {table} PARTITION ({p['name']})
+                            WHERE UPI_FROM > :1
+                            """,
+                            [max_upi]
+                        )]
+                    ))
             else:
                 # No max UPI: remove data
-                print(f"  - {name} {version}: reset jobs and persisted data")
-                actions.append((f"ALTER TABLE {table} "
-                                f"TRUNCATE PARTITION {p['name']}", []))
-                actions.append((f"DELETE FROM IPRSCAN.ANALYSIS_JOBS "
-                                f"WHERE ANALYSIS_ID = :1", [analysis_id]))
+                actions.append((
+                    f"  - {p['name']:<30}: delete jobs",
+                    [(
+                        f"DELETE FROM IPRSCAN.ANALYSIS_JOBS "
+                        f"WHERE ANALYSIS_ID = :1",
+                        [analysis_id]
+                    ), (
+                        f"ALTER TABLE {table} TRUNCATE PARTITION {p['name']}",
+                        []
+                    )]
+                ))
 
-    if input("Proceed? [y/N] ").lower().strip() == "y":
-        for sql, params in actions:
-            cur.execute(sql, params)
+    if actions:
+        print("The following actions will be performed:")
+        for descr, queries in actions:
+            print(descr)
 
-        con.commit()
-    else:
-        print("Canceled")
+        if input("Proceed? [y/N] ").lower().strip() == "y":
+            for descr, queries in actions:
+                for sql, params in queries:
+                    cur.execute(sql, params)
+
+            con.commit()
+        else:
+            print("Canceled")
 
     cur.close()
     con.close()
@@ -294,6 +338,7 @@ def iter_proteins(uri: str, greather_than: Optional[str] = None):
 
 
 def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
+    logger.info("importing sequences from UniParc")
     con = cx_Oracle.connect(ispro_uri)
     cur = con.cursor()
 
@@ -321,6 +366,7 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
             """
         )
 
+    cnt = 0
     records = []
     req = """
         INSERT /*+ APPEND */ 
@@ -330,6 +376,7 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
 
     for rec in iter_proteins(uniparc_uri, greather_than=max_upi):
         records.append(rec)
+        cnt += 1
 
         if len(records) == 1000:
             cur.executemany(req, records)
@@ -348,8 +395,11 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
     cur.close()
     con.close()
 
+    logger.info(f"\t{cnt:,} sequences imported")
 
-def prepare_jobs(uri: str, job_size: int = 10000, top_up: bool = False):
+
+def prepare_jobs(uri: str, job_size: int = 100000, top_up: bool = False):
+    logger.info(f"preparing fixed-size jobs of {job_size:,} sequences")
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
@@ -373,6 +423,10 @@ def prepare_jobs(uri: str, job_size: int = 10000, top_up: bool = False):
             (max_upi,)
         )
         upi_from, = cur.fetchone()
+
+        if upi_from is None:
+            # already jobs for all proteins
+            upi_from = int_to_upi(upi_to_int(max_upi) + 1)
     else:
         cur.execute(
             """
@@ -409,11 +463,14 @@ def prepare_jobs(uri: str, job_size: int = 10000, top_up: bool = False):
         values.append((upi_from, upi_to, job_size))
         upi_from = int_to_upi(upi_to_int(upi_to) + 1)
 
-    cur.executemany("INSERT INTO IPRSCAN.ANALYSIS_ALL_JOBS "
-                    "VALUES (:1, :2, :3)", values)
+    if values:
+        cur.executemany("INSERT INTO IPRSCAN.ANALYSIS_ALL_JOBS "
+                        "VALUES (:1, :2, :3)", values)
     con.commit()
     cur.close()
     con.close()
+
+    logger.info(f"\t{len(values):,} jobs added")
 
 
 def int_to_upi(i):

@@ -1,7 +1,9 @@
 import os
+import random
 import re
 import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from typing import Callable, Optional
@@ -50,6 +52,11 @@ _DB_TO_I5 = {
     "TMHMM": ("TMHMM", persistence.tmhmm_matches, None),
 }
 
+# String printed by I5 on successful completion
+_I5_SUCCESS = "100% done:  InterProScan analyses completed"
+
+_JOB_PREFIX = "IPM_"
+
 
 def sanitize_name(string: str) -> str:
     for c in [" ", "-", "_"]:
@@ -71,10 +78,11 @@ class TaskFactory:
     parse_matches: Callable
     site_table: Optional[str] = None
     parse_sites: Optional[Callable] = None
+    keep_files: Optional[str] = None
+    lsf_queue: Optional[str] = None
+    timeout: Optional[int] = None
 
     def make(self, upi_from: str, upi_to: str) -> Task:
-        name = f"{self.appl}_{self.version}_{upi_from}_{upi_to}"
-
         return Task(
             fn=run_job,
             args=(
@@ -83,39 +91,43 @@ class TaskFactory:
                 upi_to,
                 self.i5_dir,
                 self.appl,
-                os.path.join(self.work_dir, name),
+                os.path.join(self.work_dir, f"{upi_from}_{upi_to}"),
                 self.analysis_id,
                 self.match_table,
                 self.parse_matches,
                 self.site_table,
                 self.parse_sites
             ),
-            kwargs=dict(timeout=self.config["timeout"]),
+            kwargs=dict(cpu=self.config["job_cpu"],
+                        keep_files=self.keep_files,
+                        timeout=self.timeout),
             name=self.make_name(upi_from, upi_to),
             scheduler=dict(cpu=self.config["job_cpu"],
                            mem=self.config["job_mem"],
-                           queue=self.config["lsf_queue"]),
+                           queue=self.lsf_queue),
             random_suffix=False
         )
 
     def make_name(self, upi_from: str, upi_to: str) -> str:
-        return f"IPM_{self.appl}_{self.version}_{upi_from}_{upi_to}"
+        return f"{_JOB_PREFIX}{self.appl}_{self.version}_{upi_from}_{upi_to}"
 
 
 def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     base_config = {
         "job_cpu": kwargs.get("job_cpu", 8),
         "job_mem": kwargs.get("job_mem", 8 * 1024),
-        "job_size": kwargs.get("job_size", 100000),
-        "lsf_queue": kwargs.get("lsf_queue"),
-        "timeout": kwargs.get("timeout")
+        "job_size": kwargs.get("job_size", 100000)
     }
     custom_configs = kwargs.get("config", {})
     infinite_mem = kwargs.get("infinite_mem", False)
+    keep_files = kwargs.get("keep_files", None)
+    lsf_queue = kwargs.get("lsf_queue")
     max_retries = kwargs.get("max_retries", 0)
     max_running_jobs = kwargs.get("max_running_jobs", 1000)
     max_jobs_per_analysis = kwargs.get("max_jobs_per_analysis", -1)
     pool_threads = kwargs.get("pool_threads", 4)
+    resubmit_only = kwargs.get("resubmit_only", False)
+    timeout = kwargs.get("timeout")
     to_run = kwargs.get("analyses", [])
     to_exclude = kwargs.get("exclude", [])
 
@@ -133,14 +145,17 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         except KeyError:
             name2id[name] = [analysis_id]
 
-        if to_run and analysis_id not in to_run:
+        if analysis_id in to_exclude:
+            # Analysis flagged NOT to run
             continue
-        elif analysis_id in to_exclude:
+        elif to_run and analysis_id not in to_run:
+            # Analysis not in the list of analyses to run
             continue
 
+        # Either not list of analyses (i.e. run all), or part of this list
         analyses[analysis_id] = analysis
 
-        # Default config
+        # Apply default config
         configs[analysis_id] = base_config.copy()
 
     if not analyses:
@@ -148,7 +163,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         con.close()
         logger.error("No analyses to process: exit")
 
-    # Override with custom configs
+    # Override default config with custom configs
     for name in custom_configs:
         key = sanitize_name(name)
         if key not in name2id:
@@ -164,6 +179,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     incomplete_jobs = database.get_incomplete_jobs(cur)
 
     with Pool(temp_dir, max_running_jobs, pool_threads) as pool:
+        to_run = []
         n_tasks = 0
         for analysis_id, analysis in analyses.items():
             name = analysis["name"]
@@ -171,15 +187,22 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             max_upi = analysis["max_upi"]
             appl, parse_matches, parse_sites = _DB_TO_I5[name]
 
+            analysis_work_dir = os.path.join(work_dir, appl, version)
+            os.makedirs(analysis_work_dir, exist_ok=True)
+
             config = configs[analysis_id]
             factory = TaskFactory(uri=uri, i5_dir=analysis["i5_dir"],
                                   appl=appl, version=version,
-                                  work_dir=work_dir, analysis_id=analysis_id,
+                                  work_dir=analysis_work_dir,
+                                  analysis_id=analysis_id,
                                   config=config,
                                   match_table=analysis["tables"]["matches"],
                                   parse_matches=parse_matches,
                                   site_table=analysis["tables"]["sites"],
-                                  parse_sites=parse_sites)
+                                  parse_sites=parse_sites,
+                                  keep_files=keep_files,
+                                  lsf_queue=lsf_queue,
+                                  timeout=timeout)
 
             to_restart = incomplete_jobs.get(analysis_id, [])
             killed_jobs = 0
@@ -197,11 +220,11 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 if n_tasks_analysis == max_jobs_per_analysis:
                     break
 
-                pool.submit(factory.make(upi_from, upi_to))
+                to_run.append(factory.make(upi_from, upi_to))
                 n_tasks += 1
                 n_tasks_analysis += 1
 
-            if n_tasks_analysis == max_jobs_per_analysis:
+            if resubmit_only or n_tasks_analysis == max_jobs_per_analysis:
                 logger.debug(f"{name} {version}: "
                              f"{n_tasks_analysis} tasks submitted")
                 continue
@@ -211,7 +234,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 if n_tasks_analysis == max_jobs_per_analysis:
                     break
 
-                pool.submit(factory.make(upi_from, upi_to))
+                to_run.append(factory.make(upi_from, upi_to))
                 database.add_job(cur, analysis_id, upi_from, upi_to)
                 n_tasks += 1
                 n_tasks_analysis += 1
@@ -222,10 +245,25 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         cur.close()
         con.close()
 
+        """
+        Tasks in the list are grouped by analysis, so if we submit them 
+        in order, tasks from the "first" analysis will start to run first, 
+        and tasks from other analyses will be pending for a while.
+        By randomly selecting tasks to submit, we hope that each analysis 
+        will rapidly have some tasks running.
+        We could use random.shuffle, but we do not need the entire list 
+        re-arranged, so we use random.randint to destructively iterate 
+        over the list.
+        """
+        while to_run:
+            i = random.randrange(len(to_run))  # 0 <= i < len(to_run)
+            task = to_run.pop(i)
+            pool.submit(task)
+
         logger.info(f"Tasks submitted: {n_tasks:,}")
 
-        n_completed = n_failed = progress = 0
-        step = 5
+        n_completed = n_failed = 0
+        milestone = step = 5
         retries = {}
         while (n_completed + n_failed) < n_tasks:
             for task in pool.as_completed(wait=True):
@@ -252,38 +290,43 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
                     n_completed += 1
                 else:
-                    # Write to log file (with this run's output/error)
-                    with open(logfile, "at") as fh:
+                    # Write to log file
+                    with open(logfile, "wt") as fh:
                         fh.write(task.stdout)
                         fh.write(task.stderr)
 
-                    if retries.get(task.name, 0) == max_retries:
-                        # Max number of retries reached
-                        n_failed += 1
-                        continue
+                    # Number of times the task was re-submitted
+                    num_retries = retries.get(task.name, 0)
 
                     # Did the job reached the memory usage limit?
-                    mem_ok = max_mem < task.scheduler["mem"]
+                    mem_err = max_mem >= task.scheduler["mem"]
 
-                    # Increase memory requirement
-                    while task.scheduler["mem"] < max_mem:
-                        task.scheduler["mem"] *= 1.5
+                    if num_retries < max_retries or (mem_err and infinite_mem):
+                        # Task allowed to be re-submitted
 
-                    # Resubmit task
-                    pool.submit(task)
+                        # Increase memory requirement if needed
+                        while task.scheduler["mem"] < max_mem:
+                            task.scheduler["mem"] *= 1.5
 
-                    if mem_ok or not infinite_mem:
-                        """
-                        Increase the number of attempts if either:
-                          - this failure is not memory-related
-                          - we don't allow "infinite" memory
-                        """
-                        retries[task.name] = retries.get(task.name, 0) + 1
+                        # Resubmit task
+                        pool.submit(task)
 
-                pc = (n_completed + n_failed) * 100 / n_tasks
-                if pc >= (progress + step):
-                    logger.info(f"Progress: {progress + step:>3}%")
-                    progress += step
+                        # Increment retries counter
+                        retries[task.name] = num_retries + 1
+                    else:
+                        # Max number of retries reached
+                        n_failed += 1
+
+                progress = (n_completed + n_failed) * 100 / n_tasks
+                if progress >= milestone:
+                    """
+                    Skip intermediate milestones  (e.g. progress went 
+                    from 0 to 10%): we don't want to print 5%
+                    """
+                    while progress >= milestone:
+                        milestone += step
+
+                    logger.info(f"Progress: {milestone - step:>3}%")
 
         if n_failed:
             logger.error(f"{n_failed} task(s) failed")
@@ -317,30 +360,36 @@ def export_fasta(uri: str, fasta_file: str, upi_from: str, upi_to: str):
 
 
 def run_i5(i5_dir: str, fasta_file: str, analysis_name: str, output: str,
-           temp_dir: Optional[str] = None,
-           timeout: Optional[int] = None) -> bool:
-    if temp_dir is None:
-        temp_dir = os.path.dirname(output)
-
+           cpu: Optional[int] = None, temp_dir: Optional[str] = None,
+           timeout: Optional[int] = None) -> tuple[bool, str, str]:
     args = [
         os.path.join(i5_dir, "interproscan.sh"),
         "-i", fasta_file,
-        "-T", temp_dir,
         "-appl", analysis_name,
         "-dp",
         "-f", "tsv-pro",
         "-o", output
     ]
 
-    process = subprocess.run(args, timeout=timeout)
-    return process.returncode == 0
+    if cpu is not None:
+        args += ["-cpu", str(cpu)]
+
+    if temp_dir is not None:
+        args += ["-T", temp_dir]
+
+    process = subprocess.run(args, capture_output=True, timeout=timeout)
+    return (
+        process.returncode == 0,
+        process.stdout.decode("utf-8"),
+        process.stderr.decode("utf-8")
+    )
 
 
 def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             outdir: str, analysis_id: int, match_table: str,
             parse_matches: Callable, site_table: Optional[str],
-            parse_sites: Optional[Callable], timeout: Optional[int] = None):
-
+            parse_sites: Optional[Callable], cpu: Optional[int] = None,
+            keep_files: Optional[str] = None, timeout: Optional[int] = None):
     try:
         shutil.rmtree(outdir)
     except FileNotFoundError:
@@ -351,11 +400,18 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
     matches_output = os.path.join(outdir, "output.tsv-pro")
     sites_output = matches_output + ".sites"
 
+    ok = False
     try:
         export_fasta(uri, fasta_file, upi_from, upi_to)
 
-        if not run_i5(i5_dir, fasta_file, appl, matches_output,
-                      timeout=timeout):
+        ok, stdout, stderr = run_i5(i5_dir, fasta_file, appl, matches_output,
+                                    cpu=cpu, temp_dir=outdir, timeout=timeout)
+
+        # Write captured streams
+        sys.stdout.write(stdout)
+        sys.stderr.write(stderr)
+
+        if not ok or _I5_SUCCESS not in stdout:
             raise RuntimeError("InterProScan error")
         elif not os.path.isfile(matches_output):
             raise RuntimeError(f"Cannot access output matches tsv-pro")
@@ -367,8 +423,11 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             parse_sites(uri, sites_output, analysis_id, site_table)
     except Exception:
         raise
+    else:
+        ok = True
     finally:
-        shutil.rmtree(outdir)
+        if keep_files != "all" and (keep_files != "failed" or ok):
+            shutil.rmtree(outdir)
 
 
 def get_lsf_max_memory(stdout: str) -> int:

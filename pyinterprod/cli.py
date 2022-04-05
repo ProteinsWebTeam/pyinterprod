@@ -42,7 +42,7 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
                   os.path.join(data_dir, "names.sqlite")),
             kwargs=dict(tmpdir="/tmp"),
             name="proteins-names",
-            scheduler=dict(mem=8000, tmp=30000, queue=lsf_queue),
+            scheduler=dict(mem=2000, tmp=15000, queue=lsf_queue),
         ),
 
         # Data from IPPRO
@@ -58,7 +58,7 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
                   os.path.join(data_dir, "allseqs.dat")),
             kwargs=dict(tmpdir="/tmp"),
             name="matches",
-            scheduler=dict(mem=10000, tmp=20000, queue=lsf_queue),
+            scheduler=dict(mem=4000, tmp=30000, queue=lsf_queue),
             requires=["databases"]
         ),
         Task(
@@ -68,7 +68,7 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
                   os.path.join(data_dir, "compseqs.dat")),
             kwargs=dict(tmpdir="/tmp", processes=8),
             name="signature2proteins",
-            scheduler=dict(cpu=8, mem=16000, tmp=30000, queue=lsf_queue),
+            scheduler=dict(cpu=8, mem=16000, tmp=15000, queue=lsf_queue),
             requires=["proteins-names"]
         ),
         Task(
@@ -77,7 +77,7 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
                   os.path.join(data_dir, "allseqs.dat"),
                   os.path.join(data_dir, "compseqs.dat")),
             name="signatures",
-            scheduler=dict(mem=4000, queue=lsf_queue),
+            scheduler=dict(mem=1000, queue=lsf_queue),
             requires=["matches", "signature2proteins"]
         ),
         Task(
@@ -112,7 +112,7 @@ def check_ispro():
     config = ConfigParser()
     config.read(args.config)
 
-    ora_iprscan_url = config["oracle"]["iprscan"]
+    ora_iprscan_url = config["oracle"]["ipro-iprscan"]
     interpro.iprscan.check_ispro(ora_iprscan_url, args.type, args.status)
 
 
@@ -149,7 +149,7 @@ def run_clan_update():
     options = ConfigParser()
     options.read(config["misc"]["members"])
 
-    ora_interpro_url = config["oracle"]["interpro"]
+    ora_interpro_url = config["oracle"]["ipro-interpro"]
     db_names = list(set(args.databases))
     databases = interpro.database.get_databases(ora_interpro_url, db_names)
 
@@ -206,7 +206,7 @@ def run_hmm_update():
     options.read(config["misc"]["members"])
 
     db_names = list(set(args.databases))
-    ora_interpro_url = config["oracle"]["interpro"]
+    ora_interpro_url = config["oracle"]["ipro-interpro"]
     databases = interpro.database.get_databases(ora_interpro_url, db_names)
 
     for dbname, database in databases.items():
@@ -229,6 +229,10 @@ def run_member_db_update():
                         default=None,
                         metavar="TASK",
                         help="tasks to run")
+    parser.add_argument("-f", "--force",
+                        action="store_true",
+                        default=False,
+                        help="force matches import (default: off)")
     parser.add_argument("--dry-run",
                         action="store_true",
                         default=False,
@@ -257,10 +261,10 @@ def run_member_db_update():
 
     db_names = list(set(args.databases))
 
-    ora_interpro_url = config["oracle"]["interpro"]
-    ora_iprscan_url = config["oracle"]["iprscan"]
-    ora_goa_url = config["oracle"]["goapro"]
-    ora_swpread_url = config["oracle"]["swpread"]
+    ora_interpro_url = config["oracle"]["ipro-interpro"]
+    ora_iprscan_url = config["oracle"]["ipro-iprscan"]
+    ora_goa_url = config["oracle"]["unpr-goapro"]
+    ora_swpread_url = config["oracle"]["unpr-swpread"]
     pg_url = config["postgresql"]["pronto"]
 
     uniprot_version = config["uniprot"]["version"]
@@ -313,7 +317,7 @@ def run_member_db_update():
             fn=interpro.iprscan.import_matches,
             args=(ora_iprscan_url,),
             kwargs=dict(databases=mem_updates + non_mem_updates + site_updates,
-                        force_import=True, threads=8),
+                        force_import=args.force, threads=8),
             name="import-matches",
             scheduler=dict(queue=lsf_queue)
         )
@@ -394,8 +398,8 @@ def run_member_db_update():
             Task(
                 fn=interpro.iprscan.import_sites,
                 args=(ora_iprscan_url,),
-                kwargs=dict(databases=site_updates, force_import=True,
-                            threads=2),
+                kwargs=dict(databases=site_updates,
+                            force_import=args.force, threads=2),
                 name="import-sites",
                 scheduler=dict(queue=lsf_queue)
             ),
@@ -478,9 +482,9 @@ def run_pronto_update():
     config = ConfigParser()
     config.read(args.config)
 
-    ora_interpro_url = config["oracle"]["interpro"]
-    ora_goa_url = config["oracle"]["goapro"]
-    ora_swpread_url = config["oracle"]["swpread"]
+    ora_interpro_url = config["oracle"]["ipro-interpro"]
+    ora_goa_url = config["oracle"]["unpr-goapro"]
+    ora_swpread_url = config["oracle"]["unpr-swpread"]
     pg_url = config["postgresql"]["pronto"]
     uniprot_version = config["uniprot"]["version"]
     data_dir = config["misc"]["data_dir"]
@@ -526,12 +530,12 @@ def run_uniprot_update():
     config = ConfigParser()
     config.read(args.config)
 
-    ora_interpro_url = config["oracle"]["interpro"]
-    ora_iprscan_url = config["oracle"]["iprscan"]
-    ora_uniparc_url = config["oracle"]["uniparc"]
-    ora_goa_url = config["oracle"]["goapro"]
-    ora_swpread_url = config["oracle"]["swpread"]
-    ora_uaread_url = config["oracle"]["uaread"]
+    ora_interpro_url = config["oracle"]["ipro-interpro"]
+    ora_iprscan_url = config["oracle"]["ipro-iprscan"]
+    ora_uniparc_url = config["oracle"]["ipro-uniparc"]
+    ora_goa_url = config["oracle"]["unpr-goapro"]
+    ora_swpread_url = config["oracle"]["unpr-swpread"]
+    ora_uaread_url = config["oracle"]["unpr-uaread"]
     pg_url = config["postgresql"]["pronto"]
 
     uniprot_version = config["uniprot"]["version"]
@@ -769,7 +773,7 @@ def update_database():
     config = ConfigParser()
     config.read(args.config)
 
-    ora_interpro_url = config["oracle"]["interpro"]
+    ora_interpro_url = config["oracle"]["ipro-interpro"]
     interpro.database.update_database(url=ora_interpro_url,
                                       name=args.name,
                                       version=args.version,
@@ -781,31 +785,43 @@ def run_interproscan_manager():
     parser = ArgumentParser(description="InterProScan matches calculation")
     parser.add_argument("config", metavar="main.conf",
                         help="Configuration file.")
+    parser.add_argument("--import-sequences", action="store_true",
+                        default=False,
+                        help="import sequences from UniParc (default: off)")
+    parser.add_argument("--prepare-jobs", nargs="*", type=int, default=[],
+                        help="prepare fixed-size jobs of the passed number "
+                             "of sequences (disabled: off)")
+    parser.add_argument("--top-up", action="store_true", default=False,
+                        help="if used with --import-sequences: only import "
+                             "sequences not already in the InterProScan "
+                             "database; if used with --prepare-jobs: only "
+                             "prepare jobs not already in the database "
+                             "(default: off)")
+    parser.add_argument("--clean", action="store_true", default=False,
+                        help="delete obsolete data (default: off)")
+    parser.add_argument("-l", "--list", action="store_true", default=False,
+                        help="list active analyses and exit (default: off)")
     parser.add_argument("-a", "--analyses", nargs="*", default=[], type=int,
-                        help="ID of analyses to run")
+                        help="ID of analyses to run (default: all)")
     parser.add_argument("-e", "--exclude", nargs="*", default=[], type=int,
                         help="ID of analyses to exclude")
     parser.add_argument("-t", "--threads", type=int, default=8,
                         help="number of job monitoring threads (default: 8)")
-    parser.add_argument("--run-jobs", type=int, default=1000,
+    parser.add_argument("--concurrent-jobs", type=int, default=1000,
                         help="maximum number of concurrent running jobs "
                              "(default: 1000)")
     parser.add_argument("--max-jobs", type=int, default=-1,
                         help="maximum number of job to run per analysis "
                              "(default: off)")
-    parser.add_argument("--clean", action="store_true", default=False,
-                        help="delete obsolete data (defaulf: off)")
-    parser.add_argument("--uniparc", action="store_true", default=False,
-                        help="import proteins from UniParc database "
-                             "(default: off)")
-    parser.add_argument("--pre-jobs", nargs="*", type=int, default=[],
-                        help="prepare fixed-size jobs of the passed number "
-                             "of sequences (disabled: off)")
-    parser.add_argument("--top-up", action="store_true", default=False,
-                        help="if used with --uniparc: only import proteins "
-                             "not already in the InterProScan database; if "
-                             "used with --pre-jobs: only prepare jobs not "
-                             "already in the database (default: off)")
+    parser.add_argument("--max-retries", type=int, default=-0,
+                        help="maximum number of attempts to re-run a job "
+                             "after it fails (default: 0)")
+    parser.add_argument("--keep", choices=["none", "failed", "all"],
+                        default="none",
+                        help="keep jobs' input/output files (default: none)")
+    parser.add_argument("--resubmit-only", action="store_true", default=False,
+                        help="do not submit new jobs, only submit jobs that "
+                             "failed in a previous run (default: off)")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -818,21 +834,32 @@ def run_interproscan_manager():
         parser.error(f"cannot open '{config['misc']['members']}': "
                      f"no such file or directory")
 
-    interproscan_uri = config["oracle"]["interproscan"]
-    uniparc_uri = config["oracle"]["uaread"]
+    iscn_iprscan_uri = config["oracle"]["iscn-iprscan"]
+    iscn_uniparc_uri = config["oracle"]["iscn-uniparc"]
+    unpr_uniparc_uri = config["oracle"]["unpr-uaread"]
 
-    if args.uniparc:
-        interproscan.database.import_uniparc(ispro_uri=interproscan_uri,
-                                             uniparc_uri=uniparc_uri,
+    if args.list:
+        analyses = interproscan.database.get_analyses(iscn_iprscan_uri)
+        for analysis_id in sorted(analyses,
+                                  key=lambda k: (analyses[k]["name"], k)):
+            name = analyses[analysis_id]["name"]
+            version = analyses[analysis_id]["version"]
+            print(f"{analysis_id:>4}\t{name:<30}\t{version}")
+
+        return
+
+    if args.import_sequences:
+        interproscan.database.import_uniparc(ispro_uri=iscn_uniparc_uri,
+                                             uniparc_uri=unpr_uniparc_uri,
                                              top_up=args.top_up)
 
-    for job_size in args.pre_jobs:
-        interproscan.database.prepare_jobs(uri=interproscan_uri,
+    for job_size in args.prepare_jobs:
+        interproscan.database.prepare_jobs(uri=iscn_iprscan_uri,
                                            job_size=job_size,
                                            top_up=args.top_up)
 
     if args.clean:
-        interproscan.database.clean_tables(interproscan_uri)
+        interproscan.database.clean_tables(iscn_iprscan_uri)
 
     analyses_config = ConfigParser()
     analyses_config.read(config["misc"]["analyses"])
@@ -844,15 +871,35 @@ def run_interproscan_manager():
         for option, value in analyses_config.items(analysis):
             analyses_configs[analysis][option] = int(value)
 
-    interproscan.manager.run(uri=interproscan_uri,
+    # Options for analyses without a custom config
+    job_cpu = int(analyses_config["DEFAULT"]["job_cpu"])
+    job_mem = int(analyses_config["DEFAULT"]["job_mem"])
+    job_size = int(analyses_config["DEFAULT"]["job_size"])
+
+    interproscan.manager.run(uri=iscn_iprscan_uri,
                              work_dir=config["misc"]["work_dir"],
                              temp_dir=config["misc"]["temp_dir"],
+                             job_cpu=job_cpu,
+                             job_mem=job_mem,
+                             job_size=job_size,
                              lsf_queue=config["misc"]["lsf_queue"],
+                             timeout=None,
+                             # Custom configs
                              config=analyses_configs,
+                             # Always resubmit a job if it fails due to memory
                              infinite_mem=True,
-                             max_retries=4,
-                             max_running_jobs=args.run_jobs,
+                             # Attempts to re-run a failed job (non-memory)
+                             max_retries=args.max_retries,
+                             # Concurrent jobs
+                             max_running_jobs=args.concurrent_jobs,
+                             # Max jobs submitted per analysis
                              max_jobs_per_analysis=args.max_jobs,
+                             # Number of monitoring threads
                              pool_threads=args.threads,
+                             # Analyses to perform
                              analyses=args.analyses,
-                             exclude=args.exclude)
+                             # Analyses to exclude
+                             exclude=args.exclude,
+                             # Debug options
+                             keep_files=args.keep,
+                             resubmit_only=args.resubmit_only)
