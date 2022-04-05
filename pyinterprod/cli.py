@@ -836,7 +836,7 @@ def run_interproscan_manager():
 
     iscn_iprscan_uri = config["oracle"]["iscn-iprscan"]
     iscn_uniparc_uri = config["oracle"]["iscn-uniparc"]
-    unpr_uniparc_uri = config["oracle"]["unpr-uaread"]
+    unpr_uniparc_uri = config["oracle"]["unpr-uapro"]
 
     if args.list:
         analyses = interproscan.database.get_analyses(iscn_iprscan_uri)

@@ -37,6 +37,7 @@ Both files can be renamed. `main.conf` is passed as an command line argument, an
     - **iscn-uniparc**: connection string for the `uniparc` user in the InterProScan database
     - **unpr-goapro**: connection string for the GOA database
     - **unpr-swpread**: connection string for the Swiss-Prot database
+    - **unpr-uapro**: connection string for the UniParc production database 
     - **unpr-uaread**: connection string for the UniParc database
 - **postgresql**:
     - **pronto**: connection string
