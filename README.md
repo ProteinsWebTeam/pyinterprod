@@ -439,7 +439,6 @@ The optional arguments are:
 - `--max-jobs`: maximum number of jobs per analysis
 - `--max-retries`: number of times a failed job is resubmitted
 - `--keep none|all|failed`: keep input/ouput files
-- `--resubmit-only`: only resubmit incomplete jobs
 
 ### Clans update
 
