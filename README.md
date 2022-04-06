@@ -429,7 +429,6 @@ $ ipr-calc [OPTIONS] main.conf
 The optional arguments are:
 
 - `--import-sequences`: import sequences from the UniParc database
-- `--prepare-jobs`: prepare fixed-size jobs for the calculation
 - `--top-up`: only import new sequences or prepare new jobs instead of re-doing everything
 - `--clean`: delete obsolete data (for retired analyses)
 - `-l, --list`: list active analyses and exit

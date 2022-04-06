@@ -112,6 +112,21 @@ class TaskFactory:
         return f"{_JOB_PREFIX}{self.appl}_{self.version}_{upi_from}_{upi_to}"
 
 
+def int_to_upi(i):
+    return f"UPI{i:010x}".upper()
+
+
+def upi_to_int(upi):
+    return int(upi[3:], 16)
+
+
+def range_jobs(from_upi: str, to_upi: str, step: int):
+    start = upi_to_int(from_upi)
+    stop = upi_to_int(to_upi) + 1
+    for i in range(start, stop, step):
+        yield int_to_upi(i), int_to_upi(i + step)
+
+
 def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     base_config = {
         "job_cpu": kwargs.get("job_cpu", 8),
@@ -177,6 +192,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     configs[analysis_id][key] = value
 
     incomplete_jobs = database.get_incomplete_jobs(cur)
+    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
+    max_upi, = cur.fetchone()
 
     with Pool(temp_dir, max_running_jobs, pool_threads) as pool:
         to_run = []
@@ -184,7 +201,12 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         for analysis_id, analysis in analyses.items():
             name = analysis["name"]
             version = analysis["version"]
-            max_upi = analysis["max_upi"]
+
+            if analysis["max_upi"]:
+                next_upi = int_to_upi(upi_to_int(analysis["max_upi"]) + 1)
+            else:
+                next_upi = int_to_upi(1)
+
             appl, parse_matches, parse_sites = _DB_TO_I5[name]
 
             analysis_work_dir = os.path.join(work_dir, appl, version)
@@ -229,8 +251,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                              f"{n_tasks_analysis} tasks submitted")
                 continue
 
-            for upi_from, upi_to in database.get_jobs(cur, config["job_size"],
-                                                      max_upi):
+            for upi_from, upi_to in range_jobs(next_upi, max_upi,
+                                               config["job_size"]):
                 if n_tasks_analysis == max_jobs_per_analysis:
                     break
 
@@ -334,7 +356,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             logger.info("complete")
 
 
-def export_fasta(uri: str, fasta_file: str, upi_from: str, upi_to: str):
+def export_fasta(uri: str, fasta_file: str, upi_from: str, upi_to: str) -> int:
+    num_sequences = 0
     with open(fasta_file, "wt") as fh:
         con = cx_Oracle.connect(uri)
         cur = con.cursor()
@@ -355,8 +378,12 @@ def export_fasta(uri: str, fasta_file: str, upi_from: str, upi_to: str):
             for i in range(0, len(sequence), 60):
                 fh.write(f"{sequence[i:i+60]}\n")
 
+            num_sequences += 1
+
         cur.close()
         con.close()
+
+    return num_sequences
 
 
 def run_i5(i5_dir: str, fasta_file: str, analysis_name: str, output: str,
@@ -402,25 +429,27 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
 
     ok = False
     try:
-        export_fasta(uri, fasta_file, upi_from, upi_to)
+        num_sequences = export_fasta(uri, fasta_file, upi_from, upi_to)
 
-        ok, stdout, stderr = run_i5(i5_dir, fasta_file, appl, matches_output,
-                                    cpu=cpu, temp_dir=outdir, timeout=timeout)
+        if num_sequences > 0:
+            ok, stdout, stderr = run_i5(i5_dir, fasta_file, appl,
+                                        matches_output, cpu=cpu,
+                                        temp_dir=outdir, timeout=timeout)
 
-        # Write captured streams
-        sys.stdout.write(stdout)
-        sys.stderr.write(stderr)
+            # Write captured streams
+            sys.stdout.write(stdout)
+            sys.stderr.write(stderr)
 
-        if not ok or _I5_SUCCESS not in stdout:
-            raise RuntimeError("InterProScan error")
-        elif not os.path.isfile(matches_output):
-            raise RuntimeError(f"Cannot access output matches tsv-pro")
-        elif site_table and not os.path.isfile(sites_output):
-            raise RuntimeError(f"Cannot access output sites tsv-pro")
+            if not ok or _I5_SUCCESS not in stdout:
+                raise RuntimeError("InterProScan error")
+            elif not os.path.isfile(matches_output):
+                raise RuntimeError(f"Cannot access output matches tsv-pro")
+            elif site_table and not os.path.isfile(sites_output):
+                raise RuntimeError(f"Cannot access output sites tsv-pro")
 
-        parse_matches(uri, matches_output, analysis_id, match_table)
-        if site_table:
-            parse_sites(uri, sites_output, analysis_id, site_table)
+            parse_matches(uri, matches_output, analysis_id, match_table)
+            if site_table:
+                parse_sites(uri, sites_output, analysis_id, site_table)
     except Exception:
         raise
     else:

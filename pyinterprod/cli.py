@@ -788,15 +788,10 @@ def run_interproscan_manager():
     parser.add_argument("--import-sequences", action="store_true",
                         default=False,
                         help="import sequences from UniParc (default: off)")
-    parser.add_argument("--prepare-jobs", nargs="*", type=int, default=[],
-                        help="prepare fixed-size jobs of the passed number "
-                             "of sequences (disabled: off)")
     parser.add_argument("--top-up", action="store_true", default=False,
                         help="if used with --import-sequences: only import "
                              "sequences not already in the InterProScan "
-                             "database; if used with --prepare-jobs: only "
-                             "prepare jobs not already in the database "
-                             "(default: off)")
+                             "database (default: off)")
     parser.add_argument("--clean", action="store_true", default=False,
                         help="delete obsolete data (default: off)")
     parser.add_argument("-l", "--list", action="store_true", default=False,
@@ -852,11 +847,6 @@ def run_interproscan_manager():
         interproscan.database.import_uniparc(ispro_uri=iscn_uniparc_uri,
                                              uniparc_uri=unpr_uniparc_uri,
                                              top_up=args.top_up)
-
-    for job_size in args.prepare_jobs:
-        interproscan.database.prepare_jobs(uri=iscn_iprscan_uri,
-                                           job_size=job_size,
-                                           top_up=args.top_up)
 
     if args.clean:
         interproscan.database.clean_tables(iscn_iprscan_uri)

@@ -73,7 +73,6 @@ def init_tables(ippro_uri: str, ispro_uri: str, i5_dir: str, others=None):
     oracle.drop_table(cur, "IPRSCAN.ANALYSIS_JOBS", purge=True)
     oracle.drop_table(cur, "IPRSCAN.ANALYSIS", purge=True)
     oracle.drop_table(cur, "IPRSCAN.ANALYSIS_TABLES", purge=True)
-    oracle.drop_table(cur, "IPRSCAN.ANALYSIS_ALL_JOBS", purge=True)
 
     cur.execute(
         """
@@ -121,19 +120,6 @@ def init_tables(ippro_uri: str, ispro_uri: str, i5_dir: str, others=None):
             CPU_TIME NUMBER(9) DEFAULT NULL,
             CONSTRAINT ANALYSIS_JOBS_PK
                 PRIMARY KEY (ANALYSIS_ID, UPI_FROM, UPI_TO)
-        )
-        """
-    )
-
-    cur.execute(
-        """
-        CREATE TABLE IPRSCAN.ANALYSIS_ALL_JOBS
-        (
-            UPI_FROM VARCHAR2(13) NOT NULL,
-            UPI_TO VARCHAR2(13) NOT NULL,
-            NUM_SEQUENCES NUMBER(7) NOT NULL,
-            CONSTRAINT ANALYSIS_ALL_JOBS_PK
-                PRIMARY KEY (UPI_FROM, UPI_TO, NUM_SEQUENCES)
         )
         """
     )
@@ -398,89 +384,6 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
     logger.info(f"\t{cnt:,} sequences imported")
 
 
-def prepare_jobs(uri: str, job_size: int = 100000, top_up: bool = False):
-    logger.info(f"preparing fixed-size jobs of {job_size:,} sequences")
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
-
-    cur.execute(
-        """
-        SELECT MAX(UPI_TO) 
-        FROM IPRSCAN.ANALYSIS_ALL_JOBS
-        WHERE NUM_SEQUENCES = :1
-        """,
-        (job_size, )
-    )
-    max_upi, = cur.fetchone()
-
-    if top_up and max_upi:
-        cur.execute(
-            """
-            SELECT MIN(UPI)
-            FROM UNIPARC.PROTEIN
-            WHERE UPI > :1
-            """,
-            (max_upi,)
-        )
-        upi_from, = cur.fetchone()
-
-        if upi_from is None:
-            # already jobs for all proteins
-            upi_from = int_to_upi(upi_to_int(max_upi) + 1)
-    else:
-        cur.execute(
-            """
-            DELETE FROM IPRSCAN.ANALYSIS_ALL_JOBS
-            WHERE NUM_SEQUENCES = :1
-            """,
-            (job_size,)
-        )
-        cur.execute("SELECT MIN(UPI) FROM UNIPARC.PROTEIN")
-        upi_from, = cur.fetchone()
-
-    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
-    max_upi, = cur.fetchone()
-
-    values = []
-    while upi_from <= max_upi:
-        cur.execute(
-            """
-            SELECT MAX(UPI)
-            FROM (
-                SELECT *
-                FROM (
-                    SELECT UPI
-                    FROM UNIPARC.PROTEIN
-                    WHERE UPI >= :1
-                    ORDER BY UPI
-                )
-                WHERE ROWNUM <= :2
-            )
-            """,
-            (upi_from, job_size)
-        )
-        upi_to, = cur.fetchone()
-        values.append((upi_from, upi_to, job_size))
-        upi_from = int_to_upi(upi_to_int(upi_to) + 1)
-
-    if values:
-        cur.executemany("INSERT INTO IPRSCAN.ANALYSIS_ALL_JOBS "
-                        "VALUES (:1, :2, :3)", values)
-    con.commit()
-    cur.close()
-    con.close()
-
-    logger.info(f"\t{len(values):,} jobs added")
-
-
-def int_to_upi(i):
-    return f"UPI{i:010x}".upper()
-
-
-def upi_to_int(upi):
-    return int(upi[3:], 16)
-
-
 def get_incomplete_jobs(cur: cx_Oracle.Cursor) -> dict:
     cur.execute(
         """
@@ -498,33 +401,6 @@ def get_incomplete_jobs(cur: cx_Oracle.Cursor) -> dict:
             incomplete_jobs[analysis_id] = [(upi_from, upi_to)]
 
     return incomplete_jobs
-
-
-def get_jobs(cur: cx_Oracle.Cursor, job_size: int,
-             greater_than: Optional[str] = None):
-    if greater_than:
-        cur.execute(
-            """
-            SELECT UPI_FROM, UPI_TO
-            FROM IPRSCAN.ANALYSIS_ALL_JOBS
-            WHERE NUM_SEQUENCES = :1
-              AND UPI_FROM > :2
-            ORDER BY UPI_FROM
-            """,
-            (job_size, greater_than),
-        )
-    else:
-        cur.execute(
-            """
-            SELECT UPI_FROM, UPI_TO
-            FROM IPRSCAN.ANALYSIS_ALL_JOBS
-            WHERE NUM_SEQUENCES = :1
-            ORDER BY UPI_FROM
-            """,
-            (job_size,)
-        )
-
-    return cur.fetchall()
 
 
 def add_job(cur: cx_Oracle, analysis_id: int, upi_from: str, upi_to: str):
