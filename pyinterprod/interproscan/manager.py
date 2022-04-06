@@ -4,12 +4,12 @@ import re
 import shutil
 import subprocess
 import sys
-import time
 from dataclasses import dataclass
 from typing import Callable, Optional
 
 import cx_Oracle
 from mundone import Pool, Task
+from mundone.task import STATUS_RUNNING
 
 from pyinterprod import logger
 from . import database, persistence
@@ -111,6 +111,27 @@ class TaskFactory:
     def make_name(self, upi_from: str, upi_to: str) -> str:
         return f"{_JOB_PREFIX}{self.appl}_{self.version}_{upi_from}_{upi_to}"
 
+    def revive(self, upi_from: str, upi_to: str, workdir: str) -> Task:
+        task = self.make(upi_from, upi_to)
+        task.workdir = workdir
+        task.status = STATUS_RUNNING
+
+        p = subprocess.run(["bjobs", "-w", "-J", task.name],
+                           capture_output=True)
+        """
+        Output is like:
+        JOBID   USER    STAT  QUEUE      FROM_HOST   EXEC_HOST   JOB_NAME   SUBMIT_TIME
+        1234567 mblum PEND  production compute-01-15    -        IPM_SUPERFAMILY_1.75_UPI001F224D02_UPI001F23D3A1 Apr  1 00:55
+        """
+        try:
+            job_id = int(p.stdout.decode("utf-8").split("\n")[1].split()[0])
+        except IndexError:
+            pass
+        else:
+            task.jobid = job_id
+
+        return task
+
 
 def int_to_upi(i):
     return f"UPI{i:010x}".upper()
@@ -141,7 +162,6 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     max_running_jobs = kwargs.get("max_running_jobs", 1000)
     max_jobs_per_analysis = kwargs.get("max_jobs_per_analysis", -1)
     pool_threads = kwargs.get("pool_threads", 4)
-    resubmit_only = kwargs.get("resubmit_only", False)
     timeout = kwargs.get("timeout")
     to_run = kwargs.get("analyses", [])
     to_exclude = kwargs.get("exclude", [])
@@ -226,31 +246,12 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                                   lsf_queue=lsf_queue,
                                   timeout=timeout)
 
-            to_restart = incomplete_jobs.get(analysis_id, [])
-            killed_jobs = 0
-
-            for upi_from, upi_to in to_restart:
-                job_name = factory.make_name(upi_from, upi_to)
-                if kill_lsf_job(job_name):
-                    killed_jobs += 1
-
-            if killed_jobs:
-                time.sleep(5)
+            for upi_from, upi_to in incomplete_jobs.pop(analysis_id, []):
+                task = factory.revive(upi_from, upi_to, temp_dir)
+                pool.submit(task)
+                n_tasks += 1
 
             n_tasks_analysis = 0
-            for upi_from, upi_to in to_restart:
-                if n_tasks_analysis == max_jobs_per_analysis:
-                    break
-
-                to_run.append(factory.make(upi_from, upi_to))
-                n_tasks += 1
-                n_tasks_analysis += 1
-
-            if resubmit_only or n_tasks_analysis == max_jobs_per_analysis:
-                logger.debug(f"{name} {version}: "
-                             f"{n_tasks_analysis} tasks submitted")
-                continue
-
             for upi_from, upi_to in range_jobs(next_upi, max_upi,
                                                config["job_size"]):
                 if n_tasks_analysis == max_jobs_per_analysis:
@@ -282,7 +283,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             task = to_run.pop(i)
             pool.submit(task)
 
-        logger.info(f"Tasks submitted: {n_tasks:,}")
+        logger.info(f"Running tasks: {n_tasks:,}")
 
         n_completed = n_failed = 0
         milestone = step = 5
@@ -470,8 +471,8 @@ def get_lsf_cpu_time(stdout: str) -> int:
     return int(match.group(1))
 
 
-def kill_lsf_job(name: str) -> bool:
-    process = subprocess.run(["bkill", "-r", "-J", name],
-                             stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL)
-    return process.returncode == 0
+# def kill_lsf_job(name: str) -> bool:
+#     process = subprocess.run(["bkill", "-r", "-J", name],
+#                              stdout=subprocess.DEVNULL,
+#                              stderr=subprocess.DEVNULL)
+#     return process.returncode == 0
