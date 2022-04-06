@@ -9,7 +9,7 @@ from typing import Callable, Optional
 
 import cx_Oracle
 from mundone import Pool, Task
-from mundone.task import STATUS_RUNNING
+from mundone.task import STATUS_PENDING, STATUS_RUNNING
 
 from pyinterprod import logger
 from . import database, persistence
@@ -118,15 +118,19 @@ class TaskFactory:
 
         p = subprocess.run(["bjobs", "-w", "-J", task.name],
                            capture_output=True)
-        """
-        Output is like:
-        JOBID   USER    STAT  QUEUE      FROM_HOST   EXEC_HOST   JOB_NAME   SUBMIT_TIME
-        1234567 mblum PEND  production compute-01-15    -        IPM_SUPERFAMILY_1.75_UPI001F224D02_UPI001F23D3A1 Apr  1 00:55
-        """
         try:
+            """
+            Output is like:
+            JOBID   USER    STAT  QUEUE      FROM_HOST   EXEC_HOST   JOB_NAME   SUBMIT_TIME
+            1234567 mblum PEND  production compute-01-15    -        IPM_SUPERFAMILY_1.75_UPI001F224D02_UPI001F23D3A1 Apr  1 00:55
+            """
             job_id = int(p.stdout.decode("utf-8").split("\n")[1].split()[0])
         except IndexError:
-            pass
+            # Not running: could have completed/failed, or never started
+            task.poll()
+            if not task.done():
+                # Not done: set status to pending
+                task.status = STATUS_PENDING
         else:
             task.jobid = job_id
 
