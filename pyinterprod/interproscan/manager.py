@@ -111,31 +111,6 @@ class TaskFactory:
     def make_name(self, upi_from: str, upi_to: str) -> str:
         return f"{_JOB_PREFIX}{self.appl}_{self.version}_{upi_from}_{upi_to}"
 
-    def revive(self, upi_from: str, upi_to: str, workdir: str) -> Task:
-        task = self.make(upi_from, upi_to)
-        task.workdir = workdir
-        task.status = STATUS_RUNNING
-
-        p = subprocess.run(["bjobs", "-w", "-J", task.name],
-                           capture_output=True)
-        try:
-            """
-            Output is like:
-            JOBID   USER    STAT  QUEUE      FROM_HOST   EXEC_HOST   JOB_NAME   SUBMIT_TIME
-            1234567 mblum PEND  production compute-01-15    -        IPM_SUPERFAMILY_1.75_UPI001F224D02_UPI001F23D3A1 Apr  1 00:55
-            """
-            job_id = int(p.stdout.decode("utf-8").split("\n")[1].split()[0])
-        except IndexError:
-            # Not running: could have completed/failed, or never started
-            task.poll()
-            if not task.done():
-                # Not done: set status to pending
-                task.status = STATUS_PENDING
-        else:
-            task.jobid = job_id
-
-        return task
-
 
 def int_to_upi(i):
     return f"UPI{i:010x}".upper()
@@ -219,6 +194,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     max_upi, = cur.fetchone()
 
+    name2id = get_lsf_unfinished_jobs()
+
     with Pool(temp_dir, max_running_jobs, pool_threads) as pool:
         to_run = []
         n_tasks = 0
@@ -251,7 +228,17 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                                   timeout=timeout)
 
             for upi_from, upi_to in incomplete_jobs.pop(analysis_id, []):
-                task = factory.revive(upi_from, upi_to, temp_dir)
+                task = factory.make(upi_from, upi_to)
+                task.status = STATUS_RUNNING  # assumes it's running
+                task.workdir = temp_dir
+
+                if task.name in name2id:
+                    task.jobid = name2id.pop(task.name)
+                else:
+                    task.poll()  # checks if output exists
+                    if not task.done():
+                        task.status = STATUS_PENDING
+
                 pool.submit(task)
                 n_tasks += 1
 
@@ -473,6 +460,22 @@ def get_lsf_max_memory(stdout: str) -> int:
 def get_lsf_cpu_time(stdout: str) -> int:
     match = re.search(r"^\s*CPU time :\s+(\d+)\.\d+ sec.$", stdout, re.M)
     return int(match.group(1))
+
+
+def get_lsf_unfinished_jobs() -> dict[str, int]:
+    stdout = subprocess.run(["bjobs", "-o", "jobid name"],
+                            capture_output=True,
+                            encoding="utf-8").stdout
+    jobs = {}
+    if "No unfinished job found" in stdout:
+        return jobs
+
+    for line in stdout.split("\n")[1:]:
+        if line:
+            job_id, name = line.split()
+            jobs[name] = int(job_id)
+
+    return jobs
 
 
 # def kill_lsf_job(name: str) -> bool:
