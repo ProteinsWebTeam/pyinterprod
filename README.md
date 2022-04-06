@@ -17,12 +17,13 @@ python setup.py install
 
 ## Configuration
 
-The `pyinterprod` package relies on two configuration files:
+The `pyinterprod` package relies on three configuration files:
 
 - `main.conf`: contains database connection strings, paths to files provided by/to UniProtKB, and various workflow parameters.
 - `members.conf`: contains path to files used to update InterPro's member databases (e.g. files containing signatures, HMM files, etc.).
+- `analyses.conf`: contains settings for the InterProScan match calculation (`ipr-calc`).
  
-Both files can be renamed. `main.conf` is passed as an command line argument, and the path to `members.conf` is defined in `main.conf`.  
+All files can be renamed. `main.conf` is passed as an command line argument, and the paths to `members.conf` and `analyses.conf` are defined in `main.conf`.  
 
 ### main.conf
 
@@ -59,12 +60,13 @@ Both files can be renamed. `main.conf` is passed as an command line argument, an
     - **unirule**: email address of the UniRule team (curators from EMBL-EBI, SIB, and PIR)
     - **sib**: email address of the Swiss-Prot team
 - **misc**:
+    - **analyses**: path to the `analyses.conf` config file
+    - **members**: path to the `members.conf` config file
     - **lsf_queue**: name of the LSF queue to submit jobs to
-    - **members**: path to the `members.conf`
     - **pronto_url**: URL of the Pronto curation application
     - **data_dir**: directory where to store staging files
     - **temp_dir**: directory for temporary files (e.g. job input/output)
-    - **work_dir**: directory where to run InterProScan match calculations
+    - **work_dir**: directory where to run InterProScan match calculation
     
 ### members.conf
 
@@ -88,6 +90,20 @@ Additional properties:
 - `summary`: CDD only, information on superfamilies
 - `mapping`: Cath-Gene3D only, family-model mapping file
 
+### analyses.conf
+
+The `DEFAULT` section defines the defaults values for the following properties:
+
+- `job_cpu`: number of processes to request when submitting a job
+- `job_mem`: the maximum amount of memory a job should be allowed to use (in MB)
+- `job_size`: the number of sequences to process in each job
+
+The default values can be overridden. For instance, as we know that PRINTS jobs take more memory, to request PRINTS jobs to be allocated 16G of memory:
+
+```
+[prints]
+job_mem = 16384
+```
 
 ## Usage
 
@@ -403,6 +419,28 @@ The optional arguments are:
     </tr>
 </tbody>
 </table>
+
+### InterProScan match calculation
+
+```bash
+$ ipr-calc [OPTIONS] main.conf
+```
+
+The optional arguments are:
+
+- `--import-sequences`: import sequences from the UniParc database
+- `--prepare-jobs`: prepare fixed-size jobs for the calculation
+- `--top-up`: only import new sequences or prepare new jobs instead of re-doing everything
+- `--clean`: delete obsolete data (for retired analyses)
+- `-l, --list`: list active analyses and exit
+- `-a, --analyses`: IDs of analyses to run. If not provided, all analyses are run
+- `-e, --exclude`: IDs of analyses to exclude
+- `-t, --threads`: number of monitoring threads
+- `--concurrent-jobs`: maximum number of concurrent running InterProScan jobs
+- `--max-jobs`: maximum number of jobs per analysis
+- `--max-retries`: number of times a failed job is resubmitted
+- `--keep none|all|failed`: keep input/ouput files
+- `--resubmit-only`: only resubmit incomplete jobs
 
 ### Clans update
 
