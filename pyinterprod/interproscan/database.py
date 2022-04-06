@@ -414,8 +414,9 @@ def add_job(cur: cx_Oracle, analysis_id: int, upi_from: str, upi_to: str):
     )
     cur.execute(
         """
-        INSERT INTO IPRSCAN.ANALYSIS_JOBS (ANALYSIS_ID, UPI_FROM, UPI_TO)
-        VALUES (:1, :2, :3)
+        INSERT INTO IPRSCAN.ANALYSIS_JOBS 
+            (ANALYSIS_ID, UPI_FROM, UPI_TO, SUBMIT_TIME)
+        VALUES (:1, :2, :3, SYSDATE)
         """,
         (analysis_id, upi_from, upi_to)
     )
