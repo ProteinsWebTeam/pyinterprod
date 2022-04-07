@@ -274,7 +274,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             task = to_run.pop(i)
             pool.submit(task)
 
-        logger.info(f"Running tasks: {n_tasks:,}")
+        logger.info(f"Tasks: {n_tasks:,}")
 
         n_completed = n_failed = 0
         milestone = step = 5
