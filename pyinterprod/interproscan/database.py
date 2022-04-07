@@ -112,7 +112,7 @@ def init_tables(ippro_uri: str, ispro_uri: str, i5_dir: str, others=None):
                 REFERENCES ANALYSIS (ID),
             UPI_FROM VARCHAR2(13) NOT NULL,
             UPI_TO VARCHAR2(13) NOT NULL,
-            SUBMIT_TIME DATE DEFAULT NULL,
+            SUBMIT_TIME DATE DEFAULT SYSDATE,
             START_TIME DATE DEFAULT NULL,
             END_TIME DATE DEFAULT NULL,
             MAX_MEMORY NUMBER(6) DEFAULT NULL,
@@ -430,18 +430,17 @@ def update_job(uri: str, analysis_id: int, upi_from: str, upi_to: str,
     cur.execute(
         """
         UPDATE IPRSCAN.ANALYSIS_JOBS
-        SET SUBMIT_TIME = :1,
-            START_TIME = :2,
-            END_TIME = :3,
-            MAX_MEMORY = :4,
-            LIM_MEMORY = :5,
-            CPU_TIME = :6
-        WHERE ANALYSIS_ID = :7
-            AND UPI_FROM = :8
-            AND UPI_TO = :9
+        SET START_TIME = :1,
+            END_TIME = :2,
+            MAX_MEMORY = :3,
+            LIM_MEMORY = :4,
+            CPU_TIME = :5
+        WHERE ANALYSIS_ID = :6
+            AND UPI_FROM = :7
+            AND UPI_TO = :8
         """,
-        [task.submit_time, task.start_time, task.end_time, max_mem,
-         int(task.scheduler["mem"]), cpu_time, analysis_id, upi_from, upi_to]
+        [task.start_time, task.end_time, max_mem, int(task.scheduler["mem"]),
+         cpu_time, analysis_id, upi_from, upi_to]
     )
     con.commit()
     cur.close()
