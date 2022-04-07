@@ -230,7 +230,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             for upi_from, upi_to in incomplete_jobs.pop(analysis_id, []):
                 task = factory.make(upi_from, upi_to)
                 task.status = STATUS_RUNNING  # assumes it's running
-                task.workdir = temp_dir
+                task.workdir = os.path.join(temp_dir, task.name)
 
                 if task.name in name2id:
                     task.jobid = name2id.pop(task.name)
