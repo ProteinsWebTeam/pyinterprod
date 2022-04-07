@@ -198,7 +198,6 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
     with Pool(temp_dir, max_running_jobs, pool_threads) as pool:
         to_run = []
-        n_tasks = 0
         for analysis_id, analysis in analyses.items():
             name = analysis["name"]
             version = analysis["version"]
@@ -227,34 +226,41 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                                   lsf_queue=lsf_queue,
                                   timeout=timeout)
 
+            n_tasks_analysis = 0
             for upi_from, upi_to in incomplete_jobs.pop(analysis_id, []):
                 task = factory.make(upi_from, upi_to)
                 task.status = STATUS_RUNNING  # assumes it's running
                 task.workdir = os.path.join(temp_dir, task.name)
 
                 if task.name in name2id:
+                    # Running
                     task.jobid = name2id.pop(task.name)
-                else:
-                    task.poll()  # checks if output exists
-                    if not task.done():
-                        task.status = STATUS_PENDING
+                    to_run.append(task)
+                    n_tasks_analysis += 1
+                    continue
 
-                pool.submit(task)
-                n_tasks += 1
+                task.poll()  # checks if output exists
+                if task.done():
+                    """
+                    Completed or failed. Will be submitted to the pool
+                    which will send it back without restarting it.
+                    """
+                    to_run.append(task)
+                elif n_tasks_analysis < max_jobs_per_analysis:
+                    task.status = STATUS_PENDING
+                    to_run.append(task)
+                    n_tasks_analysis += 1
 
-            n_tasks_analysis = 0
             for upi_from, upi_to in range_jobs(next_upi, max_upi,
                                                config["job_size"]):
-                if n_tasks_analysis == max_jobs_per_analysis:
+                if n_tasks_analysis >= max_jobs_per_analysis:
                     break
 
                 to_run.append(factory.make(upi_from, upi_to))
                 database.add_job(cur, analysis_id, upi_from, upi_to)
-                n_tasks += 1
                 n_tasks_analysis += 1
 
-            logger.debug(f"{name} {version}: "
-                         f"{n_tasks_analysis} tasks submitted")
+            logger.debug(f"{name} {version}: {n_tasks_analysis} tasks")
 
         cur.close()
         con.close()
@@ -269,6 +275,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         re-arranged, so we use random.randint to destructively iterate 
         over the list.
         """
+        n_tasks = len(to_run)
         while to_run:
             i = random.randrange(len(to_run))  # 0 <= i < len(to_run)
             task = to_run.pop(i)
