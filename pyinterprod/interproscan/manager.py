@@ -246,7 +246,9 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     which will send it back without restarting it.
                     """
                     to_run.append(task)
-                elif 0 <= n_tasks_analysis < max_jobs_per_analysis:
+                elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
+                    break
+                else:
                     task.status = STATUS_PENDING
                     to_run.append(task)
                     n_tasks_analysis += 1
