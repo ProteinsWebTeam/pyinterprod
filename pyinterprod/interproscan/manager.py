@@ -246,14 +246,14 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     which will send it back without restarting it.
                     """
                     to_run.append(task)
-                elif n_tasks_analysis < max_jobs_per_analysis:
+                elif 0 <= n_tasks_analysis < max_jobs_per_analysis:
                     task.status = STATUS_PENDING
                     to_run.append(task)
                     n_tasks_analysis += 1
 
             for upi_from, upi_to in range_jobs(next_upi, max_upi,
                                                config["job_size"]):
-                if n_tasks_analysis >= max_jobs_per_analysis:
+                if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                     break
 
                 to_run.append(factory.make(upi_from, upi_to))
