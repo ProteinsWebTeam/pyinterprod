@@ -334,6 +334,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                             task.scheduler["mem"] *= 1.5
 
                         # Resubmit task
+                        task.status = STATUS_PENDING
                         pool.submit(task)
 
                         # Increment retries counter
