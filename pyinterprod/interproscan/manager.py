@@ -196,7 +196,9 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
     name2id = get_lsf_unfinished_jobs()
 
-    with Pool(temp_dir, max_running_jobs, pool_threads) as pool:
+    with Pool(temp_dir, max_running_jobs,
+              kill_on_exit=False,
+              threads=pool_threads) as pool:
         to_run = []
         for analysis_id, analysis in analyses.items():
             name = analysis["name"]
