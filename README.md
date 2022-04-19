@@ -65,8 +65,10 @@ All files can be renamed. `main.conf` is passed as an command line argument, and
     - **lsf_queue**: name of the LSF queue to submit jobs to
     - **pronto_url**: URL of the Pronto curation application
     - **data_dir**: directory where to store staging files
-    - **temp_dir**: directory for temporary files (e.g. job input/output)
-    - **work_dir**: directory where to run InterProScan match calculation
+    - **match_calc_dir**: directory where to run InterProScan match calculation
+    - **temporary_dir**: directory for temporary files (i.e. job input/output)
+    - **workflows_dir**: directory for workflows SQLite files
+
     
 ### members.conf
 

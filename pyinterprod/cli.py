@@ -272,7 +272,8 @@ def run_member_db_update():
     pronto_url = config["misc"]["pronto_url"]
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
-    temp_dir = config["misc"]["temp_dir"]
+    temp_dir = config["misc"]["temporary_dir"]
+    wflow_dir = config["misc"]["workflows_dir"]
 
     databases = interpro.database.get_databases(url=ora_interpro_url,
                                                 names=db_names,
@@ -446,7 +447,7 @@ def run_member_db_update():
     for db in sorted(databases.values(), key=lambda k: k.name.lower()):
         versions.append(f"{db.name.lower().replace(' ', '')}{db.version}")
 
-    database = os.path.join(temp_dir, f"{'_'.join(versions)}.sqlite")
+    database = os.path.join(wflow_dir, f"{'_'.join(versions)}.sqlite")
     with Workflow(tasks, dir=temp_dir, database=database) as wf:
         if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
             sys.exit(0)
@@ -489,12 +490,13 @@ def run_pronto_update():
     uniprot_version = config["uniprot"]["version"]
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
-    temp_dir = config["misc"]["temp_dir"]
+    temp_dir = config["misc"]["temporary_dir"]
+    wflow_dir = config["misc"]["workflows_dir"]
 
     tasks = get_pronto_tasks(ora_interpro_url, ora_swpread_url, ora_goa_url,
                              pg_url, data_dir, lsf_queue)
 
-    database = os.path.join(temp_dir, f"{uniprot_version}.pronto.sqlite")
+    database = os.path.join(wflow_dir, f"{uniprot_version}.pronto.sqlite")
     with Workflow(tasks, dir=temp_dir, database=database) as wf:
         if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
             sys.exit(0)
@@ -546,7 +548,8 @@ def run_uniprot_update():
     pronto_url = config["misc"]["pronto_url"]
     data_dir = config["misc"]["data_dir"]
     lsf_queue = config["misc"]["lsf_queue"]
-    temp_dir = config["misc"]["temp_dir"]
+    temp_dir = config["misc"]["temporary_dir"]
+    wflow_dir = config["misc"]["workflows_dir"]
 
     tasks = [
         # Data from UAREAD
@@ -744,7 +747,7 @@ def run_uniprot_update():
         ),
     ]
 
-    database = os.path.join(temp_dir, f"{uniprot_version}.sqlite")
+    database = os.path.join(wflow_dir, f"{uniprot_version}.sqlite")
     with Workflow(tasks, dir=temp_dir, database=database) as wf:
         if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
             sys.exit(0)
@@ -864,8 +867,8 @@ def run_interproscan_manager():
     job_size = int(analyses_config["DEFAULT"]["job_size"])
 
     interproscan.manager.run(uri=iscn_iprscan_uri,
-                             work_dir=config["misc"]["work_dir"],
-                             temp_dir=config["misc"]["temp_dir"],
+                             work_dir=config["misc"]["match_calc_dir"],
+                             temp_dir=config["misc"]["temporary_dir"],
                              job_cpu=job_cpu,
                              job_mem=job_mem,
                              job_size=job_size,
