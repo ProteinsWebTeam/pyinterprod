@@ -13,6 +13,7 @@ from mundone.task import STATUS_PENDING, STATUS_RUNNING
 
 from pyinterprod import logger
 from . import database, persistence
+from .utils import int_to_upi, upi_to_int, range_jobs
 
 
 """
@@ -110,21 +111,6 @@ class TaskFactory:
 
     def make_name(self, upi_from: str, upi_to: str) -> str:
         return f"{_JOB_PREFIX}{self.appl}_{self.version}_{upi_from}_{upi_to}"
-
-
-def int_to_upi(i):
-    return f"UPI{i:010x}".upper()
-
-
-def upi_to_int(upi):
-    return int(upi[3:], 16)
-
-
-def range_jobs(from_upi: str, to_upi: str, step: int):
-    start = upi_to_int(from_upi)
-    stop = upi_to_int(to_upi) + 1
-    for i in range(start, stop, step):
-        yield int_to_upi(i), int_to_upi(i + step)
 
 
 def run(uri: str, work_dir: str, temp_dir: str, **kwargs):

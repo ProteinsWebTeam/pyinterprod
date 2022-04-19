@@ -5,6 +5,7 @@ from mundone.task import Task
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
+from .utils import int_to_upi, upi_to_int
 
 
 def init_tables(ippro_uri: str, ispro_uri: str, i5_dir: str, others=None):
@@ -401,6 +402,44 @@ def get_incomplete_jobs(cur: cx_Oracle.Cursor) -> dict:
             incomplete_jobs[analysis_id] = [(upi_from, upi_to)]
 
     return incomplete_jobs
+
+
+def split_incomplete_jobs(uri: str, new_size: int):
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+    jobs = get_incomplete_jobs(cur)
+
+    params = []
+    for analysis_id, analysis_jobs in jobs.items():
+        for upi_from, upi_to in analysis_jobs:
+            while upi_from <= upi_to:
+                start = upi_to_int(upi_from)
+                new_start = start + (new_size - 1)
+                new_upi_to = int_to_upi(new_start)
+
+                params.append((analysis_id, upi_from, new_upi_to))
+
+                upi_from = int_to_upi(new_start + 1)
+
+    cur.execute(
+        """
+        DELETE FROM IPRSCAN.ANALYSIS_JOBS
+        WHERE END_TIME IS NULL
+        """
+    )
+
+    cur.executemany(
+        """
+        INSERT INTO IPRSCAN.ANALYSIS_JOBS 
+            (ANALYSIS_ID, UPI_FROM, UPI_TO, SUBMIT_TIME)
+        VALUES (:1, :2, :3, SYSDATE)
+        """,
+        params
+    )
+
+    con.commit()
+    cur.close()
+    con.close()
 
 
 def add_job(cur: cx_Oracle, analysis_id: int, upi_from: str, upi_to: str):
