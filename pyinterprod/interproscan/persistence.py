@@ -192,18 +192,25 @@ def hamap_matches(uri: str, file: str, analysis_id: int, table: str):
 
 
 def _hmmer3_matches(uri: str, file: str, analysis_id: int, table: str,
-                    relno_maj_as_int: bool):
+                    relno_maj_as_int: bool, has_alignment: bool):
+    if has_alignment:
+        ali_col = ", ALIGNMENT"
+        ali_val = ", :alignment"
+    else:
+        ali_col = ""
+        ali_val = ""
+
     sql = f"""
         INSERT /*+ APPEND */ INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
             UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
             SEQSCORE, SEQEVALUE, HMM_BOUNDS, HMM_START, HMM_END,
-            HMM_LENGTH, ENV_START, ENV_END, SCORE, EVALUE
+            HMM_LENGTH, ENV_START, ENV_END, SCORE, EVALUE{ali_col}
         )
         VALUES (:analysis_id, :analysis_name, :relno_major, :relno_minor,
                 :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments,
                 :seq_score, :seq_evalue, :hmm_bounds, :hmm_start, :hmm_end,
-                :hmm_length, :env_start, :env_end, :score, :evalue)
+                :hmm_length, :env_start, :env_end, :score, :evalue{ali_val})
     """
 
     con = cx_Oracle.connect(uri)
@@ -215,7 +222,7 @@ def _hmmer3_matches(uri: str, file: str, analysis_id: int, table: str,
     with open(file, "rt") as fh:
         for line in fh:
             cols = line.rstrip().split('\t')
-            values.append({
+            record = {
                 "analysis_id": analysis_id,
                 "analysis_name": cols[0],
                 "relno_major": int(cols[1]) if relno_maj_as_int else cols[1],
@@ -236,7 +243,10 @@ def _hmmer3_matches(uri: str, file: str, analysis_id: int, table: str,
                 "env_end": int(cols[16]),
                 "score": Decimal(cols[17]),
                 "evalue": Decimal(cols[18])
-            })
+            }
+
+            if has_alignment:
+                record["alignment"] = cols[19]
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
@@ -251,8 +261,14 @@ def _hmmer3_matches(uri: str, file: str, analysis_id: int, table: str,
     con.close()
 
 
+def funfam_matches(uri: str, file: str, analysis_id: int, table: str):
+    _hmmer3_matches(uri, file, analysis_id, table, relno_maj_as_int=True,
+                    has_alignment=True)
+
+
 def hmmer3_matches(uri: str, file: str, analysis_id: int, table: str):
-    _hmmer3_matches(uri, file, analysis_id, table, relno_maj_as_int=True)
+    _hmmer3_matches(uri, file, analysis_id, table, relno_maj_as_int=True,
+                    has_alignment=False)
 
 
 def mobidb_lite_matches(uri: str, file: str, analysis_id: int, table: str):
@@ -371,7 +387,8 @@ def panther_matches(uri: str, file: str, analysis_id: int, table: str):
 
 
 def pirsr_matches(uri: str, file: str, analysis_id: int, table: str):
-    _hmmer3_matches(uri, file, analysis_id, table, relno_maj_as_int=False)
+    _hmmer3_matches(uri, file, analysis_id, table, relno_maj_as_int=False,
+                    has_alignment=False)
 
 
 def prints_matches(uri: str, file: str, analysis_id: int, table: str):
@@ -527,6 +544,11 @@ def signalp_tmhmm_matches(uri: str, file: str, analysis_id: int, table: str,
 def signalp_matches(uri: str, file: str, analysis_id: int, table: str):
     signalp_tmhmm_matches(uri, file, analysis_id, table,
                           relno_maj_as_int=False)
+
+
+def sfld_matches(uri: str, file: str, analysis_id: int, table: str):
+    _hmmer3_matches(uri, file, analysis_id, table, relno_maj_as_int=True,
+                    has_alignment=False)
 
 
 def smart_matches(uri: str, file: str, analysis_id: int, table: str):
