@@ -83,9 +83,9 @@ def init_tables(ippro_uri: str, ispro_uri: str, i5_dir: str, others=None):
                 CONSTRAINT ANALYSIS_PK PRIMARY KEY,
             NAME VARCHAR2(30) NOT NULL,
             VERSION VARCHAR2(20) NOT NULL,
-            ACTIVE NUMBER(1)
+            ACTIVE CHAR(1) DEFAULT 'N' NOT NULL
                 CONSTRAINT ANALYSIS_CHK
-                CHECK (ACTIVE in (0, 1)),
+                CHECK (ACTIVE in ('Y', 'N')),
             MAX_UPI VARCHAR2(13) DEFAULT NULL,
             I5_DIR VARCHAR2(1000) NOT NULL,
             TIMESTAMP DATE DEFAULT SYSDATE
@@ -133,7 +133,7 @@ def init_tables(ippro_uri: str, ispro_uri: str, i5_dir: str, others=None):
             VALUES
                 (:1, :2, :3, :4, :5, :6)
             """,
-            (analysis_id, name, version, 1, hwm.get(analysis_id), i5_dir)
+            (analysis_id, name, version, 'Y', hwm.get(analysis_id), i5_dir)
         )
 
     cur.executemany(
@@ -164,7 +164,7 @@ def get_analyses(obj: Union[str, cx_Oracle.Cursor]) -> dict:
         FROM IPRSCAN.ANALYSIS A
         INNER JOIN IPRSCAN.ANALYSIS_TABLES T
             ON A.NAME = T.NAME
-        WHERE A.ACTIVE = 1
+        WHERE A.ACTIVE = 'Y'
         """
     )
 
