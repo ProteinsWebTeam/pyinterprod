@@ -248,6 +248,8 @@ def _hmmer3_matches(uri: str, file: str, analysis_id: int, table: str,
             if has_alignment:
                 record["alignment"] = cols[19]
 
+            values.append(record)
+
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
                 con.commit()
