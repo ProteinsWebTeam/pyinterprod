@@ -466,6 +466,29 @@ def add_job(cur: cx_Oracle, analysis_id: int, upi_from: str, upi_to: str):
     cur.connection.commit()
 
 
+def reset_job(uri: str, analysis_id: int, upi_from: str, upi_to: str):
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        UPDATE IPRSCAN.ANALYSIS_JOBS
+        SET SUBMIT_TIME = SYSDATE,
+            START_TIME = NULL,
+            END_TIME = NULL,
+            MAX_MEMORY = NULL,
+            LIM_MEMORY = NULL,
+            CPU_TIME = NULL
+        WHERE ANALYSIS_ID = :1 
+          AND UPI_FROM = :2 
+          AND UPI_TO = :3
+        """,
+        [analysis_id, upi_from, upi_to]
+    )
+    con.commit()
+    cur.close()
+    con.close()
+
+
 def update_job(uri: str, analysis_id: int, upi_from: str, upi_to: str,
                task: Task, max_mem: int, cpu_time: int):
     con = cx_Oracle.connect(uri)

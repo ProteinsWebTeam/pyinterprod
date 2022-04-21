@@ -322,6 +322,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         # Resubmit task
                         task.status = STATUS_PENDING
                         pool.submit(task)
+                        database.reset_job(uri, analysis_id, upi_from, upi_to)
 
                         # Increment retries counter
                         retries[task.name] = num_retries + 1
