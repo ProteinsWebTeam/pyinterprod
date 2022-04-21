@@ -188,7 +188,7 @@ def get_analyses(obj: Union[str, cx_Oracle.Cursor]) -> dict:
     return analyses
 
 
-def clean_tables(uri: str):
+def clean_tables(uri: str, analysis_ids: Optional[list[int]] = None):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
@@ -217,6 +217,10 @@ def clean_tables(uri: str):
                 continue
 
             analysis_id = int(p["value"])
+
+            if analysis_ids and analysis_id not in analysis_ids:
+                continue
+
             if analysis_id not in analyses:
                 # Obsolete analysis: remove data
                 actions.append((

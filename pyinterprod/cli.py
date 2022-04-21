@@ -849,7 +849,7 @@ def run_interproscan_manager():
                                              top_up=args.top_up)
 
     if args.clean:
-        interproscan.database.clean_tables(iscn_iprscan_uri)
+        interproscan.database.clean_tables(iscn_iprscan_uri, args.analyses)
 
     analyses_config = ConfigParser()
     analyses_config.read(config["misc"]["analyses"])
