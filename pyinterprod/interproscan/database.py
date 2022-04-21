@@ -113,7 +113,7 @@ def init_tables(ippro_uri: str, ispro_uri: str, i5_dir: str, others=None):
                 REFERENCES ANALYSIS (ID),
             UPI_FROM VARCHAR2(13) NOT NULL,
             UPI_TO VARCHAR2(13) NOT NULL,
-            SUBMIT_TIME DATE DEFAULT SYSDATE,
+            SUBMIT_TIME DATE DEFAULT SYSDATE NOT NULL,
             START_TIME DATE DEFAULT NULL,
             END_TIME DATE DEFAULT NULL,
             MAX_MEMORY NUMBER(6) DEFAULT NULL,
