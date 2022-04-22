@@ -261,7 +261,7 @@ class Analysis:
             FROM IPRSCAN.ANALYSIS_JOBS@ISPRO
             WHERE ANALYSIS_ID = :1
               AND END_TIME IS NOT NULL
-            """
+            """,
             [self.id]
         )
         row = cur.fetchone()
