@@ -11,148 +11,218 @@ from pyinterprod.utils import oracle
 
 PREFIX = "MV_"
 
-# Columns to select when inserting matches in MV_IPRSCAN
-# Keys are partitions names
+"""
+Keys: analysis names in ISPRO
+Values: columns to select when inserting matches in MV_IPRSCAN (IPPRO)
+        and partitions in MV_IPRSCAN
+"""
 MATCH_SELECT = {
-    "antifam": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
-        'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
-        'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
-    "cdd": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', '0', '0', '0',
-        'NULL', 'SEQSCORE',  'SEQSCORE', 'SEQEVALUE', 'SEQEVALUE',
-        '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
-    "coils": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', '0', '0', '0',
-        'NULL', '0', '0', '0', '0',
-        '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
-    "funfam": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
-        'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
-        'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
-    "gene3d": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
-        'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
-        'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
-    "hamap": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'SUBSTR(RELNO_MAJOR', '1', '4)', 'SUBSTR(RELNO_MAJOR', '6', '7)',
-        'SEQ_START', 'SEQ_END', '0', '0', '0',
-        'NULL', '0', 'SEQSCORE', '0', '0',
-        '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
-    "mobidblite": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', '0', '0', '0',
-        'NULL', '0', '0', '0', '0',
-        '0', '0', 'MODEL_AC', 'SEQ_FEATURE', 'FRAGMENTS'
-    ],
-    "panther": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
-        'HMM_BOUNDS', 'SEQSCORE', 'SEQSCORE', 'SEQEVALUE', 'SEQEVALUE',
-        'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
-    "pfam": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
-        'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
-        'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
-    "phobius": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', '0', '0', '0',
-        'NULL', '0', '0', '0', '0',
-        '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
-    "pirsf": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
-        'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
-        'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
-    "prints": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', '0', '0', 'MOTIF_NUMBER',
-        'NULL', '0', 'SEQSCORE', 'PVALUE', 'SEQEVALUE',
-        '0', '0', 'MODEL_AC', 'GRAPHSCAN', 'FRAGMENTS'
-    ],
-    "prosite_patterns": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'SUBSTR(RELNO_MAJOR', '1', '4)', 'SUBSTR(RELNO_MAJOR', '6', '7)',
-        'SEQ_START', 'SEQ_END', '0', '0', '0',
-        'LOCATION_LEVEL', '0', '0', '0', '0',
-        '0', '0', 'MODEL_AC', 'ALIGNMENT', 'FRAGMENTS'
-    ],
-    "prosite_profiles": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'SUBSTR(RELNO_MAJOR', '1', '4)', 'SUBSTR(RELNO_MAJOR', '6', '7)',
-        'SEQ_START', 'SEQ_END', '0', '0', '0',
-        'NULL', '0', 'SEQSCORE', '0', '0',
-        '0', '0', 'MODEL_AC', 'ALIGNMENT', 'FRAGMENTS'
-    ],
-    "sfld": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
-        'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
-        'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
-    "signalp_euk": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', '0', '0', '0',
-        'NULL', 'SEQSCORE', 'SEQSCORE', '0', '0',
-        '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
-    "signalp_gram_positive": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', '0', '0', '0',
-        'NULL', 'SEQSCORE', 'SEQSCORE', '0', '0',
-        '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
-    "signalp_gram_negative": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', '0', '0', '0',
-        'NULL', 'SEQSCORE', 'SEQSCORE', '0', '0',
-        '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
-    "smart": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
-        'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
-        '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
-    "superfamily": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', '0', '0', 'HMM_LENGTH',
-        'NULL', '0', '0', 'SEQEVALUE', 'SEQEVALUE',
-        '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
-    "tigrfam": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
-        'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
-        'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
-    "tmhmm": [
-        'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-        'SEQ_START', 'SEQ_END', '0', '0', '0',
-        'NULL', 'SEQSCORE', 'SEQSCORE', '0', '0',
-        '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-    ],
+    "AntiFam": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
+            'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
+            'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "antifam"
+    },
+    "CATH-Gene3D": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
+            'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
+            'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "gene3d"
+    },
+    "CDD": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', '0', '0', '0',
+            'NULL', 'SEQSCORE',  'SEQSCORE', 'SEQEVALUE', 'SEQEVALUE',
+            '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "cdd"
+    },
+    "COILS": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', '0', '0', '0',
+            'NULL', '0', '0', '0', '0',
+            '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "coils"
+    },
+    "FunFam": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
+            'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
+            'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "funfam"
+    },
+    "HAMAP": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'SUBSTR(RELNO_MAJOR', '1', '4)', 'SUBSTR(RELNO_MAJOR', '6', '7)',
+            'SEQ_START', 'SEQ_END', '0', '0', '0',
+            'NULL', '0', 'SEQSCORE', '0', '0',
+            '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "hamap"
+    },
+    "MobiDB Lite": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', '0', '0', '0',
+            'NULL', '0', '0', '0', '0',
+            '0', '0', 'MODEL_AC', 'SEQ_FEATURE', 'FRAGMENTS'
+        ],
+        "partition": "mobidblite"
+    },
+    "PANTHER": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
+            'HMM_BOUNDS', 'SEQSCORE', 'SEQSCORE', 'SEQEVALUE', 'SEQEVALUE',
+            'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "panther"
+    },
+    "Pfam": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
+            'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
+            'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "pfam"
+    },
+    "Phobius": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', '0', '0', '0',
+            'NULL', '0', '0', '0', '0',
+            '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "phobius"
+    },
+    "PIRSF": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
+            'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
+            'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "pirsf"
+    },
+    "PRINTS": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', '0', '0', 'MOTIF_NUMBER',
+            'NULL', '0', 'SEQSCORE', 'PVALUE', 'SEQEVALUE',
+            '0', '0', 'MODEL_AC', 'GRAPHSCAN', 'FRAGMENTS'
+        ],
+        "partition": "prints"
+    },
+    "PROSITE patterns": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'SUBSTR(RELNO_MAJOR', '1', '4)', 'SUBSTR(RELNO_MAJOR', '6', '7)',
+            'SEQ_START', 'SEQ_END', '0', '0', '0',
+            'LOCATION_LEVEL', '0', '0', '0', '0',
+            '0', '0', 'MODEL_AC', 'ALIGNMENT', 'FRAGMENTS'
+        ],
+        "partition": "prosite_patterns"
+    },
+    "PROSITE profiles": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'SUBSTR(RELNO_MAJOR', '1', '4)', 'SUBSTR(RELNO_MAJOR', '6', '7)',
+            'SEQ_START', 'SEQ_END', '0', '0', '0',
+            'NULL', '0', 'SEQSCORE', '0', '0',
+            '0', '0', 'MODEL_AC', 'ALIGNMENT', 'FRAGMENTS'
+        ],
+        "partition": "prosite_profiles"
+    },
+    "SFLD": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
+            'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
+            'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "sfld"
+    },
+    "SignalP_Euk": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', '0', '0', '0',
+            'NULL', 'SEQSCORE', 'SEQSCORE', '0', '0',
+            '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "signalp_euk"
+    },
+    "SignalP_Gram_positive": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', '0', '0', '0',
+            'NULL', 'SEQSCORE', 'SEQSCORE', '0', '0',
+            '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "signalp_gram_positive"
+    },
+    "SignalP_Gram_negative": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', '0', '0', '0',
+            'NULL', 'SEQSCORE', 'SEQSCORE', '0', '0',
+            '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "signalp_gram_negative"
+    },
+    "SMART": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
+            'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
+            '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "smart"
+    },
+    "SUPERFAMILY": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', '0', '0', 'HMM_LENGTH',
+            'NULL', '0', '0', 'SEQEVALUE', 'SEQEVALUE',
+            '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "superfamily"
+    },
+    "TIGRFAMs": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
+            'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
+            'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "tigrfam"
+    },
+    "TMHMM": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', '0', '0', '0',
+            'NULL', 'SEQSCORE', 'SEQSCORE', '0', '0',
+            '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "tmhmm"
+    },
 }
 
-# Partition in SITE
+# Keys: analysis names in ISPRO
+# Values: partitions in SITE (IPPRO)
 SITE_PARITIONS = {
-    "cdd": "CDD",
-    "pirsr": "PIRSR",
-    "sfld": "SFLD"
+    "CDD": "CDD",
+    "PIRSR": "PIRSR",
+    "SFLD": "SFLD"
 }
 
 # Columns to select when inserting site matches in SITE
@@ -164,47 +234,38 @@ SITE_SELECT = ["ANALYSIS_ID", "UPI_RANGE", "UPI", "METHOD_AC", "LOC_START",
 @dataclass
 class Analysis:
     id: int
-    type: str
     name: str
+    version: str
     is_active: bool
     table: str
-    persisted: int
 
     def is_ready(self, cur: Cursor, max_upi: str) -> bool:
+        # Check for incomplete jobs that are required (<= max UPI)
         cur.execute(
             """
-            SELECT SUM(CNT)
-            FROM (
-                SELECT COUNT(*) AS CNT
-                FROM IPRSCAN.IPM_RUNNING_JOBS@ISPRO
-                WHERE ANALYSIS_ID = :analysisid
-                  AND JOB_START <= :maxupi
-                UNION ALL
-                SELECT COUNT(*) AS CNT
-                FROM IPRSCAN.IPM_COMPLETED_JOBS@ISPRO
-                WHERE ANALYSIS_ID = :analysisid
-                  AND JOB_START <= :maxupi AND PERSISTED < :persisted
-                UNION ALL
-                SELECT COUNT(*) AS CNT
-                FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
-                WHERE ANALYSIS_ID = :analysisid
-                  AND JOB_START <= :maxupi AND PERSISTED < :persisted
-            )
+            SELECT COUNT(*) AS CNT
+            FROM IPRSCAN.ANALYSIS_JOBS@ISPRO
+            WHERE ANALYSIS_ID = :1
+              AND UPI_FROM <= :2
+              AND END_TIME IS NULL
             """,
-            dict(analysisid=self.id, persisted=self.persisted, maxupi=max_upi)
+            [self.id, max_upi]
         )
         if cur.fetchone()[0]:
             return False
 
+        # Check that the highest completed job is >= max UPI
         cur.execute(
             """
-            SELECT MAX(JOB_END)
-            FROM IPRSCAN.IPM_PERSISTED_JOBS@ISPRO
-            WHERE ANALYSIS_ID = :1 AND PERSISTED >= :2
-            """, (self.id, self.persisted)
+            SELECT MAX(UPI_TO)
+            FROM IPRSCAN.ANALYSIS_JOBS@ISPRO
+            WHERE ANALYSIS_ID = :1
+              AND END_TIME IS NULL
+            """
+            [self.id]
         )
         row = cur.fetchone()
-        return row and row[0] is not None and row[0] >= max_upi
+        return row[0] is not None and row[0] >= max_upi
 
 
 def get_analyses(cur: Cursor, **kwargs) -> List[Analysis]:
@@ -219,14 +280,14 @@ def get_analyses(cur: Cursor, **kwargs) -> List[Analysis]:
 
     if ids:
         params = [':' + str(i+1) for i in range(len(ids))]
-        sql_filter = f"WHERE A.ANALYSIS_ID IN ({','.join(params)})"
+        sql_filter = f"WHERE A.ID IN ({','.join(params)})"
         params = tuple(ids)
     elif status == "production":
-        sql_filter = ("WHERE  A.ANALYSIS_ID IN (SELECT IPRSCAN_SIG_LIB_REL_ID "
+        sql_filter = ("WHERE  A.ID IN (SELECT IPRSCAN_SIG_LIB_REL_ID "
                       "FROM INTERPRO.IPRSCAN2DBCODE)")
         params = tuple()
     elif status == "active":
-        sql_filter = "WHERE A.ACTIVE = 1"
+        sql_filter = "WHERE A.ACTIVE = 'Y'"
         params = tuple()
     else:
         sql_filter = ""
@@ -234,58 +295,29 @@ def get_analyses(cur: Cursor, **kwargs) -> List[Analysis]:
 
     cur.execute(
         f"""
-        SELECT
-            A.ANALYSIS_ID,
-            A.ANALYSIS_NAME,
-            NVL(P.ANALYSIS_TYPE, A.ANALYSIS_TYPE),
-            A.ACTIVE,
-            T.MATCH_TABLE,
-            T.SITE_TABLE
-        FROM IPM_ANALYSIS@ISPRO A
-            INNER JOIN IPM_ANALYSIS_MATCH_TABLE@ISPRO T
-                ON A.ANALYSIS_MATCH_TABLE_ID = T.ID
-            LEFT OUTER JOIN (
-                SELECT
-                    ANALYSIS_MATCH_TABLE_ID,
-                    MIN(ANALYSIS_TYPE) ANALYSIS_TYPE,
-                    COUNT(*) CNT
-                FROM IPM_ANALYSIS@ISPRO
-                WHERE ACTIVE = 1
-                GROUP BY ANALYSIS_MATCH_TABLE_ID
-            ) P
-                ON A.ANALYSIS_MATCH_TABLE_ID = P.ANALYSIS_MATCH_TABLE_ID
-                AND P.CNT = 1
-          {sql_filter}
-          ORDER BY A.ANALYSIS_NAME
+        SELECT A.ID, A.NAME, A.VERSION, A.ACTIVE, T.MATCH_TABLE, T.SITE_TABLE
+        FROM IPRSCAN.ANALYSIS@ISPRO A
+        INNER JOIN IPRSCAN.ANALYSIS_TABLES@ISPRO T ON A.NAME = T.NAME
+        {sql_filter}
+        ORDER BY A.NAME
         """, params
     )
 
     analyses = []
-    for a_id, a_name, a_type, a_active, match_table, site_table in cur:
-        """
-        CDD/PIRSR/SFLD
-            - PERSISTED=1 when matches are ready
-            - PERSISTED=2 when matches and sites are ready
-
-        Others:
-            - PERSISTED=2 when matches are ready
-        """
+    for a_id, a_name, a_version, a_active, match_table, site_table in cur:
         if match_type == "matches":
-            persisted = 1 if a_type in SITE_PARITIONS else 2
             table = match_table.upper()
         elif site_table:
-            persisted = 2
             table = site_table.upper()
         else:
             continue
 
         analyses.append(Analysis(
             id=a_id,
-            type=a_type,
             name=a_name,
-            is_active=a_active == 1,
-            table=table,
-            persisted=persisted
+            version=a_version,
+            is_active=a_active == "Y",
+            table=table
         ))
 
     return analyses
@@ -511,15 +543,18 @@ def import_matches(url: str, **kwargs):
             continue
 
         try:
-            columns = MATCH_SELECT[analysis.type]
+            obj = MATCH_SELECT[analysis.name]
         except KeyError:
-            logger.warning(f"ignoring analysis {analysis.name}")
+            logger.warning(f"ignoring {analysis.name} {analysis.version}")
             continue
 
+        columns = obj["columns"]
+        partition = obj["partition"]
+
         try:
-            pending[analysis.table].append((analysis, analysis.type, columns))
+            pending[analysis.table].append((analysis, partition, columns))
         except KeyError:
-            pending[analysis.table] = [(analysis, analysis.type, columns)]
+            pending[analysis.table] = [(analysis, partition, columns)]
 
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     max_upi, = cur.fetchone()
@@ -627,9 +662,9 @@ def import_sites(url: str, **kwargs):
             continue
 
         try:
-            partition = SITE_PARITIONS[analysis.type]
+            partition = SITE_PARITIONS[analysis.name]
         except KeyError:
-            logger.warning(f"ignoring analysis {analysis.name}")
+            logger.warning(f"ignoring {analysis.name} {analysis.version}")
             continue
 
         try:
@@ -744,7 +779,8 @@ def check_ispro(url: str, match_type: str = "matches",
     for table in sorted(analyses):
         for a in analyses[table]:
             status = "ready" if a.is_ready(cur, max_upi) else "pending"
-            print(f"{a.id:<3} {a.name:<40} {a.type:<30} {table:<30} {status}")
+            print(f"{a.id:<3} {a.name:<40} {a.version:<30} {table:<30} "
+                  f"{status}")
 
     cur.close()
     con.close()

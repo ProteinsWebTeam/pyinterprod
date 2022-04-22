@@ -51,10 +51,10 @@ def get_databases(url: str, names: Sequence[str], expects_new: bool = False) -> 
             ON D.DBCODE = V.DBCODE
         INNER JOIN INTERPRO.IPRSCAN2DBCODE I2C 
             ON D.DBCODE = I2C.DBCODE
-        INNER JOIN IPRSCAN.IPM_ANALYSIS@ISPRO A 
-            ON I2C.IPRSCAN_SIG_LIB_REL_ID = A.ANALYSIS_ID
-        INNER JOIN IPRSCAN.IPM_ANALYSIS_MATCH_TABLE@ISPRO T 
-            ON A.ANALYSIS_MATCH_TABLE_ID = T.ID
+        INNER JOIN IPRSCAN.ANALYSIS@ISPRO A 
+            ON I2C.IPRSCAN_SIG_LIB_REL_ID = A.ID
+        INNER JOIN IPRSCAN.ANALYSIS_TABLES@ISPRO T 
+            ON A.NAME = T.NAME
         WHERE LOWER(D.DBSHORT) IN ({','.join(args)})
         """, tuple(map(str.lower, names))
     )
@@ -117,15 +117,15 @@ def update_database(url: str, name: str, version: str, date: str,
     # Find the 'active' analysis in ISPRO
     cur.execute(
         """
-        SELECT ANALYSIS_ID, ANALYSIS_NAME
-        FROM IPM_ANALYSIS@ISPRO
-        WHERE ANALYSIS_MATCH_TABLE_ID = (
-            SELECT ANALYSIS_MATCH_TABLE_ID
-            FROM IPM_ANALYSIS@ISPRO
-            WHERE ANALYSIS_ID = :1
+        SELECT ID, NAME
+        FROM IPRSCAN.ANALYSIS@ISPRO
+        WHERE NAME = (
+            SELECT NAME
+            FROM IPRSCAN.ANALYSIS@ISPRO
+            WHERE ID = :1
         )
-        AND ACTIVE = 1
-        ORDER BY ANALYSIS_ID
+        AND ACTIVE = 'Y'
+        ORDER BY ID
         """, (current_id,)
     )
     rows = cur.fetchall()
