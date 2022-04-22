@@ -260,7 +260,7 @@ class Analysis:
             SELECT MAX(UPI_TO)
             FROM IPRSCAN.ANALYSIS_JOBS@ISPRO
             WHERE ANALYSIS_ID = :1
-              AND END_TIME IS NULL
+              AND END_TIME IS NOT NULL
             """
             [self.id]
         )
