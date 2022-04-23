@@ -807,6 +807,7 @@ def _insert_matches(con: cx_Oracle.Connection):
         """
     )
     logger.info(f"{cur.rowcount} rows deleted")
+    con.commit()
 
     cur.execute(
         """
