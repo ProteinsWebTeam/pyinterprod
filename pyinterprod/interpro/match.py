@@ -695,8 +695,8 @@ def _prepare_matches(con: cx_Oracle.Connection):
           ON P.UPI = M.UPI
         INNER JOIN INTERPRO.IPRSCAN2DBCODE D
           ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
-        -- Exclude MobiDB-Lite, Phobius, SignalP (Euk, Gram+, Gram-), TMHMM, COILS
-        WHERE D.DBCODE NOT IN ('g', 'j', 'n', 's', 'v', 'q', 'x')
+        -- Exclude AntiFam, MobiDB-Lite, Phobius, SignalP (Euk, Gram+, Gram-), TMHMM, COILS
+        WHERE D.DBCODE NOT IN ('a', 'g', 'j', 'n', 's', 'v', 'q', 'x')
         AND M.SEQ_START != M.SEQ_END
         """
     )
