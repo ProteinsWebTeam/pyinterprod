@@ -474,8 +474,10 @@ def update_feature_matches(url: str):
     )
     logger.info(f"{cur.rowcount} rows deleted")
 
+    params = ",".join([":" + str(i+1)
+                       for i in range(len(FEATURE_MATCH_PARTITIONS))])
     cur.execute(
-        """
+        f"""
         INSERT INTO INTERPRO.FEATURE_MATCH
         SELECT
           P.PROTEIN_AC, M.METHOD_AC, M.SEQ_FEATURE, M.SEQ_START, M.SEQ_END,
@@ -485,9 +487,9 @@ def update_feature_matches(url: str):
           ON P.UPI = M.UPI
         INNER JOIN INTERPRO.IPRSCAN2DBCODE D
           ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
-        -- Include MobiDB-Lite, Phobius, SignalP (Euk, Gram+, Gram-), TMHMM, COILS
-        WHERE D.DBCODE IN ('g', 'j', 'n', 's', 'v', 'q', 'x')
-        """
+        WHERE D.DBCODE IN ({params})
+        """,
+        list(FEATURE_MATCH_PARTITIONS.keys())
     )
     logger.info(f"{cur.rowcount} rows inserted")
     con.commit()
@@ -682,8 +684,10 @@ def _prepare_matches(con: cx_Oracle.Connection):
         """
     )
 
+    params = ",".join([":" + str(i + 1)
+                       for i in range(len(FEATURE_MATCH_PARTITIONS))])
     cur.execute(
-        """
+        f"""
         INSERT /*+ APPEND */ INTO INTERPRO.MATCH_NEW
         SELECT
           P.PROTEIN_AC, M.METHOD_AC, M.SEQ_START, M.SEQ_END, 'T',
@@ -695,10 +699,10 @@ def _prepare_matches(con: cx_Oracle.Connection):
           ON P.UPI = M.UPI
         INNER JOIN INTERPRO.IPRSCAN2DBCODE D
           ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
-        -- Exclude AntiFam, MobiDB-Lite, Phobius, SignalP (Euk, Gram+, Gram-), TMHMM, COILS
-        WHERE D.DBCODE NOT IN ('a', 'g', 'j', 'n', 's', 'v', 'q', 'x')
+        WHERE D.DBCODE NOT IN ({params})
         AND M.SEQ_START != M.SEQ_END
-        """
+        """,
+        list(FEATURE_MATCH_PARTITIONS.keys())
     )
     con.commit()
 
