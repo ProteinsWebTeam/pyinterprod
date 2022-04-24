@@ -472,6 +472,7 @@ def update_feature_matches(url: str):
         )
         """
     )
+    con.commit()
     logger.info(f"{cur.rowcount} rows deleted")
 
     params = ",".join([":" + str(i+1)
@@ -491,8 +492,8 @@ def update_feature_matches(url: str):
         """,
         list(FEATURE_MATCH_PARTITIONS.keys())
     )
-    logger.info(f"{cur.rowcount} rows inserted")
     con.commit()
+    logger.info(f"{cur.rowcount} rows inserted")
 
     cur.close()
     con.close()
