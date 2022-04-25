@@ -11,6 +11,17 @@ def clob_as_str(cur: Cursor, name, default_type, size, precision, scale):
         return cur.var(DB_TYPE_LONG, arraysize=cur.arraysize)
 
 
+def drop_index(cur: Cursor, name):
+    try:
+        cur.execute(f"DROP INDEX {name}")
+    except DatabaseError as exc:
+        error, = exc.args
+
+        # ORA-01418: specified index does not exist
+        if error.code != 1418:
+            raise exc
+
+
 def drop_mview(cur: Cursor, name: str):
     try:
         cur.execute(f"DROP MATERIALIZED VIEW {name}")
