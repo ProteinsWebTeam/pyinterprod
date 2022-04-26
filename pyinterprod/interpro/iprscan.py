@@ -695,7 +695,7 @@ def update_partitions(uri: str, mode: str = "matches", **kwargs):
             logger.warning(f"ignoring {analysis.name} {analysis.version}")
             continue
 
-        analyses.append((analyses, obj["partition"], obj["columns"]))
+        analyses.append((analysis, obj["partition"], obj["columns"]))
 
     cur.close()
     con.close()
