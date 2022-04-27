@@ -584,11 +584,11 @@ def import_tables(uri: str, mode: str = "matches", **kwargs):
                     f.result()
                 except Exception as exc:
                     for name in names:
-                        logger.error(f"{name:<35}: failed ({exc})")
+                        logger.error(f"{name:<35} failed ({exc})")
                     failed += 1
                 else:
                     for name in names:
-                        logger.info(f"{name:<35}: done")
+                        logger.info(f"{name:<35} done")
 
             running = tmp
 
@@ -729,10 +729,10 @@ def update_partitions(uri: str, mode: str = "matches", **kwargs):
             try:
                 f.result()
             except Exception as exc:
-                logger.error(f"{name:<50}: failed ({exc})")
+                logger.error(f"{name:<50} failed ({exc})")
                 failed += 1
             else:
-                logger.info(f"{name:<50}: done")
+                logger.info(f"{name:<50} done")
 
     if failed:
         raise RuntimeError(f"{failed} errors")
