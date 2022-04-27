@@ -584,11 +584,11 @@ def import_tables(uri: str, mode: str = "matches", **kwargs):
                     f.result()
                 except Exception as exc:
                     for name in names:
-                        logger.error(f"{name:<35} failed ({exc})")
+                        logger.error(f"{name:<38} failed: {exc}")
                     failed += 1
                 else:
                     for name in names:
-                        logger.info(f"{name:<35} done")
+                        logger.info(f"{name:<40} done")
 
             running = tmp
 
@@ -684,7 +684,7 @@ def update_partitions(uri: str, mode: str = "matches", **kwargs):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
-    analyses = []
+    tables = {}
     for analysis in get_analyses(cur, type=mode):
         if databases and analysis.id not in databases:
             continue
@@ -695,44 +695,53 @@ def update_partitions(uri: str, mode: str = "matches", **kwargs):
             logger.warning(f"ignoring {analysis.name} {analysis.version}")
             continue
 
-        analyses.append((analysis, obj["partition"], obj["columns"]))
+        item = (analysis, obj["partition"], obj["columns"])
+
+        try:
+            tables[analysis.table].append(item)
+        except KeyError:
+            tables[analysis.table] = [item]
 
     cur.close()
     con.close()
 
-    if not analyses:
+    if not tables:
         logger.info("No tables to update")
         return
     elif threads < 1:
-        threads = len(analyses)
+        threads = len(tables)
 
     with ThreadPoolExecutor(max_workers=threads) as executor:
         fs = {}
-        for analysis, partition, columns in analyses:
+        for table, analyses in tables.items():
             args = (
                 uri,
-                PREFIX + analysis.table,
+                PREFIX + table,
                 partitioned_table,
-                analysis.id,
-                partition,
-                columns,
+                [
+                    (analysis.id, partition, columns)
+                    for analysis, partition, columns in analyses
+                ],
                 force
             )
 
             f = executor.submit(_update_partition, *args)
-            fs[f] = f"{analysis.name} {analysis.version}"
+            fs[f] = [f"{analysis.name} {analysis.version}"
+                     for analysis, _, _ in analyses]
 
         failed = 0
         for f in as_completed(fs):
-            name = fs[f]
+            names = fs[f]
 
             try:
                 f.result()
             except Exception as exc:
-                logger.error(f"{name:<50} failed ({exc})")
                 failed += 1
+                for name in names:
+                    logger.error(f"{name:<38} failed: {exc}")
             else:
-                logger.info(f"{name:<50} done")
+                for name in names:
+                    logger.info(f"{name:<40} done")
 
     if failed:
         raise RuntimeError(f"{failed} errors")
@@ -756,16 +765,15 @@ def update_partitions(uri: str, mode: str = "matches", **kwargs):
 
 
 def _update_partition(uri: str, table: str, partitioned_table: str,
-                      analysis_id: int, partition: str, columns: Sequence[str],
+                      analyses: Sequence[Tuple[int, str, Sequence[str]]],
                       force: bool = False):
     """
     Update partitioned table with matches
     :param uri: Oracle connection string
     :param table: Match table
     :param partitioned_table: Partitioned table
-    :param analysis_id: ID of the analysis to update in the partitioned table
-    :param partition: name of the partition in the partitioned table
-    :param columns: list of columns to select from `table`
+    :param analyses: list of analyses to update (analysis ID, partition name
+                     in `partitioned_table`, columns to select from `table`)
     :param force: If True, update partition even if up-to-date
     """
     con = cx_Oracle.connect(uri)
@@ -773,124 +781,133 @@ def _update_partition(uri: str, table: str, partitioned_table: str,
 
     if not force:
         # Check if the data is already up-to-date
+        up_to_date = 0
+
+        for analysis_id, partition, columns in analyses:
+            cur.execute(
+                f"""
+                SELECT MAX(UPI)
+                FROM IPRSCAN.{table}
+                WHERE ANALYSIS_ID = :1
+                """,
+                [analysis_id]
+            )
+            row = cur.fetchone()
+            max_upi_1 = row[0] if row else None
+
+            cur.execute(
+                f"""
+                SELECT MAX(UPI)
+                FROM IPRSCAN.{partitioned_table} PARTITION ({partition})
+                WHERE ANALYSIS_ID = :1
+                """,
+                [analysis_id]
+            )
+            row = cur.fetchone()
+            max_upi_2 = row[0] if row else None
+
+            if max_upi_1 == max_upi_2:
+                # This partition is already up-to-date
+                up_to_date += 1
+
+        if up_to_date == len(analyses):
+            cur.close()
+            con.close()
+            return
+
+    tmp_table = f"IPRSCAN.{table}_TMP"
+
+    for analysis_id, partition, columns in analyses:
+        # Create temporary table for the partition exchange
+        oracle.drop_table(cur, tmp_table, purge=True)
+
+        sql = f"CREATE TABLE {tmp_table}"
+        subparts = oracle.get_subpartitions(cur, schema="IPRSCAN",
+                                            table=partitioned_table,
+                                            partition=partition)
+
+        if subparts:
+            """
+            The target table is sub-partitioned: the staging table needs
+            to be partitioned
+            """
+            col = subparts[0]["column"]
+            subparts = [
+                f"PARTITION {s['name']} VALUES ({s['value']})"
+                for s in subparts
+            ]
+
+            sql += f" PARTITION BY LIST ({col}) ({', '.join(subparts)})"
+
+        cur.execute(
+            f"""{sql}
+            NOLOGGING
+            AS
+            SELECT *
+            FROM IPRSCAN.{partitioned_table}
+            WHERE 1 = 0
+            """
+        )
+
+        # Insert only one analysis ID
         cur.execute(
             f"""
-            SELECT MAX(UPI)
+            INSERT /*+ APPEND */ INTO {tmp_table}
+            SELECT {', '.join(columns)}
             FROM IPRSCAN.{table}
             WHERE ANALYSIS_ID = :1
             """,
             [analysis_id]
         )
-        row = cur.fetchone()
-        max_upi_1 = row[0] if row else None
+        con.commit()
 
         cur.execute(
             f"""
-            SELECT MAX(UPI)
+            SELECT MAX(ANALYSIS_ID)
             FROM IPRSCAN.{partitioned_table} PARTITION ({partition})
-            WHERE ANALYSIS_ID = :1
-            """,
-            [analysis_id]
+            """
         )
-        row = cur.fetchone()
-        max_upi_2 = row[0] if row else None
+        high_value, = cur.fetchone()
 
-        if max_upi_1 == max_upi_2:
-            cur.close()
-            con.close()
-            return
+        if high_value != analysis_id:
+            """
+            Different ANALYSIS_ID -> database update:
+            1. TRUNCATE the partition, to remove rows with the old ANALYSIS_ID
+            2. Modify the partition (remove old value)
+            3. Modify the partition (add new value)
+            """
+            cur.execute(
+                f"""
+                ALTER TABLE IPRSCAN.{partitioned_table}
+                TRUNCATE PARTITION {partition}
+                """
+            )
+            cur.execute(
+                f"""
+                ALTER TABLE IPRSCAN.{partitioned_table}
+                MODIFY PARTITION {partition}
+                ADD VALUES ({analysis_id})
+                """
+            )
+            cur.execute(
+                f"""
+                ALTER TABLE IPRSCAN.{partitioned_table}
+                MODIFY PARTITION {partition}
+                DROP VALUES ({high_value})
+                """
+            )
 
-    # Create temporary table for the partition exchange
-    tmp_table = f"IPRSCAN.{table}_TMP"
-    oracle.drop_table(cur, tmp_table, purge=True)
-
-    sql = f"CREATE TABLE {tmp_table}"
-    subparts = oracle.get_subpartitions(cur, schema="IPRSCAN",
-                                        table=partitioned_table,
-                                        partition=partition)
-
-    if subparts:
-        """
-        The target table is sub-partitioned: the staging table needs
-        to be partitioned
-        """
-        col = subparts[0]["column"]
-        subparts = [
-            f"PARTITION {s['name']} VALUES ({s['value']})"
-            for s in subparts
-        ]
-
-        sql += f" PARTITION BY LIST ({col}) ({', '.join(subparts)})"
-
-    cur.execute(
-        f"""{sql}
-        NOLOGGING
-        AS
-        SELECT *
-        FROM IPRSCAN.{partitioned_table}
-        WHERE 1 = 0
-        """
-    )
-
-    # Insert only one analysis ID
-    cur.execute(
-        f"""
-        INSERT /*+ APPEND */ INTO {tmp_table}
-        SELECT {', '.join(columns)}
-        FROM IPRSCAN.{table}
-        WHERE ANALYSIS_ID = :1
-        """,
-        [analysis_id]
-    )
-    con.commit()
-
-    cur.execute(
-        f"""
-        SELECT MAX(ANALYSIS_ID)
-        FROM IPRSCAN.{partitioned_table} PARTITION ({partition})
-        """
-    )
-    high_value, = cur.fetchone()
-
-    if high_value != analysis_id:
-        """
-        Different ANALYSIS_ID -> database update:
-        1. TRUNCATE the partition, to remove rows with the old ANALYSIS_ID
-        2. Modify the partition (remove old value)
-        3. Modify the partition (add new value)
-        """
+        # Exchange partition with temp table
         cur.execute(
             f"""
             ALTER TABLE IPRSCAN.{partitioned_table}
-            TRUNCATE PARTITION {partition}
-            """
-        )
-        cur.execute(
-            f"""
-            ALTER TABLE IPRSCAN.{partitioned_table}
-            MODIFY PARTITION {partition}
-            ADD VALUES ({analysis_id})
-            """
-        )
-        cur.execute(
-            f"""
-            ALTER TABLE IPRSCAN.{partitioned_table}
-            MODIFY PARTITION {partition}
-            DROP VALUES ({high_value})
+            EXCHANGE PARTITION {partition}
+            WITH TABLE {tmp_table}
             """
         )
 
-    # Exchange partition with temp table
-    cur.execute(
-        f"""
-        ALTER TABLE IPRSCAN.{partitioned_table}
-        EXCHANGE PARTITION {partition}
-        WITH TABLE {tmp_table}
-        """
-    )
-
-    # Drop temporary table
-    oracle.drop_table(cur, tmp_table, purge=True)
+        # Drop temporary table
+        oracle.drop_table(cur, tmp_table, purge=True)
 
     cur.close()
     con.close()
@@ -955,7 +972,7 @@ def import_matches(url: str, **kwargs):
                     f.result()
                 except Exception as exc:
                     for name in names:
-                        logger.info(f"{name:<35} import failed ({exc})")
+                        logger.info(f"{name:<35} import failed: {exc}")
                     failed += 1
                 else:
                     for name in names:
