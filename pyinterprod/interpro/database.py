@@ -19,7 +19,10 @@ class Database:
     is_feature_db: bool
 
 
-def get_databases(url: str, names: Sequence[str], expects_new: bool = False) -> Dict[str, Database]:
+def get_databases(url: str, names: Sequence[str],
+                  expects_new: bool = False) -> Dict[str, Database]:
+    names = {name.lower(): name for name in names}
+
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -56,7 +59,8 @@ def get_databases(url: str, names: Sequence[str], expects_new: bool = False) -> 
         INNER JOIN IPRSCAN.ANALYSIS_TABLES@ISPRO T 
             ON A.NAME = T.NAME
         WHERE LOWER(D.DBSHORT) IN ({','.join(args)})
-        """, tuple(map(str.lower, names))
+        """,
+        list(names.keys())
     )
 
     databases = {}
@@ -78,12 +82,17 @@ def get_databases(url: str, names: Sequence[str], expects_new: bool = False) -> 
         if expects_new and db.analysis_id == row[6]:
             not_ready.append(db.name)
 
+        try:
+            del names[row[1]]
+        except KeyError:
+            pass
+
     cur.close()
     con.close()
 
-    unknown = set(names) - set(databases.keys())
-    if unknown:
-        raise RuntimeError(f"Unknown databases: {', '.join(unknown)}")
+    if names:
+        names = sorted(names.values())
+        raise RuntimeError(f"Unknown databases: {', '.join(names)}")
     elif not_ready:
         raise RuntimeError(f"Database(s) outdated in IPRSCAN2DBCODE: "
                            f"{', '.join(not_ready)}. Run ipr-pre-memdb.")
