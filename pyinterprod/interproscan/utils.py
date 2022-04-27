@@ -10,4 +10,4 @@ def range_jobs(from_upi: str, to_upi: str, step: int):
     start = upi_to_int(from_upi)
     stop = upi_to_int(to_upi) + 1
     for i in range(start, stop, step):
-        yield int_to_upi(i), int_to_upi(i + step - 1)
+        yield int_to_upi(i), min(to_upi, int_to_upi(i + step - 1))
