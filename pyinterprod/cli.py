@@ -315,13 +315,24 @@ def run_member_db_update():
 
     tasks = [
         Task(
-            fn=interpro.iprscan.import_matches,
-            args=(ora_iprscan_url,),
+            fn=interpro.iprscan.import_tables,
+            args=(ora_iprscan_url, "matches"),
             kwargs=dict(databases=mem_updates + non_mem_updates + site_updates,
-                        force_import=args.force, threads=8),
-            name="import-matches",
+                        force=True,
+                        threads=8),
+            name="import-ipm-matches",
             scheduler=dict(queue=lsf_queue)
-        )
+        ),
+        Task(
+            fn=interpro.iprscan.update_partitions,
+            args=(ora_iprscan_url, "matches"),
+            kwargs=dict(databases=mem_updates + non_mem_updates + site_updates,
+                        force=True,
+                        threads=8),
+            name="update-ipm-matches",
+            scheduler=dict(queue=lsf_queue),
+            requires=["import-ipm-matches"]
+        ),
     ]
 
     if mem_updates:
@@ -359,14 +370,14 @@ def run_member_db_update():
                 args=(ora_interpro_url, mem_updates),
                 name="update-matches",
                 scheduler=dict(queue=lsf_queue),
-                requires=["import-matches", "update-signatures"]
+                requires=["update-ipm-matches", "update-signatures"]
             ),
             Task(
                 fn=interpro.match.update_variant_matches,
                 args=(ora_interpro_url,),
                 name="update-varsplic",
                 scheduler=dict(queue=lsf_queue),
-                requires=["import-matches", "update-signatures"]
+                requires=["update-ipm-matches", "update-signatures"]
             )
         ]
 
@@ -378,7 +389,7 @@ def run_member_db_update():
                                          for db in non_mem_updates]),
                 name="update-features",
                 scheduler=dict(queue=lsf_queue),
-                requires=["import-matches"]
+                requires=["update-ipm-matches"]
             ),
             Task(
                 fn=interpro.match.update_database_feature_matches,
@@ -391,18 +402,25 @@ def run_member_db_update():
 
     if site_updates:
         if mem_updates:
-            req = ["import-sites", "update-matches"]
+            req = ["update-ipm-sites", "update-matches"]
         else:
-            req = ["import-sites"]
+            req = ["update-ipm-sites"]
 
         tasks += [
             Task(
-                fn=interpro.iprscan.import_sites,
-                args=(ora_iprscan_url,),
-                kwargs=dict(databases=site_updates,
-                            force_import=args.force, threads=2),
-                name="import-sites",
+                fn=interpro.iprscan.import_tables,
+                args=(ora_iprscan_url, "sites"),
+                kwargs=dict(databases=site_updates, force=True, threads=2),
+                name="import-ipm-sites",
                 scheduler=dict(queue=lsf_queue)
+            ),
+            Task(
+                fn=interpro.iprscan.update_partitions,
+                args=(ora_iprscan_url, "sites"),
+                kwargs=dict(databases=site_updates, force=True, threads=2),
+                name="update-ipm-sites",
+                scheduler=dict(queue=lsf_queue),
+                requires=["import-ipm-sites"]
             ),
             Task(
                 fn=interpro.match.update_database_site_matches,
@@ -570,20 +588,36 @@ def run_uniprot_update():
 
         # Data from ISPRO
         Task(
-            fn=interpro.iprscan.import_matches,
-            args=(ora_iprscan_url,),
+            fn=interpro.iprscan.import_tables,
+            args=(ora_iprscan_url, "matches"),
             kwargs=dict(threads=8),
-            name="import-matches",
+            name="import-ipm-matches",
             scheduler=dict(queue=lsf_queue),
             requires=["update-uniparc"]
         ),
         Task(
-            fn=interpro.iprscan.import_sites,
-            args=(ora_iprscan_url,),
+            fn=interpro.iprscan.update_partitions,
+            args=(ora_iprscan_url, "matches"),
+            kwargs=dict(threads=8),
+            name="update-ipm-matches",
+            scheduler=dict(queue=lsf_queue),
+            requires=["import-ipm-matches"]
+        ),
+        Task(
+            fn=interpro.iprscan.import_tables,
+            args=(ora_iprscan_url, "sites"),
             kwargs=dict(threads=2),
-            name="import-sites",
+            name="import-ipm-sites",
             scheduler=dict(queue=lsf_queue),
             requires=["update-uniparc"]
+        ),
+        Task(
+            fn=interpro.iprscan.update_partitions,
+            args=(ora_iprscan_url, "sites"),
+            kwargs=dict(threads=2),
+            name="update-ipm-sites",
+            scheduler=dict(queue=lsf_queue),
+            requires=["import-ipm-sites"]
         ),
 
         # Data from flat files
@@ -621,7 +655,7 @@ def run_uniprot_update():
             args=(ora_interpro_url,),
             name="update-matches",
             scheduler=dict(mem=1000, queue=lsf_queue),
-            requires=["check-proteins", "import-matches"]
+            requires=["check-proteins", "import-ipm-matches"]
         ),
         Task(
             fn=interpro.match.update_feature_matches,
@@ -651,7 +685,7 @@ def run_uniprot_update():
             args=(ora_iprscan_url,),
             name="aa-iprscan",
             scheduler=dict(queue=lsf_queue),
-            # Actually depends on import-matches
+            # Actually depends on import-ipm-matches
             requires=["update-matches"]
         ),
         Task(
@@ -736,14 +770,14 @@ def run_uniprot_update():
             args=(ora_interpro_url,),
             name="update-varsplic",
             scheduler=dict(queue=lsf_queue),
-            requires=["import-matches"]
+            requires=["import-ipm-matches"]
         ),
         Task(
             fn=interpro.match.update_site_matches,
             args=(ora_interpro_url,),
             name="update-sites",
             scheduler=dict(queue=lsf_queue),
-            requires=["import-sites", "update-matches"]
+            requires=["import-ipm-sites", "update-matches"]
         ),
     ]
 

@@ -535,6 +535,7 @@ def update_analyses(url: str, remote_table: str, partitioned_table: str,
 
 def import_tables(uri: str, mode: str = "matches", **kwargs):
     databases = kwargs.get("databases", [])
+    force = kwargs.get("force", False)
     threads = kwargs.get("threads", 1)
 
     if mode not in ("matches", "sites"):
@@ -604,7 +605,7 @@ def import_tables(uri: str, mode: str = "matches", **kwargs):
                     tmp[table] = analyses
                     continue
 
-                f = executor.submit(_import_table, uri, table, ready)
+                f = executor.submit(_import_table, uri, table, ready, force)
                 running.append((f, table, [f"{e.name} {e.version}"
                                            for e in analyses]))
 
@@ -624,7 +625,8 @@ def import_tables(uri: str, mode: str = "matches", **kwargs):
     logger.info("done")
 
 
-def _import_table(uri: str, remote_table: str, analyses: Sequence[int]):
+def _import_table(uri: str, remote_table: str, analyses: Sequence[int],
+                  force: bool = False):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
@@ -792,8 +794,7 @@ def _update_partition(uri: str, table: str, partitioned_table: str,
                 """,
                 [analysis_id]
             )
-            row = cur.fetchone()
-            max_upi_1 = row[0] if row else None
+            max_upi_1, = cur.fetchone()
 
             cur.execute(
                 f"""
@@ -803,14 +804,14 @@ def _update_partition(uri: str, table: str, partitioned_table: str,
                 """,
                 [analysis_id]
             )
-            row = cur.fetchone()
-            max_upi_2 = row[0] if row else None
+            max_upi_2, = cur.fetchone()
 
             if max_upi_1 == max_upi_2:
                 # This partition is already up-to-date
                 up_to_date += 1
 
         if up_to_date == len(analyses):
+            # All analyses are up-to-date
             cur.close()
             con.close()
             return
