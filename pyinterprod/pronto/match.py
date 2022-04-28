@@ -91,11 +91,12 @@ class MatchIterator:
                 fragments or f"{pos_start}-{pos_end}-S"
             )
 
-            is_reviewed = protein_acc in reviewed
-            try:
-                signatures[signature_acc][protein_acc] = is_reviewed
-            except KeyError:
-                signatures[signature_acc] = {protein_acc: is_reviewed}
+            if signature_db != 'antifam':
+                is_reviewed = protein_acc in reviewed
+                try:
+                    signatures[signature_acc][protein_acc] = is_reviewed
+                except KeyError:
+                    signatures[signature_acc] = {protein_acc: is_reviewed}
 
             i += 1
             if not i % 1000000:
