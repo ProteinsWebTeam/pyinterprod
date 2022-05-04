@@ -24,6 +24,7 @@ DATABASES = [
     'Y',    # SUPERFAMILY
     # 'g',    # MobiDB Lite
     'u',    # UniProtKB
+    'a',    # ANTIFAM
 ]
 
 

@@ -64,6 +64,11 @@ class MatchIterator:
                    M.POS_FROM, M.POS_TO, M.FRAGMENTS
             FROM INTERPRO.MATCH M
             INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
+            UNION ALL
+            SELECT FM.PROTEIN_AC, FM.METHOD_AC, LOWER(D.DBSHORT), FM.POS_FROM, FM.POS_TO, NULL
+            FROM INTERPRO.FEATURE_MATCH FM
+            INNER JOIN INTERPRO.CV_DATABASE D ON FM.DBCODE = D.DBCODE
+            WHERE FM.DBCODE = 'a'
             """
         )
 
@@ -86,11 +91,12 @@ class MatchIterator:
                 fragments or f"{pos_start}-{pos_end}-S"
             )
 
-            is_reviewed = protein_acc in reviewed
-            try:
-                signatures[signature_acc][protein_acc] = is_reviewed
-            except KeyError:
-                signatures[signature_acc] = {protein_acc: is_reviewed}
+            if signature_db != 'antifam':
+                is_reviewed = protein_acc in reviewed
+                try:
+                    signatures[signature_acc][protein_acc] = is_reviewed
+                except KeyError:
+                    signatures[signature_acc] = {protein_acc: is_reviewed}
 
             i += 1
             if not i % 1000000:
@@ -252,14 +258,11 @@ def iter_comp_seq_matches(url: str, filepath: Optional[str] = None):
         cur = con.cursor()
         cur.execute(
             """
-            SELECT
-                P.PROTEIN_AC, P.DBCODE, E.LEFT_NUMBER,
-                M.METHOD_AC, M.POS_FROM, M.POS_TO, M.FRAGMENTS
-            FROM INTERPRO.PROTEIN P
-            INNER JOIN INTERPRO.ETAXI E
-              ON P.TAX_ID = E.TAX_ID
-            INNER JOIN INTERPRO.MATCH M
-              ON P.PROTEIN_AC = M.PROTEIN_AC
+            SELECT M.PROTEIN_AC, P.DBCODE, E.LEFT_NUMBER,
+                   M.METHOD_AC, M.POS_FROM, M.POS_TO, M.FRAGMENTS
+            FROM INTERPRO.MATCH M
+            INNER JOIN INTERPRO.PROTEIN P ON M.PROTEIN_AC = P.PROTEIN_AC
+            INNER JOIN INTERPRO.ETAXI E ON P.TAX_ID = E.TAX_ID
             WHERE P.FRAGMENT = 'N'
             ORDER BY P.PROTEIN_AC
             """
@@ -533,6 +536,13 @@ def create_signature2protein(ora_url: str, pg_url: str, database: str,
 
     pg_con.close()
 
+    proteins = iter_comp_seq_matches(ora_url, matches_dat)
+
+    # Get first protein before spawning workers (to avoid deadlocks)
+    chunk = [next(proteins)]
+    i = 1
+
+    # Spawn workers
     inqueue = Queue(maxsize=1)
     outqueue = Queue()
     workers = []
@@ -542,9 +552,8 @@ def create_signature2protein(ora_url: str, pg_url: str, database: str,
         p.start()
         workers.append(p)
 
-    chunk = []
-    i = 0
-    for obj in iter_comp_seq_matches(ora_url, matches_dat):
+    # Get remaining proteins
+    for obj in proteins:
         chunk.append(obj)
         if len(chunk) == 1000:
             inqueue.put(chunk)
@@ -553,6 +562,7 @@ def create_signature2protein(ora_url: str, pg_url: str, database: str,
         i += 1
         if not i % 10000000:
             logger.info(f"{i:>12,}")
+
     inqueue.put(chunk)
 
     for _ in workers:
