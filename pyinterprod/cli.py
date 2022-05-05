@@ -100,7 +100,7 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
             args=(pg_ipr_url,),
             name="index-signature2proteins",
             scheduler=dict(mem=100, queue=lsf_queue),
-            requires=["signature2proteins"]
+            requires=["insert-signature2proteins"]
         ),
         Task(
             fn=pronto.signature.insert_signatures,
@@ -462,7 +462,7 @@ def run_member_db_update():
 
     if mem_updates:
         # Adding Pronto tasks
-        after_pronto = set()
+        after_pronto = []
         for t in get_pronto_tasks(ora_interpro_url, ora_swpread_url,
                                   ora_goa_url, pg_url, data_dir, lsf_queue):
             # Adding 'pronto-' prefix
@@ -475,7 +475,7 @@ def run_member_db_update():
                 t.requires = {"update-matches"}
 
             tasks.append(t)
-            after_pronto.add(t.name)
+            after_pronto.append(t.name)
 
         tasks += [
             Task(
@@ -767,6 +767,7 @@ def run_uniprot_update():
     ]
 
     # Adding Pronto tasks
+    after_pronto = []
     for t in get_pronto_tasks(ora_interpro_url, ora_swpread_url, ora_goa_url,
                               pg_url, data_dir, lsf_queue):
         # Adding 'pronto-' prefix
@@ -779,6 +780,7 @@ def run_uniprot_update():
             t.requires = {"swissprot-de", "taxonomy", "unirule",
                           "update-fmatches"}
 
+        after_pronto.append(t.name)
         tasks.append(t)
 
     tasks += [
@@ -788,9 +790,7 @@ def run_uniprot_update():
             args=(ora_interpro_url, pg_url, data_dir, pronto_url, emails),
             name="send-report",
             scheduler=dict(mem=4000, queue=lsf_queue),
-            requires=["pronto-annotations", "pronto-proteins-similarities",
-                      "pronto-proteins", "pronto-signatures",
-                      "pronto-taxonomy"]
+            requires=after_pronto
         ),
 
         # Not urgent tasks (can be run after everything else)
