@@ -17,9 +17,9 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
     matches_file = os.path.join(data_dir, "matches")
     return [
         Task(
-            fn=pronto.database.import_databases,
-            args=(ora_ipr_url, pg_ipr_url),
-            name="databases",
+            fn=pronto.match.create_match_table,
+            args=(pg_ipr_url,),
+            name="init-matches",
             scheduler=dict(mem=100, queue=lsf_queue)
         ),
 
@@ -48,6 +48,12 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
 
         # Data from IPPRO
         Task(
+            fn=pronto.database.import_databases,
+            args=(ora_ipr_url, pg_ipr_url),
+            name="databases",
+            scheduler=dict(mem=100, queue=lsf_queue)
+        ),
+        Task(
             fn=pronto.protein.import_proteins,
             args=(ora_ipr_url, pg_ipr_url),
             name="proteins",
@@ -60,13 +66,26 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
             name="export-matches",
             scheduler=dict(mem=8000, tmp=30000, queue=lsf_queue)
         ),
-
+        Task(
+            fn=pronto.match.insert_fmatches,
+            args=(ora_ipr_url, pg_ipr_url),
+            name="insert-fmatches",
+            scheduler=dict(mem=1000, queue=lsf_queue),
+            requires=["databases", "init-matches"]
+        ),
         Task(
             fn=pronto.match.insert_matches,
             args=(pg_ipr_url, matches_file),
             name="insert-matches",
             scheduler=dict(mem=8000, queue=lsf_queue),
-            requires=["databases", "export-matches"]
+            requires=["databases", "export-matches", "init-matches"]
+        ),
+        Task(
+            fn=pronto.match.finalize_match_table,
+            args=(pg_ipr_url, ),
+            name="index-matches",
+            scheduler=dict(mem=100, queue=lsf_queue),
+            requires=["insert-fmatches", "insert-matches"]
         ),
         Task(
             fn=pronto.match.insert_signature2protein,
@@ -75,6 +94,13 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
             name="signature2proteins",
             scheduler=dict(cpu=8, mem=16000, tmp=15000, queue=lsf_queue),
             requires=["export-matches", "proteins-names"]
+        ),
+        Task(
+            fn=pronto.match.finalize_signature2protein,
+            args=(pg_ipr_url,),
+            name="index-signature2proteins",
+            scheduler=dict(mem=100, queue=lsf_queue),
+            requires=["signature2proteins"]
         ),
         Task(
             fn=pronto.signature.import_signatures,

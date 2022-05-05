@@ -250,25 +250,6 @@ def insert_signature2protein(url: str, names_db: str, matches_file: str,
                 f"{os.path.getsize(tmp_db) / 1024 ** 2:.0f} MB")
     os.unlink(tmp_db)
 
-    con = psycopg2.connect(**pg.url2dict(url))
-    with con.cursor() as cur:
-        logger.info("indexing")
-        cur.execute(
-            """
-            CREATE INDEX signature2protein_protein_idx
-            ON signature2protein (protein_acc)
-            """
-        )
-        cur.execute(
-            """
-            CREATE INDEX signature2protein_signature_idx
-            ON signature2protein (signature_acc)
-            """
-        )
-        con.commit()
-
-    con.close()
-
     logger.info("done")
 
 
@@ -406,51 +387,149 @@ def _flatten_hits(hits: list[str]) -> list[tuple[int, int]]:
     return locations
 
 
-def insert_matches(uri: str, matches_file: str):
-    logger.info("populating")
+def finalize_signature2protein(uri: str):
     con = psycopg2.connect(**pg.url2dict(uri))
-    cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS match")
-    cur.execute(
-        """
-        CREATE TABLE match (
-            protein_acc VARCHAR(15) NOT NULL,
-            signature_acc VARCHAR(25) NOT NULL,
-            --database_id INTEGER NOT NULL,
-            fragments TEXT NOT NULL
+    with con.cursor() as cur:
+        logger.info("indexing")
+
+        logger.info("\tprotein_acc")
+        cur.execute(
+            """
+            CREATE INDEX IF NOT EXISTS signature2protein_protein_idx
+            ON signature2protein (protein_acc)
+            """
         )
-        """
-    )
+        con.commit()
 
-    cur.execute("SELECT name, id FROM database")
-    databases = dict(cur.fetchall())
+        logger.info("\tsignature_acc")
+        cur.execute(
+            """
+            CREATE INDEX IF NOT EXISTS signature2protein_signature_idx
+            ON signature2protein (signature_acc)
+            """
+        )
+        con.commit()
 
-    matches = _iter_matches(matches_file, databases)
-    cur.copy_from(file=pg.CsvIO(matches, sep="|"),
-                  table="match",
-                  sep="|")
-    con.commit()
+        logger.info("\tclustering")
+        cur.execute("CLUSTER signature2protein "
+                    "USING signature2protein_signature_idx")
+        con.commit()
 
-    logger.info("indexing")
+    con.close()
+    logger.info("done")
+
+
+def create_match_table(uri: str):
+    con = psycopg2.connect(**pg.url2dict(uri))
+    with con.cursor() as cur:
+        cur.execute("DROP TABLE IF EXISTS match")
+        cur.execute(
+            """
+            CREATE TABLE match (
+                protein_acc VARCHAR(15) NOT NULL,
+                signature_acc VARCHAR(25) NOT NULL,
+                database_id INTEGER NOT NULL,
+                fragments TEXT NOT NULL
+            )
+            """
+        )
+        con.commit()
+
+    con.close()
+
+
+def insert_fmatches(ora_uri: str, pg_uri: str):
+    logger.info("populating")
+
+    con = psycopg2.connect(**pg.url2dict(pg_uri))
+    with con.cursor() as cur:
+        cur.execute("SELECT name, id FROM database")
+        name2id = dict(cur.fetchall())
+
+        cur.copy_from(file=pg.CsvIO(_get_fmatches(ora_uri, name2id), sep="|"),
+                      table="match",
+                      sep="|")
+        con.commit()
+
+    con.close()
+    logger.info("done")
+
+
+def _get_fmatches(uri: str, name2id: dict[str, int]):
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
     cur.execute(
         """
-        CREATE INDEX match_protein_idx
-        ON interpro.match (protein_acc)
+        SELECT FM.PROTEIN_AC, FM.METHOD_AC, LOWER(D.DBSHORT), POS_FROM, POS_TO
+        FROM INTERPRO.FEATURE_MATCH FM
+        INNER JOIN INTERPRO.CV_DATABASE D ON FM.DBCODE = D.DBCODE
+        WHERE FM.DBCODE = 'a'
         """
     )
-    con.commit()
+
+    for protein_acc, feature_acc, database, start, end in cur:
+        database_id = name2id[database]
+
+        # No fragment column in FEATURE_MATCH, so pretend we have one
+        fragments = f"{start}-{end}-S"
+
+        yield protein_acc, feature_acc, database_id, fragments
 
     cur.close()
+    con.close()
+
+
+def insert_matches(uri: str, matches_file: str):
+    logger.info("populating")
+
+    con = psycopg2.connect(**pg.url2dict(uri))
+    with con.cursor() as cur:
+        cur.execute("SELECT name, id FROM database")
+        name2id = dict(cur.fetchall())
+
+        matches = _iter_matches(matches_file, name2id)
+        cur.copy_from(file=pg.CsvIO(matches, sep="|"),
+                      table="match",
+                      sep="|")
+        con.commit()
+
     con.close()
 
     logger.info("done")
 
 
-def _iter_matches(matches_file: str, databases: dict[str, int]):
+def _iter_matches(matches_file: str, name2id: dict[str, int]):
+    i = 0
     for prot_acc, is_rev, is_comp, left_num, matches in _load(matches_file):
-        for match_acc, (match_db, is_signature, hits) in matches.items():
-            # sig_db_id = databases[sig_db]
+        for match_acc, (match_db, hits) in matches.items():
+            match_db_id = name2id[match_db]
 
             for fragments in hits:
-                # yield prot_acc, sig_acc, sig_db_id, fragments
-                yield prot_acc, match_acc, fragments
+                yield prot_acc, match_acc, match_db_id, fragments
+
+        i += 1
+        if i % 10e6 == 0:
+            logger.info(f"{i:>15,}")
+
+    logger.info(f"{i:>15,}")
+
+
+def finalize_match_table(uri: str):
+    con = psycopg2.connect(**pg.url2dict(uri))
+    with con.cursor() as cur:
+
+        logger.info("indexing")
+        cur.execute(
+            """
+            CREATE INDEX IF NOT EXISTS match_protein_idx
+            ON interpro.match (protein_acc)
+            """
+        )
+        con.commit()
+
+        logger.info("clustering")
+        cur.execute("CLUSTER match USING match_protein_idx")
+        con.commit()
+
+    con.close()
+    logger.info("done")
