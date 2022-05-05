@@ -132,7 +132,7 @@ def _export_matches(url: str, cachesize: int,
             # Single/continuous fragment using match start/end positions
             fragments = f"{row[7]}-{row[8]}-S"
 
-        obj[2].append((
+        obj[3].append((
             row[5],  # match accession
             databases[row[4]],  # match DB
             fragments
