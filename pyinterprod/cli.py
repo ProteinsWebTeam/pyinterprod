@@ -91,7 +91,7 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
             fn=pronto.match.insert_signature2protein,
             args=(pg_ipr_url, names_db, matches_file),
             kwargs=dict(processes=8, tmpdir="/tmp"),
-            name="signature2proteins",
+            name="insert-signature2proteins",
             scheduler=dict(cpu=8, mem=16000, tmp=15000, queue=lsf_queue),
             requires=["export-matches", "proteins-names"]
         ),
@@ -103,13 +103,11 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
             requires=["signature2proteins"]
         ),
         Task(
-            fn=pronto.signature.import_signatures,
-            args=(ora_ipr_url, pg_ipr_url,
-                  os.path.join(data_dir, "allseqs.dat"),
-                  os.path.join(data_dir, "compseqs.dat")),
+            fn=pronto.signature.insert_signatures,
+            args=(ora_ipr_url, pg_ipr_url, matches_file),
             name="signatures",
-            scheduler=dict(mem=1000, queue=lsf_queue),
-            requires=["matches", "signature2proteins"]
+            scheduler=dict(mem=8000, queue=lsf_queue),
+            requires=["databases", "export-matches"]
         ),
         Task(
             fn=pronto.taxon.import_taxonomy,
