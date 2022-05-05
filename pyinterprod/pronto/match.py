@@ -15,22 +15,6 @@ from pyinterprod.utils import pg
 from pyinterprod.utils.kvdb import KVdb
 
 
-"""
-At least 50% of the residues of the shortest signature
-  must overlap the other signature
-(shorted signature = signature with the least residues in the protein)
-"""
-_MIN_OVERLAP = 0.5
-
-"""
-One of the signatures must hit at least 50% of the proteins hit by the other
-signature
-"""
-_MIN_COLLOCATION = 0.5
-
-# Threshold for Jaccard index/coefficients
-_MIN_SIMILARITY = 0.75
-
 # Domain org.: introduce a gap when distance between two positions > 20 aa
 _MAX_GAP = 20
 
@@ -168,7 +152,7 @@ def _dump(data: dict, fd: int):
 
 
 def _merge_files(files: list[str]):
-    iterable = [_load(file) for file in files]
+    iterable = [iter_util_eof(file) for file in files]
     protein_acc = is_reviewed = is_complete = left_number = None
     matches = {}
     for key, value in heapq.merge(*iterable, key=lambda x: x[0]):
@@ -181,16 +165,16 @@ def _merge_files(files: list[str]):
             is_reviewed, is_complete, left_number, _ = value
             matches = {}
 
-        for match_acc, match_db, fragments in value[3]:
-            if match_acc in matches:
-                matches[match_acc][1].append(fragments)
+        for signature_acc, signature_db, fragments in value[3]:
+            if signature_acc in matches:
+                matches[signature_acc][1].append(fragments)
             else:
-                matches[match_acc] = (match_db, [fragments])
+                matches[signature_acc] = (signature_db, [fragments])
 
     yield protein_acc, is_reviewed, is_complete, left_number, matches
 
 
-def _load(file: str):
+def iter_util_eof(file: str):
     with open(file, "rb") as fh:
         while True:
             try:
@@ -304,10 +288,10 @@ def _hash_matches(matches: dict[str, tuple[str, list[str]]]) -> str:
     # Flatten all matches
     locations = []
 
-    for match_acc, (match_db, hits) in matches.items():
-        for start, end in _merge_overlapping(hits):
-            locations.append((start, match_acc))
-            locations.append((end, match_acc))
+    for signature_acc, (_, hits) in matches.items():
+        for start, end in merge_overlapping(hits):
+            locations.append((start, signature_acc))
+            locations.append((end, signature_acc))
 
     """
     Evaluate the protein's match structure,
@@ -356,7 +340,7 @@ def _hash_matches(matches: dict[str, tuple[str, list[str]]]) -> str:
     return hashlib.md5('/'.join(dom_org).encode("utf-8")).hexdigest()
 
 
-def _merge_overlapping(hits: list[str]) -> list[tuple[int, int]]:
+def merge_overlapping(hits: list[str]) -> list[tuple[int, int]]:
     merged = []
     pos_start = pos_end = None
     for start, end in sorted(_flatten_hits(hits)):
@@ -514,12 +498,12 @@ def insert_matches(uri: str, matches_file: str):
 
 def _iter_matches(matches_file: str, name2id: dict[str, int]):
     i = 0
-    for prot_acc, is_rev, is_comp, left_num, matches in _load(matches_file):
-        for match_acc, (match_db, hits) in matches.items():
-            match_db_id = name2id[match_db]
+    for prot_acc, is_rev, is_comp, _, matches in iter_util_eof(matches_file):
+        for signature_acc, (signature_db, hits) in matches.items():
+            signature_db_id = name2id[signature_db]
 
             for fragments in hits:
-                yield prot_acc, match_acc, match_db_id, fragments
+                yield prot_acc, signature_acc, signature_db_id, fragments
 
         i += 1
         if i % 10e6 == 0:
