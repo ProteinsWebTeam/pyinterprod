@@ -96,13 +96,17 @@ Additional properties:
 
 The `DEFAULT` section defines the defaults values for the following properties:
 
-- `job_cpu`: number of processes to request when submitting a job
-- `job_mem`: the maximum amount of memory a job should be allowed to use (in MB)
-- `job_size`: the number of sequences to process in each job
+- `job_cpu`: number of processes to request when submitting a job.
+- `job_mem`: the maximum amount of memory a job should be allowed to use (in MB).
+- `job_size`: the number of sequences to process in each job.
+- `job_timeout`: the number of hours a job is allowed to run for before being killed. Any value lower than 1 disable the timeout.
 
-The default values can be overridden. For instance, as we know that PRINTS jobs take more memory, to request PRINTS jobs to be allocated 16G of memory:
+The default values can be overridden. For instance, adding the following block under the `DEFAULT` section ensure that MobiDB-Lite jobs timeout after 48 hours and that PRINTS jobs are allocated 16GB of memory:
 
 ```
+[mobidb-lite]
+job_timeout = 48
+
 [prints]
 job_mem = 16384
 ```

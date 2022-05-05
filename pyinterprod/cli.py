@@ -899,17 +899,20 @@ def run_interproscan_manager():
     job_cpu = int(analyses_config["DEFAULT"]["job_cpu"])
     job_mem = int(analyses_config["DEFAULT"]["job_mem"])
     job_size = int(analyses_config["DEFAULT"]["job_size"])
+    job_timeout = int(analyses_config["DEFAULT"]["job_timeout"])
 
     interproscan.manager.run(uri=iscn_iprscan_uri,
                              work_dir=config["misc"]["match_calc_dir"],
                              temp_dir=config["misc"]["temporary_dir"],
+                             # Default config
                              job_cpu=job_cpu,
                              job_mem=job_mem,
                              job_size=job_size,
-                             lsf_queue=config["misc"]["lsf_queue"],
-                             timeout=None,
+                             job_timeout=job_timeout,
                              # Custom configs
                              config=analyses_configs,
+                             # LSF queue
+                             lsf_queue=config["misc"]["lsf_queue"],
                              # Always resubmit a job if it fails due to memory
                              infinite_mem=True,
                              # Attempts to re-run a failed job (non-memory)

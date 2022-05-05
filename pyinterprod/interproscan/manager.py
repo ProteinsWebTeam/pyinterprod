@@ -81,7 +81,6 @@ class TaskFactory:
     parse_sites: Optional[Callable] = None
     keep_files: Optional[str] = None
     lsf_queue: Optional[str] = None
-    timeout: Optional[int] = None
 
     def make(self, upi_from: str, upi_to: str) -> Task:
         return Task(
@@ -101,7 +100,7 @@ class TaskFactory:
             ),
             kwargs=dict(cpu=self.config["job_cpu"],
                         keep_files=self.keep_files,
-                        timeout=self.timeout),
+                        timeout=self.config["job_timeout"]),
             name=self.make_name(upi_from, upi_to),
             scheduler=dict(cpu=self.config["job_cpu"],
                            mem=self.config["job_mem"],
@@ -117,7 +116,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     base_config = {
         "job_cpu": kwargs.get("job_cpu", 8),
         "job_mem": kwargs.get("job_mem", 8 * 1024),
-        "job_size": kwargs.get("job_size", 100000)
+        "job_size": kwargs.get("job_size", 32000),
+        "job_timeout": kwargs.get("job_timeout"),
     }
     custom_configs = kwargs.get("config", {})
     infinite_mem = kwargs.get("infinite_mem", False)
@@ -127,7 +127,6 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     max_running_jobs = kwargs.get("max_running_jobs", 1000)
     max_jobs_per_analysis = kwargs.get("max_jobs_per_analysis", -1)
     pool_threads = kwargs.get("pool_threads", 4)
-    timeout = kwargs.get("timeout")
     to_run = kwargs.get("analyses", [])
     to_exclude = kwargs.get("exclude", [])
 
@@ -211,8 +210,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                                   site_table=analysis["tables"]["sites"],
                                   parse_sites=parse_sites,
                                   keep_files=keep_files,
-                                  lsf_queue=lsf_queue,
-                                  timeout=timeout)
+                                  lsf_queue=lsf_queue)
 
             n_tasks_analysis = 0
             for upi_from, upi_to in incomplete_jobs.pop(analysis_id, []):
@@ -394,6 +392,12 @@ def run_i5(i5_dir: str, fasta_file: str, analysis_name: str, output: str,
 
     if temp_dir is not None:
         args += ["-T", temp_dir]
+
+    if isinstance(timeout, int) and timeout > 0:
+        # timeout in hours, but subprocess.run takes in seconds
+        _timeout = timeout * 3600
+    else:
+        _timeout = None
 
     process = subprocess.run(args, capture_output=True, timeout=timeout)
     return (
