@@ -399,7 +399,7 @@ def run_i5(i5_dir: str, fasta_file: str, analysis_name: str, output: str,
     else:
         _timeout = None
 
-    process = subprocess.run(args, capture_output=True, timeout=timeout)
+    process = subprocess.run(args, capture_output=True, timeout=_timeout)
     return (
         process.returncode == 0,
         process.stdout.decode("utf-8"),
