@@ -85,17 +85,8 @@ def _export_matches(url: str, cachesize: int,
         """
         SELECT P.PROTEIN_AC, P.DBCODE, P.FRAGMENT, E.LEFT_NUMBER, 
                LOWER(D.DBSHORT), M.METHOD_AC, M.FRAGMENTS, M.POS_FROM, 
-               M.POS_TO, M.IS_METHOD
-        FROM (
-            SELECT PROTEIN_AC, METHOD_AC, DBCODE,
-                   POS_FROM, POS_TO, FRAGMENTS, 'Y' IS_METHOD
-            FROM INTERPRO.MATCH
-            UNION ALL
-            SELECT PROTEIN_AC, METHOD_AC, DBCODE, 
-                   POS_FROM, POS_TO, NULL, 'N' IS_METHOD
-            FROM INTERPRO.FEATURE_MATCH FM
-            WHERE FM.DBCODE = 'a'  -- AntiFam
-        ) M
+               M.POS_TO
+        FROM INTERPRO.MATCH M
         INNER JOIN INTERPRO.CV_DATABASE D 
             ON M.DBCODE = D.DBCODE
         INNER JOIN INTERPRO.PROTEIN P 
@@ -130,7 +121,6 @@ def _export_matches(url: str, cachesize: int,
         obj[2].append((
             row[5],  # match accession
             row[4],  # match DB
-            row[9] == "Y",  # is signature?
             fragments
         ))
 
@@ -177,11 +167,11 @@ def _merge_files(files: list[str]):
             is_reviewed, is_complete, left_number, _ = value
             matches = {}
 
-        for match_acc, match_db, is_signature, fragments in value[3]:
+        for match_acc, match_db, fragments in value[3]:
             if match_acc in matches:
-                matches[match_acc][2].append(fragments)
+                matches[match_acc][1].append(fragments)
             else:
-                matches[match_acc] = (match_db, is_signature, [fragments])
+                matches[match_acc] = (match_db, [fragments])
 
     yield protein_acc, is_reviewed, is_complete, left_number, matches
 
@@ -315,16 +305,14 @@ def _iter_proteins(names_db: str, matches_file: str, src: Queue, dst: Queue):
             dst.put(count)
 
 
-def _hash_matches(matches: dict[str, tuple[str, bool, list[str]]]) -> str:
+def _hash_matches(matches: dict[str, tuple[str, list[str]]]) -> str:
     # Flatten all matches
     locations = []
 
-    for match_acc, (match_db, is_signature, hits) in matches.items():
-        if is_signature:
-            # Only consider signatures, not sequence features
-            for start, end in _merge_overlapping(hits):
-                locations.append((start, match_acc))
-                locations.append((end, match_acc))
+    for match_acc, (match_db, hits) in matches.items():
+        for start, end in _merge_overlapping(hits):
+            locations.append((start, match_acc))
+            locations.append((end, match_acc))
 
     """
     Evaluate the protein's match structure,
