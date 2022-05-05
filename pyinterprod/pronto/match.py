@@ -81,18 +81,32 @@ def _export_matches(url: str, cachesize: int,
                     tmpdir: Optional[str] = None) -> list[str]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
+
+    # Loading databases
     cur.execute(
         """
-        SELECT P.PROTEIN_AC, P.DBCODE, P.FRAGMENT, E.LEFT_NUMBER, 
-               LOWER(D.DBSHORT), M.METHOD_AC, M.FRAGMENTS, M.POS_FROM, 
-               M.POS_TO
+        SELECT DBCODE, LOWER(DBSHORT)
+        FROM INTERPRO.CV_DATABASE
+        """
+    )
+    databases = dict(cur.fetchall)
+
+    # Loading taxonomy
+    cur.execute(
+        """
+        SELECT TAX_ID, LEFT_NUMBER
+        FROM INTERPRO.ETAXI
+        """
+    )
+    taxonomy = dict(cur.fetchall)
+
+    cur.execute(
+        """
+        SELECT P.PROTEIN_AC, P.DBCODE, P.FRAGMENT, P.TAX_ID, 
+               M.METHOD_AC, M.DBCODE, M.FRAGMENTS, M.POS_FROM, M.POS_TO
         FROM INTERPRO.MATCH M
-        INNER JOIN INTERPRO.CV_DATABASE D 
-            ON M.DBCODE = D.DBCODE
         INNER JOIN INTERPRO.PROTEIN P 
             ON P.PROTEIN_AC = M.PROTEIN_AC
-        INNER JOIN INTERPRO.ETAXI E
-            ON E.TAX_ID = P.TAX_ID
         """
     )
 
@@ -108,7 +122,7 @@ def _export_matches(url: str, cachesize: int,
             obj = cache[protein_acc] = (
                 row[1] == "S",  # is reviewed
                 row[2] == "N",  # is complete
-                row[3],  # taxon left number
+                taxonomy[row[3]],  # taxon left number
                 []  # matches
             )
 
@@ -120,7 +134,7 @@ def _export_matches(url: str, cachesize: int,
 
         obj[2].append((
             row[5],  # match accession
-            row[4],  # match DB
+            databases[row[4]],  # match DB
             fragments
         ))
 
