@@ -117,8 +117,8 @@ def _export_matches(url: str, cachesize: int,
             fragments = f"{row[7]}-{row[8]}-S"
 
         obj[3].append((
-            row[5],  # match accession
-            databases[row[4]],  # match DB
+            row[4],  # match accession
+            databases[row[5]],  # match DB
             fragments
         ))
 
