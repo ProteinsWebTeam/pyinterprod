@@ -89,7 +89,7 @@ def _export_matches(url: str, cachesize: int,
         FROM INTERPRO.CV_DATABASE
         """
     )
-    databases = dict(cur.fetchall)
+    databases = dict(cur.fetchall())
 
     # Loading taxonomy
     cur.execute(
@@ -98,7 +98,7 @@ def _export_matches(url: str, cachesize: int,
         FROM INTERPRO.ETAXI
         """
     )
-    taxonomy = dict(cur.fetchall)
+    taxonomy = dict(cur.fetchall())
 
     cur.execute(
         """
