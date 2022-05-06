@@ -379,8 +379,8 @@ def _flatten_hits(hits: list[str]) -> list[tuple[int, int]]:
 
     for fragments in hits:
         for fragment in fragments.split(","):
-            for start, end, _ in fragment.split("-"):
-                locations.append((int(start), int(end)))
+            start, end, _ = fragment.split("-")
+            locations.append((int(start), int(end)))
 
     return locations
 
