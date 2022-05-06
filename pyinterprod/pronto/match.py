@@ -1,5 +1,6 @@
 import hashlib
 import heapq
+import math
 import os
 import pickle
 import shutil
@@ -217,7 +218,7 @@ def insert_signature2protein(url: str, names_db: str, matches_file: str,
     with open(f"{matches_file}{_INDEX_SUFFIX}", "rb") as fh:
         index = pickle.load(fh)
 
-    logger.info("populating signature2protein")
+    logger.info("populating")
     inqueue = Queue()
     outqueue = Queue()
     workers = []
@@ -235,11 +236,15 @@ def insert_signature2protein(url: str, names_db: str, matches_file: str,
     for _ in workers:
         inqueue.put(None)
 
-    progress = 0
+    done = 0
+    milestone = step = 10
     for _ in index:
         count = outqueue.get()
-        progress += count
-        logger.info(f"{progress / total * 100:>7.0f}%")
+        done += count
+        progress = math.floor(done / total * 100)
+        if progress >= milestone:
+            logger.info(f"{progress}%")
+            milestone += step
 
     for p in workers:
         p.join()
@@ -434,6 +439,7 @@ def create_match_table(uri: str):
         con.commit()
 
     con.close()
+    logger.info("done")
 
 
 def insert_fmatches(ora_uri: str, pg_uri: str):
@@ -477,15 +483,52 @@ def _get_fmatches(uri: str, name2id: dict[str, int]):
     con.close()
 
 
-def insert_matches(uri: str, matches_file: str):
-    logger.info("populating")
+def insert_matches(uri: str, matches_file: str, processes: int = 1):
+    # Load jobs to send to workers
+    with open(f"{matches_file}{_INDEX_SUFFIX}", "rb") as fh:
+        index = pickle.load(fh)
 
-    con = psycopg2.connect(**pg.url2dict(uri))
+    logger.info("populating")
+    inqueue = Queue()
+    outqueue = Queue()
+    workers = []
+    for _ in range(max(1, processes - 1)):
+        p = Process(target=_populate_matches,
+                    args=(uri, matches_file, inqueue, outqueue))
+        p.start()
+        workers.append(p)
+
+    total = 0
+    for offset, count in index:
+        inqueue.put((offset, count))
+        total += count
+
+    for _ in workers:
+        inqueue.put(None)
+
+    done = 0
+    milestone = step = 10
+    for _ in index:
+        count = outqueue.get()
+        done += count
+        progress = math.floor(done / total * 100)
+        if progress >= milestone:
+            logger.info(f"{progress}%")
+            milestone += step
+
+    for p in workers:
+        p.join()
+
+    logger.info("done")
+
+
+def _populate_matches(url: str, matches_file: str, src: Queue, dst: Queue):
+    con = psycopg2.connect(**pg.url2dict(url))
     with con.cursor() as cur:
         cur.execute("SELECT name, id FROM database")
         name2id = dict(cur.fetchall())
 
-        matches = _iter_matches(matches_file, name2id)
+        matches = _iter_matches(matches_file, name2id, src, dst)
         cur.copy_from(file=pg.CsvIO(matches, sep="|"),
                       table="match",
                       sep="|")
@@ -493,23 +536,23 @@ def insert_matches(uri: str, matches_file: str):
 
     con.close()
 
-    logger.info("done")
 
+def _iter_matches(matches_file: str, name2id: dict[str, int],
+                  src: Queue, dst: Queue):
+    with open(matches_file, "rb") as fh:
+        for offset, count in iter(src.get, None):
+            fh.seek(offset)
 
-def _iter_matches(matches_file: str, name2id: dict[str, int]):
-    i = 0
-    for prot_acc, is_rev, is_comp, _, matches in iter_util_eof(matches_file):
-        for signature_acc, (signature_db, hits) in matches.items():
-            signature_db_id = name2id[signature_db]
+            for _ in range(count):
+                prot_acc, is_rev, is_comp, left_num, matches = pickle.load(fh)
 
-            for fragments in hits:
-                yield prot_acc, signature_acc, signature_db_id, fragments
+                for sig_acc, (sig_db, hits) in matches.items():
+                    sig_db_id = name2id[sig_db]
 
-        i += 1
-        if i % 10e6 == 0:
-            logger.info(f"{i:>15,}")
+                    for fragments in hits:
+                        yield prot_acc, sig_acc, sig_db_id, fragments
 
-    logger.info(f"{i:>15,}")
+            dst.put(count)
 
 
 def finalize_match_table(uri: str):
