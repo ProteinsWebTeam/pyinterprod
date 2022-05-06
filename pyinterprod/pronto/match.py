@@ -41,7 +41,7 @@ def export(url: str, output: str, cachesize: int = 10000000,
                 index.append((o, cachesize))
                 o = fh.tell()
 
-            if i % 10e6 == 0:
+            if i % 1e8 == 0:
                 logger.info(f"{i:>15,}")
 
         if i % cachesize != 0:
