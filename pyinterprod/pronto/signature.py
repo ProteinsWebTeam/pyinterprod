@@ -51,6 +51,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str):
                     0,  # number of complete reviewed proteins
                     0,  # number of residues in complete proteins
                 ]
+                comparisons[signature_acc] = {}
 
             sig[0] += 1
             if is_rev:
