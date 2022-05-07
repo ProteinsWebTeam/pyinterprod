@@ -48,6 +48,8 @@ def export(url: str, output: str, cachesize: int = 10000000,
         if i % cachesize != 0:
             index.append((o, i % cachesize))
 
+        logger.info(f"{i:>15,}")
+
     size = 0
     for file in files:
         size += os.path.getsize(file)
