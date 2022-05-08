@@ -752,7 +752,7 @@ def update_partitions(uri: str, mode: str = "matches", **kwargs):
     cur = con.cursor()
 
     for index in oracle.get_indexes(cur, "IPRSCAN", partitioned_table):
-        if index["unusable"]:
+        if index["is_unusable"]:
             logger.info(f"rebuilding index {index['name']}")
             oracle.catch_temp_error(fn=oracle.rebuild_index,
                                     args=(cur, index["name"]))
@@ -1019,7 +1019,7 @@ def import_matches(url: str, **kwargs):
     cur = con.cursor()
 
     for index in oracle.get_indexes(cur, "IPRSCAN", "MV_IPRSCAN"):
-        if index["unusable"]:
+        if index["is_unusable"]:
             logger.info(f"rebuilding index {index['name']}")
             oracle.catch_temp_error(fn=oracle.rebuild_index,
                                     args=(cur, index["name"]))
@@ -1135,7 +1135,7 @@ def import_sites(url: str, **kwargs):
     cur = con.cursor()
 
     for index in oracle.get_indexes(cur, "IPRSCAN", "SITE"):
-        if index["unusable"]:
+        if index["is_unusable"]:
             logger.info(f"rebuilding index {index['name']}")
             oracle.catch_temp_error(fn=oracle.rebuild_index,
                                     args=(cur, index["name"]))
