@@ -64,7 +64,8 @@ MATCH_PARTITIONS = {
     },
     "HAMAP": {
         "columns": [
-            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'SUBSTR(RELNO_MAJOR', '1', '4)', 'SUBSTR(RELNO_MAJOR', '6', '7)',
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'SUBSTR(RELNO_MAJOR', '1', '4)',
+            'SUBSTR(RELNO_MAJOR', '6', '7)',
             'SEQ_START', 'SEQ_END', '0', '0', '0',
             'NULL', '0', 'SEQSCORE', '0', '0',
             '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
@@ -127,7 +128,8 @@ MATCH_PARTITIONS = {
     },
     "PROSITE patterns": {
         "columns": [
-            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'SUBSTR(RELNO_MAJOR', '1', '4)', 'SUBSTR(RELNO_MAJOR', '6', '7)',
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'SUBSTR(RELNO_MAJOR', '1', '4)',
+            'SUBSTR(RELNO_MAJOR', '6', '7)',
             'SEQ_START', 'SEQ_END', '0', '0', '0',
             'LOCATION_LEVEL', '0', '0', '0', '0',
             '0', '0', 'MODEL_AC', 'ALIGNMENT', 'FRAGMENTS'
@@ -136,7 +138,8 @@ MATCH_PARTITIONS = {
     },
     "PROSITE profiles": {
         "columns": [
-            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'SUBSTR(RELNO_MAJOR', '1', '4)', 'SUBSTR(RELNO_MAJOR', '6', '7)',
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'SUBSTR(RELNO_MAJOR', '1', '4)',
+            'SUBSTR(RELNO_MAJOR', '6', '7)',
             'SEQ_START', 'SEQ_END', '0', '0', '0',
             'NULL', '0', 'SEQSCORE', '0', '0',
             '0', '0', 'MODEL_AC', 'ALIGNMENT', 'FRAGMENTS'
