@@ -229,10 +229,6 @@ def run_member_db_update():
                         default=None,
                         metavar="TASK",
                         help="tasks to run")
-    parser.add_argument("-f", "--force",
-                        action="store_true",
-                        default=False,
-                        help="force matches import (default: off)")
     parser.add_argument("--dry-run",
                         action="store_true",
                         default=False,
@@ -590,7 +586,7 @@ def run_uniprot_update():
         Task(
             fn=interpro.iprscan.import_tables,
             args=(ora_iprscan_url, "matches"),
-            kwargs=dict(threads=8),
+            kwargs=dict(force=True, threads=8),
             name="import-ipm-matches",
             scheduler=dict(queue=lsf_queue),
             requires=["update-uniparc"]
@@ -598,7 +594,7 @@ def run_uniprot_update():
         Task(
             fn=interpro.iprscan.update_partitions,
             args=(ora_iprscan_url, "matches"),
-            kwargs=dict(threads=8),
+            kwargs=dict(force=True, threads=8),
             name="update-ipm-matches",
             scheduler=dict(queue=lsf_queue),
             requires=["import-ipm-matches"]
@@ -606,7 +602,7 @@ def run_uniprot_update():
         Task(
             fn=interpro.iprscan.import_tables,
             args=(ora_iprscan_url, "sites"),
-            kwargs=dict(threads=2),
+            kwargs=dict(force=True, threads=2),
             name="import-ipm-sites",
             scheduler=dict(queue=lsf_queue),
             requires=["update-uniparc"]
@@ -614,7 +610,7 @@ def run_uniprot_update():
         Task(
             fn=interpro.iprscan.update_partitions,
             args=(ora_iprscan_url, "sites"),
-            kwargs=dict(threads=2),
+            kwargs=dict(force=True, threads=2),
             name="update-ipm-sites",
             scheduler=dict(queue=lsf_queue),
             requires=["import-ipm-sites"]

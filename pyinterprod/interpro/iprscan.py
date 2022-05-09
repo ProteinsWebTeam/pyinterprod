@@ -931,7 +931,7 @@ def import_matches(url: str, **kwargs):
             continue
 
         try:
-            obj = MATCH_SELECT[analysis.name]
+            obj = MATCH_PARTITIONS[analysis.name]
         except KeyError:
             logger.warning(f"ignoring {analysis.name} {analysis.version}")
             continue
