@@ -129,7 +129,8 @@ def _export_matches(url: str, cachesize: int,
         i += 1
         if i % cachesize == 0:
             fd, file = mkstemp(dir=tmpdir)
-            _dump(cache, fd)
+            os.close(fd)
+            _dump(cache, file)
             cache.clear()
             files.append(file)
 
@@ -140,7 +141,8 @@ def _export_matches(url: str, cachesize: int,
     con.close()
 
     fd, file = mkstemp(dir=tmpdir)
-    _dump(cache, fd)
+    os.close(fd)
+    _dump(cache, file)
     cache.clear()
     files.append(file)
 
@@ -149,8 +151,8 @@ def _export_matches(url: str, cachesize: int,
     return files
 
 
-def _dump(data: dict, fd: int):
-    with gzip.open(fd, "wb", compresslevel=6) as fh:
+def _dump(data: dict, file: str):
+    with gzip.open(file, "wb", compresslevel=6) as fh:
         for key in sorted(data):
             pickle.dump((key, data[key]), fh)
 
