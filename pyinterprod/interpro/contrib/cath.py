@@ -1,14 +1,16 @@
+import json
 import re
-from typing import List
+from urllib.request import urlopen
 
 from .common import Method
+
 
 _PREFIX = "G3DSA:"
 _TYPE_SUPFAM = 'H'
 _TYPE_FUNFAM = 'D'
 
 
-def parse_superfamilies(filepath: str) -> List[Method]:
+def parse_superfamilies(filepath: str) -> list[Method]:
     """
     Parse the CathNames.txt file distributed with CATH-Gene3D releases
 
@@ -35,29 +37,58 @@ def parse_superfamilies(filepath: str) -> List[Method]:
     return signatures
 
 
-def parse_functional_families(filepath: str) -> List[Method]:
+def parse_functional_families(file: str) -> list[Method]:
     """
-    Parse the FunFam HMM file distributed with CATH-Gene3D releases.
-    Version 4.3.0:
-        - http://download.cathdb.info/cath/releases/latest-release/sequence-data/funfam-hmm3.lib.gz
-        - ftp://orengoftp.biochem.ucl.ac.uk//cath/releases/latest-release/sequence-data/funfam-hmm3.lib.gz
-
-    :param filepath:
-    :return:
+    :param file: TSV file of FunFam names.
+                 Can be generated using `get_funfam_names()`.
+    :return: A list of FunFam signatures
     """
 
     signatures = []
-    with open(filepath, "rt") as fh:
-        supfam = funfam = None
+    with open(file, "rt") as fh:
         for line in fh:
-            if line[:2] == "//":
-                accession = f"{_PREFIX}{supfam}:FF:{funfam}"
-                signatures.append(Method(accession, _TYPE_FUNFAM))
-                supfam = funfam = None
-                continue
+            accession, name = line.rstrip().split("\t")
 
-            m = re.search(r"^NAME\s+(\d+\.\d+\.\d+\.\d+)-FF-(\d+)$", line)
-            if m:
-                supfam, funfam = m.groups()
+            # accession like 1.10.10.10-FF-000001
+            supfam, _, funfam = accession.split("-")
+
+            accession = f"{_PREFIX}{supfam}:FF:{funfam}"
+            signatures.append(Method(accession, _TYPE_FUNFAM, name))
 
     return signatures
+
+
+def fetch(url):
+    with urlopen(url) as f:
+        response = f.read()
+
+    return json.loads(response.decode("utf-8"))
+
+
+def get_funfam_names(version: str = "v4_3_0") -> dict[str, str]:
+    """
+    Fetch FunFam names from the CATH REST API
+    :param version: CATH version
+    :return: dictionary of FunFam ID -> name
+    """
+    api_url = f"http://www.cathdb.info/version/{version}/api/rest"
+
+    url = f"{api_url}/superfamily/"
+    superfamilies = fetch(url)["data"]
+
+    funfams = {}
+    for superfam in superfamilies:
+        supfam_id = superfam["superfamily_id"]
+
+        url = f"{api_url}/superfamily/{supfam_id}/funfam"
+        funfams = fetch(url)["data"]
+
+        for funfam in funfams:
+            funfam_id = int(funfam["funfam_number"])
+            funfam_name = funfam["name"] or "-"
+
+            model_id = f"{supfam_id}-FF-{funfam_id:06}"
+
+            funfams[model_id] = funfam_name
+
+    return funfams
