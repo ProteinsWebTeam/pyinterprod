@@ -1,3 +1,4 @@
+import gzip
 import hashlib
 import heapq
 import math
@@ -149,13 +150,13 @@ def _export_matches(url: str, cachesize: int,
 
 
 def _dump(data: dict, fd: int):
-    with open(fd, "wb") as fh:
+    with gzip.open(fd, "wb", compresslevel=6) as fh:
         for key in sorted(data):
             pickle.dump((key, data[key]), fh)
 
 
 def _merge_files(files: list[str]):
-    iterable = [iter_util_eof(file) for file in files]
+    iterable = [iter_util_eof(file, compressed=True) for file in files]
     protein_acc = is_reviewed = is_complete = left_number = None
     matches = {}
     for key, value in heapq.merge(*iterable, key=lambda x: x[0]):
@@ -177,13 +178,20 @@ def _merge_files(files: list[str]):
     yield protein_acc, is_reviewed, is_complete, left_number, matches
 
 
-def iter_util_eof(file: str):
-    with open(file, "rb") as fh:
+def iter_util_eof(file: str, compressed: bool):
+    if compressed:
+        fh = gzip.open(file, "rb")
+    else:
+        fh = open(file, "rb")
+
+    try:
         while True:
             try:
                 yield pickle.load(fh)
             except EOFError:
                 break
+    finally:
+        fh.close()
 
 
 def insert_signature2protein(url: str, names_db: str, matches_file: str,

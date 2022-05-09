@@ -34,7 +34,8 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str):
     comparisons = {}
     progress = 0
 
-    for prot_acc, is_rev, is_comp, _, matches in iter_util_eof(matches_file):
+    proteins = iter_util_eof(matches_file, compressed=False)
+    for prot_acc, is_rev, is_comp, _, matches in proteins:
         # Merge overlapping hits
         for signature_acc, (_, hits) in matches.items():
             matches[signature_acc] = sorted(merge_overlapping(hits))
