@@ -228,11 +228,8 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
         while rows:
             row = rows.pop()
 
-            # TODO: remove this after MobiDB-lite has been removed from METHOD
-            try:
-                signature_db_id = name2id[row[1]]
-            except KeyError:
-                continue
+            # Will raise a KeyError if the DB key is not in the database table
+            signature_db_id = name2id[row[1]]
 
             signature_acc = row[0]
             values.append((
