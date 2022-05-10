@@ -150,14 +150,24 @@ The optional arguments are:
     <td></td>
 </tr>
 <tr>
-    <td>import-matches</td>
+    <td>import-ipm-matches</td>
     <td>Import protein matches from ISPRO</td>
     <td>update-uniparc</td>
 </tr>
 <tr>
-    <td>import-sites</td>
+    <td>update-ipm-matches</td>
+    <td>Update partitioned table with matches</td>
+    <td>import-ipm-matches</td>
+</tr>
+<tr>
+    <td>import-ipm-sites</td>
     <td>Import residue annotations from ISPRO</td>
     <td></td>
+</tr>
+<tr>
+    <td>update-ipm-sites</td>
+    <td>Update partitioned table with site matches</td>
+    <td>import-ipm-sites</td>
 </tr>
 <tr>
     <td>update-proteins</td>
@@ -177,7 +187,7 @@ The optional arguments are:
 <tr>
     <td>update-matches</td>
     <td>Update protein matches for new or updated sequences, run various checks, and track changes in protein counts for InterPro entries</td>
-    <td>import-matches, check-proteins</td>
+    <td>update-ipm-matches, check-proteins</td>
 </tr>
 <tr>
     <td>update-fmatches</td>
@@ -232,12 +242,12 @@ The optional arguments are:
 <tr>
     <td>update-varsplic</td>
     <td>Update splice variant matches</td>
-    <td>import-matches</td>
+    <td>update-ipm-matches</td>
 </tr>
 <tr>
     <td>update-sites</td>
     <td>Update residue annotations</td>
-    <td>import-sites, update-matches</td>
+    <td>update-ipm-sites, update-matches</td>
 </tr>
 <tr>
     <td><a href="#ipr-pronto-tasks">Pronto</a></td>
@@ -287,9 +297,14 @@ The optional arguments are:
 </thead>
 <tbody>
 <tr>
-    <td>import-matches</td>
+    <td>import-ipm-matches</td>
     <td>Import protein matches from ISPRO</td>
-    <td></td>
+    <td>update-uniparc</td>
+</tr>
+<tr>
+    <td>update-ipm-matches</td>
+    <td>Update partitioned table with matches</td>
+    <td>import-ipm-matches</td>
 </tr>
 <tr>
     <td>load-signatures</td>
@@ -314,32 +329,37 @@ The optional arguments are:
 <tr>
     <td>update-matches</td>
     <td>Update and check matches in production tables</td>
-    <td>import-matches, delete-obsoletes</td>
+    <td>update-ipm-matches, update-signatures</td>
 </tr>
 <tr>
     <td>update-varsplic</td>
     <td>Update splice variant matches</td>
-    <td>import-matches, delete-obsoletes</td>
+    <td>update-ipm-matches, update-signatures</td>
 </tr>
 <tr>
     <td>update-features</td>
     <td>Update sequence features for non-member databases (e.g. MobiDB-lite, COILS, etc.)</td>
-    <td>import-matches</td>
+    <td>update-ipm-matches</td>
 </tr>
 <tr>
     <td>update-fmatches</td>
     <td>Update matches for sequence features</td>
-    <td>import-features</td>
+    <td>update-features</td>
 </tr>
 <tr>
-    <td>import-sites</td>
-    <td>Import residue annotations from ISPRO (if updating a member database with residue annotations)</td>
+    <td>import-ipm-sites</td>
+    <td>Import residue annotations from ISPRO</td>
     <td></td>
+</tr>
+<tr>
+    <td>update-ipm-sites</td>
+    <td>Update partitioned table with site matches</td>
+    <td>import-ipm-sites</td>
 </tr>
 <tr>
     <td>update-sites</td>
     <td>Update residue annotations (if updating a member database with residue annotations)</td>
-    <td>import-matches, import-sites, update-matches</td>
+    <td>update-ipm-sites, update-matches</td>
 </tr>
 <tr>
     <td><a href="#ipr-pronto-tasks">Pronto</a></td>
