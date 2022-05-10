@@ -2,13 +2,12 @@ from decimal import Decimal
 
 import cx_Oracle
 
-
 _COMMIT_SIZE = 10000
 
 
 def cdd_matches(uri: str, file: str, analysis_id: int, table: str):
     sql = f"""
-        INSERT /*+ APPEND */ INTO {table} (
+        INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
             UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
             SEQSCORE, SEQEVALUE
@@ -43,20 +42,19 @@ def cdd_matches(uri: str, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
-                con.commit()
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
-        con.commit()
 
+    con.commit()
     cur.close()
     con.close()
 
 
 def sites(uri: str, file: str, analysis_id: int, table: str):
     sql = f"""
-        INSERT /*+ APPEND */ INTO {table} (
+        INSERT INTO {table} (
             ANALYSIS_ID, UPI, MD5, SEQ_LENGTH, ANALYSIS_NAME, 
             METHOD_AC, LOC_START, LOC_END, NUM_SITES, RESIDUE, 
             RES_START, RES_END, DESCRIPTION
@@ -90,20 +88,19 @@ def sites(uri: str, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
-                con.commit()
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
-        con.commit()
 
+    con.commit()
     cur.close()
     con.close()
 
 
 def coils_phobius_matches(uri: str, file: str, analysis_id: int, table: str):
     sql = f"""
-        INSERT /*+ APPEND */ INTO {table} (
+        INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
             UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS
         )
@@ -133,20 +130,19 @@ def coils_phobius_matches(uri: str, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
-                con.commit()
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
-        con.commit()
 
+    con.commit()
     cur.close()
     con.close()
 
 
 def hamap_matches(uri: str, file: str, analysis_id: int, table: str):
     sql = f"""
-        INSERT /*+ APPEND */ INTO {table} (
+        INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
             UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
             SEQSCORE, ALIGNMENT
@@ -180,30 +176,36 @@ def hamap_matches(uri: str, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
-                con.commit()
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
-        con.commit()
 
+    con.commit()
     cur.close()
     con.close()
 
 
 def _hmmer3_matches(uri: str, file: str, analysis_id: int, table: str,
-                    relno_maj_as_int: bool):
+                    relno_maj_as_int: bool, has_alignment: bool):
+    if has_alignment:
+        ali_col = ", ALIGNMENT"
+        ali_val = ", :alignment"
+    else:
+        ali_col = ""
+        ali_val = ""
+
     sql = f"""
-        INSERT /*+ APPEND */ INTO {table} (
+        INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
             UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
             SEQSCORE, SEQEVALUE, HMM_BOUNDS, HMM_START, HMM_END,
-            HMM_LENGTH, ENV_START, ENV_END, SCORE, EVALUE
+            HMM_LENGTH, ENV_START, ENV_END, SCORE, EVALUE{ali_col}
         )
         VALUES (:analysis_id, :analysis_name, :relno_major, :relno_minor,
                 :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments,
                 :seq_score, :seq_evalue, :hmm_bounds, :hmm_start, :hmm_end,
-                :hmm_length, :env_start, :env_end, :score, :evalue)
+                :hmm_length, :env_start, :env_end, :score, :evalue{ali_val})
     """
 
     con = cx_Oracle.connect(uri)
@@ -215,7 +217,7 @@ def _hmmer3_matches(uri: str, file: str, analysis_id: int, table: str,
     with open(file, "rt") as fh:
         for line in fh:
             cols = line.rstrip().split('\t')
-            values.append({
+            record = {
                 "analysis_id": analysis_id,
                 "analysis_name": cols[0],
                 "relno_major": int(cols[1]) if relno_maj_as_int else cols[1],
@@ -236,28 +238,38 @@ def _hmmer3_matches(uri: str, file: str, analysis_id: int, table: str,
                 "env_end": int(cols[16]),
                 "score": Decimal(cols[17]),
                 "evalue": Decimal(cols[18])
-            })
+            }
+
+            if has_alignment:
+                record["alignment"] = cols[19]
+
+            values.append(record)
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
-                con.commit()
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
-        con.commit()
 
+    con.commit()
     cur.close()
     con.close()
 
 
+def funfam_matches(uri: str, file: str, analysis_id: int, table: str):
+    _hmmer3_matches(uri, file, analysis_id, table, relno_maj_as_int=True,
+                    has_alignment=True)
+
+
 def hmmer3_matches(uri: str, file: str, analysis_id: int, table: str):
-    _hmmer3_matches(uri, file, analysis_id, table, relno_maj_as_int=True)
+    _hmmer3_matches(uri, file, analysis_id, table, relno_maj_as_int=True,
+                    has_alignment=False)
 
 
 def mobidb_lite_matches(uri: str, file: str, analysis_id: int, table: str):
     sql = f"""
-        INSERT /*+ APPEND */ INTO {table} (
+        INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
             UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
             SEQ_FEATURE
@@ -296,20 +308,19 @@ def mobidb_lite_matches(uri: str, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
-                con.commit()
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
-        con.commit()
 
+    con.commit()
     cur.close()
     con.close()
 
 
 def panther_matches(uri: str, file: str, analysis_id: int, table: str):
     sql = f"""
-        INSERT /*+ APPEND */ INTO {table} (
+        INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
             UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
             SEQSCORE, SEQEVALUE, HMM_BOUNDS, HMM_START, HMM_END,
@@ -359,24 +370,24 @@ def panther_matches(uri: str, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
-                con.commit()
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
-        con.commit()
 
+    con.commit()
     cur.close()
     con.close()
 
 
 def pirsr_matches(uri: str, file: str, analysis_id: int, table: str):
-    _hmmer3_matches(uri, file, analysis_id, table, relno_maj_as_int=False)
+    _hmmer3_matches(uri, file, analysis_id, table, relno_maj_as_int=False,
+                    has_alignment=False)
 
 
 def prints_matches(uri: str, file: str, analysis_id: int, table: str):
     sql = f"""
-        INSERT /*+ APPEND */ INTO {table} (
+        INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
             UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
             SEQSCORE, SEQEVALUE, MOTIF_NUMBER, PVALUE, GRAPHSCAN
@@ -415,13 +426,12 @@ def prints_matches(uri: str, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
-                con.commit()
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
-        con.commit()
 
+    con.commit()
     cur.close()
     con.close()
 
@@ -432,7 +442,7 @@ prosite_profiles_matches = hamap_matches
 def prosite_patterns_matches(uri: str, file: str, analysis_id: int,
                              table: str):
     sql = f"""
-        INSERT /*+ APPEND */ INTO {table} (
+        INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
             UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
             LOCATION_LEVEL, ALIGNMENT
@@ -466,13 +476,12 @@ def prosite_patterns_matches(uri: str, file: str, analysis_id: int,
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
-                con.commit()
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
-        con.commit()
 
+    con.commit()
     cur.close()
     con.close()
 
@@ -480,7 +489,7 @@ def prosite_patterns_matches(uri: str, file: str, analysis_id: int,
 def signalp_tmhmm_matches(uri: str, file: str, analysis_id: int, table: str,
                           relno_maj_as_int: bool):
     sql = f"""
-        INSERT /*+ APPEND */ INTO {table} (
+        INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
             UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
             SEQSCORE
@@ -513,13 +522,12 @@ def signalp_tmhmm_matches(uri: str, file: str, analysis_id: int, table: str,
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
-                con.commit()
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
-        con.commit()
 
+    con.commit()
     cur.close()
     con.close()
 
@@ -529,9 +537,14 @@ def signalp_matches(uri: str, file: str, analysis_id: int, table: str):
                           relno_maj_as_int=False)
 
 
+def sfld_matches(uri: str, file: str, analysis_id: int, table: str):
+    _hmmer3_matches(uri, file, analysis_id, table, relno_maj_as_int=True,
+                    has_alignment=False)
+
+
 def smart_matches(uri: str, file: str, analysis_id: int, table: str):
     sql = f"""
-        INSERT /*+ APPEND */ INTO {table} (
+        INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
             UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
             SEQSCORE, SEQEVALUE, HMM_BOUNDS, HMM_START, HMM_END,
@@ -575,20 +588,19 @@ def smart_matches(uri: str, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
-                con.commit()
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
-        con.commit()
 
+    con.commit()
     cur.close()
     con.close()
 
 
 def superfamily_matches(uri: str, file: str, analysis_id: int, table: str):
     sql = f"""
-        INSERT /*+ APPEND */ INTO {table} (
+        INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
             UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
             SEQEVALUE, HMM_LENGTH
@@ -623,13 +635,12 @@ def superfamily_matches(uri: str, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
-                con.commit()
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
-        con.commit()
 
+    con.commit()
     cur.close()
     con.close()
 

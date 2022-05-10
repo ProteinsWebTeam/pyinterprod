@@ -13,6 +13,7 @@ from mundone.task import STATUS_PENDING, STATUS_RUNNING
 
 from pyinterprod import logger
 from . import database, persistence
+from .utils import int_to_upi, upi_to_int, range_jobs
 
 
 """
@@ -27,7 +28,7 @@ _DB_TO_I5 = {
     "CATH-Gene3D": ("Gene3D", persistence.hmmer3_matches, None),
     "CDD": ("CDD", persistence.cdd_matches, persistence.sites),
     "COILS": ("Coils", persistence.coils_phobius_matches, None),
-    "FunFam": ("FunFam", persistence.hmmer3_matches, None),
+    "FunFam": ("FunFam", persistence.funfam_matches, None),
     "HAMAP": ("Hamap", persistence.hamap_matches, None),
     "MobiDB Lite": ("MobiDBLite", persistence.mobidb_lite_matches, None),
     "PANTHER": ("PANTHER", persistence.panther_matches, None),
@@ -40,7 +41,7 @@ _DB_TO_I5 = {
                          persistence.prosite_patterns_matches, None),
     "PROSITE profiles": ("ProSiteProfiles",
                          persistence.prosite_profiles_matches, None),
-    "SFLD": ("SFLD", persistence.hmmer3_matches, persistence.sites),
+    "SFLD": ("SFLD", persistence.sfld_matches, persistence.sites),
     "SignalP_Euk": ("SignalP_EUK", persistence.signalp_matches, None),
     "SignalP_Gram_positive": ("SignalP_GRAM_POSITIVE",
                               persistence.signalp_matches, None),
@@ -80,7 +81,6 @@ class TaskFactory:
     parse_sites: Optional[Callable] = None
     keep_files: Optional[str] = None
     lsf_queue: Optional[str] = None
-    timeout: Optional[int] = None
 
     def make(self, upi_from: str, upi_to: str) -> Task:
         return Task(
@@ -100,7 +100,7 @@ class TaskFactory:
             ),
             kwargs=dict(cpu=self.config["job_cpu"],
                         keep_files=self.keep_files,
-                        timeout=self.timeout),
+                        timeout=self.config["job_timeout"]),
             name=self.make_name(upi_from, upi_to),
             scheduler=dict(cpu=self.config["job_cpu"],
                            mem=self.config["job_mem"],
@@ -112,26 +112,12 @@ class TaskFactory:
         return f"{_JOB_PREFIX}{self.appl}_{self.version}_{upi_from}_{upi_to}"
 
 
-def int_to_upi(i):
-    return f"UPI{i:010x}".upper()
-
-
-def upi_to_int(upi):
-    return int(upi[3:], 16)
-
-
-def range_jobs(from_upi: str, to_upi: str, step: int):
-    start = upi_to_int(from_upi)
-    stop = upi_to_int(to_upi) + 1
-    for i in range(start, stop, step):
-        yield int_to_upi(i), int_to_upi(i + step)
-
-
 def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     base_config = {
         "job_cpu": kwargs.get("job_cpu", 8),
         "job_mem": kwargs.get("job_mem", 8 * 1024),
-        "job_size": kwargs.get("job_size", 100000)
+        "job_size": kwargs.get("job_size", 32000),
+        "job_timeout": kwargs.get("job_timeout"),
     }
     custom_configs = kwargs.get("config", {})
     infinite_mem = kwargs.get("infinite_mem", False)
@@ -141,7 +127,6 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     max_running_jobs = kwargs.get("max_running_jobs", 1000)
     max_jobs_per_analysis = kwargs.get("max_jobs_per_analysis", -1)
     pool_threads = kwargs.get("pool_threads", 4)
-    timeout = kwargs.get("timeout")
     to_run = kwargs.get("analyses", [])
     to_exclude = kwargs.get("exclude", [])
 
@@ -196,7 +181,9 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
     name2id = get_lsf_unfinished_jobs()
 
-    with Pool(temp_dir, max_running_jobs, pool_threads) as pool:
+    with Pool(temp_dir, max_running_jobs,
+              kill_on_exit=False,
+              threads=pool_threads) as pool:
         to_run = []
         for analysis_id, analysis in analyses.items():
             name = analysis["name"]
@@ -223,8 +210,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                                   site_table=analysis["tables"]["sites"],
                                   parse_sites=parse_sites,
                                   keep_files=keep_files,
-                                  lsf_queue=lsf_queue,
-                                  timeout=timeout)
+                                  lsf_queue=lsf_queue)
 
             n_tasks_analysis = 0
             for upi_from, upi_to in incomplete_jobs.pop(analysis_id, []):
@@ -332,7 +318,9 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                             task.scheduler["mem"] *= 1.5
 
                         # Resubmit task
+                        task.status = STATUS_PENDING
                         pool.submit(task)
+                        database.reset_job(uri, analysis_id, upi_from, upi_to)
 
                         # Increment retries counter
                         retries[task.name] = num_retries + 1
@@ -405,7 +393,13 @@ def run_i5(i5_dir: str, fasta_file: str, analysis_name: str, output: str,
     if temp_dir is not None:
         args += ["-T", temp_dir]
 
-    process = subprocess.run(args, capture_output=True, timeout=timeout)
+    if isinstance(timeout, int) and timeout > 0:
+        # timeout in hours, but subprocess.run takes in seconds
+        _timeout = timeout * 3600
+    else:
+        _timeout = None
+
+    process = subprocess.run(args, capture_output=True, timeout=_timeout)
     return (
         process.returncode == 0,
         process.stdout.decode("utf-8"),

@@ -19,7 +19,10 @@ class Database:
     is_feature_db: bool
 
 
-def get_databases(url: str, names: Sequence[str], expects_new: bool = False) -> Dict[str, Database]:
+def get_databases(url: str, names: Sequence[str],
+                  expects_new: bool = False) -> Dict[str, Database]:
+    names = {name.lower(): name for name in names}
+
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -51,12 +54,13 @@ def get_databases(url: str, names: Sequence[str], expects_new: bool = False) -> 
             ON D.DBCODE = V.DBCODE
         INNER JOIN INTERPRO.IPRSCAN2DBCODE I2C 
             ON D.DBCODE = I2C.DBCODE
-        INNER JOIN IPRSCAN.IPM_ANALYSIS@ISPRO A 
-            ON I2C.IPRSCAN_SIG_LIB_REL_ID = A.ANALYSIS_ID
-        INNER JOIN IPRSCAN.IPM_ANALYSIS_MATCH_TABLE@ISPRO T 
-            ON A.ANALYSIS_MATCH_TABLE_ID = T.ID
+        INNER JOIN IPRSCAN.ANALYSIS@ISPRO A 
+            ON I2C.IPRSCAN_SIG_LIB_REL_ID = A.ID
+        INNER JOIN IPRSCAN.ANALYSIS_TABLES@ISPRO T 
+            ON A.NAME = T.NAME
         WHERE LOWER(D.DBSHORT) IN ({','.join(args)})
-        """, tuple(map(str.lower, names))
+        """,
+        list(names.keys())
     )
 
     databases = {}
@@ -78,12 +82,17 @@ def get_databases(url: str, names: Sequence[str], expects_new: bool = False) -> 
         if expects_new and db.analysis_id == row[6]:
             not_ready.append(db.name)
 
+        try:
+            del names[row[1]]
+        except KeyError:
+            pass
+
     cur.close()
     con.close()
 
-    unknown = set(names) - set(databases.keys())
-    if unknown:
-        raise RuntimeError(f"Unknown databases: {', '.join(unknown)}")
+    if names:
+        names = sorted(names.values())
+        raise RuntimeError(f"Unknown databases: {', '.join(names)}")
     elif not_ready:
         raise RuntimeError(f"Database(s) outdated in IPRSCAN2DBCODE: "
                            f"{', '.join(not_ready)}. Run ipr-pre-memdb.")
@@ -117,15 +126,15 @@ def update_database(url: str, name: str, version: str, date: str,
     # Find the 'active' analysis in ISPRO
     cur.execute(
         """
-        SELECT ANALYSIS_ID, ANALYSIS_NAME
-        FROM IPM_ANALYSIS@ISPRO
-        WHERE ANALYSIS_MATCH_TABLE_ID = (
-            SELECT ANALYSIS_MATCH_TABLE_ID
-            FROM IPM_ANALYSIS@ISPRO
-            WHERE ANALYSIS_ID = :1
+        SELECT ID, NAME
+        FROM IPRSCAN.ANALYSIS@ISPRO
+        WHERE NAME = (
+            SELECT NAME
+            FROM IPRSCAN.ANALYSIS@ISPRO
+            WHERE ID = :1
         )
-        AND ACTIVE = 1
-        ORDER BY ANALYSIS_ID
+        AND ACTIVE = 'Y'
+        ORDER BY ID
         """, (current_id,)
     )
     rows = cur.fetchall()

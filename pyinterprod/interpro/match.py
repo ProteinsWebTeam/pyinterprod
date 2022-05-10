@@ -201,9 +201,16 @@ def update_database_matches(url: str, databases: Sequence):
         oracle.gather_stats(cur, "INTERPRO", "MATCH", partition)
 
     for index in oracle.get_indexes(cur, "INTERPRO", "MATCH"):
-        if index["unusable"]:
+        if index["is_unusable"]:
             logger.info(f"rebuilding index {index['name']}")
             oracle.rebuild_index(cur, index["name"])
+
+    for index in oracle.get_partitioned_indexes(cur, "INTERPRO", "MATCH"):
+        if index["is_unusable"]:
+            logger.info(f"rebuilding index {index['name']}, "
+                        f"partition {index['partition']}")
+            oracle.rebuild_index(cur, index["name"],
+                                 partition=index["partition"])
 
     cur.close()
     con.close()
@@ -310,9 +317,17 @@ def update_database_feature_matches(url: str, databases: Sequence):
         oracle.gather_stats(cur, "INTERPRO", "FEATURE_MATCH", partition)
 
     for index in oracle.get_indexes(cur, "INTERPRO", "FEATURE_MATCH"):
-        if index["unusable"]:
+        if index["is_unusable"]:
             logger.info(f"rebuilding index {index['name']}")
             oracle.rebuild_index(cur, index["name"])
+
+    for index in oracle.get_partitioned_indexes(cur, "INTERPRO",
+                                                "FEATURE_MATCH"):
+        if index["is_unusable"]:
+            logger.info(f"rebuilding index {index['name']}, "
+                        f"partition {index['partition']}")
+            oracle.rebuild_index(cur, index["name"],
+                                 partition=index["partition"])
 
     cur.close()
     con.close()
@@ -431,9 +446,16 @@ def update_database_site_matches(url: str, databases: Sequence):
         oracle.drop_table(cur, "INTERPRO.SITE_MATCH_NEW", purge=True)
 
     for index in oracle.get_indexes(cur, "INTERPRO", "SITE_MATCH"):
-        if index["unusable"]:
+        if index["is_unusable"]:
             logger.info(f"rebuilding index {index['name']}")
             oracle.rebuild_index(cur, index["name"])
+
+    for index in oracle.get_partitioned_indexes(cur, "INTERPRO", "SITE_MATCH"):
+        if index["is_unusable"]:
+            logger.info(f"rebuilding index {index['name']}, "
+                        f"partition {index['partition']}")
+            oracle.rebuild_index(cur, index["name"],
+                                 partition=index["partition"])
 
     cur.close()
     con.close()
@@ -472,10 +494,13 @@ def update_feature_matches(url: str):
         )
         """
     )
+    con.commit()
     logger.info(f"{cur.rowcount} rows deleted")
 
+    params = ",".join([":" + str(i+1)
+                       for i in range(len(FEATURE_MATCH_PARTITIONS))])
     cur.execute(
-        """
+        f"""
         INSERT INTO INTERPRO.FEATURE_MATCH
         SELECT
           P.PROTEIN_AC, M.METHOD_AC, M.SEQ_FEATURE, M.SEQ_START, M.SEQ_END,
@@ -485,12 +510,12 @@ def update_feature_matches(url: str):
           ON P.UPI = M.UPI
         INNER JOIN INTERPRO.IPRSCAN2DBCODE D
           ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
-        -- Include MobiDB-Lite, Phobius, SignalP (Euk, Gram+, Gram-), TMHMM, COILS
-        WHERE D.DBCODE IN ('g', 'j', 'n', 's', 'v', 'q', 'x')
-        """
+        WHERE D.DBCODE IN ({params})
+        """,
+        list(FEATURE_MATCH_PARTITIONS.keys())
     )
-    logger.info(f"{cur.rowcount} rows inserted")
     con.commit()
+    logger.info(f"{cur.rowcount} rows inserted")
 
     cur.close()
     con.close()
@@ -682,8 +707,10 @@ def _prepare_matches(con: cx_Oracle.Connection):
         """
     )
 
+    params = ",".join([":" + str(i + 1)
+                       for i in range(len(FEATURE_MATCH_PARTITIONS))])
     cur.execute(
-        """
+        f"""
         INSERT /*+ APPEND */ INTO INTERPRO.MATCH_NEW
         SELECT
           P.PROTEIN_AC, M.METHOD_AC, M.SEQ_START, M.SEQ_END, 'T',
@@ -695,10 +722,10 @@ def _prepare_matches(con: cx_Oracle.Connection):
           ON P.UPI = M.UPI
         INNER JOIN INTERPRO.IPRSCAN2DBCODE D
           ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
-        -- Exclude MobiDB-Lite, Phobius, SignalP (Euk, Gram+, Gram-), TMHMM, COILS
-        WHERE D.DBCODE NOT IN ('g', 'j', 'n', 's', 'v', 'q', 'x')
+        WHERE D.DBCODE NOT IN ({params})
         AND M.SEQ_START != M.SEQ_END
-        """
+        """,
+        list(FEATURE_MATCH_PARTITIONS.keys())
     )
     con.commit()
 
@@ -807,6 +834,7 @@ def _insert_matches(con: cx_Oracle.Connection):
         """
     )
     logger.info(f"{cur.rowcount} rows deleted")
+    con.commit()
 
     cur.execute(
         """

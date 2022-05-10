@@ -417,7 +417,7 @@ def delete_obsoletes(url: str, truncate: bool = False, threads: int = 8,
 
     for table, constraint, column in tables:
         for index in ora.get_indexes(cur, "INTERPRO", table):
-            if index["unusable"]:
+            if index["is_unusable"]:
                 logger.info(f"rebuilding index {index['name']}")
                 ora.rebuild_index(cur, index["name"])
 

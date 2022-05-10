@@ -6,7 +6,7 @@ A centralised Python implementation of InterPro production procedures.
 
 ### Requirements:
 
-- Python 3.7+, with packages `cx_Oracle`, `psycopg2`, and `mundone` ([link](https://github.com/matthiasblum/mundone))
+- Python 3.9+, with packages `cx_Oracle`, `psycopg2`, and `mundone` ([link](https://github.com/matthiasblum/mundone))
 - `GCC` with the `sqlite3.h` header
 
 ### Installation
@@ -65,8 +65,10 @@ All files can be renamed. `main.conf` is passed as an command line argument, and
     - **lsf_queue**: name of the LSF queue to submit jobs to
     - **pronto_url**: URL of the Pronto curation application
     - **data_dir**: directory where to store staging files
-    - **temp_dir**: directory for temporary files (e.g. job input/output)
-    - **work_dir**: directory where to run InterProScan match calculation
+    - **match_calc_dir**: directory where to run InterProScan match calculation
+    - **temporary_dir**: directory for temporary files (i.e. job input/output)
+    - **workflows_dir**: directory for workflows SQLite files
+
     
 ### members.conf
 
@@ -94,13 +96,17 @@ Additional properties:
 
 The `DEFAULT` section defines the defaults values for the following properties:
 
-- `job_cpu`: number of processes to request when submitting a job
-- `job_mem`: the maximum amount of memory a job should be allowed to use (in MB)
-- `job_size`: the number of sequences to process in each job
+- `job_cpu`: number of processes to request when submitting a job.
+- `job_mem`: the maximum amount of memory a job should be allowed to use (in MB).
+- `job_size`: the number of sequences to process in each job.
+- `job_timeout`: the number of hours a job is allowed to run for before being killed. Any value lower than 1 disable the timeout.
 
-The default values can be overridden. For instance, as we know that PRINTS jobs take more memory, to request PRINTS jobs to be allocated 16G of memory:
+The default values can be overridden. For instance, adding the following block under the `DEFAULT` section ensure that MobiDB-Lite jobs timeout after 48 hours and that PRINTS jobs are allocated 16GB of memory:
 
 ```
+[mobidb-lite]
+job_timeout = 48
+
 [prints]
 job_mem = 16384
 ```
@@ -373,11 +379,6 @@ The optional arguments are:
 </thead>
 <tbody>
     <tr>
-        <td>databases</td>
-        <td>Import database information (e.g. version, release date)</td>
-        <td></td>
-    </tr>
-    <tr>
         <td>annotations</td>
         <td>Import publications associated to protein annotations</td>
         <td></td>
@@ -393,24 +394,54 @@ The optional arguments are:
         <td></td>
     </tr>
     <tr>
+        <td>databases</td>
+        <td>Import database information (e.g. version, release date)</td>
+        <td></td>
+    </tr>    
+    <tr>
         <td>proteins</td>
         <td>Import general information on proteins (e.g. accession, length, species)</td>
         <td></td>
     </tr>
-    <tr>
-        <td>matches</td>
-        <td>Import protein matches</td>
-        <td>databases</td>
+        <tr>
+        <td>init-matches</td>
+        <td>Create the match table (empty)</td>
+        <td></td>
     </tr>
     <tr>
-        <td>signature2proteins</td>
+        <td>export-matches</td>
+        <td>Export protein matches for member database signatures</td>
+        <td>init-matches</td>
+    </tr>
+    <tr>
+        <td>insert-matches</td>
+        <td>Insert protein matches for member database signatures</td>
+        <td>export-matches</td>
+    </tr>
+    <tr>
+        <td>insert-fmatches</td>
+        <td>Insert protein matches for sequence features (AntiFam, etc.)</td>
+        <td>init-matches</td>
+    </tr>
+    <tr>
+        <td>index-matches</td>
+        <td>Index and cluster the match table</td>
+        <td>insert-matches, insert-fmatches</td>
+    </tr>
+    <tr>
+        <td>insert-signature2proteins</td>
         <td>Associate member database signatures with UniProt proteins, UniProt descriptions, taxonomic origins, and GO terms</td>
-        <td>proteins-names</td>
+        <td>export-matches, proteins-names</td>
+    </tr>
+    <tr>
+        <td>index-signature2proteins</td>
+        <td>Index the signature2proteins table</td>
+        <td>insert-signature2proteins</td>
     </tr>
     <tr>
         <td>signatures</td>
-        <td>Import member database signatures</td>
-        <td>matches, signature2proteins</td>
+        <td>Import and compare member database signatures</td>
+        <td>databases, export-matches</td>
     </tr>
     <tr>
         <td>taxonomy</td>

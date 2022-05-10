@@ -527,17 +527,8 @@ def update_signatures(filepath: str, url: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
-    # Re-create table
-    oracle.drop_table(cur, "INTERPRO.METHOD_UNIRULE", purge=True)
-    cur.execute(
-        """
-        CREATE TABLE INTERPRO.METHOD_UNIRULE (
-            METHOD_AC VARCHAR2(25) NOT NULL 
-                CONSTRAINT PK_METHOD_UNIRULE
-                PRIMARY KEY 
-        ) NOLOGGING
-        """
-    )
+    # Refresh data
+    oracle.truncate_table(cur, "INTERPRO.METHOD_UNIRULE")
 
     cur.executemany(
         """

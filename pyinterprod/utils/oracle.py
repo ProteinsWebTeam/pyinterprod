@@ -11,6 +11,17 @@ def clob_as_str(cur: Cursor, name, default_type, size, precision, scale):
         return cur.var(DB_TYPE_LONG, arraysize=cur.arraysize)
 
 
+def drop_index(cur: Cursor, name):
+    try:
+        cur.execute(f"DROP INDEX {name}")
+    except DatabaseError as exc:
+        error, = exc.args
+
+        # ORA-01418: specified index does not exist
+        if error.code != 1418:
+            raise exc
+
+
 def drop_mview(cur: Cursor, name: str):
     try:
         cur.execute(f"DROP MATERIALIZED VIEW {name}")
@@ -102,7 +113,7 @@ def get_indexes(cur: Cursor, owner: str, name: str) -> List[dict]:
                 "is_unique": row[2] == "UNIQUE",
                 "tablespace": row[3],
                 "logging": row[4] == "YES",
-                "unusable": row[5] == "UNUSABLE",  # can be VALID or N/A
+                "is_unusable": row[5] == "UNUSABLE",  # can be VALID or N/A
                 "columns": []
             }
 
@@ -112,6 +123,32 @@ def get_indexes(cur: Cursor, owner: str, name: str) -> List[dict]:
         })
 
     return list(indexes.values())
+
+
+def get_partitioned_indexes(cur: Cursor, owner: str, table: str) -> list[dict]:
+    cur.execute(
+        """
+        SELECT I.INDEX_NAME, P.PARTITION_NAME, I.STATUS
+        FROM ALL_TAB_PARTITIONS P
+        INNER JOIN ALL_PART_KEY_COLUMNS K
+            ON P.TABLE_OWNER = K.OWNER
+            AND P.TABLE_NAME = K.NAME
+        INNER JOIN ALL_IND_PARTITIONS I 
+            ON P.PARTITION_NAME = I.PARTITION_NAME
+        WHERE P.TABLE_OWNER = :1
+        AND P.TABLE_NAME = :2
+        """,
+        [owner, table]
+    )
+    results = []
+    for index, partition, status in cur:
+        results.append({
+            "name": index,
+            "partition": partition,
+            "is_unusable": status == "UNUSABLE"
+        })
+
+    return results
 
 
 def get_partitions(cur: Cursor, schema: str, table: str) -> List[dict]:
@@ -175,8 +212,11 @@ def get_subpartitions(cur: Cursor, schema: str, table: str, partition: str) -> L
     return sorted(subpartitions.values(), key=lambda x: x["position"])
 
 
-def rebuild_index(cur: Cursor, name: str, parallel: bool = False):
-    if parallel:
+def rebuild_index(cur: Cursor, name: str, partition: Optional[str] = None,
+                  parallel: bool = False):
+    if partition:
+        cur.execute(f"ALTER INDEX {name} REBUILD PARTITION {partition}")
+    elif parallel:
         cur.execute(f"ALTER INDEX {name} REBUILD PARALLEL")
 
         # Prevent the index to be accessed in parallel by default

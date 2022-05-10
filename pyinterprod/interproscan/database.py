@@ -5,147 +5,7 @@ from mundone.task import Task
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
-
-
-def init_tables(ippro_uri: str, ispro_uri: str, i5_dir: str, others=None):
-    if others is None:
-        others = []
-
-    con = cx_Oracle.connect(ippro_uri)
-    cur = con.cursor()
-
-    active_analyses = {}
-    cur.execute(
-        """
-        SELECT I2D.IPRSCAN_SIG_LIB_REL_ID, D.DBNAME, V.VERSION
-        FROM INTERPRO.CV_DATABASE D
-        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
-            ON I2D.DBCODE = D.DBCODE
-        INNER JOIN INTERPRO.DB_VERSION V
-            ON D.DBCODE = V.DBCODE
-        """
-    )
-    for analysis_id, name, version in cur:
-        active_analyses[analysis_id] = (name, version, i5_dir)
-
-    cur.close()
-    con.close()
-
-    con = cx_Oracle.connect(ispro_uri)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT A.ANALYSIS_ID, T.MATCH_TABLE, T.SITE_TABLE
-        FROM IPRSCAN.IPM_ANALYSIS A
-        INNER JOIN IPRSCAN.IPM_ANALYSIS_MATCH_TABLE T
-        ON A.ANALYSIS_MATCH_TABLE_ID = T.ID
-        """
-    )
-    tables = {}
-    for analysis_id, match_table, site_table in cur:
-        try:
-            name, version, i5_dir = active_analyses[analysis_id]
-        except KeyError:
-            continue
-        else:
-            tables[name] = (
-                match_table.upper(),
-                site_table.upper() if site_table else None
-            )
-
-    for analysis_id, name, version, match_table, site_table, i5_dir in others:
-        active_analyses[analysis_id] = (name, version, i5_dir)
-        tables[name] = (
-            match_table.upper(),
-            site_table.upper() if site_table else None
-        )
-
-    tables = [(k, *v) for k, v in tables.items()]
-
-    cur.execute(
-        """
-        SELECT ANALYSIS_ID, HWM_SUBMITTED
-        FROM IPRSCAN.IPM_HWM
-        """
-    )
-    hwm = dict(cur.fetchall())
-
-    oracle.drop_table(cur, "IPRSCAN.ANALYSIS_JOBS", purge=True)
-    oracle.drop_table(cur, "IPRSCAN.ANALYSIS", purge=True)
-    oracle.drop_table(cur, "IPRSCAN.ANALYSIS_TABLES", purge=True)
-
-    cur.execute(
-        """
-        CREATE TABLE IPRSCAN.ANALYSIS
-        (
-            ID NUMBER(4) NOT NULL
-                CONSTRAINT ANALYSIS_PK PRIMARY KEY,
-            NAME VARCHAR2(30) NOT NULL,
-            VERSION VARCHAR2(20) NOT NULL,
-            ACTIVE NUMBER(1)
-                CONSTRAINT ANALYSIS_CHK
-                CHECK (ACTIVE in (0, 1)),
-            MAX_UPI VARCHAR2(13) DEFAULT NULL,
-            I5_DIR VARCHAR2(1000) NOT NULL,
-            TIMESTAMP DATE DEFAULT SYSDATE
-        )
-        """
-    )
-
-    cur.execute(
-        """
-        CREATE TABLE IPRSCAN.ANALYSIS_TABLES
-        (
-            NAME VARCHAR2(30) NOT NULL PRIMARY KEY,
-            MATCH_TABLE VARCHAR2(30) NOT NULL,
-            SITE_TABLE VARCHAR2(30)
-        )
-        """
-    )
-
-    cur.execute(
-        """
-        CREATE TABLE IPRSCAN.ANALYSIS_JOBS
-        (
-            ANALYSIS_ID NUMBER(4) NOT NULL
-                CONSTRAINT ANALYSIS_JOBS_FK
-                REFERENCES ANALYSIS (ID),
-            UPI_FROM VARCHAR2(13) NOT NULL,
-            UPI_TO VARCHAR2(13) NOT NULL,
-            SUBMIT_TIME DATE DEFAULT SYSDATE,
-            START_TIME DATE DEFAULT NULL,
-            END_TIME DATE DEFAULT NULL,
-            MAX_MEMORY NUMBER(6) DEFAULT NULL,
-            LIM_MEMORY NUMBER(6) DEFAULT NULL,
-            CPU_TIME NUMBER(9) DEFAULT NULL,
-            CONSTRAINT ANALYSIS_JOBS_PK
-                PRIMARY KEY (ANALYSIS_ID, UPI_FROM, UPI_TO)
-        )
-        """
-    )
-
-    for analysis_id, (name, version, i5_dir) in active_analyses.items():
-        cur.execute(
-            """
-            INSERT INTO IPRSCAN.ANALYSIS
-                (ID, NAME, VERSION, ACTIVE, MAX_UPI, I5_DIR)
-            VALUES
-                (:1, :2, :3, :4, :5, :6)
-            """,
-            (analysis_id, name, version, 1, hwm.get(analysis_id), i5_dir)
-        )
-
-    cur.executemany(
-        """
-        INSERT INTO IPRSCAN.ANALYSIS_TABLES
-        VALUES (:1, :2, :3)
-        """,
-        tables
-    )
-
-    con.commit()
-    cur.close()
-    con.close()
+from .utils import int_to_upi, upi_to_int
 
 
 def get_analyses(obj: Union[str, cx_Oracle.Cursor]) -> dict:
@@ -163,7 +23,7 @@ def get_analyses(obj: Union[str, cx_Oracle.Cursor]) -> dict:
         FROM IPRSCAN.ANALYSIS A
         INNER JOIN IPRSCAN.ANALYSIS_TABLES T
             ON A.NAME = T.NAME
-        WHERE A.ACTIVE = 1
+        WHERE A.ACTIVE = 'Y'
         """
     )
 
@@ -187,7 +47,7 @@ def get_analyses(obj: Union[str, cx_Oracle.Cursor]) -> dict:
     return analyses
 
 
-def clean_tables(uri: str):
+def clean_tables(uri: str, analysis_ids: Optional[list[int]] = None):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
@@ -216,6 +76,10 @@ def clean_tables(uri: str):
                 continue
 
             analysis_id = int(p["value"])
+
+            if analysis_ids and analysis_id not in analysis_ids:
+                continue
+
             if analysis_id not in analyses:
                 # Obsolete analysis: remove data
                 actions.append((
@@ -403,6 +267,44 @@ def get_incomplete_jobs(cur: cx_Oracle.Cursor) -> dict:
     return incomplete_jobs
 
 
+def split_incomplete_jobs(uri: str, new_size: int):
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+    jobs = get_incomplete_jobs(cur)
+
+    params = []
+    for analysis_id, analysis_jobs in jobs.items():
+        for upi_from, upi_to in analysis_jobs:
+            while upi_from <= upi_to:
+                start = upi_to_int(upi_from)
+                new_start = start + (new_size - 1)
+                new_upi_to = int_to_upi(new_start)
+
+                params.append((analysis_id, upi_from, new_upi_to))
+
+                upi_from = int_to_upi(new_start + 1)
+
+    cur.execute(
+        """
+        DELETE FROM IPRSCAN.ANALYSIS_JOBS
+        WHERE END_TIME IS NULL
+        """
+    )
+
+    cur.executemany(
+        """
+        INSERT INTO IPRSCAN.ANALYSIS_JOBS 
+            (ANALYSIS_ID, UPI_FROM, UPI_TO, SUBMIT_TIME)
+        VALUES (:1, :2, :3, SYSDATE)
+        """,
+        params
+    )
+
+    con.commit()
+    cur.close()
+    con.close()
+
+
 def add_job(cur: cx_Oracle, analysis_id: int, upi_from: str, upi_to: str):
     cur.execute(
         """
@@ -421,6 +323,29 @@ def add_job(cur: cx_Oracle, analysis_id: int, upi_from: str, upi_to: str):
         (analysis_id, upi_from, upi_to)
     )
     cur.connection.commit()
+
+
+def reset_job(uri: str, analysis_id: int, upi_from: str, upi_to: str):
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        UPDATE IPRSCAN.ANALYSIS_JOBS
+        SET SUBMIT_TIME = SYSDATE,
+            START_TIME = NULL,
+            END_TIME = NULL,
+            MAX_MEMORY = NULL,
+            LIM_MEMORY = NULL,
+            CPU_TIME = NULL
+        WHERE ANALYSIS_ID = :1 
+          AND UPI_FROM = :2 
+          AND UPI_TO = :3
+        """,
+        [analysis_id, upi_from, upi_to]
+    )
+    con.commit()
+    cur.close()
+    con.close()
 
 
 def update_job(uri: str, analysis_id: int, upi_from: str, upi_to: str,
