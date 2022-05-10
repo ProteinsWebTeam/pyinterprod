@@ -20,7 +20,7 @@ from pyinterprod.utils.kvdb import KVdb
 # Domain org.: introduce a gap when distance between two positions > 20 aa
 _MAX_GAP = 20
 
-_INDEX_SUFFIX = ".i"
+INDEX_SUFFIX = ".i"
 
 
 def export(url: str, output: str, cachesize: int = 10000000,
@@ -59,7 +59,7 @@ def export(url: str, output: str, cachesize: int = 10000000,
     logger.info(f"temporary files: {size / 1024 ** 2:.0f} MB")
 
     # Write index
-    with open(f"{output}{_INDEX_SUFFIX}", "wb") as fh:
+    with open(f"{output}{INDEX_SUFFIX}", "wb") as fh:
         pickle.dump(index, fh)
 
     logger.info("done")
@@ -227,7 +227,7 @@ def insert_signature2protein(url: str, names_db: str, matches_file: str,
     con.close()
 
     # Load jobs to send to workers
-    with open(f"{matches_file}{_INDEX_SUFFIX}", "rb") as fh:
+    with open(f"{matches_file}{INDEX_SUFFIX}", "rb") as fh:
         index = pickle.load(fh)
 
     logger.info("populating")
@@ -497,7 +497,7 @@ def _get_fmatches(uri: str, name2id: dict[str, int]):
 
 def insert_matches(uri: str, matches_file: str, processes: int = 1):
     # Load jobs to send to workers
-    with open(f"{matches_file}{_INDEX_SUFFIX}", "rb") as fh:
+    with open(f"{matches_file}{INDEX_SUFFIX}", "rb") as fh:
         index = pickle.load(fh)
 
     logger.info("populating")

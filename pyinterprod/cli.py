@@ -106,8 +106,9 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
         Task(
             fn=pronto.signature.insert_signatures,
             args=(ora_ipr_url, pg_ipr_url, matches_file),
+            kwargs=dict(processes=8),
             name="signatures",
-            scheduler=dict(mem=8000, queue=lsf_queue),
+            scheduler=dict(cpu=8, mem=16000, queue=lsf_queue),
             requires=["databases", "export-matches"]
         ),
         Task(
