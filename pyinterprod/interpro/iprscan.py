@@ -454,13 +454,6 @@ def _import_table(uri: str, remote_table: str, analyses: Sequence[int],
             NOLOGGING
             """
     )
-    cur.execute(
-        f"""
-            CREATE INDEX {remote_table}$UPI
-            ON IPRSCAN.{local_table} (UPI)
-            NOLOGGING
-            """
-    )
 
     cur.close()
     con.close()
