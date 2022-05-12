@@ -228,15 +228,15 @@ SITE_SELECT = ["ANALYSIS_ID", "UPI_RANGE", "UPI", "METHOD_AC", "LOC_START",
 SITE_PARITIONS = {
     "CDD": {
         "columns": SITE_SELECT,
-        "partitions": "CDD"
+        "partition": "CDD"
     },
     "PIRSR": {
         "columns": SITE_SELECT,
-        "partitions": "PIRSR"
+        "partition": "PIRSR"
     },
     "SFLD": {
         "columns": SITE_SELECT,
-        "partitions": "SFLD"
+        "partition": "SFLD"
     },
 }
 
