@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import argparse
 import json
 import os
@@ -9,7 +7,6 @@ import subprocess as sp
 import sys
 from concurrent import futures
 from tempfile import mkdtemp, mkstemp
-from typing import List, Tuple
 
 import cx_Oracle
 
@@ -160,7 +157,7 @@ def iter_sequences(seqfile: str):
         yield identifier, accession, buffer
 
 
-def load_hmmscan_results(outfile: str, tabfile: str) -> List[dict]:
+def load_hmmscan_results(outfile: str, tabfile: str) -> list[dict]:
     alignments = load_domain_alignments(outfile)
     targets = {}
 
@@ -234,7 +231,7 @@ def load_hmmscan_results(outfile: str, tabfile: str) -> List[dict]:
     return list(targets.values())
 
 
-def load_domain_alignments(file: str) -> List[Tuple[str, str]]:
+def load_domain_alignments(file: str) -> list[tuple[str, str]]:
     """
     Parse the output file of hmmscan and load domain alignments.
 
@@ -307,7 +304,7 @@ def load_domain_alignments(file: str) -> List[Tuple[str, str]]:
     return alignments
 
 
-def load_compass_results(outfile) -> List[dict]:
+def load_compass_results(outfile) -> list[dict]:
     # p1 = re.compile(r"length\s*=\s*(\d+)")
     p2 = re.compile(r"Evalue\s*=\s*([\d.e\-]+)")
 
@@ -453,6 +450,19 @@ def run_hmmscan(hmmdb: str, seqfile: str, domfile: str, outfile: str) -> bool:
 
 def update_cdd_clans(url: str, database: Database, cddmasters: str,
                      cddid: str, fam2supfam: str, **kwargs):
+    """
+    Update CDD clans (called superfamilies).
+    Two COMPASS binaries, mk_compass_db and compass_vs_db must be in the PATH.
+    You can download binaries from:
+        http://prodata.swmed.edu/download/pub/compass/
+
+    :param url: Oracle connection string
+    :param database: Database object
+    :param cddmasters: File of FASTA-formatted sequences that
+        show representative sequences for each CDD family
+    :param cddid: File of summary information about CDD (super)families
+    :param fam2supfam: File of mapping between families and superfamilies
+    """
     threads = kwargs.get("threads")
     tmpdir = kwargs.get("tmpdir")
     if tmpdir:
