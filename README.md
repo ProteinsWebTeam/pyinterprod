@@ -379,11 +379,6 @@ The optional arguments are:
 </thead>
 <tbody>
     <tr>
-        <td>databases</td>
-        <td>Import database information (e.g. version, release date)</td>
-        <td></td>
-    </tr>
-    <tr>
         <td>annotations</td>
         <td>Import publications associated to protein annotations</td>
         <td></td>
@@ -399,24 +394,54 @@ The optional arguments are:
         <td></td>
     </tr>
     <tr>
+        <td>databases</td>
+        <td>Import database information (e.g. version, release date)</td>
+        <td></td>
+    </tr>    
+    <tr>
         <td>proteins</td>
         <td>Import general information on proteins (e.g. accession, length, species)</td>
         <td></td>
     </tr>
-    <tr>
-        <td>matches</td>
-        <td>Import protein matches</td>
-        <td>databases</td>
+        <tr>
+        <td>init-matches</td>
+        <td>Create the match table (empty)</td>
+        <td></td>
     </tr>
     <tr>
-        <td>signature2proteins</td>
+        <td>export-matches</td>
+        <td>Export protein matches for member database signatures</td>
+        <td>init-matches</td>
+    </tr>
+    <tr>
+        <td>insert-matches</td>
+        <td>Insert protein matches for member database signatures</td>
+        <td>export-matches</td>
+    </tr>
+    <tr>
+        <td>insert-fmatches</td>
+        <td>Insert protein matches for sequence features (AntiFam, etc.)</td>
+        <td>init-matches</td>
+    </tr>
+    <tr>
+        <td>index-matches</td>
+        <td>Index and cluster the match table</td>
+        <td>insert-matches, insert-fmatches</td>
+    </tr>
+    <tr>
+        <td>insert-signature2proteins</td>
         <td>Associate member database signatures with UniProt proteins, UniProt descriptions, taxonomic origins, and GO terms</td>
-        <td>proteins-names</td>
+        <td>export-matches, proteins-names</td>
+    </tr>
+    <tr>
+        <td>index-signature2proteins</td>
+        <td>Index the signature2proteins table</td>
+        <td>insert-signature2proteins</td>
     </tr>
     <tr>
         <td>signatures</td>
-        <td>Import member database signatures</td>
-        <td>matches, signature2proteins</td>
+        <td>Import and compare member database signatures</td>
+        <td>databases, export-matches</td>
     </tr>
     <tr>
         <td>taxonomy</td>

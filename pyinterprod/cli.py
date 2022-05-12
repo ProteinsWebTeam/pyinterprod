@@ -2,7 +2,6 @@ import os
 import sys
 from argparse import ArgumentParser
 from configparser import ConfigParser
-from typing import List
 
 from mundone import Task, Workflow
 
@@ -12,12 +11,15 @@ from pyinterprod.interpro.clan import update_cdd_clans, update_hmm_clans
 
 
 def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
-                     pg_ipr_url: str, data_dir: str, lsf_queue: str) -> List[Task]:
+                     pg_ipr_url: str, data_dir: str, lsf_queue: str
+                     ) -> list[Task]:
+    names_db = os.path.join(data_dir, "names.sqlite")
+    matches_file = os.path.join(data_dir, "matches")
     return [
         Task(
-            fn=pronto.database.import_databases,
-            args=(ora_ipr_url, pg_ipr_url),
-            name="databases",
+            fn=pronto.match.create_match_table,
+            args=(pg_ipr_url,),
+            name="init-matches",
             scheduler=dict(mem=100, queue=lsf_queue)
         ),
 
@@ -38,8 +40,7 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
         ),
         Task(
             fn=pronto.protein.import_protein_names,
-            args=(ora_swp_url, pg_ipr_url,
-                  os.path.join(data_dir, "names.sqlite")),
+            args=(ora_swp_url, pg_ipr_url, names_db),
             kwargs=dict(tmpdir="/tmp"),
             name="proteins-names",
             scheduler=dict(mem=2000, tmp=15000, queue=lsf_queue),
@@ -47,38 +48,68 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
 
         # Data from IPPRO
         Task(
+            fn=pronto.database.import_databases,
+            args=(ora_ipr_url, pg_ipr_url),
+            name="databases",
+            scheduler=dict(mem=100, queue=lsf_queue)
+        ),
+        Task(
             fn=pronto.protein.import_proteins,
             args=(ora_ipr_url, pg_ipr_url),
             name="proteins",
             scheduler=dict(mem=100, queue=lsf_queue),
         ),
         Task(
-            fn=pronto.match.import_matches,
-            args=(ora_ipr_url, pg_ipr_url,
-                  os.path.join(data_dir, "allseqs.dat")),
+            fn=pronto.match.export,
+            args=(ora_ipr_url, matches_file),
             kwargs=dict(tmpdir="/tmp"),
-            name="matches",
-            scheduler=dict(mem=4000, tmp=30000, queue=lsf_queue),
-            requires=["databases"]
+            name="export-matches",
+            scheduler=dict(mem=4000, tmp=100000, queue=lsf_queue)
         ),
         Task(
-            fn=pronto.match.create_signature2protein,
-            args=(ora_ipr_url, pg_ipr_url,
-                  os.path.join(data_dir, "names.sqlite"),
-                  os.path.join(data_dir, "compseqs.dat")),
-            kwargs=dict(tmpdir="/tmp", processes=8),
-            name="signature2proteins",
-            scheduler=dict(cpu=8, mem=16000, tmp=15000, queue=lsf_queue),
-            requires=["proteins-names"]
-        ),
-        Task(
-            fn=pronto.signature.import_signatures,
-            args=(ora_ipr_url, pg_ipr_url,
-                  os.path.join(data_dir, "allseqs.dat"),
-                  os.path.join(data_dir, "compseqs.dat")),
-            name="signatures",
+            fn=pronto.match.insert_fmatches,
+            args=(ora_ipr_url, pg_ipr_url),
+            name="insert-fmatches",
             scheduler=dict(mem=1000, queue=lsf_queue),
-            requires=["matches", "signature2proteins"]
+            requires=["databases", "init-matches"]
+        ),
+        Task(
+            fn=pronto.match.insert_matches,
+            args=(pg_ipr_url, matches_file),
+            kwargs=dict(processes=8),
+            name="insert-matches",
+            scheduler=dict(cpu=8, mem=8000, queue=lsf_queue),
+            requires=["databases", "export-matches", "init-matches"]
+        ),
+        Task(
+            fn=pronto.match.finalize_match_table,
+            args=(pg_ipr_url, ),
+            name="index-matches",
+            scheduler=dict(mem=100, queue=lsf_queue),
+            requires=["insert-fmatches", "insert-matches"]
+        ),
+        Task(
+            fn=pronto.match.insert_signature2protein,
+            args=(pg_ipr_url, names_db, matches_file),
+            kwargs=dict(processes=8, tmpdir="/tmp"),
+            name="insert-signature2proteins",
+            scheduler=dict(cpu=8, mem=4000, tmp=15000, queue=lsf_queue),
+            requires=["export-matches", "proteins-names"]
+        ),
+        Task(
+            fn=pronto.match.finalize_signature2protein,
+            args=(pg_ipr_url,),
+            name="index-signature2proteins",
+            scheduler=dict(mem=100, queue=lsf_queue),
+            requires=["insert-signature2proteins"]
+        ),
+        Task(
+            fn=pronto.signature.insert_signatures,
+            args=(ora_ipr_url, pg_ipr_url, matches_file),
+            kwargs=dict(processes=8),
+            name="signatures",
+            scheduler=dict(cpu=8, mem=16000, queue=lsf_queue),
+            requires=["databases", "export-matches"]
         ),
         Task(
             fn=pronto.taxon.import_taxonomy,
@@ -429,7 +460,7 @@ def run_member_db_update():
 
     if mem_updates:
         # Adding Pronto tasks
-        after_pronto = set()
+        after_pronto = []
         for t in get_pronto_tasks(ora_interpro_url, ora_swpread_url,
                                   ora_goa_url, pg_url, data_dir, lsf_queue):
             # Adding 'pronto-' prefix
@@ -442,7 +473,7 @@ def run_member_db_update():
                 t.requires = {"update-matches"}
 
             tasks.append(t)
-            after_pronto.add(t.name)
+            after_pronto.append(t.name)
 
         tasks += [
             Task(
@@ -734,6 +765,7 @@ def run_uniprot_update():
     ]
 
     # Adding Pronto tasks
+    after_pronto = []
     for t in get_pronto_tasks(ora_interpro_url, ora_swpread_url, ora_goa_url,
                               pg_url, data_dir, lsf_queue):
         # Adding 'pronto-' prefix
@@ -746,6 +778,7 @@ def run_uniprot_update():
             t.requires = {"swissprot-de", "taxonomy", "unirule",
                           "update-fmatches"}
 
+        after_pronto.append(t.name)
         tasks.append(t)
 
     tasks += [
@@ -755,9 +788,7 @@ def run_uniprot_update():
             args=(ora_interpro_url, pg_url, data_dir, pronto_url, emails),
             name="send-report",
             scheduler=dict(mem=4000, queue=lsf_queue),
-            requires=["pronto-annotations", "pronto-proteins-similarities",
-                      "pronto-proteins", "pronto-signatures",
-                      "pronto-taxonomy"]
+            requires=after_pronto
         ),
 
         # Not urgent tasks (can be run after everything else)
