@@ -215,18 +215,17 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
             n_tasks_analysis = 0
             for upi_from, upi_to in incomplete_jobs.pop(analysis_id, []):
+                if dry_run:
+                    """
+                    We're not monitoring/submitting tasks, so we don't need
+                    a real task object
+                    """
+                    to_run.append(None)
+                    continue
+
                 task = factory.make(upi_from, upi_to)
                 task.status = STATUS_RUNNING  # assumes it's running
                 task.workdir = os.path.join(temp_dir, task.name)
-
-                if dry_run:
-                    """
-                    We don't want to call task.poll() as we would lose the
-                    info since the files would be deleted if the task is done,
-                    but we're not going to update the ANALYSIS_JOBS table.
-                    """
-                    to_run.append(task)
-                    continue
 
                 if task.name in name2id:
                     # Running
@@ -251,7 +250,10 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
             for upi_from, upi_to in range_jobs(next_upi, max_upi,
                                                config["job_size"]):
-                if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
+                if dry_run:
+                    to_run.append(None)
+                    continue
+                elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                     break
 
                 to_run.append(factory.make(upi_from, upi_to))
