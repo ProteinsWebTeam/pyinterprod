@@ -797,7 +797,7 @@ def run_uniprot_update():
             args=(ora_interpro_url,),
             name="update-varsplic",
             scheduler=dict(queue=lsf_queue),
-            requires=["import-ipm-matches"]
+            requires=["update-ipm-matches"]
         ),
         Task(
             fn=interpro.match.update_site_matches,

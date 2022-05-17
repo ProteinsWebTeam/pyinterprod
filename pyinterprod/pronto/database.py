@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import cx_Oracle
 import psycopg2
 
@@ -22,7 +20,7 @@ DATABASES = [
     'V',    # PANTHER
     'X',    # CATH-Gene3D
     'Y',    # SUPERFAMILY
-    # 'g',    # MobiDB Lite
+    'a',    # ANTIFAM
     'u',    # UniProtKB
 ]
 
