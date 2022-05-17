@@ -120,6 +120,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         "job_timeout": kwargs.get("job_timeout"),
     }
     custom_configs = kwargs.get("config", {})
+    dry_run = kwargs.get("dry_run", False)
     infinite_mem = kwargs.get("infinite_mem", False)
     keep_files = kwargs.get("keep_files", None)
     lsf_queue = kwargs.get("lsf_queue")
@@ -218,6 +219,15 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 task.status = STATUS_RUNNING  # assumes it's running
                 task.workdir = os.path.join(temp_dir, task.name)
 
+                if dry_run:
+                    """
+                    We don't want to call task.poll() as we would lose the
+                    info since the files would be deleted if the task is done,
+                    but we're not going to update the ANALYSIS_JOBS table.
+                    """
+                    to_run.append(task)
+                    continue
+
                 if task.name in name2id:
                     # Running
                     task.jobid = name2id.pop(task.name)
@@ -253,6 +263,12 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         cur.close()
         con.close()
 
+        n_tasks = len(to_run)
+        logger.info(f"Tasks: {n_tasks:,}")
+
+        if dry_run:
+            return
+
         """
         Tasks in the list are grouped by analysis, so if we submit them 
         in order, tasks from the "first" analysis will start to run first, 
@@ -263,13 +279,10 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         re-arranged, so we use random.randint to destructively iterate 
         over the list.
         """
-        n_tasks = len(to_run)
         while to_run:
             i = random.randrange(len(to_run))  # 0 <= i < len(to_run)
             task = to_run.pop(i)
             pool.submit(task)
-
-        logger.info(f"Tasks: {n_tasks:,}")
 
         n_completed = n_failed = 0
         milestone = step = 5

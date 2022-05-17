@@ -482,6 +482,7 @@ The optional arguments are:
 - `--import-sequences`: import sequences from the UniParc database
 - `--top-up`: only import new sequences or prepare new jobs instead of re-doing everything
 - `--clean`: delete obsolete data (for retired analyses)
+- `--dry-run`: show the number of jobs to run and exit
 - `-l, --list`: list active analyses and exit
 - `-a, --analyses`: IDs of analyses to run. If not provided, all analyses are run
 - `-e, --exclude`: IDs of analyses to exclude

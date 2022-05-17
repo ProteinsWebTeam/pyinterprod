@@ -858,6 +858,9 @@ def run_interproscan_manager():
                              "database (default: off)")
     parser.add_argument("--clean", action="store_true", default=False,
                         help="delete obsolete data (default: off)")
+    parser.add_argument("--dry-run", action="store_true", default=False,
+                        help="show the number of jobs to run and exit "
+                             "(default: off)")
     parser.add_argument("-l", "--list", action="store_true", default=False,
                         help="list active analyses and exit (default: off)")
     parser.add_argument("-a", "--analyses", nargs="*", default=[], type=int,
@@ -904,12 +907,12 @@ def run_interproscan_manager():
 
         return
 
-    if args.import_sequences:
+    if args.import_sequences and not args.dry_run:
         interproscan.database.import_uniparc(ispro_uri=iscn_uniparc_uri,
                                              uniparc_uri=unpr_uniparc_uri,
                                              top_up=args.top_up)
 
-    if args.clean:
+    if args.clean and not args.dry_run:
         interproscan.database.clean_tables(iscn_iprscan_uri, args.analyses)
 
     analyses_config = ConfigParser()
@@ -938,6 +941,8 @@ def run_interproscan_manager():
                              job_timeout=job_timeout,
                              # Custom configs
                              config=analyses_configs,
+                             # Performs a dry run
+                             dry_run=args.dry_run,
                              # LSF queue
                              lsf_queue=config["misc"]["lsf_queue"],
                              # Always resubmit a job if it fails due to memory
