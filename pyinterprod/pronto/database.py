@@ -20,7 +20,8 @@ DATABASES = [
     'V',    # PANTHER
     'X',    # CATH-Gene3D
     'Y',    # SUPERFAMILY
-    'a',    # ANTIFAM
+    'a',    # AntiFam
+    'f',    # FunFam
     'u',    # UniProtKB
 ]
 
