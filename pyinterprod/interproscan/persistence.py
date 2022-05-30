@@ -345,6 +345,9 @@ def panther_matches(uri: str, file: str, analysis_id: int, table: str):
                 an_node_id = cols[17].strip()
             except IndexError:
                 an_node_id = None
+            else:
+                if an_node_id == "-":
+                    an_node_id = None
 
             values.append({
                 "analysis_id": analysis_id,
