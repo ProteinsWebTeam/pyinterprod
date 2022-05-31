@@ -479,7 +479,7 @@ def _get_fmatches(uri: str, name2id: dict[str, int]):
         SELECT FM.PROTEIN_AC, FM.METHOD_AC, LOWER(D.DBSHORT), POS_FROM, POS_TO
         FROM INTERPRO.FEATURE_MATCH FM
         INNER JOIN INTERPRO.CV_DATABASE D ON FM.DBCODE = D.DBCODE
-        WHERE FM.DBCODE = 'a'
+        WHERE FM.DBCODE IN ('a', 'f')
         """
     )
 
