@@ -49,11 +49,14 @@ def parse_functional_families(file: str) -> list[Method]:
         for line in fh:
             accession, name = line.rstrip().split("\t")
 
-            # accession like 1.10.10.10-FF-000001
+            # accession format: 1.10.10.10-FF-000001
             supfam, _, funfam = accession.split("-")
 
-            accession = f"{_PREFIX}{supfam}:FF:{funfam}"
-            signatures.append(Method(accession, _TYPE_FUNFAM, name))
+            signatures.append(Method(
+                accession=f"{_PREFIX}{supfam}:FF:{funfam}",
+                sig_type=_TYPE_FUNFAM,
+                name=None if name == "-" else name
+            ))
 
     return signatures
 
