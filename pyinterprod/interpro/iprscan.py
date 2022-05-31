@@ -657,7 +657,7 @@ def _update_partition(uri: str, table: str, partitioned_table: str,
 
         high_value = None
         for p in oracle.get_partitions(cur, "IPRSCAN", partitioned_table):
-            if p["name"] == partition:
+            if p["name"].lower() == partition.lower():
                 high_value = int(p["value"])
                 break
 
