@@ -220,8 +220,12 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     We're not monitoring/submitting tasks, so we don't need
                     a real task object
                     """
-                    to_run.append(None)
-                    continue
+                    if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
+                        break
+                    else:
+                        to_run.append(None)
+                        n_tasks_analysis += 1
+                        continue
 
                 task = factory.make(upi_from, upi_to)
                 task.status = STATUS_RUNNING  # assumes it's running
@@ -250,11 +254,12 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
             for upi_from, upi_to in range_jobs(next_upi, max_upi,
                                                config["job_size"]):
-                if dry_run:
-                    to_run.append(None)
-                    continue
-                elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
+                if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                     break
+                elif dry_run:
+                    to_run.append(None)
+                    n_tasks_analysis += 1
+                    continue
 
                 to_run.append(factory.make(upi_from, upi_to))
                 database.add_job(cur, analysis_id, upi_from, upi_to)
