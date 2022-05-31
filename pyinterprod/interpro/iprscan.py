@@ -655,13 +655,17 @@ def _update_partition(uri: str, table: str, partitioned_table: str,
         )
         con.commit()
 
-        cur.execute(
-            f"""
-            SELECT MAX(ANALYSIS_ID)
-            FROM IPRSCAN.{partitioned_table} PARTITION ({partition})
-            """
-        )
-        high_value, = cur.fetchone()
+        high_value = None
+        for p in oracle.get_partitions(cur, "IPRSCAN", partitioned_table):
+            if p["name"] == partition:
+                high_value = int(p["value"])
+                break
+
+        if high_value is None:
+            cur.close()
+            con.close()
+            raise RuntimeError(f"Partition {partition} not found "
+                               f"in {partitioned_table}")
 
         if high_value != analysis_id:
             """
