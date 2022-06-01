@@ -55,7 +55,9 @@ def parse_functional_families(file: str) -> list[Method]:
             signatures.append(Method(
                 accession=f"{_PREFIX}{supfam}:FF:{funfam}",
                 sig_type=_TYPE_FUNFAM,
-                name=None if name == "-" else name
+                # Some names break the CHECK constraint on the NAME column:
+                # use description instead
+                description=None if name == "-" else name
             ))
 
     return signatures

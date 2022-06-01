@@ -492,7 +492,7 @@ def update_features(url: str, update: Sequence[Tuple[Database, str]]):
         for f in features:
             params.append((
                 f.accession,
-                f.name,
+                f.name or f.accession,  # NAME is NOT NULL: fallback to acc
                 db.identifier,
                 f.description,
                 f.abstract[:4000] if f.abstract else None
