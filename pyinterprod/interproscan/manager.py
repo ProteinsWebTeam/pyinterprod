@@ -447,15 +447,15 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
         num_sequences = export_fasta(uri, fasta_file, upi_from, upi_to)
 
         if num_sequences > 0:
-            ok, stdout, stderr = run_i5(i5_dir, fasta_file, appl,
-                                        matches_output, cpu=cpu,
-                                        temp_dir=outdir, timeout=timeout)
+            i5_ok, stdout, stderr = run_i5(i5_dir, fasta_file, appl,
+                                           matches_output, cpu=cpu,
+                                           temp_dir=outdir, timeout=timeout)
 
             # Write captured streams
             sys.stdout.write(stdout)
             sys.stderr.write(stderr)
 
-            if not ok or _I5_SUCCESS not in stdout:
+            if not i5_ok or _I5_SUCCESS not in stdout:
                 raise RuntimeError("InterProScan error")
             elif not os.path.isfile(matches_output):
                 raise RuntimeError(f"Cannot access output matches tsv-pro")
