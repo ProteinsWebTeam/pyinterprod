@@ -270,7 +270,7 @@ def catch_temp_error(fn: Callable, args: Sequence, max_attempts: int = 3):
 
 def add_site_subpartitions(uri: str, owner: str, table: str, partition: str,
                            stop: str):
-    if len(stop) != 13 or stop[:3] != "UPI" or not stop[3:].isdigit():
+    if len(stop) != 13 or stop[:3] != "UPI" or not stop[3:].isalnum():
         raise ValueError(f"Invalid UniParc ID: {stop}. "
                          f"Expected format: UPIxxxxxxxxxx, "
                          f"with x being digits")
