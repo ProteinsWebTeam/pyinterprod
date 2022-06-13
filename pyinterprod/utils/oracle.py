@@ -279,7 +279,9 @@ def add_site_subpartitions(uri: str, owner: str, table: str, partition: str,
     subpartitions = get_subpartitions(cur, owner, table, partition)
 
     new_subpartitions = set()
-    for name in range_upi("UPI00000", stop, 1):
+
+    # range_upi yields start/stop, but since step = 1, start == stop
+    for name, _ in range_upi("UPI00000", stop, 1):
         if name not in subpartitions:
             new_subpartitions.add(name)
 
