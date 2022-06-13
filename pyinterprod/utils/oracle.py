@@ -283,7 +283,8 @@ def add_site_subpartitions(uri: str, owner: str, table: str, partition: str,
 
     new_subpartitions = set()
     # range_upi yields start/stop, but since step = 1, start == stop
-    for name, _ in range_upi("UPI00000", stop, 1):
+    for start, _ in range_upi("UPI00000", stop, 1):
+        name = prefix + start
         if name not in subpartitions:
             new_subpartitions.add(name)
 
@@ -291,7 +292,7 @@ def add_site_subpartitions(uri: str, owner: str, table: str, partition: str,
         cur.execute(
             f"""
             ALTER TABLE {table} MODIFY PARTITION {partition}
-            ADD SUBPARTITION {prefix}{name} VALUES ('{name}')
+            ADD SUBPARTITION {name} VALUES ('{name}')
             """
         )
 
