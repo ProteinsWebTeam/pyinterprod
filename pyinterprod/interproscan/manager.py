@@ -13,7 +13,7 @@ from mundone.task import STATUS_PENDING, STATUS_RUNNING
 
 from pyinterprod import logger
 from . import database, persistence
-from .utils import int_to_upi, upi_to_int, range_jobs
+from .utils import int_to_upi, upi_to_int, range_upi
 
 
 """
@@ -252,8 +252,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     to_run.append(task)
                     n_tasks_analysis += 1
 
-            for upi_from, upi_to in range_jobs(next_upi, max_upi,
-                                               config["job_size"]):
+            for upi_from, upi_to in range_upi(next_upi, max_upi,
+                                              config["job_size"]):
                 if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                     break
                 elif dry_run:

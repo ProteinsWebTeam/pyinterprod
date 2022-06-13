@@ -5,7 +5,7 @@ from cx_Oracle import connect
 from cx_Oracle import Cursor, DatabaseError, DB_TYPE_CLOB, DB_TYPE_LONG
 
 from pyinterprod import logger
-from pyinterprod.interproscan.utils import range_jobs
+from pyinterprod.interproscan.utils import range_upi
 
 
 def clob_as_str(cur: Cursor, name, default_type, size, precision, scale):
@@ -270,20 +270,17 @@ def catch_temp_error(fn: Callable, args: Sequence, max_attempts: int = 3):
 
 def add_site_subpartitions(uri: str, owner: str, table: str, partition: str,
                            stop: str):
-    if len(stop) != 13 or stop[:3] != "UPI" or not stop[3:].isalnum():
-        raise ValueError(f"Invalid UniParc ID: {stop}. "
-                         f"Expected format: UPIxxxxxxxxxx, "
-                         f"with x being digits")
+    if len(stop) != 8 or stop[:3] != "UPI" or not stop[3:].isalnum():
+        raise ValueError(f"Invalid range stop: {stop}. "
+                         f"Expected format: UPIxxxxx, with x being digits")
 
     con = connect(uri)
     cur = con.cursor()
     subpartitions = get_subpartitions(cur, owner, table, partition)
 
     new_subpartitions = set()
-    for upi in range_jobs("UPI0000000001", stop, 1):
-        name = upi[:8]
-
-        if name not in subpartitions and name not in new_subpartitions:
+    for name in range_upi("UPI00000", stop, 1):
+        if name not in subpartitions:
             new_subpartitions.add(name)
 
     for name in new_subpartitions:
