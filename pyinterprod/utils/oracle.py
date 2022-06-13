@@ -281,18 +281,18 @@ def add_site_subpartitions(uri: str, owner: str, table: str, partition: str,
     for subpart in get_subpartitions(cur, owner, table, partition):
         subpartitions.add(subpart["name"])
 
-    new_subpartitions = set()
+    new_subpartitions = {}
     # range_upi yields start/stop, but since step = 1, start == stop
-    for start, _ in range_upi("UPI00000", stop, 1):
-        name = prefix + start
+    for value, _ in range_upi("UPI00000", stop, 1):
+        name = prefix + value
         if name not in subpartitions:
-            new_subpartitions.add(name)
+            new_subpartitions[name] = value
 
-    for name in new_subpartitions:
+    for name, value in new_subpartitions.items():
         cur.execute(
             f"""
             ALTER TABLE {table} MODIFY PARTITION {partition}
-            ADD SUBPARTITION {name} VALUES ('{name}')
+            ADD SUBPARTITION {name} VALUES ('{value}')
             """
         )
 
