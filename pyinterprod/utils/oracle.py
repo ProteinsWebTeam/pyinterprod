@@ -269,7 +269,7 @@ def catch_temp_error(fn: Callable, args: Sequence, max_attempts: int = 3):
 
 
 def add_site_subpartitions(uri: str, owner: str, table: str, partition: str,
-                           stop: str):
+                           stop: str, prefix: str = ""):
     if len(stop) != 8 or stop[:3] != "UPI" or not stop[3:].isalnum():
         raise ValueError(f"Invalid range stop: {stop}. "
                          f"Expected format: UPIxxxxx, with x being digits")
@@ -291,7 +291,7 @@ def add_site_subpartitions(uri: str, owner: str, table: str, partition: str,
         cur.execute(
             f"""
             ALTER TABLE {table} MODIFY PARTITION {partition}
-            ADD SUBPARTITION {name} VALUES ('{name}')
+            ADD SUBPARTITION {prefix}{name} VALUES ('{name}')
             """
         )
 
