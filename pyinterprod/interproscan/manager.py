@@ -462,9 +462,16 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             elif site_table and not os.path.isfile(sites_output):
                 raise RuntimeError(f"Cannot access output sites tsv-pro")
 
-            parse_matches(uri, matches_output, analysis_id, match_table)
+            con = cx_Oracle.connect(uri)
+            cur = con.cursor()
+
+            parse_matches(cur, matches_output, analysis_id, match_table)
             if site_table:
-                parse_sites(uri, sites_output, analysis_id, site_table)
+                parse_sites(cur, sites_output, analysis_id, site_table)
+
+            con.commit()
+            cur.close()
+            con.close()
     except Exception:
         raise
     else:

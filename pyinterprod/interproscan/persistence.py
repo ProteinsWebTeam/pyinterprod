@@ -1,11 +1,11 @@
 from decimal import Decimal
 
-import cx_Oracle
+from cx_Oracle import Cursor, DB_TYPE_BINARY_DOUBLE
 
 _COMMIT_SIZE = 10000
 
 
-def cdd_matches(uri: str, file: str, analysis_id: int, table: str):
+def cdd_matches(cur: Cursor, file: str, analysis_id: int, table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -17,9 +17,7 @@ def cdd_matches(uri: str, file: str, analysis_id: int, table: str):
                 :seq_score, :seq_evalue)
     """
 
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
-    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
@@ -47,12 +45,8 @@ def cdd_matches(uri: str, file: str, analysis_id: int, table: str):
     if values:
         cur.executemany(sql, values)
 
-    con.commit()
-    cur.close()
-    con.close()
 
-
-def sites(uri: str, file: str, analysis_id: int, table: str):
+def sites(cur: Cursor, file: str, analysis_id: int, table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, UPI, MD5, SEQ_LENGTH, ANALYSIS_NAME, 
@@ -64,8 +58,6 @@ def sites(uri: str, file: str, analysis_id: int, table: str):
                 :res_start, :res_end, :description)
     """
 
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
     values = []
     with open(file, "rt") as fh:
         for line in fh:
@@ -93,12 +85,8 @@ def sites(uri: str, file: str, analysis_id: int, table: str):
     if values:
         cur.executemany(sql, values)
 
-    con.commit()
-    cur.close()
-    con.close()
 
-
-def coils_phobius_matches(uri: str, file: str, analysis_id: int, table: str):
+def coils_phobius_matches(cur: Cursor, file: str, analysis_id: int, table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -107,9 +95,6 @@ def coils_phobius_matches(uri: str, file: str, analysis_id: int, table: str):
         VALUES (:analysis_id, :analysis_name, :relno_major, :relno_minor,
                 :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments)
     """
-
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
 
     values = []
     with open(file, "rt") as fh:
@@ -135,12 +120,8 @@ def coils_phobius_matches(uri: str, file: str, analysis_id: int, table: str):
     if values:
         cur.executemany(sql, values)
 
-    con.commit()
-    cur.close()
-    con.close()
 
-
-def hamap_matches(uri: str, file: str, analysis_id: int, table: str):
+def hamap_matches(cur: Cursor, file: str, analysis_id: int, table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -151,9 +132,6 @@ def hamap_matches(uri: str, file: str, analysis_id: int, table: str):
                 :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments,
                 :seq_score, :alignment)
     """
-
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
 
     values = []
     with open(file, "rt") as fh:
@@ -181,12 +159,8 @@ def hamap_matches(uri: str, file: str, analysis_id: int, table: str):
     if values:
         cur.executemany(sql, values)
 
-    con.commit()
-    cur.close()
-    con.close()
 
-
-def _hmmer3_matches(uri: str, file: str, analysis_id: int, table: str,
+def _hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str,
                     relno_maj_as_int: bool, has_alignment: bool):
     if has_alignment:
         ali_col = ", ALIGNMENT"
@@ -208,10 +182,8 @@ def _hmmer3_matches(uri: str, file: str, analysis_id: int, table: str,
                 :hmm_length, :env_start, :env_end, :score, :evalue{ali_val})
     """
 
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
-    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE,
-                      evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE,
+                      evalue=DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
@@ -252,22 +224,18 @@ def _hmmer3_matches(uri: str, file: str, analysis_id: int, table: str,
     if values:
         cur.executemany(sql, values)
 
-    con.commit()
-    cur.close()
-    con.close()
 
-
-def funfam_matches(uri: str, file: str, analysis_id: int, table: str):
-    _hmmer3_matches(uri, file, analysis_id, table, relno_maj_as_int=True,
+def funfam_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+    _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=True,
                     has_alignment=True)
 
 
-def hmmer3_matches(uri: str, file: str, analysis_id: int, table: str):
-    _hmmer3_matches(uri, file, analysis_id, table, relno_maj_as_int=True,
+def hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+    _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=True,
                     has_alignment=False)
 
 
-def mobidb_lite_matches(uri: str, file: str, analysis_id: int, table: str):
+def mobidb_lite_matches(cur: Cursor, file: str, analysis_id: int, table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -278,9 +246,6 @@ def mobidb_lite_matches(uri: str, file: str, analysis_id: int, table: str):
                 :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments,
                 :seq_feature)
     """
-
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
 
     values = []
     with open(file, "rt") as fh:
@@ -313,12 +278,8 @@ def mobidb_lite_matches(uri: str, file: str, analysis_id: int, table: str):
     if values:
         cur.executemany(sql, values)
 
-    con.commit()
-    cur.close()
-    con.close()
 
-
-def panther_matches(uri: str, file: str, analysis_id: int, table: str):
+def panther_matches(cur: Cursor, file: str, analysis_id: int, table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -332,9 +293,7 @@ def panther_matches(uri: str, file: str, analysis_id: int, table: str):
                 :hmm_length, :env_start, :env_end, :an_node_id)
     """
 
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
-    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
@@ -378,17 +337,13 @@ def panther_matches(uri: str, file: str, analysis_id: int, table: str):
     if values:
         cur.executemany(sql, values)
 
-    con.commit()
-    cur.close()
-    con.close()
 
-
-def pirsr_matches(uri: str, file: str, analysis_id: int, table: str):
-    _hmmer3_matches(uri, file, analysis_id, table, relno_maj_as_int=False,
+def pirsr_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+    _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=False,
                     has_alignment=False)
 
 
-def prints_matches(uri: str, file: str, analysis_id: int, table: str):
+def prints_matches(cur: Cursor, file: str, analysis_id: int, table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -400,10 +355,8 @@ def prints_matches(uri: str, file: str, analysis_id: int, table: str):
                 :seq_score, :seq_evalue, :motif_number, :pvalue, :graphscan)
     """
 
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
-    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE,
-                      pvalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE,
+                      pvalue=DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
@@ -434,15 +387,11 @@ def prints_matches(uri: str, file: str, analysis_id: int, table: str):
     if values:
         cur.executemany(sql, values)
 
-    con.commit()
-    cur.close()
-    con.close()
-
 
 prosite_profiles_matches = hamap_matches
 
 
-def prosite_patterns_matches(uri: str, file: str, analysis_id: int,
+def prosite_patterns_matches(cur: Cursor, file: str, analysis_id: int,
                              table: str):
     sql = f"""
         INSERT INTO {table} (
@@ -454,9 +403,6 @@ def prosite_patterns_matches(uri: str, file: str, analysis_id: int,
                 :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments,
                 :loc_level, :alignment)
     """
-
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
 
     values = []
     with open(file, "rt") as fh:
@@ -484,12 +430,8 @@ def prosite_patterns_matches(uri: str, file: str, analysis_id: int,
     if values:
         cur.executemany(sql, values)
 
-    con.commit()
-    cur.close()
-    con.close()
 
-
-def signalp_tmhmm_matches(uri: str, file: str, analysis_id: int, table: str,
+def signalp_tmhmm_matches(cur: Cursor, file: str, analysis_id: int, table: str,
                           relno_maj_as_int: bool):
     sql = f"""
         INSERT INTO {table} (
@@ -501,9 +443,6 @@ def signalp_tmhmm_matches(uri: str, file: str, analysis_id: int, table: str,
                 :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments,
                 :seq_score)
     """
-
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
 
     values = []
     with open(file, "rt") as fh:
@@ -530,22 +469,18 @@ def signalp_tmhmm_matches(uri: str, file: str, analysis_id: int, table: str,
     if values:
         cur.executemany(sql, values)
 
-    con.commit()
-    cur.close()
-    con.close()
 
-
-def signalp_matches(uri: str, file: str, analysis_id: int, table: str):
-    signalp_tmhmm_matches(uri, file, analysis_id, table,
+def signalp_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+    signalp_tmhmm_matches(cur, file, analysis_id, table,
                           relno_maj_as_int=False)
 
 
-def sfld_matches(uri: str, file: str, analysis_id: int, table: str):
-    _hmmer3_matches(uri, file, analysis_id, table, relno_maj_as_int=True,
+def sfld_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+    _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=True,
                     has_alignment=False)
 
 
-def smart_matches(uri: str, file: str, analysis_id: int, table: str):
+def smart_matches(cur: Cursor, file: str, analysis_id: int, table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -559,10 +494,8 @@ def smart_matches(uri: str, file: str, analysis_id: int, table: str):
                 :hmm_length, :score, :evalue)
     """
 
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
-    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE,
-                      evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE,
+                      evalue=DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
@@ -596,12 +529,8 @@ def smart_matches(uri: str, file: str, analysis_id: int, table: str):
     if values:
         cur.executemany(sql, values)
 
-    con.commit()
-    cur.close()
-    con.close()
 
-
-def superfamily_matches(uri: str, file: str, analysis_id: int, table: str):
+def superfamily_matches(cur: Cursor, file: str, analysis_id: int, table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -613,9 +542,7 @@ def superfamily_matches(uri: str, file: str, analysis_id: int, table: str):
                 :seq_evalue, :hmm_length)
     """
 
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
-    cur.setinputsizes(seq_evalue=cx_Oracle.DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE)
 
     values = []
     with open(file, "rt") as fh:
@@ -643,11 +570,7 @@ def superfamily_matches(uri: str, file: str, analysis_id: int, table: str):
     if values:
         cur.executemany(sql, values)
 
-    con.commit()
-    cur.close()
-    con.close()
 
-
-def tmhmm_matches(uri: str, file: str, analysis_id: int, table: str):
-    signalp_tmhmm_matches(uri, file, analysis_id, table,
+def tmhmm_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+    signalp_tmhmm_matches(cur, file, analysis_id, table,
                           relno_maj_as_int=True)
