@@ -682,7 +682,7 @@ def run_uniprot_update():
             args=(ora_interpro_url,),
             name="update-matches",
             scheduler=dict(mem=1000, queue=lsf_queue),
-            requires=["check-proteins", "import-ipm-matches"]
+            requires=["check-proteins", "update-ipm-matches"]
         ),
         Task(
             fn=interpro.match.update_feature_matches,
@@ -712,7 +712,7 @@ def run_uniprot_update():
             args=(ora_iprscan_url,),
             name="aa-iprscan",
             scheduler=dict(queue=lsf_queue),
-            # Actually depends on import-ipm-matches
+            # Actually depends on update-ipm-matches
             requires=["update-matches"]
         ),
         Task(
