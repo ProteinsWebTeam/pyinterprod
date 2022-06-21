@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
-
 from typing import MutableMapping, Sequence, Tuple
 
 import cx_Oracle
 
 from pyinterprod import logger
+from pyinterprod.interpro import iprscan
 from pyinterprod.utils import email, oracle, Table
 
 
@@ -135,24 +134,34 @@ def build_aa_alignment(uri: str):
     oracle.drop_table(cur, "IPRSCAN.AA_ALIGNMENT", purge=True)
 
     select_stmt = "SELECT UPI, METHOD_AC, ALIGNMENT, SEQ_START, SEQ_END"
+    created = False
 
-    cur.execute(
-        f"""
-        CREATE TABLE IPRSCAN.AA_ALIGNMENT COMPRESS NOLOGGING
-        AS {select_stmt} FROM IPRSCAN.MV_IPM_HAMAP_MATCH WHERE 1 = 0
-        """
-    )
+    analyses = iprscan.get_analyses(cur, type="matches", status="production")
+    to_import = ["funfam", "hamap", "prosite patterns", "prosite profiles"]
+    for analysis in analyses:
+        if analysis.name.lower() in to_import:
+            if not created:
+                cur.execute(
+                    f"""
+                    CREATE TABLE IPRSCAN.AA_ALIGNMENT COMPRESS NOLOGGING
+                    AS {select_stmt} 
+                    FROM IPRSCAN.{iprscan.PREFIX}{analysis.table} 
+                    WHERE 1 = 0
+                    """
+                )
+                created = True
 
-    for source in ["HAMAP", "PROSITE_PATTERNS", "PROSITE_PROFILES"]:
-        logger.info(f"inserting data from {source}")
-        cur.execute(
-            f"""
-            INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
-            {select_stmt}
-            FROM IPRSCAN.MV_IPM_{source}_MATCH
-            """
-        )
-        con.commit()
+            logger.info(f"inserting {analysis.name} data")
+            cur.execute(
+                f"""
+                INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
+                {select_stmt}
+                FROM IPRSCAN.{iprscan.PREFIX}{analysis.table}
+                WHERE ANALYSIS_ID = :1
+                """,
+                [analysis.id]
+            )
+            con.commit()
 
     logger.info("indexing")
     for col in ("UPI", "METHOD_AC"):
