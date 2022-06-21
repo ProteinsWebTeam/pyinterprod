@@ -127,6 +127,53 @@ def _condense(matches: MutableMapping[str, Sequence[Tuple[int, int]]]):
         matches[entry_acc] = condensed_matches
 
 
+def build_aa_alignment(uri: str):
+    logger.info("building AA_ALIGNMENT")
+
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+    oracle.drop_table(cur, "IPRSCAN.AA_ALIGNMENT", purge=True)
+
+    select_stmt = "SELECT UPI, METHOD_AC, ALIGNMENT, SEQ_START, SEQ_END"
+
+    cur.execute(
+        f"""
+        CREATE TABLE IPRSCAN.AA_ALIGNMENT COMPRESS NOLOGGING
+        AS {select_stmt} FROM IPRSCAN.MV_IPM_HAMAP_MATCH WHERE 1 = 0
+        """
+    )
+
+    for source in ["HAMAP", "PROSITE_PATTERNS", "PROSITE_PROFILES"]:
+        logger.info(f"inserting data from {source}")
+        cur.execute(
+            f"""
+            INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
+            {select_stmt}
+            FROM IPRSCAN.MV_IPM_{source}_MATCH
+            """
+        )
+        con.commit()
+
+    logger.info("indexing")
+    for col in ("UPI", "METHOD_AC"):
+        cur.execute(
+            f"""
+            CREATE INDEX I_AA_ALIGNMENT${col}
+            ON IPRSCAN.AA_ALIGNMENT ({col}) NOLOGGING
+            """
+        )
+
+    logger.info("gathering statistics")
+    oracle.gather_stats(cur, "IPRSCAN", "AA_ALIGNMENT")
+
+    cur.execute("GRANT SELECT ON IPRSCAN.AA_ALIGNMENT TO KRAKEN")
+
+    cur.close()
+    con.close()
+
+    logger.info("AA_ALIGNMENT ready")
+
+
 def build_aa_iprscan(url: str):
     logger.info("building AA_IPRSCAN")
 
@@ -144,6 +191,7 @@ def build_aa_iprscan(url: str):
           SEQ_FEATURE
     """
 
+    # todo: add LIBRARY column
     cur.execute(
         f"""
         CREATE TABLE IPRSCAN.AA_IPRSCAN COMPRESS NOLOGGING
@@ -155,7 +203,7 @@ def build_aa_iprscan(url: str):
                   "SIGNALP_GRAM_NEGATIVE", "COILS", "PROSITE_PATTERNS",
                   "PROSITE_PROFILES", "MOBIDBLITE")
     for p in partitions:
-        logger.debug(f"inserting partition {p}")
+        logger.info(f"inserting partition {p}")
         cur.execute(
             f"""
             INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
@@ -165,7 +213,7 @@ def build_aa_iprscan(url: str):
         )
         con.commit()
 
-    logger.debug("inserting partition PHOBIUS")
+    logger.info("inserting partition PHOBIUS")
     cur.execute(
         f"""
         INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
