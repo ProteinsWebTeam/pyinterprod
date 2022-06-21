@@ -502,7 +502,7 @@ def get_lsf_unfinished_jobs() -> dict[str, int]:
 
     for line in stdout.split("\n")[1:]:
         if line:
-            job_id, name = line.split()
+            job_id, name = line.split(maxsplit=1)
             jobs[name] = int(job_id)
 
     return jobs
