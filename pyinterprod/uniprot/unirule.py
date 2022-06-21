@@ -189,49 +189,63 @@ def build_aa_iprscan(url: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     oracle.drop_table(cur, "IPRSCAN.AA_IPRSCAN", purge=True)
-
-    select_stmt = """
-        SELECT
-          UPI,
-          ANALYSIS_ID AS LIBRARY_ID,
-          METHOD_AC AS SIGNATURE,
-          SEQ_START,
-          SEQ_END,
-          SEQ_FEATURE
-    """
-
-    # todo: add LIBRARY column
     cur.execute(
-        f"""
-        CREATE TABLE IPRSCAN.AA_IPRSCAN COMPRESS NOLOGGING
-        AS {select_stmt} FROM IPRSCAN.MV_IPRSCAN WHERE 1 = 0
+        """
+        CREATE TABLE INTERPRO.AA_IPRSCAN
+        (
+            UPI VARCHAR2(13) NOT NULL,
+            LIBRARY_ID NUMBER(5) NOT NULL,
+            LIBRARY VARCHAR2(25) NOT NULL,
+            SIGNATURE VARCHAR2(255) NOT NULL,
+            SEQ_START NUMBER(10) NOT NULL,
+            SEQ_END NUMBER(5) NOT NULL,
+            SEQ_FEATURE VARCHAR2(4000)
+        ) COMPRESS NOLOGGING
         """
     )
 
-    partitions = ("TMHMM", "SIGNALP_EUK", "SIGNALP_GRAM_POSITIVE",
-                  "SIGNALP_GRAM_NEGATIVE", "COILS", "PROSITE_PATTERNS",
-                  "PROSITE_PROFILES", "MOBIDBLITE")
-    for p in partitions:
-        logger.info(f"inserting partition {p}")
-        cur.execute(
-            f"""
-            INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
-            {select_stmt}
-            FROM IPRSCAN.MV_IPRSCAN PARTITION({p})
-            """
-        )
-        con.commit()
+    for source in ["COILS", "MOBIDBLITE", "PHOBIUS", "PROSITE_PATTERNS",
+                   "PROSITE_PROFILES", "SIGNALP_EUK", "SIGNALP_GRAM_NEGATIVE",
+                   "SIGNALP_GRAM_POSITIVE", "TMHMM"]:
+        logger.info(f"inserting data from {source}")
 
-    logger.info("inserting partition PHOBIUS")
-    cur.execute(
-        f"""
-        INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
-        {select_stmt}
-        FROM IPRSCAN.MV_IPRSCAN PARTITION(PHOBIUS)
-        WHERE METHOD_AC IN ('SIGNAL_PEPTIDE','TRANSMEMBRANE')
+        name = "MOBIDB_LITE" if source == "MOBIDBLITE" else source
+
+        sql = f"""
+            SELECT UPI, ANALYSIS_ID, METHOD_AC, SEQ_START, SEQ_END, SEQ_FEATURE
+            FROM IPRSCAN.MV_IPRSCAN PARTITION ({source})        
         """
-    )
-    con.commit()
+
+        if source == "PHOBIUS":
+            sql += "WHERE METHOD_AC IN ('SIGNAL_PEPTIDE','TRANSMEMBRANE')"
+
+        cur.execute(sql)
+
+        rows = []
+        for row in cur:
+            rows.append((row[0], row[1], name, row[2], row[3], row[4]))
+
+            if len(rows) == 1000:
+                cur.executemany(
+                    f"""
+                    INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
+                    VALUES (:1, :2, :3, :4, :5, :6)
+                    """,
+                    rows
+                )
+                con.commit()
+                rows.clear()
+
+        if rows:
+            cur.executemany(
+                f"""
+                INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
+                VALUES (:1, :2, :3, :4, :5, :6)
+                """,
+                rows
+            )
+            con.commit()
+            rows.clear()
 
     logger.info("indexing")
     for col in ("UPI", "SIGNATURE"):
