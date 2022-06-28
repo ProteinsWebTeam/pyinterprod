@@ -6,27 +6,15 @@ from pyinterprod import logger
 from pyinterprod.utils.pg import url2dict
 
 
-def import_proteomes(ora_url: str, pg_url: str):
-    logger.info("inserting reference proteomes info")
+class ProteomeInterator:
+    def __init__(self, url: str):
+        self.url = url
+        self.proteomes = {}
 
-    pg_con = psycopg2.connect(**url2dict(pg_url))
-    with pg_con.cursor() as pg_cur:
-        pg_cur.execute("DROP TABLE IF EXISTS proteome2protein")
-        pg_cur.execute(
-            """
-            CREATE TABLE proteome2protein (
-                id VARCHAR(20) NOT NULL
-                    CONSTRAINT proteome2protein_pkey PRIMARY KEY,
-                name VARCHAR(200) NOT NULL,
-                taxon_id INTEGER NOT NULL,            
-                protein_acc VARCHAR(15) NOT NULL            
-            )
-            """
-        )
-
-        ora_con = cx_Oracle.connect(ora_url)
-        ora_cur = ora_con.cursor()
-        ora_cur.execute(
+    def __iter__(self):
+        con = cx_Oracle.connect(self.url)
+        cur = con.cursor()
+        cur.execute(
             """
             SELECT DISTINCT P.UPID, P.PROTEOME_NAME, P.PROTEOME_TAXID,
                             P2U.ACCESSION
@@ -38,16 +26,62 @@ def import_proteomes(ora_url: str, pg_url: str):
             """
         )
 
-        sql = "INSERT INTO proteome2protein VALUES %s"
-        execute_values(pg_cur, sql, ora_cur, page_size=1000)
+        for upid, name, taxid, accession in cur:
+            if upid not in self.proteomes:
+                self.proteomes[upid] = (upid, name, taxid)
 
-        ora_cur.close()
-        ora_con.close()
+            yield upid, accession
 
+        cur.close()
+        con.close()
+
+
+def import_proteomes(ora_url: str, pg_url: str):
+    logger.info("inserting reference proteomes info")
+
+    pg_con = psycopg2.connect(**url2dict(pg_url))
+    with pg_con.cursor() as pg_cur:
+        pg_cur.execute("DROP TABLE IF EXISTS proteome")
         pg_cur.execute(
             """
-            CREATE INDEX proteome2protein_taxon_idx
-            ON proteome2protein (taxon_id)
+            CREATE TABLE proteome (
+                id VARCHAR(20) NOT NULL
+                    CONSTRAINT proteome_pkey PRIMARY KEY,
+                name VARCHAR(200) NOT NULL,
+                taxon_id INTEGER NOT NULL
+            )
+            """
+        )
+
+        pg_cur.execute("DROP TABLE IF EXISTS proteome2protein")
+        pg_cur.execute(
+            """
+            CREATE TABLE proteome2protein (
+                id VARCHAR(20) NOT NULL,            
+                protein_acc VARCHAR(15) NOT NULL            
+            )
+            """
+        )
+
+        sql = "INSERT INTO proteome2protein VALUES %s"
+        iterator = ProteomeInterator(ora_url)
+        execute_values(pg_cur, sql, iterator, page_size=1000)
+
+        sql = "INSERT INTO proteome VALUES %s"
+        execute_values(pg_cur, sql, list(iterator.proteomes.values()),
+                       page_size=1000)
+
+        logger.info("indexing")
+        pg_cur.execute(
+            """
+            CREATE INDEX proteome_name_idx
+            ON proteome (name)
+            """
+        )
+        pg_cur.execute(
+            """
+            CREATE INDEX proteome2protein_id
+            ON proteome2protein (id)
             """
         )
         pg_con.commit()
