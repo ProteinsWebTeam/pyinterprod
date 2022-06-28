@@ -22,7 +22,7 @@ def get_analyses(obj: Union[str, cx_Oracle.Cursor]) -> dict:
                T.MATCH_TABLE, T.SITE_TABLE
         FROM IPRSCAN.ANALYSIS A
         INNER JOIN IPRSCAN.ANALYSIS_TABLES T
-            ON A.NAME = T.NAME
+            ON LOWER(A.NAME) = LOWER(T.NAME)
         WHERE A.ACTIVE = 'Y'
         """
     )
