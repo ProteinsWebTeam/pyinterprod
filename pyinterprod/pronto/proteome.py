@@ -20,8 +20,8 @@ class ProteomeInterator:
                             P2U.ACCESSION
             FROM SPTR.PROTEOME2UNIPROT P2U
             INNER JOIN SPTR.PROTEOME P ON P2U.PROTEOME_ID = P.PROTEOME_ID
-            WHERE P2U.ENTRY_TYPE IN (1, 2)
-              AND P2U.MERGE_STATUS != 'R'
+            WHERE P2U.ENTRY_TYPE IN (0, 1)  -- Swiss-Prot, TrEMBL
+              AND P2U.MERGE_STATUS != 'R'   -- Not 'Redundant'
               AND P.IS_REFERENCE = 1
             """
         )
