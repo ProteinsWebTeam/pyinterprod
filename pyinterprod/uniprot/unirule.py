@@ -131,37 +131,67 @@ def build_aa_alignment(uri: str):
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
+
+    analyses = {}
+    for analysis in iprscan.get_analyses(cur, type="matches",
+                                         status="production"):
+        analyses[analysis.name] = (analysis.id, analysis.table)
+
     oracle.drop_table(cur, "IPRSCAN.AA_ALIGNMENT", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.AA_ALIGNMENT
+        (
+            UPI VARCHAR2(13) NOT NULL,
+            LIBRARY VARCHAR2(25) NOT NULL,
+            SIGNATURE VARCHAR2(255) NOT NULL,
+            SEQ_START NUMBER(10) NOT NULL,
+            SEQ_END NUMBER(10) NOT NULL,
+            ALIGNMENT VARCHAR2(4000)
+        ) COMPRESS NOLOGGING
+        """
+    )
 
-    select_stmt = "SELECT UPI, METHOD_AC, ALIGNMENT, SEQ_START, SEQ_END"
-    created = False
+    # TODO: add FunFam
+    for name in ["HAMAP", "PROSITE patterns", "PROSITE profiles"]:
+        logger.info(f"inserting data from {name}")
+        analysis_id, table = analyses[name]
 
-    analyses = iprscan.get_analyses(cur, type="matches", status="production")
-    to_import = ["funfam", "hamap", "prosite patterns", "prosite profiles"]
-    for analysis in analyses:
-        if analysis.name.lower() in to_import:
-            if not created:
-                cur.execute(
+        cur.execute(
+            f"""
+           SELECT UPI, METHOD_AC, SEQ_START, SEQ_END, ALIGNMENT
+           FROM IPRSCAN.{iprscan.PREFIX}{table}
+           WHERE ANALYSIS_ID = :1
+           """,
+            [analysis_id]
+        )
+
+        rows = []
+        library = name.replace(" ", "_").upper()
+        for row in cur:
+            rows.append((row[0], library, row[1], row[2], row[3], row[4]))
+
+            if len(rows) == 1000:
+                cur.executemany(
                     f"""
-                    CREATE TABLE IPRSCAN.AA_ALIGNMENT COMPRESS NOLOGGING
-                    AS {select_stmt} 
-                    FROM IPRSCAN.{iprscan.PREFIX}{analysis.table} 
-                    WHERE 1 = 0
-                    """
+                    INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
+                    VALUES (:1, :2, :3, :4, :5, :6)
+                    """,
+                    rows
                 )
-                created = True
+                con.commit()
+                rows.clear()
 
-            logger.info(f"inserting {analysis.name} data")
-            cur.execute(
+        if rows:
+            cur.executemany(
                 f"""
                 INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
-                {select_stmt}
-                FROM IPRSCAN.{iprscan.PREFIX}{analysis.table}
-                WHERE ANALYSIS_ID = :1
+                VALUES (:1, :2, :3, :4, :5, :6)
                 """,
-                [analysis.id]
+                rows
             )
             con.commit()
+            rows.clear()
 
     logger.info("indexing")
     for col in ("UPI", "METHOD_AC"):
@@ -190,36 +220,38 @@ def build_aa_iprscan(uri: str):
         CREATE TABLE INTERPRO.AA_IPRSCAN
         (
             UPI VARCHAR2(13) NOT NULL,
-            LIBRARY_ID NUMBER(5) NOT NULL,
+            -- LIBRARY_ID NUMBER(5) NOT NULL,
             LIBRARY VARCHAR2(25) NOT NULL,
             SIGNATURE VARCHAR2(255) NOT NULL,
             SEQ_START NUMBER(10) NOT NULL,
-            SEQ_END NUMBER(5) NOT NULL,
+            SEQ_END NUMBER(10) NOT NULL,
             SEQ_FEATURE VARCHAR2(4000)
         ) COMPRESS NOLOGGING
         """
     )
 
-    for source in ["COILS", "MOBIDBLITE", "PHOBIUS", "PROSITE_PATTERNS",
-                   "PROSITE_PROFILES", "SIGNALP_EUK", "SIGNALP_GRAM_NEGATIVE",
-                   "SIGNALP_GRAM_POSITIVE", "TMHMM"]:
-        logger.info(f"inserting data from {source}")
-
-        name = "MOBIDB_LITE" if source == "MOBIDBLITE" else source
+    for db in ["COILS", "MobiDB Lite", "Phobius", "PROSITE patterns",
+               "PROSITE profiles", "SignalP_Euk", "SignalP_Gram_positive",
+               "SignalP_Gram_negative", "TMHMM"]:
+        logger.info(f"inserting data from {db}")
+        partition = iprscan.MATCH_PARTITIONS[db]["partition"]
 
         sql = f"""
             SELECT UPI, ANALYSIS_ID, METHOD_AC, SEQ_START, SEQ_END, SEQ_FEATURE
-            FROM IPRSCAN.MV_IPRSCAN PARTITION ({source})        
+            FROM IPRSCAN.MV_IPRSCAN PARTITION ({partition})        
         """
 
-        if source == "PHOBIUS":
+        if db == "Phobius":
             sql += "WHERE METHOD_AC IN ('SIGNAL_PEPTIDE','TRANSMEMBRANE')"
 
         cur.execute(sql)
 
         rows = []
+        library = db.replace(" ", "_").upper()
         for row in cur:
-            rows.append((row[0], row[1], name, row[2], row[3], row[4]))
+            # rows.append((row[0], row[1], library, row[2], row[3], row[4],
+            #              row[5]))
+            rows.append((row[0], library, row[2], row[3], row[4], row[5]))
 
             if len(rows) == 1000:
                 cur.executemany(
