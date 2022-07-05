@@ -159,9 +159,9 @@ def build_aa_alignment(uri: str):
 
         cur.execute(
             f"""
-           SELECT UPI, METHOD_AC, SEQ_START, SEQ_END, ALIGNMENT
-           FROM IPRSCAN.{iprscan.PREFIX}{table}
-           WHERE ANALYSIS_ID = :1
+            SELECT UPI, METHOD_AC, SEQ_START, SEQ_END, ALIGNMENT
+            FROM IPRSCAN.{iprscan.PREFIX}{table}
+            WHERE ANALYSIS_ID = :1
            """,
             [analysis_id]
         )
