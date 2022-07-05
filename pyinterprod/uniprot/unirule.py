@@ -235,6 +235,9 @@ def build_aa_iprscan(uri: str):
         """
     )
 
+    # Open second cursor for INSERT statements (first used for SELECT)
+    cur2 = con.cursor()
+
     for db in ["COILS", "MobiDB Lite", "Phobius", "PROSITE patterns",
                "PROSITE profiles", "SignalP_Euk", "SignalP_Gram_positive",
                "SignalP_Gram_negative", "TMHMM"]:
@@ -259,7 +262,7 @@ def build_aa_iprscan(uri: str):
             rows.append((row[0], library, row[2], row[3], row[4], row[5]))
 
             if len(rows) == 1000:
-                cur.executemany(
+                cur2.executemany(
                     f"""
                     INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
                     VALUES (:1, :2, :3, :4, :5, :6)
@@ -270,7 +273,7 @@ def build_aa_iprscan(uri: str):
                 rows.clear()
 
         if rows:
-            cur.executemany(
+            cur2.executemany(
                 f"""
                 INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
                 VALUES (:1, :2, :3, :4, :5, :6)
@@ -279,6 +282,8 @@ def build_aa_iprscan(uri: str):
             )
             con.commit()
             rows.clear()
+
+    cur2.close()
 
     logger.info("indexing")
     for col in ("UPI", "SIGNATURE"):
