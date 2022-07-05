@@ -152,6 +152,9 @@ def build_aa_alignment(uri: str):
         """
     )
 
+    # Open second cursor for INSERT statements (first used for SELECT)
+    cur2 = con.cursor()
+
     # TODO: add FunFam
     for name in ["HAMAP", "PROSITE patterns", "PROSITE profiles"]:
         logger.info(f"inserting data from {name}")
@@ -172,7 +175,7 @@ def build_aa_alignment(uri: str):
             rows.append((row[0], library, row[1], row[2], row[3], row[4]))
 
             if len(rows) == 1000:
-                cur.executemany(
+                cur2.executemany(
                     f"""
                     INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
                     VALUES (:1, :2, :3, :4, :5, :6)
@@ -183,7 +186,7 @@ def build_aa_alignment(uri: str):
                 rows.clear()
 
         if rows:
-            cur.executemany(
+            cur2.executemany(
                 f"""
                 INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
                 VALUES (:1, :2, :3, :4, :5, :6)
@@ -192,6 +195,8 @@ def build_aa_alignment(uri: str):
             )
             con.commit()
             rows.clear()
+
+    cur2.close()
 
     logger.info("indexing")
     for col in ("UPI", "METHOD_AC"):
