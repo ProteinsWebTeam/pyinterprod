@@ -140,7 +140,7 @@ def build_aa_alignment(uri: str):
     oracle.drop_table(cur, "IPRSCAN.AA_ALIGNMENT", purge=True)
     cur.execute(
         """
-        CREATE TABLE INTERPRO.AA_ALIGNMENT
+        CREATE TABLE IPRSCAN.AA_ALIGNMENT
         (
             UPI VARCHAR2(13) NOT NULL,
             LIBRARY VARCHAR2(25) NOT NULL,
@@ -217,7 +217,7 @@ def build_aa_iprscan(uri: str):
     oracle.drop_table(cur, "IPRSCAN.AA_IPRSCAN", purge=True)
     cur.execute(
         """
-        CREATE TABLE INTERPRO.AA_IPRSCAN
+        CREATE TABLE IPRSCAN.AA_IPRSCAN
         (
             UPI VARCHAR2(13) NOT NULL,
             -- LIBRARY_ID NUMBER(5) NOT NULL,
