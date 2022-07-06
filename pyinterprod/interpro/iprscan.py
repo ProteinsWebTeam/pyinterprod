@@ -86,7 +86,7 @@ MATCH_PARTITIONS = {
             'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
             'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
             'HMM_BOUNDS', 'SEQSCORE', 'SEQSCORE', 'SEQEVALUE', 'SEQEVALUE',
-            'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+            'ENV_START', 'ENV_END', 'MODEL_AC', 'AN_NODE_ID', 'FRAGMENTS'
         ],
         "partition": "panther"
     },
