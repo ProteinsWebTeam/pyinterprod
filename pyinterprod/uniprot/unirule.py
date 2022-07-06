@@ -199,7 +199,7 @@ def build_aa_alignment(uri: str):
     cur2.close()
 
     logger.info("indexing")
-    for col in ("UPI", "METHOD_AC"):
+    for col in ("UPI", "SIGNATURE"):
         cur.execute(
             f"""
             CREATE INDEX I_AA_ALIGNMENT${col}
