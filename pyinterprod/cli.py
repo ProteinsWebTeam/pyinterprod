@@ -49,7 +49,7 @@ def get_pronto_tasks(ora_ipr_url: str, ora_swp_url: str, ora_goa_url: str,
             fn=pronto.proteome.import_proteomes,
             args=(ora_swp_url, pg_ipr_url),
             name="proteomes",
-            scheduler=dict(mem=4000, queue=lsf_queue),
+            scheduler=dict(mem=100, queue=lsf_queue),
         ),
 
         # Data from IPPRO
