@@ -6,7 +6,7 @@ from pyinterprod import logger
 from pyinterprod.utils.pg import url2dict
 
 
-class ProteomeInterator:
+class ProteomeIterator:
     def __init__(self, url: str):
         self.url = url
         self.proteomes = {}
@@ -64,7 +64,7 @@ def import_proteomes(ora_url: str, pg_url: str):
         )
 
         sql = "INSERT INTO proteome2protein VALUES %s"
-        iterator = ProteomeInterator(ora_url)
+        iterator = ProteomeIterator(ora_url)
         execute_values(pg_cur, sql, iterator, page_size=1000)
 
         sql = "INSERT INTO proteome VALUES %s"
