@@ -80,7 +80,7 @@ def get_databases(url: str, names: Sequence[str],
 
         databases[row[1]] = db
 
-        if any(e is None for e in row[3:]):
+        if any(e is None for e in row[3:7]):
             missing.append(db.name)
         elif expects_new and db.analysis_id == row[6]:
             not_ready.append(db.name)
