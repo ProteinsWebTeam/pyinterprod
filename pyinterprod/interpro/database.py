@@ -260,7 +260,7 @@ def update_database(url: str, name: str, version: str, date: str,
             print("Available evidences:")
             evidences = set()
             for code, description in cur:
-                print(f"\t{code:<10}{description}")
+                print(f"  {code:<10}{description}")
                 evidences.add(code)
 
             evidence_to_use = None
