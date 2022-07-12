@@ -197,36 +197,37 @@ def update_database(url: str, name: str, version: str, date: str,
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
-    # Update DB_VERSION
-    cur.execute(
-        """
-        SELECT COUNT(*) 
-        FROM INTERPRO.DB_VERSION 
-        WHERE DBCODE = :1
-        """,
-        [dbcode]
-    )
-    cnt, = cur.fetchone()
-    if cnt:
+    if (current_version, current_date) != (version, date):
+        # Update DB_VERSION
         cur.execute(
             """
-            UPDATE INTERPRO.DB_VERSION 
-            SET VERSION = :1,
-                FILE_DATE = TO_DATE(:2, 'YYYY-MM-DD'),
-                LOAD_DATE = SYSDATE
-            WHERE DBCODE = :3
+            SELECT COUNT(*) 
+            FROM INTERPRO.DB_VERSION 
+            WHERE DBCODE = :1
             """,
-            [version, date, dbcode]
+            [dbcode]
         )
-    else:
-        cur.execute(
-            """
-            INSERT INTO INTERPRO.DB_VERSION (
-                DBCODE, VERSION, ENTRY_COUNT, FILE_DATE
-            ) VALUES (:1, :2, 0, TO_DATE(:3, 'YYYY-MM-DD'))
-            """,
-            [dbcode, version, date]
-        )
+        cnt, = cur.fetchone()
+        if cnt:
+            cur.execute(
+                """
+                UPDATE INTERPRO.DB_VERSION 
+                SET VERSION = :1,
+                    FILE_DATE = TO_DATE(:2, 'YYYY-MM-DD'),
+                    LOAD_DATE = SYSDATE
+                WHERE DBCODE = :3
+                """,
+                [version, date, dbcode]
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO INTERPRO.DB_VERSION (
+                    DBCODE, VERSION, ENTRY_COUNT, FILE_DATE
+                ) VALUES (:1, :2, 0, TO_DATE(:3, 'YYYY-MM-DD'))
+                """,
+                [dbcode, version, date]
+            )
 
     if id_to_use != current_id:
         # Update IPRSCAN2DBCODE
