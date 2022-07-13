@@ -50,13 +50,13 @@ def get_databases(url: str, names: Sequence[str],
         SELECT D.DBCODE, LOWER(D.DBSHORT), D.DBNAME, V.VERSION, V.FILE_DATE,
                 I2C.IPRSCAN_SIG_LIB_REL_ID, I2C.PREV_ID, T.SITE_TABLE
         FROM INTERPRO.CV_DATABASE D
-        INNER JOIN INTERPRO.DB_VERSION V 
+        LEFT OUTER JOIN INTERPRO.DB_VERSION V 
             ON D.DBCODE = V.DBCODE
-        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2C 
+        LEFT OUTER JOIN INTERPRO.IPRSCAN2DBCODE I2C 
             ON D.DBCODE = I2C.DBCODE
-        INNER JOIN IPRSCAN.ANALYSIS@ISPRO A 
+        LEFT OUTER JOIN IPRSCAN.ANALYSIS@ISPRO A 
             ON I2C.IPRSCAN_SIG_LIB_REL_ID = A.ID
-        INNER JOIN IPRSCAN.ANALYSIS_TABLES@ISPRO T 
+        LEFT OUTER JOIN IPRSCAN.ANALYSIS_TABLES@ISPRO T 
             ON A.NAME = T.NAME
         WHERE LOWER(D.DBSHORT) IN ({','.join(args)})
         """,
@@ -64,6 +64,7 @@ def get_databases(url: str, names: Sequence[str],
     )
 
     databases = {}
+    missing = []
     not_ready = []
     for row in cur:
         db = Database(identifier=row[0],
@@ -79,7 +80,9 @@ def get_databases(url: str, names: Sequence[str],
 
         databases[row[1]] = db
 
-        if expects_new and db.analysis_id == row[6]:
+        if any(e is None for e in row[3:7]):
+            missing.append(db.name)
+        elif expects_new and db.analysis_id == row[6]:
             not_ready.append(db.name)
 
         try:
@@ -92,7 +95,11 @@ def get_databases(url: str, names: Sequence[str],
 
     if names:
         names = sorted(names.values())
-        raise RuntimeError(f"Unknown databases: {', '.join(names)}")
+        raise RuntimeError(f"Unknown databases: {', '.join(names)}. "
+                           f"Check CV_DATABASE.")
+    elif missing:
+        raise RuntimeError(f"Database(s) not initialised: "
+                           f"{', '.join(missing)}. Run ipr-pre-memdb.")
     elif not_ready:
         raise RuntimeError(f"Database(s) outdated in IPRSCAN2DBCODE: "
                            f"{', '.join(not_ready)}. Run ipr-pre-memdb.")
@@ -109,10 +116,11 @@ def update_database(url: str, name: str, version: str, date: str,
         SELECT D.DBCODE, D.DBNAME, V.VERSION, V.FILE_DATE, 
                I.IPRSCAN_SIG_LIB_REL_ID, I.PREV_ID
         FROM INTERPRO.CV_DATABASE D
-        INNER JOIN INTERPRO.DB_VERSION V ON D.DBCODE = V.DBCODE
-        INNER JOIN INTERPRO.IPRSCAN2DBCODE I ON D.DBCODE = I.DBCODE
+        LEFT OUTER JOIN INTERPRO.DB_VERSION V ON D.DBCODE = V.DBCODE
+        LEFT OUTER JOIN INTERPRO.IPRSCAN2DBCODE I ON D.DBCODE = I.DBCODE
         WHERE LOWER(D.DBSHORT) = LOWER(:1)
-        """, (name,)
+        """,
+        [name]
     )
     row = cur.fetchone()
 
@@ -124,19 +132,34 @@ def update_database(url: str, name: str, version: str, date: str,
     dbcode, name, current_version, current_date, current_id, prev_id = row
 
     # Find the 'active' analysis in ISPRO
-    cur.execute(
-        """
-        SELECT ID, NAME
-        FROM IPRSCAN.ANALYSIS@ISPRO
-        WHERE NAME = (
-            SELECT NAME
+    if current_id is not None:
+        cur.execute(
+            """
+            SELECT ID, NAME
             FROM IPRSCAN.ANALYSIS@ISPRO
-            WHERE ID = :1
+            WHERE NAME = (
+                SELECT NAME
+                FROM IPRSCAN.ANALYSIS@ISPRO
+                WHERE ID = :1
+            )
+            AND ACTIVE = 'Y'
+            ORDER BY ID
+            """,
+            [current_id]
         )
-        AND ACTIVE = 'Y'
-        ORDER BY ID
-        """, (current_id,)
-    )
+    else:
+        # Not in IPRSCAN2DBCODE: fallback to name
+        cur.execute(
+            """
+            SELECT ID, NAME
+            FROM IPRSCAN.ANALYSIS@ISPRO
+            WHERE LOWER(NAME) = LOWER(:1)
+            AND ACTIVE = 'Y'
+            ORDER BY ID
+            """,
+            [name]
+        )
+
     rows = cur.fetchall()
     cur.close()
     con.close()
@@ -151,16 +174,20 @@ def update_database(url: str, name: str, version: str, date: str,
         actives.add(str(active_id))
 
     if len(actives) == 1:
-        active_id = actives.pop()
+        id_to_use = actives.pop()
     else:
-        active_id = None
-        while active_id not in actives:
-            active_id = input("Enter analysis ID to use: ")
+        id_to_use = None
+        while id_to_use not in actives:
+            id_to_use = input("Enter analysis ID to use: ")
 
-        active_id = int(active_id)
+        id_to_use = int(id_to_use)
 
     print(f"Updating {name}")
-    print(f"  Currently: {current_version} ({current_date:%Y-%m-%d})")
+    if current_version and current_date:
+        print(f"  Currently: {current_version} ({current_date:%Y-%m-%d})")
+    else:
+        print(f"  Currently: N/A")
+
     print(f"  Update to: {version} ({date})")
 
     if confirm and input("Do you want to continue? [y/N] ").lower() != 'y':
@@ -169,49 +196,87 @@ def update_database(url: str, name: str, version: str, date: str,
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    cur.execute(
-        """
-        SELECT COUNT(*) 
-        FROM INTERPRO.DB_VERSION 
-        WHERE DBCODE = :1
-        """, (dbcode,)
-    )
-    cnt, = cur.fetchone()
-    if cnt:
-        query = """
-            UPDATE INTERPRO.DB_VERSION 
-            SET VERSION = :1,
-                FILE_DATE = TO_DATE(:2, 'YYYY-MM-DD'),
-                LOAD_DATE = SYSDATE
-            WHERE DBCODE = :3
-        """
-        params = (version, date, dbcode)
-    else:
-        query = """
-            INSERT INTO INTERPRO.DB_VERSION (
-                DBCODE, VERSION, ENTRY_COUNT, FILE_DATE
-            ) VALUES (:1, :2, 0, TO_DATE(:3, 'YYYY-MM-DD'))
-        """
-        params = (dbcode, version, date)
 
-    try:
-        cur.execute(query, params)
+    if (current_version, current_date) != (version, date):
+        # Update DB_VERSION
+        cur.execute(
+            """
+            SELECT COUNT(*) 
+            FROM INTERPRO.DB_VERSION 
+            WHERE DBCODE = :1
+            """,
+            [dbcode]
+        )
+        cnt, = cur.fetchone()
+        if cnt:
+            cur.execute(
+                """
+                UPDATE INTERPRO.DB_VERSION 
+                SET VERSION = :1,
+                    FILE_DATE = TO_DATE(:2, 'YYYY-MM-DD'),
+                    LOAD_DATE = SYSDATE
+                WHERE DBCODE = :3
+                """,
+                [version, date, dbcode]
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO INTERPRO.DB_VERSION (
+                    DBCODE, VERSION, ENTRY_COUNT, FILE_DATE
+                ) VALUES (:1, :2, 0, TO_DATE(:3, 'YYYY-MM-DD'))
+                """,
+                [dbcode, version, date]
+            )
 
-        if active_id != current_id:
-            # Update IPRSCAN2DBCODE
+    if id_to_use != current_id:
+        # Update IPRSCAN2DBCODE
+        cur.execute(
+            """
+            SELECT COUNT(*) 
+            FROM INTERPRO.IPRSCAN2DBCODE
+            WHERE DBCODE = :1
+            """,
+            [dbcode]
+        )
+        cnt, = cur.fetchone()
+        if cnt:
             cur.execute(
                 """
                 UPDATE INTERPRO.IPRSCAN2DBCODE
                 SET IPRSCAN_SIG_LIB_REL_ID = :1
-                WHERE DBCODE = :2 AND IPRSCAN_SIG_LIB_REL_ID = :3
-                """, (active_id, dbcode, current_id)
+                WHERE DBCODE = :2
+                """,
+                [id_to_use, dbcode]
             )
-    except cx_Oracle.Error as exc:
-        con.rollback()
-        print(f"{type(exc)}: {exc}")
-    else:
-        con.commit()
-        print("Success.")
-    finally:
-        cur.close()
-        con.close()
+        else:
+            cur.execute(
+                """
+                SELECT CODE, DESCRIPTION
+                FROM INTERPRO.CV_EVIDENCE
+                """
+            )
+
+            print("Available evidences:")
+            evidences = set()
+            for code, description in cur:
+                print(f"  {code:<10}{description}")
+                evidences.add(code)
+
+            evidence_to_use = None
+            while evidence_to_use not in evidences:
+                evidence_to_use = input("Enter evidence to use: ")
+
+            cur.execute(
+                """
+                INSERT INTO INTERPRO.IPRSCAN2DBCODE (
+                    IPRSCAN_SIG_LIB_REL_ID, DBCODE, EVIDENCE, PREV_ID
+                ) VALUES (:1, :2, :3, 0)
+                """,
+                [id_to_use, dbcode, evidence_to_use]
+            )
+
+    con.commit()
+    cur.close()
+    con.close()
+    print("Success.")
