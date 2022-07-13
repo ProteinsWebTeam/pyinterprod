@@ -156,6 +156,9 @@ def export_xrefs(url: str, outdir: str, emails: dict):
             fh.write(f"{protein_acc}    DR   {dbname}; {signature_acc}; "
                      f"{signature_name}.\n")
         else:
+            if dbcode == "V" and "NOT NAMED" in signature_name:
+                signature_name = "-"
+
             fh.write(f"{protein_acc}    DR   {dbname}; {signature_acc}; "
                      f"{signature_name}; {num_matches}.\n")
 
