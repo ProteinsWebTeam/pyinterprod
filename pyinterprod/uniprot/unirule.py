@@ -358,7 +358,7 @@ def build_xref_summary(url: str):
             ENTRY_AC VARCHAR2(9) NOT NULL,
             SHORT_NAME VARCHAR2(30),
             METHOD_AC VARCHAR2(25) NOT NULL,
-            METHOD_NAME VARCHAR2(100),
+            METHOD_NAME VARCHAR2(400),
             POS_FROM NUMBER(5) NOT NULL,
             POS_TO NUMBER(5) NOT NULL,
             MATCH_STATUS CHAR(1) NOT NULL,
@@ -385,14 +385,15 @@ def build_xref_summary(url: str):
 
     cur.execute(
         """
-        INSERT /*+ APPEND */ INTO INTERPRO.XREF_SUMMARY
+        INSERT INTO INTERPRO.XREF_SUMMARY
         SELECT
           MA.DBCODE,
           MA.PROTEIN_AC,
           E.ENTRY_AC,
           E.SHORT_NAME,
           MA.METHOD_AC,
-          ME.NAME,
+          CASE WHEN MA.METHOD_AC != ME.NAME THEN ME.NAME 
+               ELSE ME.DESCRIPTION END,
           MA.POS_FROM,
           MA.POS_TO,
           MA.STATUS,
