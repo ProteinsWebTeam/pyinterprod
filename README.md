@@ -480,7 +480,7 @@ $ ipr-calc [OPTIONS] main.conf
 The optional arguments are:
 
 - `--import-sequences`: import sequences from the UniParc database
-- `--top-up`: only import new sequences or prepare new jobs instead of re-doing everything
+- `--top-up`: only import new sequences
 - `--clean`: delete obsolete data (for retired analyses)
 - `--dry-run`: show the number of jobs to run and exit
 - `-l, --list`: list active analyses and exit
@@ -491,6 +491,20 @@ The optional arguments are:
 - `--max-jobs`: maximum number of jobs per analysis
 - `--max-retries`: number of times a failed job is resubmitted
 - `--keep none|all|failed`: keep input/ouput files
+
+#### Examples
+
+Import new UniParc sequences, then quit (do not process jobs):
+
+```bash
+ipr-calc main.conf --import-sequences --top-up --max-jobs 0
+```
+
+Process jobs for analysis `42` only, allow each job to run three times (i.e. restart twice), but keep all temporary files, regardless of the job success/failure:
+
+```bash
+ipr-calc main.conf -a 42 --max-retries 2 --keep all
+``` 
 
 ### Clans update
 
