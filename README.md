@@ -506,6 +506,12 @@ Process jobs for analysis `42` only, allow each job to run three times (i.e. res
 ipr-calc main.conf -a 42 --max-retries 2 --keep all
 ``` 
 
+Run 10 jobs per analysis, and keep failed jobs to investigate:
+
+```bash
+ipr-calc main.conf --max-retries 10 --keep failed
+```
+
 ### Clans update
 
 Update clans and run profile-profile alignments.
