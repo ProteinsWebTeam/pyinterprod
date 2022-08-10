@@ -302,8 +302,13 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
                 logfile = os.path.join(temp_dir, f"{task.name}.log")
 
-                # Check how much memory was used
+                # Get max memory and CPU time
                 max_mem = get_lsf_max_memory(task.stdout)
+                cpu_time = get_lsf_cpu_time(task.stdout)
+
+                # Flag job as completed (even if failed)
+                database.update_job(uri, analysis_id, upi_from, upi_to,
+                                    task, max_mem, cpu_time)
 
                 if task.completed():
                     # Remove the log file (exists if a previous run failed)
@@ -311,11 +316,6 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         os.unlink(logfile)
                     except FileNotFoundError:
                         pass
-
-                    # Flag the job as completed in the database
-                    cpu_time = get_lsf_cpu_time(task.stdout)
-                    database.update_job(uri, analysis_id, upi_from, upi_to,
-                                        task, max_mem, cpu_time)
 
                     n_completed += 1
                 else:
@@ -340,7 +340,10 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         # Resubmit task
                         task.status = STATUS_PENDING
                         pool.submit(task)
-                        database.reset_job(uri, analysis_id, upi_from, upi_to)
+
+                        # Add new job
+                        database.add_job(None, analysis_id, upi_from, upi_to,
+                                         uri=uri)
 
                         # Increment retries counter
                         retries[task.name] = num_retries + 1

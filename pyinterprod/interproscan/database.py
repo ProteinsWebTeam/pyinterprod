@@ -267,45 +267,14 @@ def get_incomplete_jobs(cur: cx_Oracle.Cursor) -> dict:
     return incomplete_jobs
 
 
-def split_incomplete_jobs(uri: str, new_size: int):
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
-    jobs = get_incomplete_jobs(cur)
+def add_job(cur: Optional[cx_Oracle.Cursor], analysis_id: int, upi_from: str,
+            upi_to: str, uri: Optional[str] = None):
+    if uri:
+        con = cx_Oracle.connect(uri)
+        cur = con.cursor()
+    else:
+        con = None
 
-    params = []
-    for analysis_id, analysis_jobs in jobs.items():
-        for upi_from, upi_to in analysis_jobs:
-            while upi_from <= upi_to:
-                start = upi_to_int(upi_from)
-                new_start = start + (new_size - 1)
-                new_upi_to = int_to_upi(new_start)
-
-                params.append((analysis_id, upi_from, new_upi_to))
-
-                upi_from = int_to_upi(new_start + 1)
-
-    cur.execute(
-        """
-        DELETE FROM IPRSCAN.ANALYSIS_JOBS
-        WHERE END_TIME IS NULL
-        """
-    )
-
-    cur.executemany(
-        """
-        INSERT INTO IPRSCAN.ANALYSIS_JOBS 
-            (ANALYSIS_ID, UPI_FROM, UPI_TO, SUBMIT_TIME)
-        VALUES (:1, :2, :3, SYSDATE)
-        """,
-        params
-    )
-
-    con.commit()
-    cur.close()
-    con.close()
-
-
-def add_job(cur: cx_Oracle, analysis_id: int, upi_from: str, upi_to: str):
     cur.execute(
         """
         UPDATE IPRSCAN.ANALYSIS
@@ -324,28 +293,9 @@ def add_job(cur: cx_Oracle, analysis_id: int, upi_from: str, upi_to: str):
     )
     cur.connection.commit()
 
-
-def reset_job(uri: str, analysis_id: int, upi_from: str, upi_to: str):
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
-    cur.execute(
-        """
-        UPDATE IPRSCAN.ANALYSIS_JOBS
-        SET SUBMIT_TIME = SYSDATE,
-            START_TIME = NULL,
-            END_TIME = NULL,
-            MAX_MEMORY = NULL,
-            LIM_MEMORY = NULL,
-            CPU_TIME = NULL
-        WHERE ANALYSIS_ID = :1 
-          AND UPI_FROM = :2 
-          AND UPI_TO = :3
-        """,
-        [analysis_id, upi_from, upi_to]
-    )
-    con.commit()
-    cur.close()
-    con.close()
+    if con is not None:
+        cur.close()
+        con.close()
 
 
 def update_job(uri: str, analysis_id: int, upi_from: str, upi_to: str,
