@@ -313,6 +313,7 @@ def update_job(uri: str, analysis_id: int, upi_from: str, upi_to: str,
         WHERE ANALYSIS_ID = :6
             AND UPI_FROM = :7
             AND UPI_TO = :8
+            AND END_TIME IS NULL
         """,
         [task.start_time, task.end_time, max_mem, int(task.scheduler["mem"]),
          cpu_time, analysis_id, upi_from, upi_to]
