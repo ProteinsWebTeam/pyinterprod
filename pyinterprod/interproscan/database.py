@@ -5,7 +5,6 @@ from mundone.task import Task
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
-from .utils import int_to_upi, upi_to_int
 
 
 def get_analyses(obj: Union[str, cx_Oracle.Cursor]) -> dict:
