@@ -714,6 +714,14 @@ def run_uniprot_update():
             requires=["update-matches"]
         ),
         Task(
+            fn=uniprot.unirule.build_aa_alignment,
+            args=(ora_iprscan_url,),
+            name="aa-alignment",
+            scheduler=dict(queue=lsf_queue),
+            # Actually depends on update-ipm-matches
+            requires=["update-matches"]
+        ),
+        Task(
             fn=uniprot.unirule.build_aa_iprscan,
             args=(ora_iprscan_url,),
             name="aa-iprscan",
@@ -749,8 +757,8 @@ def run_uniprot_update():
             args=(ora_interpro_url, emails),
             name="notify-interpro",
             scheduler=dict(queue=lsf_queue),
-            requires=["aa-iprscan", "xref-condensed", "xref-summary",
-                      "update-fmatches"]
+            requires=["aa-alignments", "aa-iprscan", "xref-condensed",
+                      "xref-summary", "update-fmatches"]
         ),
 
         # Copy SwissProt descriptions
