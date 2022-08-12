@@ -307,7 +307,8 @@ def get_analyses(cur: Cursor, **kwargs) -> List[Analysis]:
         f"""
         SELECT A.ID, A.NAME, A.VERSION, A.ACTIVE, T.MATCH_TABLE, T.SITE_TABLE
         FROM IPRSCAN.ANALYSIS@ISPRO A
-        INNER JOIN IPRSCAN.ANALYSIS_TABLES@ISPRO T ON A.NAME = T.NAME
+        INNER JOIN IPRSCAN.ANALYSIS_TABLES@ISPRO T 
+            ON LOWER(A.NAME) = LOWER(T.NAME)
         {sql_filter}
         ORDER BY A.NAME
         """, params
