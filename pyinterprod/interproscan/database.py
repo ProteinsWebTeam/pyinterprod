@@ -4,6 +4,7 @@ import cx_Oracle
 from mundone.task import Task
 
 from pyinterprod import logger
+from pyinterprod.uniprot.uniparc import iter_proteins
 from pyinterprod.utils import oracle
 
 
@@ -159,29 +160,6 @@ def clean_tables(uri: str, analysis_ids: Optional[list[int]] = None):
         else:
             print("Canceled")
 
-    cur.close()
-    con.close()
-
-
-def iter_proteins(uri: str, greather_than: Optional[str] = None):
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
-    cur.outputtypehandler = oracle.clob_as_str
-
-    sql = """
-        SELECT ID, UPI, TIMESTAMP, USERSTAMP, CRC64, LEN, SEQ_SHORT, 
-               SEQ_LONG, MD5
-        FROM UNIPARC.PROTEIN      
-    """
-
-    if greather_than is not None:
-        sql += "WHERE UPI > :1"
-        params = [greather_than]
-    else:
-        params = []
-
-    cur.execute(sql, params)
-    yield from cur
     cur.close()
     con.close()
 
