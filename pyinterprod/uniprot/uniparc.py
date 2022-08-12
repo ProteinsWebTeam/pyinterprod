@@ -6,9 +6,9 @@ from pyinterprod import logger
 from pyinterprod.utils import oracle
 
 
-def update(ipr_uri: str, unp_uri: str):
+def update(ipr_uri: str, unp_uri: str, top_up: Optional[bool] = False):
     update_databases(ipr_uri, unp_uri)
-    update_proteins(ipr_uri, unp_uri)
+    update_proteins(ipr_uri, unp_uri, top_up=top_up)
     update_xrefs(ipr_uri, unp_uri)
 
 

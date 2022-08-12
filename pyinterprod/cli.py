@@ -607,6 +607,7 @@ def run_uniprot_update():
         Task(
             fn=uniprot.uniparc.update,
             args=(ora_uniparc_url, ora_uaread_url),
+            kwargs=dict(top_up=True),
             name="update-uniparc",
             scheduler=dict(queue=lsf_queue)
         ),
