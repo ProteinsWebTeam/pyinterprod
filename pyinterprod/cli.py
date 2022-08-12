@@ -757,7 +757,7 @@ def run_uniprot_update():
             args=(ora_interpro_url, emails),
             name="notify-interpro",
             scheduler=dict(queue=lsf_queue),
-            requires=["aa-alignments", "aa-iprscan", "xref-condensed",
+            requires=["aa-alignment", "aa-iprscan", "xref-condensed",
                       "xref-summary", "update-fmatches"]
         ),
 
