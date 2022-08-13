@@ -934,8 +934,11 @@ def run_interproscan_manager():
                                              uniparc_uri=unpr_uniparc_uri,
                                              top_up=args.top_up)
 
-    if args.clean and not args.dry_run:
-        interproscan.database.clean_tables(iscn_iprscan_uri, args.analyses)
+    if not args.dry_run:
+        if args.clean:
+            interproscan.database.clean_tables(iscn_iprscan_uri, args.analyses)
+
+        interproscan.database.rebuild_indexes(iscn_iprscan_uri, args.analyses)
 
     analyses_config = ConfigParser()
     analyses_config.read(config["misc"]["analyses"])

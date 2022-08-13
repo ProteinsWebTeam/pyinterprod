@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, Union
 
 import cx_Oracle
@@ -296,5 +297,61 @@ def update_job(uri: str, analysis_id: int, upi_from: str, upi_to: str,
          cpu_time, analysis_id, upi_from, upi_to]
     )
     con.commit()
+    cur.close()
+    con.close()
+
+
+def rebuild_indexes(uri: str, analysis_ids: Optional[list[int]] = None):
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+
+    analyses = get_analyses(cur)
+
+    tables = set()
+    for analysis_id, analysis in analyses.items():
+        if analysis_ids and analysis_id not in analysis_ids:
+            continue
+
+        tables.add(analysis["tables"]["matches"])
+
+        if analysis["tables"]["sites"]:
+            tables.add(analysis["tables"]["sites"])
+
+    to_rebuild = set()
+    for table in tables:
+        for index in oracle.get_indexes(cur, "IPRSCAN", table):
+            if index["is_unusable"]:
+                to_rebuild.add(index["name"])
+
+    cur.close()
+    con.close()
+
+    errors = 0
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        fs = {}
+
+        for index in to_rebuild:
+            f = executor.submit(_rebuild_index, uri, index)
+            fs[f] = index
+
+        for f in as_completed(fs):
+            index = fs[f]
+
+            try:
+                f.result()
+            except Exception as exc:
+                logger.error(f"failed to rebuild {index}: {exc}")
+                errors += 1
+            else:
+                logger.info(f"{index} rebuilt")
+
+    if errors > 0:
+        raise RuntimeError(f"{errors} errors occurred")
+
+
+def _rebuild_index(uri: str, name: str):
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+    oracle.rebuild_index(cur, name)
     cur.close()
     con.close()
