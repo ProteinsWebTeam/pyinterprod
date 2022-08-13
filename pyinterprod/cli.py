@@ -605,10 +605,16 @@ def run_uniprot_update():
     tasks = [
         # Data from UAREAD
         Task(
-            fn=uniprot.uniparc.update,
+            fn=uniprot.uniparc.update_proteins,
             args=(ora_uniparc_url, ora_uaread_url),
             kwargs=dict(top_up=True),
-            name="update-uniparc",
+            name="update-uniparc-proteins",
+            scheduler=dict(queue=lsf_queue)
+        ),
+        Task(
+            fn=uniprot.uniparc.update_xrefs,
+            args=(ora_uniparc_url, ora_uaread_url),
+            name="update-uniparc-xrefs",
             scheduler=dict(queue=lsf_queue)
         ),
 
@@ -627,7 +633,7 @@ def run_uniprot_update():
             kwargs=dict(force=True, threads=8),
             name="import-ipm-matches",
             scheduler=dict(queue=lsf_queue),
-            requires=["update-uniparc"]
+            requires=["update-uniparc-proteins"]
         ),
         Task(
             fn=interpro.iprscan.update_partitions,
@@ -643,7 +649,7 @@ def run_uniprot_update():
             kwargs=dict(force=True, threads=2),
             name="import-ipm-sites",
             scheduler=dict(queue=lsf_queue),
-            requires=["update-uniparc"]
+            requires=["update-uniparc-proteins"]
         ),
         Task(
             fn=interpro.iprscan.update_partitions,
@@ -682,7 +688,8 @@ def run_uniprot_update():
             args=(ora_interpro_url,),
             name="check-proteins",
             scheduler=dict(queue=lsf_queue),
-            requires=["delete-proteins", "update-uniparc"]
+            requires=["delete-proteins", "update-uniparc-proteins",
+                      "update-uniparc-xrefs"]
         ),
         Task(
             fn=interpro.match.update_matches,
