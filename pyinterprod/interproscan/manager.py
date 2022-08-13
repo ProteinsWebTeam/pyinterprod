@@ -190,11 +190,6 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             name = analysis["name"]
             version = analysis["version"]
 
-            if analysis["max_upi"]:
-                next_upi = int_to_upi(upi_to_int(analysis["max_upi"]) + 1)
-            else:
-                next_upi = int_to_upi(1)
-
             appl, parse_matches, parse_sites = _DB_TO_I5[name]
 
             analysis_work_dir = os.path.join(work_dir, appl, version)
@@ -214,7 +209,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                                   lsf_queue=lsf_queue)
 
             n_tasks_analysis = 0
-            for upi_from, upi_to in incomplete_jobs.pop(analysis_id, []):
+            jobs = incomplete_jobs.pop(analysis_id, [])
+            for upi_from, upi_to, is_running in jobs:
                 if dry_run:
                     """
                     We're not monitoring/submitting tasks, so we don't need
@@ -228,32 +224,55 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         continue
 
                 task = factory.make(upi_from, upi_to)
-                task.status = STATUS_RUNNING  # assumes it's running
                 task.workdir = os.path.join(temp_dir, task.name)
 
-                if task.name in name2id:
-                    # Running
-                    task.jobid = name2id.pop(task.name)
-                    to_run.append(task)
-                    n_tasks_analysis += 1
-                    continue
+                if is_running:
+                    # Flagged as running in the database
 
-                task.poll()  # checks if output exists
-                if task.done():
-                    """
-                    Completed or failed. Will be submitted to the pool
-                    which will send it back without restarting it.
-                    """
-                    to_run.append(task)
+                    # Assumes task is running
+                    task.status = STATUS_RUNNING
+
+                    # Checks if the associated job is running
+                    if task.name in name2id:
+                        # It is!
+                        task.jobid = name2id.pop(task.name)
+                        to_run.append(task)
+                        n_tasks_analysis += 1
+                        continue
+
+                    task.poll()  # Checks if output exists
+                    if task.done():
+                        """
+                        Completed or failed. Will be submitted to the pool
+                        which will send it back without restarting it.
+                        """
+                        to_run.append(task)
+                    elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
+                        break
+                    else:
+                        task.status = STATUS_PENDING
+                        to_run.append(task)
+                        n_tasks_analysis += 1
                 elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                     break
                 else:
+                    # Flagged as failed in the database
+
+                    # Create new job in the database
+                    database.add_job(cur, analysis_id, upi_from, upi_to)
+
+                    # Add task to queue
                     task.status = STATUS_PENDING
                     to_run.append(task)
                     n_tasks_analysis += 1
 
-            for upi_from, upi_to in range_upi(next_upi, max_upi,
-                                              config["job_size"]):
+            if analysis["max_upi"]:
+                next_upi = int_to_upi(upi_to_int(analysis["max_upi"]) + 1)
+            else:
+                next_upi = int_to_upi(1)
+
+            job_size = config["job_size"]
+            for upi_from, upi_to in range_upi(next_upi, max_upi, job_size):
                 if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                     break
                 elif dry_run:

@@ -250,18 +250,32 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
 def get_incomplete_jobs(cur: cx_Oracle.Cursor) -> dict:
     cur.execute(
         """
-        SELECT ANALYSIS_ID, UPI_FROM, UPI_TO
+        SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME
         FROM IPRSCAN.ANALYSIS_JOBS
         WHERE END_TIME IS NULL
+        UNION 
+        SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME
+        FROM (
+            SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME, SUCCESS, 
+                   ROW_NUMBER() OVER (
+                       PARTITION BY ANALYSIS_ID, UPI_FROM, UPI_TO 
+                       ORDER BY END_TIME DESC
+                   ) RN
+            FROM ANALYSIS_JOBS
+        )
+        WHERE SUCCESS = 'N' AND RN = 1
         """
     )
 
     incomplete_jobs = {}
-    for analysis_id, upi_from, upi_to in cur:
+    for analysis_id, upi_from, upi_to, end_time in cur:
+        is_running = end_time is None
         try:
-            incomplete_jobs[analysis_id].append((upi_from, upi_to))
+            analysis_jobs = incomplete_jobs[analysis_id]
         except KeyError:
-            incomplete_jobs[analysis_id] = [(upi_from, upi_to)]
+            analysis_jobs = incomplete_jobs[analysis_id] = []
+        finally:
+            analysis_jobs.append((upi_from, upi_to, is_running))
 
     return incomplete_jobs
 
@@ -284,9 +298,8 @@ def add_job(cur: Optional[cx_Oracle.Cursor], analysis_id: int, upi_from: str,
     )
     cur.execute(
         """
-        INSERT INTO IPRSCAN.ANALYSIS_JOBS 
-            (ANALYSIS_ID, UPI_FROM, UPI_TO, SUBMIT_TIME)
-        VALUES (:1, :2, :3, SYSDATE)
+        INSERT INTO IPRSCAN.ANALYSIS_JOBS (ANALYSIS_ID, UPI_FROM, UPI_TO)
+        VALUES (:1, :2, :3)
         """,
         (analysis_id, upi_from, upi_to)
     )
@@ -304,20 +317,21 @@ def update_job(uri: str, analysis_id: int, upi_from: str, upi_to: str,
     cur.execute(
         """
         UPDATE IPRSCAN.ANALYSIS_JOBS
-        SET START_TIME = :1,
-            END_TIME = :2,
-            MAX_MEMORY = :3,
-            LIM_MEMORY = :4,
-            CPU_TIME = :5,
-            SUCCESS = :6
-        WHERE ANALYSIS_ID = :7
-            AND UPI_FROM = :8
-            AND UPI_TO = :9
+        SET SUBMIT_TIME = :1,
+            START_TIME = :2,
+            END_TIME = :3,
+            MAX_MEMORY = :4,
+            LIM_MEMORY = :5,
+            CPU_TIME = :6,
+            SUCCESS = :7
+        WHERE ANALYSIS_ID = :8
+            AND UPI_FROM = :9
+            AND UPI_TO = :10
             AND END_TIME IS NULL
         """,
-        [task.start_time, task.end_time, max_mem, int(task.scheduler["mem"]),
-         cpu_time, "Y" if task.completed() else "N", analysis_id, upi_from,
-         upi_to]
+        [task.submit_time, task.start_time, task.end_time, max_mem,
+         int(task.scheduler["mem"]), cpu_time,
+         "Y" if task.completed() else "N", analysis_id, upi_from, upi_to]
     )
     con.commit()
     cur.close()
