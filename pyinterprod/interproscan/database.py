@@ -308,14 +308,16 @@ def update_job(uri: str, analysis_id: int, upi_from: str, upi_to: str,
             END_TIME = :2,
             MAX_MEMORY = :3,
             LIM_MEMORY = :4,
-            CPU_TIME = :5
-        WHERE ANALYSIS_ID = :6
-            AND UPI_FROM = :7
-            AND UPI_TO = :8
+            CPU_TIME = :5,
+            SUCCESS = :6
+        WHERE ANALYSIS_ID = :7
+            AND UPI_FROM = :8
+            AND UPI_TO = :9
             AND END_TIME IS NULL
         """,
         [task.start_time, task.end_time, max_mem, int(task.scheduler["mem"]),
-         cpu_time, analysis_id, upi_from, upi_to]
+         cpu_time, "Y" if task.completed() else "N", analysis_id, upi_from,
+         upi_to]
     )
     con.commit()
     cur.close()
