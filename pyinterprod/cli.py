@@ -704,7 +704,7 @@ def run_uniprot_update():
             args=(ora_interpro_url, emails),
             name="export-sib",
             scheduler=dict(queue=lsf_queue),
-            requires=["update-matches"]
+            requires=["xref-condensed"]
         ),
         Task(
             fn=uniprot.unirule.report_integration_changes,
