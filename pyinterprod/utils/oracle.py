@@ -1,3 +1,4 @@
+import random
 import time
 from typing import Callable, List, Optional, Sequence
 
@@ -6,6 +7,27 @@ from cx_Oracle import Cursor, DatabaseError, DB_TYPE_CLOB, DB_TYPE_LONG
 
 from pyinterprod import logger
 from pyinterprod.interproscan.utils import range_upi
+
+
+def try_connect(uri: str, seconds: int = 10, max_attempts: int = 10):
+    num_attempts = 0
+
+    while True:
+        num_attempts += 1
+
+        try:
+            con = connect(uri)
+        except DatabaseError as exc:
+            error, = exc.args
+
+            # ORA-12516: TNS:listener could not find available handler
+            # with matching protocol stack
+            if error.code == 12516 and num_attempts < max_attempts:
+                time.sleep(random.randint(1, seconds))
+            else:
+                raise
+        else:
+            return con
 
 
 def clob_as_str(cur: Cursor, name, default_type, size, precision, scale):

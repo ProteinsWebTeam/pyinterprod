@@ -12,6 +12,7 @@ from mundone import Pool, Task
 from mundone.task import STATUS_PENDING, STATUS_RUNNING
 
 from pyinterprod import logger
+from pyinterprod.utils import oracle
 from . import database, persistence
 from .utils import int_to_upi, upi_to_int, range_upi
 
@@ -390,7 +391,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 def export_fasta(uri: str, fasta_file: str, upi_from: str, upi_to: str) -> int:
     num_sequences = 0
     with open(fasta_file, "wt") as fh:
-        con = cx_Oracle.connect(uri)
+        con = oracle.try_connect(uri)
         cur = con.cursor()
 
         cur.execute(
@@ -484,7 +485,7 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             elif site_table and not os.path.isfile(sites_output):
                 raise RuntimeError(f"Cannot access output sites tsv-pro")
 
-            con = cx_Oracle.connect(uri)
+            con = oracle.try_connect(uri)
             cur = con.cursor()
 
             parse_matches(cur, matches_output, analysis_id, match_table)

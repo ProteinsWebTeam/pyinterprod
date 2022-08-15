@@ -283,7 +283,7 @@ def get_incomplete_jobs(cur: cx_Oracle.Cursor) -> dict:
 def add_job(cur: Optional[cx_Oracle.Cursor], analysis_id: int, upi_from: str,
             upi_to: str, uri: Optional[str] = None):
     if uri:
-        con = cx_Oracle.connect(uri)
+        con = oracle.try_connect(uri)
         cur = con.cursor()
     else:
         con = None
@@ -312,7 +312,7 @@ def add_job(cur: Optional[cx_Oracle.Cursor], analysis_id: int, upi_from: str,
 
 def update_job(uri: str, analysis_id: int, upi_from: str, upi_to: str,
                task: Task, max_mem: int, cpu_time: int):
-    con = cx_Oracle.connect(uri)
+    con = oracle.try_connect(uri)
     cur = con.cursor()
     cur.execute(
         """
