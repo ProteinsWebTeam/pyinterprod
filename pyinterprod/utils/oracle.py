@@ -20,9 +20,12 @@ def try_connect(uri: str, seconds: int = 10, max_attempts: int = 10):
         except DatabaseError as exc:
             error, = exc.args
 
-            # ORA-12516: TNS:listener could not find available handler
-            # with matching protocol stack
-            if error.code == 12516 and num_attempts < max_attempts:
+            """
+            ORA-12170: TNS:Connect timeout occurred
+            ORA-12516: TNS:listener could not find available handler 
+                       with matching protocol stack
+            """
+            if error.code in (12170, 12516) and num_attempts < max_attempts:
                 time.sleep(random.randint(1, seconds))
             else:
                 raise
