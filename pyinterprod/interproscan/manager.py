@@ -496,7 +496,7 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             if site_table:
                 parse_sites(cur, sites_output, analysis_id, site_table)
 
-            database.set_job_done(analysis_id, upi_from, upi_to)
+            database.set_job_done(cur, analysis_id, upi_from, upi_to)
 
             con.commit()
             cur.close()
