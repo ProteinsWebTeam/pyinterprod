@@ -311,6 +311,9 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             task = to_run.pop(i)
             pool.submit(task)
 
+        con = oracle.try_connect(uri)
+        cur = con.cursor()
+
         n_completed = n_failed = 0
         milestone = step = 5
         retries = {}
@@ -320,17 +323,19 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 upi_to = task.args[2]
                 analysis_id = task.args[6]
 
-                logfile = os.path.join(temp_dir, f"{task.name}.log")
+                # Check if job updated as completed in Oracle
+                ok = database.is_job_done(cur, analysis_id, upi_from, upi_to)
 
                 # Get max memory and CPU time
                 max_mem = get_lsf_max_memory(task.stdout)
                 cpu_time = get_lsf_cpu_time(task.stdout)
 
-                # Flag job as completed (even if failed)
-                database.update_job(uri, analysis_id, upi_from, upi_to,
+                # Update job metadata
+                database.update_job(cur, analysis_id, upi_from, upi_to,
                                     task, max_mem, cpu_time)
 
-                if task.completed():
+                logfile = os.path.join(temp_dir, f"{task.name}.log")
+                if ok:
                     # Remove the log file (exists if a previous run failed)
                     try:
                         os.unlink(logfile)
@@ -362,8 +367,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         pool.submit(task)
 
                         # Add new job
-                        database.add_job(None, analysis_id, upi_from, upi_to,
-                                         uri=uri)
+                        database.add_job(cur, analysis_id, upi_from, upi_to)
 
                         # Increment retries counter
                         retries[task.name] = num_retries + 1
@@ -491,6 +495,8 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             parse_matches(cur, matches_output, analysis_id, match_table)
             if site_table:
                 parse_sites(cur, sites_output, analysis_id, site_table)
+
+            database.set_job_done(analysis_id, upi_from, upi_to)
 
             con.commit()
             cur.close()

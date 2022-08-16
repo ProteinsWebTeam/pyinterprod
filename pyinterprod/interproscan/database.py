@@ -280,14 +280,8 @@ def get_incomplete_jobs(cur: cx_Oracle.Cursor) -> dict:
     return incomplete_jobs
 
 
-def add_job(cur: Optional[cx_Oracle.Cursor], analysis_id: int, upi_from: str,
-            upi_to: str, uri: Optional[str] = None):
-    if uri:
-        con = oracle.try_connect(uri)
-        cur = con.cursor()
-    else:
-        con = None
-
+def add_job(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
+            upi_to: str):
     cur.execute(
         """
         UPDATE IPRSCAN.ANALYSIS
@@ -301,19 +295,13 @@ def add_job(cur: Optional[cx_Oracle.Cursor], analysis_id: int, upi_from: str,
         INSERT INTO IPRSCAN.ANALYSIS_JOBS (ANALYSIS_ID, UPI_FROM, UPI_TO)
         VALUES (:1, :2, :3)
         """,
-        (analysis_id, upi_from, upi_to)
+        [analysis_id, upi_from, upi_to]
     )
     cur.connection.commit()
 
-    if con is not None:
-        cur.close()
-        con.close()
 
-
-def update_job(uri: str, analysis_id: int, upi_from: str, upi_to: str,
-               task: Task, max_mem: int, cpu_time: int):
-    con = oracle.try_connect(uri)
-    cur = con.cursor()
+def update_job(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
+               upi_to: str, task: Task, max_mem: int, cpu_time: int):
     cur.execute(
         """
         UPDATE IPRSCAN.ANALYSIS_JOBS
@@ -322,20 +310,16 @@ def update_job(uri: str, analysis_id: int, upi_from: str, upi_to: str,
             END_TIME = :3,
             MAX_MEMORY = :4,
             LIM_MEMORY = :5,
-            CPU_TIME = :6,
-            SUCCESS = :7
-        WHERE ANALYSIS_ID = :8
+            CPU_TIME = :6
+        WHERE ANALYSIS_ID = :7
             AND UPI_FROM = :9
-            AND UPI_TO = :10
+            AND UPI_TO = :9
             AND END_TIME IS NULL
         """,
         [task.submit_time, task.start_time, task.end_time, max_mem,
-         int(task.scheduler["mem"]), cpu_time,
-         "Y" if task.completed() else "N", analysis_id, upi_from, upi_to]
+         int(task.scheduler["mem"]), cpu_time, analysis_id, upi_from, upi_to]
     )
-    con.commit()
-    cur.close()
-    con.close()
+    cur.connection.commit()
 
 
 def is_job_done(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
@@ -353,3 +337,18 @@ def is_job_done(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
     )
     cnt, = cur.fetchone()
     return cnt > 0
+
+
+def set_job_done(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
+                 upi_to: str):
+    cur.execute(
+        """
+        UPDATE IPRSCAN.ANALYSIS_JOBS
+        SET SUCCESS = 'Y'
+        WHERE ANALYSIS_ID = :1
+            AND UPI_FROM = :2
+            AND UPI_TO = :3
+            AND END_TIME IS NULL
+        """,
+        [analysis_id, upi_from, upi_to]
+    )
