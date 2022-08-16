@@ -336,3 +336,20 @@ def update_job(uri: str, analysis_id: int, upi_from: str, upi_to: str,
     con.commit()
     cur.close()
     con.close()
+
+
+def is_job_done(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
+                upi_to: str) -> bool:
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM IPRSCAN.ANALYSIS_JOBS
+        WHERE ANALYSIS_ID = :1 
+          AND UPI_FROM = :2 
+          AND UPI_TO = :3
+          AND SUCCESS = 'Y' 
+        """,
+        [analysis_id, upi_from, upi_to]
+    )
+    cnt, = cur.fetchone()
+    return cnt > 0
