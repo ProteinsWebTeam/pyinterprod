@@ -1,22 +1,21 @@
-# -*- coding: utf-8 -*-
-
 from typing import MutableMapping, Sequence, Tuple
 
 import cx_Oracle
 
 from pyinterprod import logger
+from pyinterprod.interpro import iprscan
 from pyinterprod.utils import email, oracle, Table
 
 
-def report_integration_changes(url: str, emails: dict):
+def report_integration_changes(uri: str, emails: dict):
     """Sends a list of integration changes.
     If a signature is integrated in an unchecked entry, we consider
     the signature as unintegrated.
 
-    :param url: Oracle connection string
+    :param uri: Oracle connection string
     :param emails: email info (SMTP server/port, sender, recipients, etc.)
     """
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -127,54 +126,164 @@ def _condense(matches: MutableMapping[str, Sequence[Tuple[int, int]]]):
         matches[entry_acc] = condensed_matches
 
 
-def build_aa_iprscan(url: str):
-    logger.info("building AA_IPRSCAN")
+def build_aa_alignment(uri: str):
+    logger.info("building AA_ALIGNMENT")
 
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
-    oracle.drop_table(cur, "IPRSCAN.AA_IPRSCAN", purge=True)
 
-    select_stmt = """
-        SELECT
-          UPI,
-          ANALYSIS_ID AS LIBRARY_ID,
-          METHOD_AC AS SIGNATURE,
-          SEQ_START,
-          SEQ_END,
-          SEQ_FEATURE
-    """
+    analyses = {}
+    for analysis in iprscan.get_analyses(cur, type="matches",
+                                         status="production"):
+        analyses[analysis.name] = (analysis.id, analysis.table)
 
+    oracle.drop_table(cur, "IPRSCAN.AA_ALIGNMENT", purge=True)
     cur.execute(
-        f"""
-        CREATE TABLE IPRSCAN.AA_IPRSCAN COMPRESS NOLOGGING
-        AS {select_stmt} FROM IPRSCAN.MV_IPRSCAN WHERE 1 = 0
+        """
+        CREATE TABLE IPRSCAN.AA_ALIGNMENT
+        (
+            UPI VARCHAR2(13) NOT NULL,
+            LIBRARY VARCHAR2(25) NOT NULL,
+            SIGNATURE VARCHAR2(255) NOT NULL,
+            SEQ_START NUMBER(10) NOT NULL,
+            SEQ_END NUMBER(10) NOT NULL,
+            ALIGNMENT VARCHAR2(4000)
+        ) COMPRESS NOLOGGING
         """
     )
 
-    partitions = ("TMHMM", "SIGNALP_EUK", "SIGNALP_GRAM_POSITIVE",
-                  "SIGNALP_GRAM_NEGATIVE", "COILS", "PROSITE_PATTERNS",
-                  "PROSITE_PROFILES", "MOBIDBLITE")
-    for p in partitions:
-        logger.debug(f"inserting partition {p}")
+    # Open second cursor for INSERT statements (first used for SELECT)
+    cur2 = con.cursor()
+
+    # TODO: add FunFam
+    for name in ["HAMAP", "PROSITE patterns", "PROSITE profiles"]:
+        logger.info(f"inserting data from {name}")
+        analysis_id, table = analyses[name]
+
         cur.execute(
             f"""
-            INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
-            {select_stmt}
-            FROM IPRSCAN.MV_IPRSCAN PARTITION({p})
+            SELECT UPI, METHOD_AC, SEQ_START, SEQ_END, ALIGNMENT
+            FROM IPRSCAN.{iprscan.PREFIX}{table}
+            WHERE ANALYSIS_ID = :1
+           """,
+            [analysis_id]
+        )
+
+        rows = []
+        library = name.replace(" ", "_").upper()
+        for row in cur:
+            rows.append((row[0], library, row[1], row[2], row[3], row[4]))
+
+            if len(rows) == 1000:
+                cur2.executemany(
+                    f"""
+                    INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
+                    VALUES (:1, :2, :3, :4, :5, :6)
+                    """,
+                    rows
+                )
+                con.commit()
+                rows.clear()
+
+        if rows:
+            cur2.executemany(
+                f"""
+                INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
+                VALUES (:1, :2, :3, :4, :5, :6)
+                """,
+                rows
+            )
+            con.commit()
+            rows.clear()
+
+    cur2.close()
+
+    logger.info("indexing")
+    for col in ("UPI", "SIGNATURE"):
+        cur.execute(
+            f"""
+            CREATE INDEX I_AA_ALIGNMENT${col}
+            ON IPRSCAN.AA_ALIGNMENT ({col}) NOLOGGING
             """
         )
-        con.commit()
 
-    logger.debug("inserting partition PHOBIUS")
+    cur.execute("GRANT SELECT ON IPRSCAN.AA_ALIGNMENT TO KRAKEN")
+    cur.close()
+    con.close()
+
+    logger.info("AA_ALIGNMENT ready")
+
+
+def build_aa_iprscan(uri: str):
+    logger.info("building AA_IPRSCAN")
+
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+    oracle.drop_table(cur, "IPRSCAN.AA_IPRSCAN", purge=True)
     cur.execute(
-        f"""
-        INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
-        {select_stmt}
-        FROM IPRSCAN.MV_IPRSCAN PARTITION(PHOBIUS)
-        WHERE METHOD_AC IN ('SIGNAL_PEPTIDE','TRANSMEMBRANE')
+        """
+        CREATE TABLE IPRSCAN.AA_IPRSCAN
+        (
+            UPI VARCHAR2(13) NOT NULL,
+            -- LIBRARY_ID NUMBER(5) NOT NULL,
+            LIBRARY VARCHAR2(25) NOT NULL,
+            SIGNATURE VARCHAR2(255) NOT NULL,
+            SEQ_START NUMBER(10) NOT NULL,
+            SEQ_END NUMBER(10) NOT NULL,
+            SEQ_FEATURE VARCHAR2(4000)
+        ) COMPRESS NOLOGGING
         """
     )
-    con.commit()
+
+    # Open second cursor for INSERT statements (first used for SELECT)
+    cur2 = con.cursor()
+
+    for db in ["COILS", "MobiDB Lite", "Phobius", "PROSITE patterns",
+               "PROSITE profiles", "SignalP_Euk", "SignalP_Gram_positive",
+               "SignalP_Gram_negative", "TMHMM"]:
+        logger.info(f"inserting data from {db}")
+        partition = iprscan.MATCH_PARTITIONS[db]["partition"]
+
+        sql = f"""
+            SELECT UPI, ANALYSIS_ID, METHOD_AC, SEQ_START, SEQ_END, SEQ_FEATURE
+            FROM IPRSCAN.MV_IPRSCAN PARTITION ({partition})        
+        """
+
+        if db == "Phobius":
+            sql += "WHERE METHOD_AC IN ('SIGNAL_PEPTIDE','TRANSMEMBRANE')"
+
+        cur.execute(sql)
+
+        rows = []
+        library = db.replace(" ", "_").upper()
+        for row in cur:
+            # rows.append((row[0], row[1], library, row[2], row[3], row[4],
+            #              row[5]))
+            rows.append((row[0], library, row[2], row[3], row[4], row[5]))
+
+            if len(rows) == 1000:
+                cur2.executemany(
+                    f"""
+                    INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
+                    VALUES (:1, :2, :3, :4, :5, :6)
+                    """,
+                    rows
+                )
+                con.commit()
+                rows.clear()
+
+        if rows:
+            cur2.executemany(
+                f"""
+                INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
+                VALUES (:1, :2, :3, :4, :5, :6)
+                """,
+                rows
+            )
+            con.commit()
+            rows.clear()
+
+    cur2.close()
 
     logger.info("indexing")
     for col in ("UPI", "SIGNATURE"):
@@ -185,20 +294,16 @@ def build_aa_iprscan(url: str):
             """
         )
 
-    logger.info("gathering statistics")
-    oracle.gather_stats(cur, "IPRSCAN", "AA_IPRSCAN")
-
     cur.execute("GRANT SELECT ON IPRSCAN.AA_IPRSCAN TO KRAKEN")
-
     cur.close()
     con.close()
 
     logger.info("AA_IPRSCAN ready")
 
 
-def build_xref_condensed(url: str):
+def build_xref_condensed(uri: str):
     logger.info("building XREF_CONDENSED")
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
     oracle.drop_table(cur, "INTERPRO.XREF_CONDENSED", purge=True)
     cur.execute(
@@ -333,20 +438,16 @@ def build_xref_condensed(url: str):
             """
         )
 
-    logger.info("gathering statistics")
-    oracle.gather_stats(cur, "INTERPRO", "XREF_CONDENSED")
-
     cur.execute("GRANT SELECT ON INTERPRO.XREF_CONDENSED TO KRAKEN")
-
     cur.close()
     con.close()
 
     logger.info("XREF_CONDENSED ready")
 
 
-def build_xref_summary(url: str):
+def build_xref_summary(uri: str):
     logger.info("building XREF_SUMMARY")
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
     oracle.drop_table(cur, "INTERPRO.XREF_SUMMARY", purge=True)
     cur.execute(
@@ -358,7 +459,7 @@ def build_xref_summary(url: str):
             ENTRY_AC VARCHAR2(9) NOT NULL,
             SHORT_NAME VARCHAR2(30),
             METHOD_AC VARCHAR2(25) NOT NULL,
-            METHOD_NAME VARCHAR2(100),
+            METHOD_NAME VARCHAR2(400),
             POS_FROM NUMBER(5) NOT NULL,
             POS_TO NUMBER(5) NOT NULL,
             MATCH_STATUS CHAR(1) NOT NULL,
@@ -385,14 +486,15 @@ def build_xref_summary(url: str):
 
     cur.execute(
         """
-        INSERT /*+ APPEND */ INTO INTERPRO.XREF_SUMMARY
+        INSERT INTO INTERPRO.XREF_SUMMARY
         SELECT
           MA.DBCODE,
           MA.PROTEIN_AC,
           E.ENTRY_AC,
           E.SHORT_NAME,
           MA.METHOD_AC,
-          ME.NAME,
+          CASE WHEN MA.METHOD_AC != ME.NAME THEN ME.NAME 
+               ELSE ME.DESCRIPTION END,
           MA.POS_FROM,
           MA.POS_TO,
           MA.STATUS,
@@ -417,19 +519,15 @@ def build_xref_summary(url: str):
             """
         )
 
-    logger.info("gathering statistics")
-    oracle.gather_stats(cur, "INTERPRO", "XREF_SUMMARY")
-
     cur.execute("GRANT SELECT ON INTERPRO.XREF_SUMMARY TO KRAKEN")
-
     cur.close()
     con.close()
 
     logger.info("XREF_SUMMARY ready")
 
 
-def ask_to_snapshot(url: str, emails: dict):
-    con = cx_Oracle.connect(url)
+def ask_to_snapshot(uri: str, emails: dict):
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     release, = cur.fetchone()
@@ -452,7 +550,7 @@ def ask_to_snapshot(url: str, emails: dict):
         updates.append((name, analysis_id))
 
     content = f"""\
-INTERPRO.XREF_SUMMARY, INTERPRO.XREF_CONDENSED, and IPRSCAN.AA_IPRSCAN are ready.
+All tables for UniProt are ready.
 
 Please, take a snapshot of IPPRO, and inform UniProt they can refresh IPREADU.
 
@@ -512,7 +610,7 @@ The InterPro Production Team
         con.close()
 
 
-def update_signatures(filepath: str, url: str):
+def update_signatures(filepath: str, uri: str):
     # Load accessions from file generated by UniRule
     accessions = []
     with open(filepath, "rt") as fh:
@@ -524,7 +622,7 @@ def update_signatures(filepath: str, url: str):
                 # ignore InterPro entries
                 accessions.append(accession)
 
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     # Refresh data

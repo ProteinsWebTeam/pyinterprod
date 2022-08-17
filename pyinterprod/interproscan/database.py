@@ -5,7 +5,6 @@ from mundone.task import Task
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
-from .utils import int_to_upi, upi_to_int
 
 
 def get_analyses(obj: Union[str, cx_Oracle.Cursor]) -> dict:
@@ -251,61 +250,38 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
 def get_incomplete_jobs(cur: cx_Oracle.Cursor) -> dict:
     cur.execute(
         """
-        SELECT ANALYSIS_ID, UPI_FROM, UPI_TO
+        SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME
         FROM IPRSCAN.ANALYSIS_JOBS
         WHERE END_TIME IS NULL
+        UNION 
+        SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME
+        FROM (
+            SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME, SUCCESS, 
+                   ROW_NUMBER() OVER (
+                       PARTITION BY ANALYSIS_ID, UPI_FROM, UPI_TO 
+                       ORDER BY END_TIME DESC
+                   ) RN
+            FROM ANALYSIS_JOBS
+        )
+        WHERE SUCCESS = 'N' AND RN = 1
         """
     )
 
     incomplete_jobs = {}
-    for analysis_id, upi_from, upi_to in cur:
+    for analysis_id, upi_from, upi_to, end_time in cur:
+        is_running = end_time is None
         try:
-            incomplete_jobs[analysis_id].append((upi_from, upi_to))
+            analysis_jobs = incomplete_jobs[analysis_id]
         except KeyError:
-            incomplete_jobs[analysis_id] = [(upi_from, upi_to)]
+            analysis_jobs = incomplete_jobs[analysis_id] = []
+        finally:
+            analysis_jobs.append((upi_from, upi_to, is_running))
 
     return incomplete_jobs
 
 
-def split_incomplete_jobs(uri: str, new_size: int):
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
-    jobs = get_incomplete_jobs(cur)
-
-    params = []
-    for analysis_id, analysis_jobs in jobs.items():
-        for upi_from, upi_to in analysis_jobs:
-            while upi_from <= upi_to:
-                start = upi_to_int(upi_from)
-                new_start = start + (new_size - 1)
-                new_upi_to = int_to_upi(new_start)
-
-                params.append((analysis_id, upi_from, new_upi_to))
-
-                upi_from = int_to_upi(new_start + 1)
-
-    cur.execute(
-        """
-        DELETE FROM IPRSCAN.ANALYSIS_JOBS
-        WHERE END_TIME IS NULL
-        """
-    )
-
-    cur.executemany(
-        """
-        INSERT INTO IPRSCAN.ANALYSIS_JOBS 
-            (ANALYSIS_ID, UPI_FROM, UPI_TO, SUBMIT_TIME)
-        VALUES (:1, :2, :3, SYSDATE)
-        """,
-        params
-    )
-
-    con.commit()
-    cur.close()
-    con.close()
-
-
-def add_job(cur: cx_Oracle, analysis_id: int, upi_from: str, upi_to: str):
+def add_job(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
+            upi_to: str):
     cur.execute(
         """
         UPDATE IPRSCAN.ANALYSIS
@@ -316,57 +292,63 @@ def add_job(cur: cx_Oracle, analysis_id: int, upi_from: str, upi_to: str):
     )
     cur.execute(
         """
-        INSERT INTO IPRSCAN.ANALYSIS_JOBS 
-            (ANALYSIS_ID, UPI_FROM, UPI_TO, SUBMIT_TIME)
-        VALUES (:1, :2, :3, SYSDATE)
+        INSERT INTO IPRSCAN.ANALYSIS_JOBS (ANALYSIS_ID, UPI_FROM, UPI_TO)
+        VALUES (:1, :2, :3)
         """,
-        (analysis_id, upi_from, upi_to)
+        [analysis_id, upi_from, upi_to]
     )
     cur.connection.commit()
 
 
-def reset_job(uri: str, analysis_id: int, upi_from: str, upi_to: str):
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
+def update_job(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
+               upi_to: str, task: Task, max_mem: int, cpu_time: int):
     cur.execute(
         """
         UPDATE IPRSCAN.ANALYSIS_JOBS
-        SET SUBMIT_TIME = SYSDATE,
-            START_TIME = NULL,
-            END_TIME = NULL,
-            MAX_MEMORY = NULL,
-            LIM_MEMORY = NULL,
-            CPU_TIME = NULL
+        SET SUBMIT_TIME = :1,
+            START_TIME = :2,
+            END_TIME = :3,
+            MAX_MEMORY = :4,
+            LIM_MEMORY = :5,
+            CPU_TIME = :6
+        WHERE ANALYSIS_ID = :7
+            AND UPI_FROM = :9
+            AND UPI_TO = :9
+            AND END_TIME IS NULL
+        """,
+        [task.submit_time, task.start_time, task.end_time, max_mem,
+         int(task.scheduler["mem"]), cpu_time, analysis_id, upi_from, upi_to]
+    )
+    cur.connection.commit()
+
+
+def is_job_done(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
+                upi_to: str) -> bool:
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM IPRSCAN.ANALYSIS_JOBS
         WHERE ANALYSIS_ID = :1 
           AND UPI_FROM = :2 
           AND UPI_TO = :3
+          AND SUCCESS = 'Y' 
         """,
         [analysis_id, upi_from, upi_to]
     )
-    con.commit()
-    cur.close()
-    con.close()
+    cnt, = cur.fetchone()
+    return cnt > 0
 
 
-def update_job(uri: str, analysis_id: int, upi_from: str, upi_to: str,
-               task: Task, max_mem: int, cpu_time: int):
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
+def set_job_done(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
+                 upi_to: str):
     cur.execute(
         """
         UPDATE IPRSCAN.ANALYSIS_JOBS
-        SET START_TIME = :1,
-            END_TIME = :2,
-            MAX_MEMORY = :3,
-            LIM_MEMORY = :4,
-            CPU_TIME = :5
-        WHERE ANALYSIS_ID = :6
-            AND UPI_FROM = :7
-            AND UPI_TO = :8
+        SET SUCCESS = 'Y'
+        WHERE ANALYSIS_ID = :1
+            AND UPI_FROM = :2
+            AND UPI_TO = :3
+            AND END_TIME IS NULL
         """,
-        [task.start_time, task.end_time, max_mem, int(task.scheduler["mem"]),
-         cpu_time, analysis_id, upi_from, upi_to]
+        [analysis_id, upi_from, upi_to]
     )
-    con.commit()
-    cur.close()
-    con.close()

@@ -66,6 +66,14 @@ class KVdb:
             self.con.execute(sql, (key, pickle.dumps(value)))
             self.con.commit()
 
+    def __contains__(self, item) -> bool:
+        try:
+            self[item]
+        except KeyError:
+            return False
+        else:
+            return True
+
     def __iter__(self):
         return self.keys()
 

@@ -27,8 +27,10 @@ class ProteomeIterator:
         )
 
         for upid, name, taxid, accession in cur:
-            if upid not in self.proteomes:
-                self.proteomes[upid] = (upid, name, taxid)
+            try:
+                self.proteomes[upid][3] += 1
+            except KeyError:
+                self.proteomes[upid] = [upid, name, taxid, 1]
 
             yield upid, accession
 
@@ -48,7 +50,8 @@ def import_proteomes(ora_url: str, pg_url: str):
                 id VARCHAR(20) NOT NULL
                     CONSTRAINT proteome_pkey PRIMARY KEY,
                 name VARCHAR(200) NOT NULL,
-                taxon_id INTEGER NOT NULL
+                taxon_id INTEGER NOT NULL,
+                num_proteins INTEGER NOT NULL
             )
             """
         )

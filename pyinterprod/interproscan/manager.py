@@ -12,6 +12,7 @@ from mundone import Pool, Task
 from mundone.task import STATUS_PENDING, STATUS_RUNNING
 
 from pyinterprod import logger
+from pyinterprod.utils import oracle
 from . import database, persistence
 from .utils import int_to_upi, upi_to_int, range_upi
 
@@ -190,11 +191,6 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             name = analysis["name"]
             version = analysis["version"]
 
-            if analysis["max_upi"]:
-                next_upi = int_to_upi(upi_to_int(analysis["max_upi"]) + 1)
-            else:
-                next_upi = int_to_upi(1)
-
             appl, parse_matches, parse_sites = _DB_TO_I5[name]
 
             analysis_work_dir = os.path.join(work_dir, appl, version)
@@ -214,7 +210,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                                   lsf_queue=lsf_queue)
 
             n_tasks_analysis = 0
-            for upi_from, upi_to in incomplete_jobs.pop(analysis_id, []):
+            jobs = incomplete_jobs.pop(analysis_id, [])
+            for upi_from, upi_to, is_running in jobs:
                 if dry_run:
                     """
                     We're not monitoring/submitting tasks, so we don't need
@@ -228,32 +225,55 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         continue
 
                 task = factory.make(upi_from, upi_to)
-                task.status = STATUS_RUNNING  # assumes it's running
                 task.workdir = os.path.join(temp_dir, task.name)
 
-                if task.name in name2id:
-                    # Running
-                    task.jobid = name2id.pop(task.name)
-                    to_run.append(task)
-                    n_tasks_analysis += 1
-                    continue
+                if is_running:
+                    # Flagged as running in the database
 
-                task.poll()  # checks if output exists
-                if task.done():
-                    """
-                    Completed or failed. Will be submitted to the pool
-                    which will send it back without restarting it.
-                    """
-                    to_run.append(task)
+                    # Assumes task is running
+                    task.status = STATUS_RUNNING
+
+                    # Checks if the associated job is running
+                    if task.name in name2id:
+                        # It is!
+                        task.jobid = name2id.pop(task.name)
+                        to_run.append(task)
+                        n_tasks_analysis += 1
+                        continue
+
+                    task.poll()  # Checks if output exists
+                    if task.done():
+                        """
+                        Completed or failed. Will be submitted to the pool
+                        which will send it back without restarting it.
+                        """
+                        to_run.append(task)
+                    elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
+                        break
+                    else:
+                        task.status = STATUS_PENDING
+                        to_run.append(task)
+                        n_tasks_analysis += 1
                 elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                     break
                 else:
+                    # Flagged as failed in the database
+
+                    # Create new job in the database
+                    database.add_job(cur, analysis_id, upi_from, upi_to)
+
+                    # Add task to queue
                     task.status = STATUS_PENDING
                     to_run.append(task)
                     n_tasks_analysis += 1
 
-            for upi_from, upi_to in range_upi(next_upi, max_upi,
-                                              config["job_size"]):
+            if analysis["max_upi"]:
+                next_upi = int_to_upi(upi_to_int(analysis["max_upi"]) + 1)
+            else:
+                next_upi = int_to_upi(1)
+
+            job_size = config["job_size"]
+            for upi_from, upi_to in range_upi(next_upi, max_upi, job_size):
                 if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                     break
                 elif dry_run:
@@ -291,6 +311,9 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             task = to_run.pop(i)
             pool.submit(task)
 
+        con = oracle.try_connect(uri)
+        cur = con.cursor()
+
         n_completed = n_failed = 0
         milestone = step = 5
         retries = {}
@@ -300,22 +323,24 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 upi_to = task.args[2]
                 analysis_id = task.args[6]
 
-                logfile = os.path.join(temp_dir, f"{task.name}.log")
+                # Check if job updated as completed in Oracle
+                ok = database.is_job_done(cur, analysis_id, upi_from, upi_to)
 
-                # Check how much memory was used
+                # Get max memory and CPU time
                 max_mem = get_lsf_max_memory(task.stdout)
+                cpu_time = get_lsf_cpu_time(task.stdout)
 
-                if task.completed():
+                # Update job metadata
+                database.update_job(cur, analysis_id, upi_from, upi_to,
+                                    task, max_mem, cpu_time)
+
+                logfile = os.path.join(temp_dir, f"{task.name}.log")
+                if ok:
                     # Remove the log file (exists if a previous run failed)
                     try:
                         os.unlink(logfile)
                     except FileNotFoundError:
                         pass
-
-                    # Flag the job as completed in the database
-                    cpu_time = get_lsf_cpu_time(task.stdout)
-                    database.update_job(uri, analysis_id, upi_from, upi_to,
-                                        task, max_mem, cpu_time)
 
                     n_completed += 1
                 else:
@@ -340,7 +365,9 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         # Resubmit task
                         task.status = STATUS_PENDING
                         pool.submit(task)
-                        database.reset_job(uri, analysis_id, upi_from, upi_to)
+
+                        # Add new job
+                        database.add_job(cur, analysis_id, upi_from, upi_to)
 
                         # Increment retries counter
                         retries[task.name] = num_retries + 1
@@ -368,7 +395,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 def export_fasta(uri: str, fasta_file: str, upi_from: str, upi_to: str) -> int:
     num_sequences = 0
     with open(fasta_file, "wt") as fh:
-        con = cx_Oracle.connect(uri)
+        con = oracle.try_connect(uri)
         cur = con.cursor()
 
         cur.execute(
@@ -462,13 +489,22 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             elif site_table and not os.path.isfile(sites_output):
                 raise RuntimeError(f"Cannot access output sites tsv-pro")
 
-            con = cx_Oracle.connect(uri)
+            con = oracle.try_connect(uri)
             cur = con.cursor()
 
             parse_matches(cur, matches_output, analysis_id, match_table)
             if site_table:
                 parse_sites(cur, sites_output, analysis_id, site_table)
 
+            database.set_job_done(cur, analysis_id, upi_from, upi_to)
+
+            con.commit()
+            cur.close()
+            con.close()
+        else:
+            con = oracle.try_connect(uri)
+            cur = con.cursor()
+            database.set_job_done(cur, analysis_id, upi_from, upi_to)
             con.commit()
             cur.close()
             con.close()

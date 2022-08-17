@@ -24,7 +24,7 @@ MATCH_PARTITIONS = {
             'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
             'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "antifam"
+        "partition": "ANTIFAM"
     },
     "CATH-Gene3D": {
         "columns": [
@@ -33,7 +33,7 @@ MATCH_PARTITIONS = {
             'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
             'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "gene3d"
+        "partition": "GENE3D"
     },
     "CDD": {
         "columns": [
@@ -42,7 +42,7 @@ MATCH_PARTITIONS = {
             'NULL', 'SEQSCORE',  'SEQSCORE', 'SEQEVALUE', 'SEQEVALUE',
             '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "cdd"
+        "partition": "CDD"
     },
     "COILS": {
         "columns": [
@@ -51,7 +51,7 @@ MATCH_PARTITIONS = {
             'NULL', '0', '0', '0', '0',
             '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "coils"
+        "partition": "COILS"
     },
     "FunFam": {
         "columns": [
@@ -60,7 +60,7 @@ MATCH_PARTITIONS = {
             'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
             'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "funfam"
+        "partition": "FUNFAM"
     },
     "HAMAP": {
         "columns": [
@@ -70,7 +70,7 @@ MATCH_PARTITIONS = {
             'NULL', '0', 'SEQSCORE', '0', '0',
             '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "hamap"
+        "partition": "HAMAP"
     },
     "MobiDB Lite": {
         "columns": [
@@ -79,7 +79,7 @@ MATCH_PARTITIONS = {
             'NULL', '0', '0', '0', '0',
             '0', '0', 'MODEL_AC', 'SEQ_FEATURE', 'FRAGMENTS'
         ],
-        "partition": "mobidblite"
+        "partition": "MOBIDBLITE"
     },
     "PANTHER": {
         "columns": [
@@ -88,7 +88,7 @@ MATCH_PARTITIONS = {
             'HMM_BOUNDS', 'SEQSCORE', 'SEQSCORE', 'SEQEVALUE', 'SEQEVALUE',
             'ENV_START', 'ENV_END', 'MODEL_AC', 'AN_NODE_ID', 'FRAGMENTS'
         ],
-        "partition": "panther"
+        "partition": "PANTHER"
     },
     "Pfam": {
         "columns": [
@@ -97,7 +97,7 @@ MATCH_PARTITIONS = {
             'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
             'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "pfam"
+        "partition": "PFAM"
     },
     "Phobius": {
         "columns": [
@@ -106,7 +106,7 @@ MATCH_PARTITIONS = {
             'NULL', '0', '0', '0', '0',
             '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "phobius"
+        "partition": "PHOBIUS"
     },
     "PIRSF": {
         "columns": [
@@ -115,7 +115,7 @@ MATCH_PARTITIONS = {
             'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
             'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "pirsf"
+        "partition": "PIRSF"
     },
     "PRINTS": {
         "columns": [
@@ -124,7 +124,7 @@ MATCH_PARTITIONS = {
             'NULL', '0', 'SEQSCORE', 'PVALUE', 'SEQEVALUE',
             '0', '0', 'MODEL_AC', 'GRAPHSCAN', 'FRAGMENTS'
         ],
-        "partition": "prints"
+        "partition": "PRINTS"
     },
     "PROSITE patterns": {
         "columns": [
@@ -134,7 +134,7 @@ MATCH_PARTITIONS = {
             'LOCATION_LEVEL', '0', '0', '0', '0',
             '0', '0', 'MODEL_AC', 'ALIGNMENT', 'FRAGMENTS'
         ],
-        "partition": "prosite_patterns"
+        "partition": "PROSITE_PATTERNS"
     },
     "PROSITE profiles": {
         "columns": [
@@ -144,7 +144,7 @@ MATCH_PARTITIONS = {
             'NULL', '0', 'SEQSCORE', '0', '0',
             '0', '0', 'MODEL_AC', 'ALIGNMENT', 'FRAGMENTS'
         ],
-        "partition": "prosite_profiles"
+        "partition": "PROSITE_PROFILES"
     },
     "SFLD": {
         "columns": [
@@ -153,7 +153,7 @@ MATCH_PARTITIONS = {
             'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
             'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "sfld"
+        "partition": "SFLD"
     },
     "SignalP_Euk": {
         "columns": [
@@ -162,7 +162,7 @@ MATCH_PARTITIONS = {
             'NULL', 'SEQSCORE', 'SEQSCORE', '0', '0',
             '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "signalp_euk"
+        "partition": "SIGNALP_EUK"
     },
     "SignalP_Gram_positive": {
         "columns": [
@@ -171,7 +171,7 @@ MATCH_PARTITIONS = {
             'NULL', 'SEQSCORE', 'SEQSCORE', '0', '0',
             '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "signalp_gram_positive"
+        "partition": "SIGNALP_GRAM_POSITIVE"
     },
     "SignalP_Gram_negative": {
         "columns": [
@@ -180,7 +180,7 @@ MATCH_PARTITIONS = {
             'NULL', 'SEQSCORE', 'SEQSCORE', '0', '0',
             '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "signalp_gram_negative"
+        "partition": "SIGNALP_GRAM_NEGATIVE"
     },
     "SMART": {
         "columns": [
@@ -189,7 +189,7 @@ MATCH_PARTITIONS = {
             'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
             '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "smart"
+        "partition": "SMART"
     },
     "SUPERFAMILY": {
         "columns": [
@@ -198,7 +198,7 @@ MATCH_PARTITIONS = {
             'NULL', '0', '0', 'SEQEVALUE', 'SEQEVALUE',
             '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "superfamily"
+        "partition": "SUPERFAMILY"
     },
     "TIGRFAMs": {
         "columns": [
@@ -207,7 +207,7 @@ MATCH_PARTITIONS = {
             'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
             'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "tigrfam"
+        "partition": "TIGRFAM"
     },
     "TMHMM": {
         "columns": [
@@ -216,7 +216,7 @@ MATCH_PARTITIONS = {
             'NULL', 'SEQSCORE', 'SEQSCORE', '0', '0',
             '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "tmhmm"
+        "partition": "TMHMM"
     },
 }
 
@@ -307,7 +307,8 @@ def get_analyses(cur: Cursor, **kwargs) -> List[Analysis]:
         f"""
         SELECT A.ID, A.NAME, A.VERSION, A.ACTIVE, T.MATCH_TABLE, T.SITE_TABLE
         FROM IPRSCAN.ANALYSIS@ISPRO A
-        INNER JOIN IPRSCAN.ANALYSIS_TABLES@ISPRO T ON A.NAME = T.NAME
+        INNER JOIN IPRSCAN.ANALYSIS_TABLES@ISPRO T 
+            ON LOWER(A.NAME) = LOWER(T.NAME)
         {sql_filter}
         ORDER BY A.NAME
         """, params
