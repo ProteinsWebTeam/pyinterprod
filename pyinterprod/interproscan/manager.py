@@ -501,6 +501,13 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             con.commit()
             cur.close()
             con.close()
+        else:
+            con = oracle.try_connect(uri)
+            cur = con.cursor()
+            database.set_job_done(cur, analysis_id, upi_from, upi_to)
+            con.commit()
+            cur.close()
+            con.close()
     except Exception:
         raise
     else:
