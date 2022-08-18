@@ -520,3 +520,14 @@ def update_features(url: str, update: list[tuple[Database, str]]):
     con.commit()
     cur.close()
     con.close()
+
+
+def update_go_terms(uri: str, go_sources: dict[str, tuple[str, bool]]):
+    try:
+        source, update = go_sources["V"]
+    except KeyError:
+        raise RuntimeError("No source for GO terms in PANTHER")
+    else:
+        if update:
+            logger.info("updating PANTHER GO terms")
+            contrib.panther.update_go_terms(uri, source)

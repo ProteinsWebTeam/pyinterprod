@@ -314,7 +314,8 @@ def run_member_db_update():
     mem_updates = []
     non_mem_updates = []
     site_updates = []
-    sources = {}
+    sig_sources = {}
+    go_sources = []
     for dbname, db in databases.items():
         if db.is_member_db or db.is_feature_db:
             # We need a source for signatures
@@ -335,16 +336,35 @@ def run_member_db_update():
                              f"or empty for database '{dbname}'")
             elif db.is_member_db:
                 mem_updates.append(db)
-                sources[db.identifier] = sig_source
+                sig_sources[db.identifier] = sig_source
             elif db.is_feature_db:
                 non_mem_updates.append(db)
-                sources[db.identifier] = sig_source
+                sig_sources[db.identifier] = sig_source
+
+            try:
+                go_source = props["go-terms"]
+            except KeyError:
+                pass
+            else:
+                go_sources.append((db, go_source))
 
         if db.has_site_matches:
             site_updates.append(db)
 
     if not mem_updates and not non_mem_updates and not site_updates:
         parser.error("No database to update")
+
+    """
+    Sources of GO terms for all databases, 
+    with a flag if they should be updated
+    """
+    go_sources = {
+        db.identifier: (
+            src,
+            db in mem_updates or db in non_mem_updates
+        )
+        for db, src in go_sources
+    }
 
     tasks = [
         Task(
@@ -372,7 +392,7 @@ def run_member_db_update():
         tasks += [
             Task(
                 fn=interpro.signature.add_staging,
-                args=(ora_interpro_url, [(db, sources[db.identifier])
+                args=(ora_interpro_url, [(db, sig_sources[db.identifier])
                                          for db in mem_updates]),
                 name="load-signatures",
                 scheduler=dict(queue=lsf_queue)
@@ -399,6 +419,13 @@ def run_member_db_update():
                 requires=["delete-obsoletes"]
             ),
             Task(
+                fn=interpro.signature.update_go_terms,
+                args=(ora_interpro_url, go_sources),
+                name="update-signature-go-terms",
+                scheduler=dict(queue=lsf_queue),
+                requires=["update-signatures"]
+            ),
+            Task(
                 fn=interpro.match.update_database_matches,
                 args=(ora_interpro_url, mem_updates),
                 name="update-matches",
@@ -418,7 +445,7 @@ def run_member_db_update():
         tasks += [
             Task(
                 fn=interpro.signature.update_features,
-                args=(ora_interpro_url, [(db, sources[db.identifier])
+                args=(ora_interpro_url, [(db, sig_sources[db.identifier])
                                          for db in non_mem_updates]),
                 name="update-features",
                 scheduler=dict(queue=lsf_queue),
