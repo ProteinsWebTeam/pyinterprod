@@ -1,7 +1,6 @@
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import List, Sequence, Tuple
 
 import cx_Oracle
 from cx_Oracle import Cursor
@@ -278,7 +277,7 @@ class Analysis:
         return row[0] is not None and row[0] >= max_upi
 
 
-def get_analyses(cur: Cursor, **kwargs) -> List[Analysis]:
+def get_analyses(cur: Cursor, **kwargs) -> list[Analysis]:
     ids = kwargs.get("ids", [])
     match_type = kwargs.get("type", "matches")
     status = kwargs.get("status", "production")
@@ -334,13 +333,13 @@ def get_analyses(cur: Cursor, **kwargs) -> List[Analysis]:
     return analyses
 
 
-def import_tables(uri: str, mode: str = "matches", **kwargs):
+def import_tables(uri: str, data_type: str = "matches", **kwargs):
     databases = kwargs.get("databases", [])
-    force = kwargs.get("force", False)
+    force = kwargs.get("force", True)
     threads = kwargs.get("threads", 1)
 
-    if mode not in ("matches", "sites"):
-        raise ValueError(f"invalid mode '{mode}'")
+    if data_type not in ("matches", "sites"):
+        raise ValueError(f"invalid data type '{data_type}'")
     elif databases:  # expects a sequence of Database objects
         databases = {db.analysis_id for db in databases}
 
@@ -348,7 +347,7 @@ def import_tables(uri: str, mode: str = "matches", **kwargs):
     cur = con.cursor()
 
     pending = {}
-    for analysis in get_analyses(cur, type=mode):
+    for analysis in get_analyses(cur, type=data_type):
         if databases and analysis.id not in databases:
             continue
 
@@ -399,7 +398,7 @@ def import_tables(uri: str, mode: str = "matches", **kwargs):
                 ready = []
                 for analysis in analyses:
                     if analysis.is_ready(cur, max_upi):
-                        ready.append(analysis.id)
+                        ready.append(analysis)
 
                 if len(ready) < len(analyses):
                     # Not ready
@@ -426,13 +425,47 @@ def import_tables(uri: str, mode: str = "matches", **kwargs):
     logger.info("done")
 
 
-def _import_table(uri: str, remote_table: str, analyses: Sequence[int],
-                  force: bool = False):
+def _import_table(uri: str, remote_table: str, analyses: list[Analysis],
+                  force: bool = True):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     local_table = PREFIX + remote_table
-    oracle.drop_mview(cur, local_table)
+
+    if not force:
+        # Check if the data is already up-to-date
+        up_to_date = 0
+
+        for analysis in analyses:
+            cur.execute(
+                f"""
+                SELECT MAX(UPI)
+                FROM IPRSCAN.{local_table}
+                WHERE ANALYSIS_ID = :1
+                """,
+                [analysis.id]
+            )
+            max_upi_1, = cur.fetchone()
+
+            cur.execute(
+                f"""
+                SELECT MAX(UPI)
+                FROM IPRSCAN.{remote_table}@ISPRO
+                WHERE ANALYSIS_ID = :1
+                """,
+                [analysis.id]
+            )
+            max_upi_2, = cur.fetchone()
+
+            if max_upi_1 == max_upi_2:
+                up_to_date += 1
+
+        if up_to_date == len(analyses):
+            # All analyses are up-to-date
+            cur.close()
+            con.close()
+            return
+
     oracle.drop_table(cur, local_table, purge=True)
 
     cur.execute(
@@ -441,8 +474,21 @@ def _import_table(uri: str, remote_table: str, analyses: Sequence[int],
         AS
         SELECT *
         FROM IPRSCAN.{remote_table}@ISPRO
+        WHERE 1 = 0
         """
     )
+
+    for analysis in analyses:
+        cur.execute(
+            f"""
+            INSERT /*+ APPEND */ INTO {local_table}
+            SELECT *
+            FROM IPRSCAN.{remote_table}@ISPRO
+            WHERE ANALYSIS_ID = :1
+            """,
+            [analysis.id]
+        )
+        con.commit()
 
     """
     Use remote table name to have fewer characters (no prefix)
@@ -460,19 +506,19 @@ def _import_table(uri: str, remote_table: str, analyses: Sequence[int],
     con.close()
 
 
-def update_partitions(uri: str, mode: str = "matches", **kwargs):
+def update_partitions(uri: str, data_type: str = "matches", **kwargs):
     databases = kwargs.get("databases", [])
-    force = kwargs.get("force", False)
+    force = kwargs.get("force", True)
     threads = kwargs.get("threads", 1)
 
-    if mode == "matches":
+    if data_type == "matches":
         partitions = MATCH_PARTITIONS
         partitioned_table = "MV_IPRSCAN"
-    elif mode == "sites":
+    elif data_type == "sites":
         partitions = SITE_PARITIONS
         partitioned_table = "SITE"
     else:
-        raise ValueError(f"invalid mode '{mode}'")
+        raise ValueError(f"invalid data type '{data_type}'")
 
     if databases:  # expects a sequence of Database objects
         databases = {db.analysis_id for db in databases}
@@ -481,7 +527,7 @@ def update_partitions(uri: str, mode: str = "matches", **kwargs):
     cur = con.cursor()
 
     tables = {}
-    for analysis in get_analyses(cur, type=mode):
+    for analysis in get_analyses(cur, type=data_type):
         if databases and analysis.id not in databases:
             continue
 
@@ -561,8 +607,8 @@ def update_partitions(uri: str, mode: str = "matches", **kwargs):
 
 
 def _update_partition(uri: str, table: str, partitioned_table: str,
-                      analyses: Sequence[Tuple[int, str, Sequence[str]]],
-                      force: bool = False):
+                      analyses: list[tuple[int, str, list[str]]],
+                      force: bool = True):
     """
     Update partitioned table with matches
     :param uri: Oracle connection string
