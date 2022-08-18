@@ -13,13 +13,14 @@ def export_sib(url: str, emails: dict):
 
     """
     The SIB_EXPORT package belongs to INTERPRODP and exports the tables:
+    * INTERPRO.DB_VERSION
     * INTERPRO.ENTRY
     * INTERPRO.ENTRY2ENTRY
-    * INTERPRO.METHOD
     * INTERPRO.ENTRY2METHOD
-    * INTERPRO.PROTEIN
     * INTERPRO.MATCH
-    * INTERPRO.DB_VERSION
+    * INTERPRO.METHOD
+    * INTERPRO.PROTEIN
+    * INTERPRO.XREF_CONDENSED
     """
     cur.callproc("SIB_EXPORT.EXP_SIB_DATA")
 
