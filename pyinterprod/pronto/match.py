@@ -13,8 +13,10 @@ import cx_Oracle
 import psycopg2
 
 from pyinterprod import logger
+from pyinterprod.uniprot.uniparc import range_upi
 from pyinterprod.utils import pg
 from pyinterprod.utils.kvdb import KVdb
+from pyinterprod.utils.oracle import get_subpartitions
 
 
 # Domain org.: introduce a gap when distance between two positions > 20 aa
@@ -586,3 +588,35 @@ def finalize_match_table(uri: str):
 
     con.close()
     logger.info("done")
+
+
+def add_site_subpartitions(uri: str, owner: str, table: str, partition: str,
+                           stop: str, prefix: str = ""):
+    if len(stop) != 8 or stop[:3] != "UPI" or not stop[3:].isalnum():
+        raise ValueError(f"Invalid range stop: {stop}. "
+                         f"Expected format: UPIxxxxx, with x being digits")
+
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+
+    subpartitions = set()
+    for subpart in get_subpartitions(cur, owner, table, partition):
+        subpartitions.add(subpart["name"])
+
+    new_subpartitions = {}
+    # range_upi yields start/stop, but since step = 1, start == stop
+    for value, _ in range_upi("UPI00000", stop, 1):
+        name = prefix + value
+        if name not in subpartitions:
+            new_subpartitions[name] = value
+
+    for name, value in new_subpartitions.items():
+        cur.execute(
+            f"""
+            ALTER TABLE {table} MODIFY PARTITION {partition}
+            ADD SUBPARTITION {name} VALUES ('{value}')
+            """
+        )
+
+    cur.close()
+    con.close()

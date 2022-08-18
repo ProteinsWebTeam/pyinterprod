@@ -12,9 +12,9 @@ from mundone import Pool, Task
 from mundone.task import STATUS_PENDING, STATUS_RUNNING
 
 from pyinterprod import logger
+from pyinterprod.uniprot.uniparc import int_to_upi, upi_to_int, range_upi
 from pyinterprod.utils import oracle
 from . import database, persistence
-from .utils import int_to_upi, upi_to_int, range_upi
 
 
 """
