@@ -1,6 +1,6 @@
 import random
 import time
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 from cx_Oracle import connect
 from cx_Oracle import Cursor, DatabaseError, DB_TYPE_CLOB, DB_TYPE_LONG
@@ -88,7 +88,7 @@ def gather_stats(cur: Cursor, schema: str, table: str,
     cur.callproc("DBMS_STATS.GATHER_TABLE_STATS", args)
 
 
-def get_child_tables(cur: Cursor, schema: str, name: str) -> List[tuple]:
+def get_child_tables(cur: Cursor, schema: str, name: str) -> list[tuple]:
     cur.execute(
         """
         SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME
@@ -112,7 +112,7 @@ def get_child_tables(cur: Cursor, schema: str, name: str) -> List[tuple]:
     return cur.fetchall()
 
 
-def get_indexes(cur: Cursor, owner: str, name: str) -> List[dict]:
+def get_indexes(cur: Cursor, owner: str, name: str) -> list[dict]:
     cur.execute(
         """
         SELECT I.OWNER, I.INDEX_NAME, I.UNIQUENESS, I.TABLESPACE_NAME, 
@@ -178,7 +178,7 @@ def get_partitioned_indexes(cur: Cursor, owner: str, table: str) -> list[dict]:
     return results
 
 
-def get_partitions(cur: Cursor, schema: str, table: str) -> List[dict]:
+def get_partitions(cur: Cursor, schema: str, table: str) -> list[dict]:
     cur.execute(
         """
         SELECT P.PARTITION_NAME, P.PARTITION_POSITION, P.HIGH_VALUE,
@@ -208,7 +208,7 @@ def get_partitions(cur: Cursor, schema: str, table: str) -> List[dict]:
     return sorted(partitions.values(), key=lambda x: x["position"])
 
 
-def get_subpartitions(cur: Cursor, schema: str, table: str, partition: str) -> List[dict]:
+def get_subpartitions(cur: Cursor, schema: str, table: str, partition: str) -> list[dict]:
     cur.execute(
         """
         SELECT SP.SUBPARTITION_NAME, SP.SUBPARTITION_POSITION, SP.HIGH_VALUE,
