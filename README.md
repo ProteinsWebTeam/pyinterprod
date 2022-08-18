@@ -91,6 +91,7 @@ Additional properties:
 
 - `summary`: CDD only, information on superfamilies
 - `mapping`: Cath-Gene3D only, family-model mapping file
+- `go-terms`: PANTHER only, directory of PAINT annotations (which include GO annotations)
 
 ### analyses.conf
 
