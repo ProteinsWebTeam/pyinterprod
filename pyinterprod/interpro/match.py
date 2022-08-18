@@ -1026,3 +1026,35 @@ def get_sig_protein_counts(cur: cx_Oracle.Cursor, dbid: str) -> Dict[str, Dict[s
 #         """
 #     )
 #     return dict(cur.fetchall())
+
+
+# def add_site_subpartitions(uri: str, owner: str, table: str, partition: str,
+#                            stop: str, prefix: str = ""):
+#     if len(stop) != 8 or stop[:3] != "UPI" or not stop[3:].isalnum():
+#         raise ValueError(f"Invalid range stop: {stop}. "
+#                          f"Expected format: UPIxxxxx, with x being digits")
+#
+#     con = cx_Oracle.connect(uri)
+#     cur = con.cursor()
+#
+#     subpartitions = set()
+#     for subpart in oracle.get_subpartitions(cur, owner, table, partition):
+#         subpartitions.add(subpart["name"])
+#
+#     new_subpartitions = {}
+#     # range_upi yields start/stop, but since step = 1, start == stop
+#     for value, _ in range_upi("UPI00000", stop, 1):
+#         name = prefix + value
+#         if name not in subpartitions:
+#             new_subpartitions[name] = value
+#
+#     for name, value in new_subpartitions.items():
+#         cur.execute(
+#             f"""
+#             ALTER TABLE {table} MODIFY PARTITION {partition}
+#             ADD SUBPARTITION {name} VALUES ('{value}')
+#             """
+#         )
+#
+#     cur.close()
+#     con.close()
