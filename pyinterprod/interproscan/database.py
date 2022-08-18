@@ -372,7 +372,7 @@ def rebuild_indexes(uri: str, analysis_ids: Optional[list[int]] = None):
             try:
                 f.result()
             except Exception as exc:
-                logger.error(f"failed to rebuild {index}: {exc}")
+                logger.error(f"{index} rebuild failed: {exc}")
                 errors += 1
             else:
                 logger.info(f"{index} rebuilt")
@@ -382,6 +382,7 @@ def rebuild_indexes(uri: str, analysis_ids: Optional[list[int]] = None):
 
 
 def _rebuild_index(uri: str, name: str):
+    logger.info(f"rebuilding {name}")
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
     oracle.rebuild_index(cur, name)
