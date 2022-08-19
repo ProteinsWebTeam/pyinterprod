@@ -155,8 +155,7 @@ def build_aa_alignment(uri: str):
     # Open second cursor for INSERT statements (first used for SELECT)
     cur2 = con.cursor()
 
-    # TODO: add FunFam
-    for name in ["HAMAP", "PROSITE patterns", "PROSITE profiles"]:
+    for name in ["FunFam", "HAMAP", "PROSITE patterns", "PROSITE profiles"]:
         logger.info(f"inserting data from {name}")
         analysis_id, table = analyses[name]
 
