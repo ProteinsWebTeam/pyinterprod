@@ -456,9 +456,10 @@ def build_xref_summary(uri: str):
         (
             DBCODE CHAR(1) NOT NULL,
             PROTEIN_AC VARCHAR2(15) NOT NULL,
-            ENTRY_AC VARCHAR2(9) NOT NULL,
+            ENTRY_AC VARCHAR2(9),
             SHORT_NAME VARCHAR2(30),
             METHOD_AC VARCHAR2(25) NOT NULL,
+            METHOD_ANNOTATION VARCHAR2(10),
             METHOD_NAME VARCHAR2(400),
             POS_FROM NUMBER(5) NOT NULL,
             POS_TO NUMBER(5) NOT NULL,
@@ -493,8 +494,16 @@ def build_xref_summary(uri: str):
           E.ENTRY_AC,
           E.SHORT_NAME,
           MA.METHOD_AC,
-          CASE WHEN MA.METHOD_AC != ME.NAME THEN ME.NAME 
-               ELSE ME.DESCRIPTION END,
+          -- Use name if different than accession
+          CASE WHEN MA.METHOD_AC != ME.NAME 
+               THEN ME.NAME 
+               ELSE ME.DESCRIPTION 
+               END,
+          -- PANTHER: use subfamily part (e.g. SF10) as annotation
+          CASE WHEN MA.DBCODE = 'V' AND INSTR(MA.METHOD_AC, ':') > 0 
+               THEN SUBSTR(MA.METHOD_AC, INSTR(MA.METHOD_AC, ':')+1) 
+               ELSE NULL 
+               END,
           MA.POS_FROM,
           MA.POS_TO,
           MA.STATUS,
@@ -502,10 +511,11 @@ def build_xref_summary(uri: str):
           MA.FRAGMENTS
         FROM INTERPRO.MATCH MA
         INNER JOIN INTERPRO.METHOD ME ON MA.METHOD_AC = ME.METHOD_AC
-        INNER JOIN INTERPRO.ENTRY2METHOD EM ON ME.METHOD_AC = EM.METHOD_AC
-        INNER JOIN INTERPRO.ENTRY E ON EM.ENTRY_AC = E.ENTRY_AC
+        LEFT OUTER JOIN INTERPRO.ENTRY2METHOD EM 
+            ON ME.METHOD_AC = EM.METHOD_AC
+        LEFT OUTER JOIN INTERPRO.ENTRY E 
+            ON (EM.ENTRY_AC = E.ENTRY_AC AND E.CHECKED = 'Y')
         WHERE EM.EVIDENCE != 'EXC'
-        AND E.CHECKED = 'Y'
         """
     )
     con.commit()
