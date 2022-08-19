@@ -133,8 +133,7 @@ def build_aa_alignment(uri: str):
     cur = con.cursor()
 
     analyses = {}
-    for analysis in iprscan.get_analyses(cur, type="matches",
-                                         status="production"):
+    for analysis in iprscan.get_analyses(cur, type="matches"):
         analyses[analysis.name] = (analysis.id, analysis.table)
 
     oracle.drop_table(cur, "IPRSCAN.AA_ALIGNMENT", purge=True)
