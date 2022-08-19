@@ -312,7 +312,7 @@ def update_job(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
             LIM_MEMORY = :5,
             CPU_TIME = :6
         WHERE ANALYSIS_ID = :7
-            AND UPI_FROM = :9
+            AND UPI_FROM = :8
             AND UPI_TO = :9
             AND END_TIME IS NULL
         """,
