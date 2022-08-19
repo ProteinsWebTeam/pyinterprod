@@ -76,7 +76,7 @@ def update_database_matches(url: str, databases: Sequence):
               X.AC, M.METHOD_AC, M.SEQ_START, M.SEQ_END, 'T',
               D.DBCODE, D.EVIDENCE,
               SYSDATE, SYSDATE, SYSDATE, 'INTERPRO',
-              M.EVALUE, M.MODEL_AC, M.FRAGMENTS
+              M.EVALUE, M.MODEL_AC, M.FRAGMENTS, M.SEQ_FEATURE
             FROM IPRSCAN.MV_IPRSCAN M
             INNER JOIN UNIPARC.XREF X
               ON M.UPI = X.UPI
@@ -716,7 +716,7 @@ def _prepare_matches(con: cx_Oracle.Connection):
           P.PROTEIN_AC, M.METHOD_AC, M.SEQ_START, M.SEQ_END, 'T',
           D.DBCODE, D.EVIDENCE,
           SYSDATE, SYSDATE, SYSDATE, 'INTERPRO',
-          M.EVALUE, M.MODEL_AC, M.FRAGMENTS
+          M.EVALUE, M.MODEL_AC, M.FRAGMENTS, M.SEQ_FEATURE
         FROM INTERPRO.PROTEIN_TO_SCAN P
         INNER JOIN IPRSCAN.MV_IPRSCAN M
           ON P.UPI = M.UPI
