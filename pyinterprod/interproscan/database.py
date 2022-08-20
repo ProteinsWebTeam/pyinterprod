@@ -346,9 +346,9 @@ def set_job_done(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
         UPDATE IPRSCAN.ANALYSIS_JOBS
         SET SUCCESS = 'Y'
         WHERE ANALYSIS_ID = :1
-            AND UPI_FROM = :2
-            AND UPI_TO = :3
-            AND END_TIME IS NULL
+          AND UPI_FROM = :2
+          AND UPI_TO = :3
+          AND END_TIME IS NULL
         """,
         [analysis_id, upi_from, upi_to]
     )
