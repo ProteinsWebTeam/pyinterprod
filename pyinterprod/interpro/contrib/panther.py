@@ -111,7 +111,7 @@ def update_go_terms(uri: str, root: str):
             for ancestral_node_id, (subfam_id, go_terms, _, _) in data.items():
                 if subfam_id and go_terms:
                     for go_id in set(go_terms.split(",")):
-                        records.append((ancestral_node_id, subfam_id, go_id))
+                        records.append((subfam_id, ancestral_node_id, go_id))
 
                         if len(records) == 1000:
                             cur.executemany(sql, records)

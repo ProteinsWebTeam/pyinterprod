@@ -413,17 +413,10 @@ def run_member_db_update():
             ),
             Task(
                 fn=interpro.signature.update_signatures,
-                args=(ora_interpro_uri,),
+                args=(ora_interpro_uri, go_sources),
                 name="update-signatures",
                 scheduler=dict(queue=lsf_queue),
                 requires=["delete-obsoletes"]
-            ),
-            Task(
-                fn=interpro.signature.update_go_terms,
-                args=(ora_interpro_uri, go_sources),
-                name="update-signature-go-terms",
-                scheduler=dict(queue=lsf_queue),
-                requires=["update-signatures"]
             ),
             Task(
                 fn=interpro.match.update_database_matches,
