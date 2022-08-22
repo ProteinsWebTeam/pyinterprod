@@ -520,6 +520,8 @@ def update_partitions(uri: str, data_type: str = "matches", **kwargs):
     else:
         raise ValueError(f"invalid data type '{data_type}'")
 
+    logger.info("starting")
+
     if databases:  # expects a sequence of Database objects
         databases = {db.analysis_id for db in databases}
 
