@@ -133,8 +133,7 @@ def build_aa_alignment(uri: str):
     cur = con.cursor()
 
     analyses = {}
-    for analysis in iprscan.get_analyses(cur, type="matches",
-                                         status="production"):
+    for analysis in iprscan.get_analyses(cur, type="matches"):
         analyses[analysis.name] = (analysis.id, analysis.table)
 
     oracle.drop_table(cur, "IPRSCAN.AA_ALIGNMENT", purge=True)
@@ -155,8 +154,7 @@ def build_aa_alignment(uri: str):
     # Open second cursor for INSERT statements (first used for SELECT)
     cur2 = con.cursor()
 
-    # TODO: add FunFam
-    for name in ["HAMAP", "PROSITE patterns", "PROSITE profiles"]:
+    for name in ["FunFam", "HAMAP", "PROSITE patterns", "PROSITE profiles"]:
         logger.info(f"inserting data from {name}")
         analysis_id, table = analyses[name]
 

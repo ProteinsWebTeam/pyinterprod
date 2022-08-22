@@ -1,7 +1,7 @@
 import os
 import pickle
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional, Sequence, Tuple
+from typing import Optional
 
 import cx_Oracle
 
@@ -23,7 +23,7 @@ def export_swissprot_descriptions(pg_url, data_dir: str):
         pickle.dump(get_swissprot_descriptions(pg_url), fh)
 
 
-def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
+def add_staging(url: str, update: list[tuple[Database, str]]):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -118,7 +118,7 @@ def add_staging(url: str, update: Sequence[Tuple[Database, str]]):
 
 
 def track_signature_changes(ora_url: str, pg_url: str,
-                            databases: Sequence[Database], data_dir: str):
+                            databases: list[Database], data_dir: str):
     os.makedirs(data_dir, exist_ok=True)
 
     # First, get the SwissProt descriptions (before the update)
@@ -245,7 +245,7 @@ def delete_from_table(url: str, table: str, partition: Optional[str],
     return num_rows
 
 
-def delete_obsoletes(url: str, databases: Sequence[Database], **kwargs):
+def delete_obsoletes(url: str, databases: list[Database], **kwargs):
     step = kwargs.get("step", 10000)
     threads = kwargs.get("threads", 8)
 
@@ -407,8 +407,8 @@ def delete_obsoletes(url: str, databases: Sequence[Database], **kwargs):
     logger.info("complete")
 
 
-def update_signatures(url: str):
-    con = cx_Oracle.connect(url)
+def update_signatures(uri: str, go_sources: dict[str, tuple[str, bool]]):
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -451,8 +451,17 @@ def update_signatures(url: str):
     cur.close()
     con.close()
 
+    try:
+        source, update = go_sources["V"]
+    except KeyError:
+        raise RuntimeError("No source for GO terms in PANTHER")
+    else:
+        if update:
+            logger.info("updating PANTHER GO terms")
+            contrib.panther.update_go_terms(uri, source)
 
-def update_features(url: str, update: Sequence[Tuple[Database, str]]):
+
+def update_features(url: str, update: list[tuple[Database, str]]):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -520,3 +529,4 @@ def update_features(url: str, update: Sequence[Tuple[Database, str]]):
     con.commit()
     cur.close()
     con.close()
+
