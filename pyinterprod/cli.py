@@ -891,38 +891,49 @@ def run_interproscan_manager():
     parser = ArgumentParser(description="InterProScan matches calculation")
     parser.add_argument("config", metavar="main.conf",
                         help="Configuration file.")
-    parser.add_argument("--import-sequences", action="store_true",
-                        default=False,
-                        help="import sequences from UniParc (default: off)")
-    parser.add_argument("--top-up", action="store_true", default=False,
-                        help="if used with --import-sequences: only import "
-                             "sequences not already in the InterProScan "
-                             "database (default: off)")
-    parser.add_argument("--clean", action="store_true", default=False,
-                        help="delete obsolete data (default: off)")
-    parser.add_argument("--dry-run", action="store_true", default=False,
-                        help="show the number of jobs to run and exit "
-                             "(default: off)")
-    parser.add_argument("-l", "--list", action="store_true", default=False,
-                        help="list active analyses and exit (default: off)")
-    parser.add_argument("-a", "--analyses", nargs="*", default=[], type=int,
-                        help="ID of analyses to run (default: all)")
-    parser.add_argument("-e", "--exclude", nargs="*", default=[], type=int,
-                        help="ID of analyses to exclude")
-    parser.add_argument("-t", "--threads", type=int, default=8,
-                        help="number of job monitoring threads (default: 8)")
-    parser.add_argument("--concurrent-jobs", type=int, default=1000,
-                        help="maximum number of concurrent running jobs "
-                             "(default: 1000)")
-    parser.add_argument("--max-jobs", type=int, default=-1,
-                        help="maximum number of job to run per analysis "
-                             "(default: off)")
-    parser.add_argument("--max-retries", type=int, default=-0,
-                        help="maximum number of attempts to re-run a job "
-                             "after it fails (default: 0)")
-    parser.add_argument("--keep", choices=["none", "failed", "all"],
-                        default="none",
-                        help="keep jobs' input/output files (default: none)")
+
+    subparsers = parser.add_subparsers(dest="mode", help="mode", required=True)
+
+    parser_import = subparsers.add_parser("import",
+                                          help="import sequences from UniParc")
+    parser_import.add_argument("--top-up", action="store_true", default=False,
+                               help="if used with --import-sequences: "
+                                    "only import sequences not already in "
+                                    "the InterProScan database (default: off)")
+
+    parser_clean = subparsers.add_parser("clean", help="delete obsolete data")
+    parser_clean.add_argument("-a", "--analyses", nargs="*", default=[],
+                              type=int, help="ID of analyses to clean "
+                                             "(default: all)")
+
+    parser_search = subparsers.add_parser("search", help="search sequences")
+    parser_search.add_argument("--dry-run", action="store_true", default=False,
+                               help="show the number of jobs to run and exit "
+                                    "(default: off)")
+    parser_search.add_argument("-l", "--list", action="store_true",
+                               default=False, help="list active analyses "
+                                                   "and exit (default: off)")
+    parser_search.add_argument("-a", "--analyses", nargs="*", default=[],
+                               type=int, help="ID of analyses to run "
+                                              "(default: all)")
+    parser_search.add_argument("-e", "--exclude", nargs="*", default=[],
+                               type=int, help="ID of analyses to exclude")
+    parser_search.add_argument("-t", "--threads", type=int, default=8,
+                               help="number of job monitoring threads "
+                                    "(default: 8)")
+    parser_search.add_argument("--concurrent-jobs", type=int, default=1000,
+                               help="maximum number of concurrent "
+                                    "running jobs (default: 1000)")
+    parser_search.add_argument("--max-jobs", type=int, default=-1,
+                               help="maximum number of job to run "
+                                    "per analysis (default: off)")
+    parser_search.add_argument("--max-retries", type=int, default=-0,
+                               help="maximum number of attempts to re-run "
+                                    "a job after it fails (default: 0)")
+    parser_search.add_argument("--keep", choices=["none", "failed", "all"],
+                               default="none",
+                               help="keep jobs' input/output files "
+                                    "(default: none)")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -939,70 +950,71 @@ def run_interproscan_manager():
     iscn_uniparc_uri = config["oracle"]["iscn-uniparc"]
     unpr_uniparc_uri = config["oracle"]["unpr-uapro"]
 
-    if args.list:
-        analyses = interproscan.database.get_analyses(iscn_iprscan_uri)
-        for analysis_id in sorted(analyses,
-                                  key=lambda k: (analyses[k]["name"], k)):
-            name = analyses[analysis_id]["name"]
-            version = analyses[analysis_id]["version"]
-            print(f"{analysis_id:>4}\t{name:<30}\t{version}")
-
-        return
-
-    if args.import_sequences and not args.dry_run:
+    if args.mode == "import":
         interproscan.database.import_uniparc(ispro_uri=iscn_uniparc_uri,
                                              uniparc_uri=unpr_uniparc_uri,
                                              top_up=args.top_up)
+    elif args.mode == "clean":
+        interproscan.database.clean_tables(iscn_iprscan_uri, args.analyses)
 
-    if not args.dry_run:
-        if args.clean:
-            interproscan.database.clean_tables(iscn_iprscan_uri, args.analyses)
+    elif args.mode == "search":
+        if args.list:
+            analyses = interproscan.database.get_analyses(iscn_iprscan_uri)
+            for analysis_id in sorted(analyses,
+                                      key=lambda k: (analyses[k]["name"], k)):
+                name = analyses[analysis_id]["name"]
+                version = analyses[analysis_id]["version"]
+                print(f"{analysis_id:>4}\t{name:<30}\t{version}")
 
-        interproscan.database.rebuild_indexes(iscn_iprscan_uri, args.analyses)
+            return
 
-    analyses_config = ConfigParser()
-    analyses_config.read(config["misc"]["analyses"])
+        if not args.dry_run:
+            interproscan.database.rebuild_indexes(uri=iscn_iprscan_uri,
+                                                  analysis_ids=args.analyses)
 
-    analyses_configs = {}
-    for analysis in analyses_config.sections():
-        analyses_configs[analysis] = {}
+        analyses_config = ConfigParser()
+        analyses_config.read(config["misc"]["analyses"])
 
-        for option, value in analyses_config.items(analysis):
-            analyses_configs[analysis][option] = int(value)
+        analyses_configs = {}
+        for analysis in analyses_config.sections():
+            analyses_configs[analysis] = {}
 
-    # Options for analyses without a custom config
-    job_cpu = int(analyses_config["DEFAULT"]["job_cpu"])
-    job_mem = int(analyses_config["DEFAULT"]["job_mem"])
-    job_size = int(analyses_config["DEFAULT"]["job_size"])
-    job_timeout = int(analyses_config["DEFAULT"]["job_timeout"])
+            for option, value in analyses_config.items(analysis):
+                analyses_configs[analysis][option] = int(value)
 
-    interproscan.manager.run(uri=iscn_iprscan_uri,
-                             work_dir=config["misc"]["match_calc_dir"],
-                             temp_dir=config["misc"]["temporary_dir"],
-                             # Default config
-                             job_cpu=job_cpu,
-                             job_mem=job_mem,
-                             job_size=job_size,
-                             job_timeout=job_timeout,
-                             # Custom configs
-                             config=analyses_configs,
-                             # Performs a dry run
-                             dry_run=args.dry_run,
-                             # LSF queue
-                             lsf_queue=config["misc"]["lsf_queue"],
-                             # Always resubmit a job if it fails due to memory
-                             infinite_mem=True,
-                             # Attempts to re-run a failed job (non-memory)
-                             max_retries=args.max_retries,
-                             # Concurrent jobs
-                             max_running_jobs=args.concurrent_jobs,
-                             # Max jobs submitted per analysis
-                             max_jobs_per_analysis=args.max_jobs,
-                             # Number of monitoring threads
-                             pool_threads=args.threads,
-                             # Analyses to perform
-                             analyses=args.analyses,
-                             # Analyses to exclude
-                             exclude=args.exclude,
-                             # Debug options
-                             keep_files=args.keep)
+        # Options for analyses without a custom config
+        job_cpu = int(analyses_config["DEFAULT"]["job_cpu"])
+        job_mem = int(analyses_config["DEFAULT"]["job_mem"])
+        job_size = int(analyses_config["DEFAULT"]["job_size"])
+        job_timeout = int(analyses_config["DEFAULT"]["job_timeout"])
+
+        interproscan.manager.run(uri=iscn_iprscan_uri,
+                                 work_dir=config["misc"]["match_calc_dir"],
+                                 temp_dir=config["misc"]["temporary_dir"],
+                                 # Default config
+                                 job_cpu=job_cpu,
+                                 job_mem=job_mem,
+                                 job_size=job_size,
+                                 job_timeout=job_timeout,
+                                 # Custom configs
+                                 config=analyses_configs,
+                                 # Performs a dry run
+                                 dry_run=args.dry_run,
+                                 # LSF queue
+                                 lsf_queue=config["misc"]["lsf_queue"],
+                                 # Resubmit a job if it fails due to memory
+                                 infinite_mem=True,
+                                 # Attempts to re-run a failed job (non-memory)
+                                 max_retries=args.max_retries,
+                                 # Concurrent jobs
+                                 max_running_jobs=args.concurrent_jobs,
+                                 # Max jobs submitted per analysis
+                                 max_jobs_per_analysis=args.max_jobs,
+                                 # Number of monitoring threads
+                                 pool_threads=args.threads,
+                                 # Analyses to perform
+                                 analyses=args.analyses,
+                                 # Analyses to exclude
+                                 exclude=args.exclude,
+                                 # Debug options
+                                 keep_files=args.keep)
