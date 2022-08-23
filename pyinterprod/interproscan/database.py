@@ -175,7 +175,6 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
         max_upi, = cur.fetchone()
     else:
         max_upi = None
-        oracle.drop_mview(cur, "UNIPARC.PROTEIN")
         oracle.drop_table(cur, "UNIPARC.PROTEIN", purge=True)
         cur.execute(
             """
