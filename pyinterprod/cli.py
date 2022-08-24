@@ -567,7 +567,7 @@ def run_pronto_update():
     tasks = get_pronto_tasks(ora_interpro_uri, ora_swpread_uri, ora_goa_uri,
                              pg_uri, data_dir, lsf_queue)
 
-    database = os.path.join(wflow_dir, f"{uniprot_version}.pronto.sqlite")
+    database = os.path.join(wflow_dir, f"{uniprot_version}_pronto.sqlite")
     with Workflow(tasks, dir=temp_dir, database=database) as wf:
         if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
             sys.exit(0)
