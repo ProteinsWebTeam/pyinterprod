@@ -203,10 +203,6 @@ def run_clan_update():
                              cddid=params["summary"],
                              fam2supfam=params["members"],
                              **kwargs)
-        elif dbname == "panther":
-            update_hmm_clans(ora_interpro_uri, database,
-                             hmmdb=params["hmm"],
-                             **kwargs)
         else:
             update_hmm_clans(ora_interpro_uri, database,
                              hmmdb=params["hmm"],
