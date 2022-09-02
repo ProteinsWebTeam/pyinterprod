@@ -193,6 +193,8 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
             """
         )
 
+    logger.info(f"\thighest UPI: {max_upi or 'N/A'}")
+
     cnt = 0
     records = []
     req = """
@@ -218,6 +220,10 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
     if not top_up:
         cur.execute("GRANT SELECT ON UNIPARC.PROTEIN TO PUBLIC")
         cur.execute("CREATE UNIQUE INDEX PK_PROTEIN ON UNIPARC.PROTEIN (UPI)")
+
+    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
+    max_upi, = cur.fetchone()
+    logger.info(f"\tnew highest UPI: {max_upi or 'N/A'}")
 
     cur.close()
     con.close()
