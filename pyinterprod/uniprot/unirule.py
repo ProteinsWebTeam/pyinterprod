@@ -499,8 +499,8 @@ def build_xref_summary(uri: str):
                ELSE ME.DESCRIPTION 
                END,
           -- PANTHER: use subfamily part (e.g. SF10) as annotation
-          CASE WHEN MA.DBCODE = 'V' AND INSTR(MA.METHOD_AC, ':') > 0 
-               THEN SUBSTR(MA.METHOD_AC, INSTR(MA.METHOD_AC, ':')+1) 
+          CASE WHEN MA.DBCODE = 'V' AND INSTR(MA.MODEL_AC, ':') > 0 
+               THEN SUBSTR(MA.MODEL_AC, INSTR(MA.MODEL_AC, ':')+1) 
                ELSE NULL 
                END,
           MA.POS_FROM,
