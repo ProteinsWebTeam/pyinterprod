@@ -21,6 +21,7 @@ def report_integration_changes(uri: str, emails: dict):
         """
         SELECT DISTINCT METHOD_AC, ENTRY_AC
         FROM INTERPRO.XREF_SUMMARY
+        WHERE ENTRY_AC IS NOT NULL 
         """
     )
     previous_signatures = dict(cur.fetchall())
@@ -516,7 +517,6 @@ def build_xref_summary(uri: str):
           FROM INTERPRO.ENTRY E
           INNER JOIN INTERPRO.ENTRY2METHOD EM ON EM.ENTRY_AC = E.ENTRY_AC
           WHERE E.CHECKED = 'Y'
-            AND EM.EVIDENCE != 'EXC'
         ) E ON ME.METHOD_AC = E.METHOD_AC
         """
     )
