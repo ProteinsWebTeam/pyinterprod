@@ -65,9 +65,11 @@ def export_xrefs(url: str, outdir: str, emails: dict):
     """
     Format for Uniprot dat files:
       <protein>    DR   <database>; <signature/entry>; <name>; <count>.
+
+    (https://web.expasy.org/docs/userman.html#DR_line)
+
     Exceptions:
         - Gene3D: do not include prefix before accession (G3DSA:)
-                  replace signature's name by hyphen (-)
         - PRINTS: do not include match count
         - InterPro: do not include match count
     """
@@ -78,12 +80,25 @@ def export_xrefs(url: str, outdir: str, emails: dict):
     cur = con.cursor()
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     release = cur.fetchone()[0]
+
+    # Load names of PANTHER signatures
+    cur.execute(
+        """
+        SELECT METHOD_AC, DESCRIPTION 
+        FROM INTERPRO.METHOD 
+        WHERE DBCODE = 'V' 
+          AND DESCRIPTION IS NOT NULL
+        """
+    )
+    panther_names = dict(cur.fetchall())
+
     cur.execute(
         """
         SELECT
           PROTEIN_AC,
           METHOD_AC,
           MIN(METHOD_NAME),
+          MIN(METHOD_ANNOTATION),
           MIN(DBCODE),
           MIN(ENTRY_AC),
           MIN(SHORT_NAME),
@@ -96,7 +111,6 @@ def export_xrefs(url: str, outdir: str, emails: dict):
 
     dbcodes = {
         'B': ("SFLD", "SFLD"),
-        # 'D': ("ProDom", "PD"),  # ProDom removed from InterPro
         'F': ("PRINTS", "PP"),
         'H': ("Pfam", "PF"),
         'J': ("CDD", "CDD"),
@@ -130,53 +144,48 @@ def export_xrefs(url: str, outdir: str, emails: dict):
 
     entries = {}
     prev_acc = None
+
     for row in cur:
         protein_acc = row[0]
         signature_acc = row[1]
         signature_name = row[2]
-        dbcode = row[3]
-        entry_acc = row[4]
-        entry_name = row[5]
-        num_matches = int(row[6])
+        annotation = row[3]
+        dbcode = row[4]
+        entry_acc = row[5]
+        entry_name = row[6]
+        num_matches = int(row[7])
 
         dbname, dbkey = dbcodes[dbcode]
         fh = handlers[dbcode]
 
-        if dbcode == 'X':
-            """
-            Gene3D
-              - accession: G3DSA:3.90.1580.10 -> 3.90.1580.10
-              - do not print signature's name
-            """
-            fh.write(f"{protein_acc}    DR   {dbname}; {signature_acc[6:]}; "
-                     f"-; {num_matches}.\n")
-        elif dbcode == 'F':
-            # PRINTS: do not print match count
-            fh.write(f"{protein_acc}    DR   {dbname}; {signature_acc}; "
-                     f"{signature_name}.\n")
-        elif dbcode == "V" and signature_name is None:
-            # PANTHER: substitute missing description by '-'
-            fh.write(f"{protein_acc}    DR   {dbname}; {signature_acc}; "
-                     f"-; {num_matches}.\n")
-        else:
-            fh.write(f"{protein_acc}    DR   {dbname}; {signature_acc}; "
-                     f"{signature_name}; {num_matches}.\n")
+        identifier = signature_acc[6:] if dbcode == "X" else signature_acc
+        optional_1 = signature_name or "-"
+        optional_2 = "" if dbcode == "F" else f"; {num_matches}"
+
+        fh.write(f"{protein_acc}    DR   {dbname}; {identifier}; "
+                 f"{optional_1}{optional_2}.\n")
+
+        if annotation:
+            identifier = f"{signature_acc}:{annotation}"
+            optional_1 = panther_names.get(identifier, "-")
+            fh.write(f"{protein_acc}    DR   {dbname}; {identifier}; "
+                     f"{optional_1}{optional_2}.\n")
 
         if protein_acc != prev_acc:
             for entry in sorted(entries):
                 name = entries[entry]
                 ifh.write(f"{prev_acc}    DR   InterPro; {entry}; {name}.\n")
 
-            entries = {}
+            entries.clear()
             prev_acc = protein_acc
 
-        entries[entry_acc] = entry_name
+        if entry_acc:
+            entries[entry_acc] = entry_name
 
     # Last protein
-    if prev_acc:
-        for entry in sorted(entries):
-            name = entries[entry]
-            ifh.write(f"{prev_acc}    DR   InterPro; {entry}; {name}.\n")
+    for entry in sorted(entries):
+        name = entries[entry]
+        ifh.write(f"{prev_acc}    DR   InterPro; {entry}; {name}.\n")
 
     ifh.close()
 
