@@ -1,9 +1,11 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, Union
 
 import cx_Oracle
 from mundone.task import Task
 
 from pyinterprod import logger
+from pyinterprod.uniprot.uniparc import iter_proteins
 from pyinterprod.utils import oracle
 
 
@@ -163,29 +165,6 @@ def clean_tables(uri: str, analysis_ids: Optional[list[int]] = None):
     con.close()
 
 
-def iter_proteins(uri: str, greather_than: Optional[str] = None):
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
-    cur.outputtypehandler = oracle.clob_as_str
-
-    sql = """
-        SELECT ID, UPI, TIMESTAMP, USERSTAMP, CRC64, LEN, SEQ_SHORT, 
-               SEQ_LONG, MD5
-        FROM UNIPARC.PROTEIN      
-    """
-
-    if greather_than is not None:
-        sql += "WHERE UPI > :1"
-        params = [greather_than]
-    else:
-        params = []
-
-    cur.execute(sql, params)
-    yield from cur
-    cur.close()
-    con.close()
-
-
 def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
     logger.info("importing sequences from UniParc")
     con = cx_Oracle.connect(ispro_uri)
@@ -196,7 +175,6 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
         max_upi, = cur.fetchone()
     else:
         max_upi = None
-        oracle.drop_mview(cur, "UNIPARC.PROTEIN")
         oracle.drop_table(cur, "UNIPARC.PROTEIN", purge=True)
         cur.execute(
             """
@@ -214,6 +192,8 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
                 ) NOLOGGING
             """
         )
+
+    logger.info(f"\thighest UPI: {max_upi or 'N/A'}")
 
     cnt = 0
     records = []
@@ -240,6 +220,10 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
     if not top_up:
         cur.execute("GRANT SELECT ON UNIPARC.PROTEIN TO PUBLIC")
         cur.execute("CREATE UNIQUE INDEX PK_PROTEIN ON UNIPARC.PROTEIN (UPI)")
+
+    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
+    max_upi, = cur.fetchone()
+    logger.info(f"\tnew highest UPI: {max_upi or 'N/A'}")
 
     cur.close()
     con.close()
@@ -346,9 +330,66 @@ def set_job_done(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
         UPDATE IPRSCAN.ANALYSIS_JOBS
         SET SUCCESS = 'Y'
         WHERE ANALYSIS_ID = :1
-            AND UPI_FROM = :2
-            AND UPI_TO = :3
-            AND END_TIME IS NULL
+          AND UPI_FROM = :2
+          AND UPI_TO = :3
+          AND END_TIME IS NULL
         """,
         [analysis_id, upi_from, upi_to]
     )
+
+
+def rebuild_indexes(uri: str, analysis_ids: Optional[list[int]] = None):
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+
+    analyses = get_analyses(cur)
+
+    tables = set()
+    for analysis_id, analysis in analyses.items():
+        if analysis_ids and analysis_id not in analysis_ids:
+            continue
+
+        tables.add(analysis["tables"]["matches"])
+
+        if analysis["tables"]["sites"]:
+            tables.add(analysis["tables"]["sites"])
+
+    to_rebuild = set()
+    for table in tables:
+        for index in oracle.get_indexes(cur, "IPRSCAN", table):
+            if index["is_unusable"]:
+                to_rebuild.add(index["name"])
+
+    cur.close()
+    con.close()
+
+    errors = 0
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        fs = {}
+
+        for index in to_rebuild:
+            f = executor.submit(_rebuild_index, uri, index)
+            fs[f] = index
+
+        for f in as_completed(fs):
+            index = fs[f]
+
+            try:
+                f.result()
+            except Exception as exc:
+                logger.error(f"{index} rebuild failed: {exc}")
+                errors += 1
+            else:
+                logger.info(f"{index} rebuilt")
+
+    if errors > 0:
+        raise RuntimeError(f"{errors} errors occurred")
+
+
+def _rebuild_index(uri: str, name: str):
+    logger.info(f"rebuilding {name}")
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+    oracle.rebuild_index(cur, name)
+    cur.close()
+    con.close()

@@ -212,6 +212,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
         FROM INTERPRO.METHOD M
         INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
         INNER JOIN INTERPRO.CV_ENTRY_TYPE T ON M.SIG_TYPE = T.CODE
+        WHERE NOT REGEXP_LIKE(M.METHOD_AC, '^PTHR\d+:SF\d+$')
         """
     )
     rows = cur.fetchall()

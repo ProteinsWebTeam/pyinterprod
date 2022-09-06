@@ -1,12 +1,11 @@
 import random
 import time
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 from cx_Oracle import connect
 from cx_Oracle import Cursor, DatabaseError, DB_TYPE_CLOB, DB_TYPE_LONG
 
 from pyinterprod import logger
-from pyinterprod.interproscan.utils import range_upi
 
 
 def try_connect(uri: str, seconds: int = 10, max_attempts: int = 10):
@@ -88,7 +87,7 @@ def gather_stats(cur: Cursor, schema: str, table: str,
     cur.callproc("DBMS_STATS.GATHER_TABLE_STATS", args)
 
 
-def get_child_tables(cur: Cursor, schema: str, name: str) -> List[tuple]:
+def get_child_tables(cur: Cursor, schema: str, name: str) -> list[tuple]:
     cur.execute(
         """
         SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME
@@ -112,7 +111,7 @@ def get_child_tables(cur: Cursor, schema: str, name: str) -> List[tuple]:
     return cur.fetchall()
 
 
-def get_indexes(cur: Cursor, owner: str, name: str) -> List[dict]:
+def get_indexes(cur: Cursor, owner: str, name: str) -> list[dict]:
     cur.execute(
         """
         SELECT I.OWNER, I.INDEX_NAME, I.UNIQUENESS, I.TABLESPACE_NAME, 
@@ -178,7 +177,7 @@ def get_partitioned_indexes(cur: Cursor, owner: str, table: str) -> list[dict]:
     return results
 
 
-def get_partitions(cur: Cursor, schema: str, table: str) -> List[dict]:
+def get_partitions(cur: Cursor, schema: str, table: str) -> list[dict]:
     cur.execute(
         """
         SELECT P.PARTITION_NAME, P.PARTITION_POSITION, P.HIGH_VALUE,
@@ -208,7 +207,7 @@ def get_partitions(cur: Cursor, schema: str, table: str) -> List[dict]:
     return sorted(partitions.values(), key=lambda x: x["position"])
 
 
-def get_subpartitions(cur: Cursor, schema: str, table: str, partition: str) -> List[dict]:
+def get_subpartitions(cur: Cursor, schema: str, table: str, partition: str) -> list[dict]:
     cur.execute(
         """
         SELECT SP.SUBPARTITION_NAME, SP.SUBPARTITION_POSITION, SP.HIGH_VALUE,
@@ -291,35 +290,3 @@ def catch_temp_error(fn: Callable, args: Sequence, max_attempts: int = 3):
                 time.sleep(3600)
         else:
             break
-
-
-def add_site_subpartitions(uri: str, owner: str, table: str, partition: str,
-                           stop: str, prefix: str = ""):
-    if len(stop) != 8 or stop[:3] != "UPI" or not stop[3:].isalnum():
-        raise ValueError(f"Invalid range stop: {stop}. "
-                         f"Expected format: UPIxxxxx, with x being digits")
-
-    con = connect(uri)
-    cur = con.cursor()
-
-    subpartitions = set()
-    for subpart in get_subpartitions(cur, owner, table, partition):
-        subpartitions.add(subpart["name"])
-
-    new_subpartitions = {}
-    # range_upi yields start/stop, but since step = 1, start == stop
-    for value, _ in range_upi("UPI00000", stop, 1):
-        name = prefix + value
-        if name not in subpartitions:
-            new_subpartitions[name] = value
-
-    for name, value in new_subpartitions.items():
-        cur.execute(
-            f"""
-            ALTER TABLE {table} MODIFY PARTITION {partition}
-            ADD SUBPARTITION {name} VALUES ('{value}')
-            """
-        )
-
-    cur.close()
-    con.close()

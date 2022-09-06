@@ -22,6 +22,7 @@ DATABASES = [
     'Y',    # SUPERFAMILY
     'a',    # AntiFam
     'f',    # FunFam
+    'g',    # MobiDB
     'u',    # UniProtKB
 ]
 

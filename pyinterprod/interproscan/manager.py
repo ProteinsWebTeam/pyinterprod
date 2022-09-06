@@ -12,9 +12,9 @@ from mundone import Pool, Task
 from mundone.task import STATUS_PENDING, STATUS_RUNNING
 
 from pyinterprod import logger
+from pyinterprod.uniprot.uniparc import int_to_upi, upi_to_int, range_upi
 from pyinterprod.utils import oracle
 from . import database, persistence
-from .utils import int_to_upi, upi_to_int, range_upi
 
 
 """
@@ -77,9 +77,9 @@ class TaskFactory:
     analysis_id: int
     config: dict
     match_table: str
-    parse_matches: Callable
+    persist_matches: Callable
     site_table: Optional[str] = None
-    parse_sites: Optional[Callable] = None
+    persist_sites: Optional[Callable] = None
     keep_files: Optional[str] = None
     lsf_queue: Optional[str] = None
 
@@ -95,9 +95,9 @@ class TaskFactory:
                 os.path.join(self.work_dir, f"{upi_from}_{upi_to}"),
                 self.analysis_id,
                 self.match_table,
-                self.parse_matches,
+                self.persist_matches,
                 self.site_table,
-                self.parse_sites
+                self.persist_sites
             ),
             kwargs=dict(cpu=self.config["job_cpu"],
                         keep_files=self.keep_files,
@@ -191,7 +191,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             name = analysis["name"]
             version = analysis["version"]
 
-            appl, parse_matches, parse_sites = _DB_TO_I5[name]
+            appl, persist_matches, persist_sites = _DB_TO_I5[name]
 
             analysis_work_dir = os.path.join(work_dir, appl, version)
             os.makedirs(analysis_work_dir, exist_ok=True)
@@ -203,9 +203,9 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                                   analysis_id=analysis_id,
                                   config=config,
                                   match_table=analysis["tables"]["matches"],
-                                  parse_matches=parse_matches,
+                                  persist_matches=persist_matches,
                                   site_table=analysis["tables"]["sites"],
-                                  parse_sites=parse_sites,
+                                  persist_sites=persist_sites,
                                   keep_files=keep_files,
                                   lsf_queue=lsf_queue)
 
@@ -456,8 +456,8 @@ def run_i5(i5_dir: str, fasta_file: str, analysis_name: str, output: str,
 
 def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             outdir: str, analysis_id: int, match_table: str,
-            parse_matches: Callable, site_table: Optional[str],
-            parse_sites: Optional[Callable], cpu: Optional[int] = None,
+            persist_matches: Callable, site_table: Optional[str],
+            persist_sites: Optional[Callable], cpu: Optional[int] = None,
             keep_files: Optional[str] = None, timeout: Optional[int] = None):
     try:
         shutil.rmtree(outdir)
@@ -490,12 +490,18 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
                 raise RuntimeError(f"Cannot access output sites tsv-pro")
 
             con = oracle.try_connect(uri)
+
+            """
+            Use a different cursor for persist functions 
+            as they call cursor.setinputsizes()
+            """
             cur = con.cursor()
-
-            parse_matches(cur, matches_output, analysis_id, match_table)
+            persist_matches(cur, matches_output, analysis_id, match_table)
             if site_table:
-                parse_sites(cur, sites_output, analysis_id, site_table)
+                persist_sites(cur, sites_output, analysis_id, site_table)
+            cur.close()
 
+            cur = con.cursor()
             database.set_job_done(cur, analysis_id, upi_from, upi_to)
 
             con.commit()

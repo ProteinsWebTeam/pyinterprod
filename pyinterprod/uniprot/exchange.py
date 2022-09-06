@@ -154,7 +154,8 @@ def export_xrefs(url: str, outdir: str, emails: dict):
             # PRINTS: do not print match count
             fh.write(f"{protein_acc}    DR   {dbname}; {signature_acc}; "
                      f"{signature_name}.\n")
-        elif dbcode == "V" and "NOT NAMED" in signature_name:
+        elif dbcode == "V" and signature_name is None:
+            # PANTHER: substitute missing description by '-'
             fh.write(f"{protein_acc}    DR   {dbname}; {signature_acc}; "
                      f"-; {num_matches}.\n")
         else:

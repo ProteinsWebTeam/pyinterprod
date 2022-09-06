@@ -442,7 +442,7 @@ def create_match_table(uri: str):
             """
             CREATE TABLE match (
                 protein_acc VARCHAR(15) NOT NULL,
-                signature_acc VARCHAR(25) NOT NULL,
+                signature_acc VARCHAR(30) NOT NULL,
                 database_id INTEGER NOT NULL,
                 fragments TEXT NOT NULL
             )
