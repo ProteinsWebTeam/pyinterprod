@@ -515,9 +515,9 @@ def build_xref_summary(uri: str):
           SELECT E.ENTRY_AC, E.SHORT_NAME, EM.METHOD_AC
           FROM INTERPRO.ENTRY E
           INNER JOIN INTERPRO.ENTRY2METHOD EM ON EM.ENTRY_AC = E.ENTRY_AC
-          AND E.CHECKED = 'Y'
+          WHERE E.CHECKED = 'Y'
+            AND EM.EVIDENCE != 'EXC'
         ) E ON ME.METHOD_AC = E.METHOD_AC
-        WHERE EM.EVIDENCE != 'EXC'
         """
     )
     con.commit()
