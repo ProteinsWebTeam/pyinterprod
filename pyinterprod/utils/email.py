@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import mimetypes
 import os
 from email.message import EmailMessage
@@ -11,6 +9,9 @@ def send(info: dict, to: Sequence[str], subject: str, content: str, **kwargs):
     cc = kwargs.get("cc", [])
     bcc = kwargs.get("bcc", [])
     attachments = kwargs.get("attachments", [])
+
+    if not info:
+        return
 
     try:
         host, port = info["server"].split(':')
