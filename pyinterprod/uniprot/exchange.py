@@ -193,7 +193,7 @@ def export_xrefs(url: str, outdir: str, emails: dict):
         fh.close()
 
     for path in files:
-        os.chmod(path, 0o775)
+        os.chmod(path, 0o664)
 
     email.send(
         info=emails,
