@@ -1,4 +1,4 @@
-from typing import MutableMapping, Sequence, Tuple
+import re
 
 import cx_Oracle
 
@@ -94,7 +94,7 @@ Description of states:
     )
 
 
-def _condense(matches: MutableMapping[str, Sequence[Tuple[int, int]]]):
+def _condense(matches: dict[str, list[tuple[int, int]]]):
     for entry_acc in matches:
         condensed_matches = []
         start = end = None
@@ -459,7 +459,6 @@ def build_xref_summary(uri: str):
             SHORT_NAME VARCHAR2(30),
             METHOD_AC VARCHAR2(25) NOT NULL,
             METHOD_NAME VARCHAR2(400),
-            METHOD_ANNOTATION VARCHAR2(10),
             POS_FROM NUMBER(5) NOT NULL,
             POS_TO NUMBER(5) NOT NULL,
             MATCH_STATUS CHAR(1) NOT NULL,
@@ -484,41 +483,79 @@ def build_xref_summary(uri: str):
         """
     )
 
+    # Load signature-entry mapping
     cur.execute(
         """
-        INSERT INTO INTERPRO.XREF_SUMMARY
-        SELECT
-          MA.DBCODE,
-          MA.PROTEIN_AC,
-          E.ENTRY_AC,
-          E.SHORT_NAME,
-          MA.METHOD_AC,
-          -- Use name if different than accession
-          CASE WHEN MA.METHOD_AC != ME.NAME 
-               THEN ME.NAME 
-               ELSE ME.DESCRIPTION 
-               END,
-          -- PANTHER: use subfamily part (e.g. SF10) as annotation
-          CASE WHEN MA.DBCODE = 'V' AND INSTR(MA.MODEL_AC, ':') > 0 
-               THEN SUBSTR(MA.MODEL_AC, INSTR(MA.MODEL_AC, ':')+1) 
-               ELSE NULL 
-               END,
-          MA.POS_FROM,
-          MA.POS_TO,
-          MA.STATUS,
-          MA.SCORE,
-          MA.FRAGMENTS
-        FROM INTERPRO.MATCH MA
-        INNER JOIN INTERPRO.METHOD ME ON MA.METHOD_AC = ME.METHOD_AC
-        LEFT OUTER JOIN (
-          SELECT E.ENTRY_AC, E.SHORT_NAME, EM.METHOD_AC
-          FROM INTERPRO.ENTRY E
-          INNER JOIN INTERPRO.ENTRY2METHOD EM ON EM.ENTRY_AC = E.ENTRY_AC
-          WHERE E.CHECKED = 'Y'
-        ) E ON ME.METHOD_AC = E.METHOD_AC
+        SELECT EM.METHOD_AC, E.ENTRY_AC, E.SHORT_NAME
+        FROM INTERPRO.ENTRY E
+        INNER JOIN INTERPRO.ENTRY2METHOD EM ON EM.ENTRY_AC = E.ENTRY_AC
+        WHERE E.CHECKED = 'Y'
         """
     )
-    con.commit()
+    integrated = {row[0]: row[1:] for row in cur.fetchall()}
+
+    # Load signature names/descriptions
+    cur.execute(
+        """
+        SELECT METHOD_AC, NAME, DESCRIPTION 
+        FROM INTERPRO.METHOD
+        """
+    )
+    signatures = {row[0]: row[1:] for row in cur.fetchall()}
+
+    sql = """
+        INSERT /*+ APPEND */ INTO INTERPRO.XREF_SUMMARY
+        VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11)
+    """
+    with Table(con, sql, autocommit=True) as table:
+        cur.execute(
+            """
+            SELECT DBCODE, PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, STATUS, 
+                   SCORE, FRAGMENTS, MODEL_AC
+            FROM INTERPRO.MATCH
+            """
+        )
+
+        for (dbcode, protein_acc, sig_acc, pos_from, pos_to, status, score,
+             fragments, model_acc) in cur:
+            sig_name, sig_descr = signatures[sig_acc]
+
+            try:
+                entry_acc, entry_name = integrated[sig_acc]
+            except KeyError:
+                entry_acc = entry_name = None
+
+            table.insert([
+                dbcode,
+                protein_acc,
+                entry_acc,
+                entry_name,
+                sig_acc,
+                sig_name if sig_name != sig_acc else sig_descr,
+                pos_from,
+                pos_to,
+                status,
+                score,
+                fragments
+            ])
+
+            if dbcode == "V" and "SF" in model_acc:
+                # Has a PANTHER subfamily annotation
+
+                sig_name, sig_descr = signatures[model_acc]
+                table.insert([
+                    dbcode,
+                    protein_acc,
+                    None,
+                    None,
+                    model_acc,
+                    sig_name if sig_name != sig_acc else sig_descr,
+                    pos_from,
+                    pos_to,
+                    status,
+                    score,
+                    fragments
+                ])
 
     logger.info("indexing")
     for col in ("PROTEIN_AC", "ENTRY_AC", "METHOD_AC"):
