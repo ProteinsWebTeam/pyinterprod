@@ -99,7 +99,6 @@ def export_xrefs(url: str, outdir: str, emails: dict):
           PROTEIN_AC,
           METHOD_AC,
           MIN(METHOD_NAME),
-          MIN(METHOD_ANNOTATION),
           MIN(DBCODE),
           MIN(ENTRY_AC),
           MIN(SHORT_NAME),
@@ -150,11 +149,10 @@ def export_xrefs(url: str, outdir: str, emails: dict):
         protein_acc = row[0]
         signature_acc = row[1]
         signature_name = row[2]
-        annotation = row[3]
-        dbcode = row[4]
-        entry_acc = row[5]
-        entry_name = row[6]
-        num_matches = int(row[7])
+        dbcode = row[3]
+        entry_acc = row[4]
+        entry_name = row[5]
+        num_matches = int(row[6])
 
         dbname, dbkey = dbcodes[dbcode]
         fh = handlers[dbcode]
@@ -165,12 +163,6 @@ def export_xrefs(url: str, outdir: str, emails: dict):
 
         fh.write(f"{protein_acc}    DR   {dbname}; {identifier}; "
                  f"{optional_1}{optional_2}.\n")
-
-        if annotation:
-            identifier = f"{signature_acc}:{annotation}"
-            optional_1 = panther_names.get(identifier, "-")
-            fh.write(f"{protein_acc}    DR   {dbname}; {identifier}; "
-                     f"{optional_1}{optional_2}.\n")
 
         if protein_acc != prev_acc:
             for entry in sorted(entries):
