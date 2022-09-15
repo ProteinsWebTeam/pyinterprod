@@ -72,6 +72,7 @@ def export_xrefs(url: str, outdir: str, emails: dict):
         - Gene3D: do not include prefix before accession (G3DSA:)
         - PRINTS: do not include match count
         - InterPro: do not include match count
+        - PANTHER: add a record for the subfamily
     """
     logger.info("exporting dat files")
     os.makedirs(outdir, 0o775, exist_ok=True)
