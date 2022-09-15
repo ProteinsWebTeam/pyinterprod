@@ -82,17 +82,6 @@ def export_xrefs(url: str, outdir: str, emails: dict):
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     release = cur.fetchone()[0]
 
-    # Load names of PANTHER signatures
-    cur.execute(
-        """
-        SELECT METHOD_AC, DESCRIPTION 
-        FROM INTERPRO.METHOD 
-        WHERE DBCODE = 'V' 
-          AND DESCRIPTION IS NOT NULL
-        """
-    )
-    panther_names = dict(cur.fetchall())
-
     cur.execute(
         """
         SELECT
