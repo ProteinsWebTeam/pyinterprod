@@ -549,7 +549,7 @@ def build_xref_summary(uri: str):
                     None,
                     None,
                     model_acc,
-                    sig_name if sig_name != sig_acc else sig_descr,
+                    sig_name if sig_name != model_acc else sig_descr,
                     pos_from,
                     pos_to,
                     status,
