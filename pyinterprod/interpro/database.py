@@ -1,10 +1,12 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, Sequence
 
 import cx_Oracle
 
 from .match import MATCH_PARTITIONS, FEATURE_MATCH_PARTITIONS
+
+
+_NOT_IN_ISPRO = ["Pfam-N"]
 
 
 @dataclass
@@ -19,11 +21,11 @@ class Database:
     is_feature_db: bool
 
 
-def get_databases(url: str, names: Sequence[str],
-                  expects_new: bool = False) -> Dict[str, Database]:
+def get_databases(uri: str, names: list[str],
+                  expects_new: bool = False) -> dict[str, Database]:
     names = {name.lower(): name for name in names}
 
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     cur.execute(
@@ -80,7 +82,11 @@ def get_databases(url: str, names: Sequence[str],
 
         databases[row[1]] = db
 
-        if any(e is None for e in row[3:7]):
+        if row[3] is None or row[4] is None:
+            missing.append(db.name)
+        elif db.name in _NOT_IN_ISPRO:
+            pass
+        elif any(e is None for e in row[5:7]):
             missing.append(db.name)
         elif expects_new and db.analysis_id == row[6]:
             not_ready.append(db.name)
@@ -107,9 +113,9 @@ def get_databases(url: str, names: Sequence[str],
     return databases
 
 
-def update_database(url: str, name: str, version: str, date: str,
+def update_database(uri: str, name: str, version: str, date: str,
                     confirm: bool = True):
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -164,23 +170,25 @@ def update_database(url: str, name: str, version: str, date: str,
     cur.close()
     con.close()
 
-    if not rows:
+    if name in _NOT_IN_ISPRO:
+        id_to_use = current_id
+    elif not rows:
         raise ValueError("Missing analysis")
-
-    print("Analyses found:")
-    actives = set()
-    for active_id, active_name in rows:
-        print(f"  {active_id}: {active_name}")
-        actives.add(str(active_id))
-
-    if len(actives) == 1:
-        id_to_use = actives.pop()
     else:
-        id_to_use = None
-        while id_to_use not in actives:
-            id_to_use = input("Enter analysis ID to use: ")
+        print("Analyses found:")
+        actives = set()
+        for active_id, active_name in rows:
+            print(f"  {active_id}: {active_name}")
+            actives.add(str(active_id))
 
-        id_to_use = int(id_to_use)
+        if len(actives) == 1:
+            id_to_use = actives.pop()
+        else:
+            id_to_use = None
+            while id_to_use not in actives:
+                id_to_use = input("Enter analysis ID to use: ")
+
+            id_to_use = int(id_to_use)
 
     print(f"Updating {name}")
     if current_version and current_date:
@@ -194,7 +202,7 @@ def update_database(url: str, name: str, version: str, date: str,
         print("Abort.")
         return
 
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     if (current_version, current_date) != (version, date):

@@ -341,7 +341,12 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
     if data_type not in ("matches", "sites"):
         raise ValueError(f"invalid data type '{data_type}'")
     elif databases:  # expects a sequence of Database objects
-        databases = {db.analysis_id for db in databases}
+        databases = {db.analysis_id for db in databases
+                     if db.analysis_id is not None}
+
+        if not databases:
+            # Databases not in ISPRO (e.g. Pfam-N): nothing to import
+            return
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
@@ -520,10 +525,15 @@ def update_partitions(uri: str, data_type: str = "matches", **kwargs):
     else:
         raise ValueError(f"invalid data type '{data_type}'")
 
-    logger.info("starting")
-
     if databases:  # expects a sequence of Database objects
-        databases = {db.analysis_id for db in databases}
+        databases = {db.analysis_id for db in databases
+                     if db.analysis_id is not None}
+
+        if not databases:
+            # Databases not in ISPRO (e.g. Pfam-N): nothing to update
+            return
+
+    logger.info("starting")
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()

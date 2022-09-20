@@ -304,8 +304,7 @@ def run_member_db_update():
     temp_dir = config["misc"]["temporary_dir"]
     wflow_dir = config["misc"]["workflows_dir"]
 
-    # TODO: allow Pfam-N not to be in IPRSCAN2DBCODE
-    databases = interpro.database.get_databases(url=ora_interpro_uri,
+    databases = interpro.database.get_databases(uri=ora_interpro_uri,
                                                 names=db_names,
                                                 expects_new=True)
     mem_updates = []
@@ -364,7 +363,6 @@ def run_member_db_update():
     }
 
     tasks = [
-        # TODO: ignore Pfam-N
         Task(
             fn=interpro.iprscan.import_tables,
             args=(ora_iprscan_uri, "matches"),
@@ -374,7 +372,6 @@ def run_member_db_update():
             name="import-ipm-matches",
             scheduler=dict(queue=lsf_queue)
         ),
-        # TODO: ignore Pfam-N
         Task(
             fn=interpro.iprscan.update_partitions,
             args=(ora_iprscan_uri, "matches"),
@@ -879,7 +876,7 @@ def update_database():
     config.read(args.config)
 
     ora_interpro_uri = config["oracle"]["ipro-interpro"]
-    interpro.database.update_database(url=ora_interpro_uri,
+    interpro.database.update_database(uri=ora_interpro_uri,
                                       name=args.name,
                                       version=args.version,
                                       date=args.date,
