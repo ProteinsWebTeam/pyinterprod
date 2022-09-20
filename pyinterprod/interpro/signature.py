@@ -1,5 +1,6 @@
 import os
 import pickle
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
@@ -85,11 +86,22 @@ def add_staging(url: str, update: list[tuple[Database, str]]):
                     abstract = None
                     abstract_long = m.abstract
 
+                if m.name:
+                    # Sanitize name (strip + remove multi-spaces)
+                    name = re.sub(r"\s{2,}", " ", m.name.strip())
+                else:
+                    name = m.accession
+
+                if m.description:
+                    descr = re.sub(r"\s{2,}", " ", m.description.strip())
+                else:
+                    descr = None
+
                 table.insert((
                     m.accession,
-                    m.name or m.accession,
+                    name,
                     db.identifier,
-                    m.description,
+                    descr,
                     m.sig_type,
                     abstract,
                     abstract_long
