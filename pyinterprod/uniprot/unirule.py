@@ -531,7 +531,7 @@ def build_xref_summary(uri: str):
                 entry_acc,
                 entry_name,
                 sig_acc,
-                sig_name if sig_name != sig_acc else sig_descr,
+                sig_descr if sig_acc == sig_name and sig_descr else sig_name,
                 pos_from,
                 pos_to,
                 status,
