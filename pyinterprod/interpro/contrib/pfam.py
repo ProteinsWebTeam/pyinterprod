@@ -1,7 +1,4 @@
-# -*- coding: utf-8 -*-
-
 import re
-from typing import List
 
 import MySQLdb
 import MySQLdb.cursors
@@ -31,7 +28,7 @@ def connect_mysql(url: str) -> MySQLdb.Connection:
     return MySQLdb.connect(**obj)
 
 
-def get_clans(url: str) -> List[Clan]:
+def get_clans(url: str) -> list[Clan]:
     con = connect_mysql(url)
     cur = MySQLdb.cursors.SSCursor(con)
     cur.execute(
@@ -97,7 +94,7 @@ class AbstractFormater:
         return f"[{', '.join(refs)}]"
 
 
-def get_signatures(url: str) -> List[Method]:
+def get_signatures(url: str) -> list[Method]:
     con = connect_mysql(url)
     cur = con.cursor()
     cur.execute(
@@ -146,3 +143,21 @@ def get_signatures(url: str) -> List[Method]:
         signatures.append(m)
 
     return signatures
+
+
+def iter_protenn_matches(file: str):
+    """Iterate ProtENN matches from the Pfam-N domain calls TSV file
+    """
+    with open(file, "rt") as fh:
+        for line in fh:
+            uniprot_acc, pfam_acc, start, end = line.rstrip().split("\t")
+            yield uniprot_acc, pfam_acc, int(start), int(end)
+
+
+def get_protenn_entries(file: str) -> list[Method]:
+    accessions = set()
+
+    for _, pfam_acc, _, _ in iter_protenn_matches(file):
+        pfam_acc.add(pfam_acc)
+
+    return [Method(pfam_acc, sig_type=None) for pfam_acc in accessions]

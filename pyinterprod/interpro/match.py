@@ -9,6 +9,12 @@ from pyinterprod.utils import oracle
 
 
 FILE_ENTRY_PROT_COUNTS = "entries.prot.counts.pickle"
+
+"""
+To add a partition:
+SQL> ALTER TABLE <TABLE> 
+     ADD PARTITION <NAME> VALUES ('<DBCODE>');
+"""
 MATCH_PARTITIONS = {
     "B": "MATCH_DBCODE_B",  # SFLD
     "F": "MATCH_DBCODE_F",  # PRINTS
@@ -26,6 +32,7 @@ MATCH_PARTITIONS = {
 }
 FEATURE_MATCH_PARTITIONS = {
     "a": "ANTIFAM",
+    "d": "PFAM_N",
     "f": "FUNFAM",
     "g": "MOBIDBLITE",
     "j": "PHOBIUS",
@@ -48,14 +55,14 @@ def export_entries_protein_counts(cur: cx_Oracle.Cursor, data_dir: str):
         pickle.dump(_get_entries_protein_counts(cur), fh)
 
 
-def update_database_matches(url: str, databases: Sequence):
+def update_database_matches(uri: str, databases: Sequence):
     """
 
-    :param url:
+    :param uri:
     :param databases: Sequence of Database objects
     :return:
     """
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     for database in databases:
@@ -218,14 +225,14 @@ def update_database_matches(url: str, databases: Sequence):
     logger.info("complete")
 
 
-def update_database_feature_matches(url: str, databases: Sequence):
+def update_database_feature_matches(uri: str, databases: Sequence):
     """
 
-    :param url:
+    :param uri:
     :param databases: Sequence of Database objects
     :return:
     """
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     for database in databases:
@@ -335,14 +342,14 @@ def update_database_feature_matches(url: str, databases: Sequence):
     logger.info("complete")
 
 
-def update_database_site_matches(url: str, databases: Sequence):
+def update_database_site_matches(uri: str, databases: Sequence):
     """
 
-    :param url:
+    :param uri:
     :param databases: Sequence of Database objects
     :return:
     """
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     for database in databases:
@@ -463,26 +470,26 @@ def update_database_site_matches(url: str, databases: Sequence):
     logger.info("complete")
 
 
-def update_matches(url: str):
+def update_matches(uri: str):
     """
     Add protein matches for recently added/modified sequences
 
-    :param url: Oracle connection string
+    :param uri: Oracle connection string
     """
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     _prepare_matches(con)
     _check_matches(con)
     _insert_matches(con)
     con.close()
 
 
-def update_feature_matches(url: str):
+def update_feature_matches(uri: str):
     """
     Add protein feature matches for recently added/modified sequences
 
-    :param url: Oracle connection string
+    :param uri: Oracle connection string
     """
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
     logger.info("updating FEATURE_MATCH")
     cur.execute(
@@ -521,15 +528,15 @@ def update_feature_matches(url: str):
     con.close()
 
 
-def update_variant_matches(url: str):
+def update_variant_matches(uri: str):
     """
     Recreate splice-variants table with the most recent data
     from SWISSPROT_VARSPLIC. TREMBL_VARSPLIC (DBID=25) is obsolete and
     only contains deleted cross-references.
 
-    :param url: Oracle connection string
+    :param uri: Oracle connection string
     """
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
     logger.info("updating VARSPLIC_MASTER")
     oracle.truncate_table(cur, "INTERPRO.VARSPLIC_MASTER", reuse_storage=True)
@@ -582,13 +589,13 @@ def update_variant_matches(url: str):
     con.close()
 
 
-def update_site_matches(url: str):
+def update_site_matches(uri: str):
     """
     Add protein site matches for recently added/modified sequences
 
-    :param url: Oracle connection string
+    :param uri: Oracle connection string
     """
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     logger.info("populating SITE_MATCH_NEW")
