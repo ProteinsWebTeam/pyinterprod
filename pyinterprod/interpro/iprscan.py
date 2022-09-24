@@ -733,12 +733,9 @@ def _update_partition(uri: str, table: str, partitioned_table: str,
             2. Modify the partition (remove old value)
             3. Modify the partition (add new value)
             """
-            cur.execute(
-                f"""
-                ALTER TABLE IPRSCAN.{partitioned_table}
-                TRUNCATE PARTITION {partition}
-                """
-            )
+            oracle.truncate_partition(cur=cur,
+                                      table=f"IPRSCAN.{partitioned_table}",
+                                      partition=partition)
             cur.execute(
                 f"""
                 ALTER TABLE IPRSCAN.{partitioned_table}
