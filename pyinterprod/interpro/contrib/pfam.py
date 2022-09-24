@@ -185,7 +185,7 @@ def get_protenn_entries(cur, file: str) -> list[Method]:
         table.insert((sequence_id, pfam_acc, start, end))
 
         for sequence_id, pfam_acc, start, end in it:
-            pfam_acc.add(pfam_acc)
+            accessions.add(pfam_acc)
             table.insert((sequence_id, pfam_acc, start, end))
 
     drop_table(cur, "INTERPRO.PFAMN_MATCH", purge=True)
