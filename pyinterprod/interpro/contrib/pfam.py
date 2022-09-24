@@ -181,7 +181,7 @@ def get_protenn_entries(cur, file: str) -> list[Method]:
 
         sequence_id, pfam_acc, start, end = next(it)
         accessions = {pfam_acc}
-        uniparc = sequence_id.startwith("UPI")
+        uniparc = sequence_id.startswith("UPI")
         table.insert((sequence_id, pfam_acc, start, end))
 
         for sequence_id, pfam_acc, start, end in it:
