@@ -237,88 +237,108 @@ def update_database_feature_matches(uri: str, databases: Sequence):
 
     for database in databases:
         logger.info(f"{database.name}")
-        oracle.drop_table(cur, "INTERPRO.FEATURE_MATCH_NEW", purge=True)
-        logger.debug(f"\tpopulating FEATURE_MATCH_NEW "
-                     f"(ANALYSIS_ID: {database.analysis_id})")
-        cur.execute(
-            """
-            CREATE TABLE INTERPRO.FEATURE_MATCH_NEW NOLOGGING
-            AS SELECT * FROM INTERPRO.FEATURE_MATCH WHERE 1 = 0
-            """
-        )
-        cur.execute(
-            """
-            INSERT /*+ APPEND */ INTO INTERPRO.FEATURE_MATCH_NEW
-            SELECT
-              X.AC, M.METHOD_AC, M.SEQ_FEATURE, M.SEQ_START, M.SEQ_END,
-              D.DBCODE
-            FROM IPRSCAN.MV_IPRSCAN M
-            INNER JOIN UNIPARC.XREF X
-              ON M.UPI = X.UPI
-            INNER JOIN INTERPRO.IPRSCAN2DBCODE D
-              ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
-            WHERE M.ANALYSIS_ID = :1
-            AND X.DBID IN (2, 3)  -- Swiss-Prot or TrEMBL
-            AND X.DELETED = 'N'
-            """, (database.analysis_id,)
-        )
-        con.commit()
 
-        # Add indexes to be able to exchange partition
-        logger.debug("\tcreating constraints")
-        cur.execute(
-            """
-            ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
-            ADD CONSTRAINT CK_FMATCH_NEW$FROM
-            CHECK ( POS_FROM >= 1 )
-            """
-        )
-        cur.execute(
-            """
-            ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
-            ADD CONSTRAINT CK_FMATCH_NEW$NEG
-            CHECK ( POS_TO >= POS_FROM )
-            """
-        )
-        cur.execute(
-            """
-            ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
-            ADD CONSTRAINT PK_FMATCH_NEW
-            PRIMARY KEY (PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, DBCODE)
-            """
-        )
-        cur.execute(
-            f"""
-            ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
-            ADD CONSTRAINT FK_FMATCH_NEW$M$D
-            FOREIGN KEY (METHOD_AC, DBCODE)
-                REFERENCES INTERPRO.FEATURE_METHOD (METHOD_AC, DBCODE)
-            """
-        )
-        cur.execute(
-            """
-            ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
-            ADD CONSTRAINT FK_FMATCH_NEW$P
-            FOREIGN KEY (PROTEIN_AC) REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
-            """
-        )
+        if database.identifier == "d":
+            # Pfam-N matches updated in update-features task
+            partition = FEATURE_MATCH_PARTITIONS[database.identifier]
+            oracle.truncate_partition(cur=cur,
+                                      table="INTERPRO.FEATURE_MATCH",
+                                      partition=partition)
 
-        cur.execute("SELECT COUNT(*) FROM INTERPRO.FEATURE_MATCH_NEW")
-        cnt, = cur.fetchone()
-        if not cnt:
-            raise RuntimeError(f"no rows inserted "
-                               f"for analysis ID {database.analysis_id}")
+            cur.execute(
+                """
+                INSERT INTO INTERPRO.FEATURE_MATCH
+                SELECT PROTEIN_ID, METHOD_AC, NULL, POS_FROM, POS_TO, :1
+                FROM INTERPRO.PFAMN_MATCH
+                """,
+                [database.identifier]
+            )
+            con.commit()
+        else:
+            oracle.drop_table(cur, "INTERPRO.FEATURE_MATCH_NEW", purge=True)
+            logger.debug(f"\tpopulating FEATURE_MATCH_NEW "
+                         f"(ANALYSIS_ID: {database.analysis_id})")
+            cur.execute(
+                """
+                CREATE TABLE INTERPRO.FEATURE_MATCH_NEW NOLOGGING
+                AS SELECT * FROM INTERPRO.FEATURE_MATCH WHERE 1 = 0
+                """
+            )
+            cur.execute(
+                """
+                INSERT /*+ APPEND */ INTO INTERPRO.FEATURE_MATCH_NEW
+                SELECT
+                  X.AC, M.METHOD_AC, M.SEQ_FEATURE, M.SEQ_START, M.SEQ_END,
+                  D.DBCODE
+                FROM IPRSCAN.MV_IPRSCAN M
+                INNER JOIN UNIPARC.XREF X
+                  ON M.UPI = X.UPI
+                INNER JOIN INTERPRO.IPRSCAN2DBCODE D
+                  ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
+                WHERE M.ANALYSIS_ID = :1
+                AND X.DBID IN (2, 3)  -- Swiss-Prot or TrEMBL
+                AND X.DELETED = 'N'
+                """,
+                [database.analysis_id]
+            )
+            con.commit()
 
-        logger.debug(f"\texchanging partition")
-        partition = FEATURE_MATCH_PARTITIONS[database.identifier]
-        cur.execute(
-            f"""
+            # Add indexes to be able to exchange partition
+            logger.debug("\tcreating constraints")
+            cur.execute(
+                """
+                ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
+                ADD CONSTRAINT CK_FMATCH_NEW$FROM
+                CHECK ( POS_FROM >= 1 )
+                """
+            )
+            cur.execute(
+                """
+                ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
+                ADD CONSTRAINT CK_FMATCH_NEW$NEG
+                CHECK ( POS_TO >= POS_FROM )
+                """
+            )
+            cur.execute(
+                """
+                ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
+                ADD CONSTRAINT PK_FMATCH_NEW
+                PRIMARY KEY (PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, DBCODE)
+                """
+            )
+            cur.execute(
+                f"""
+                ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
+                ADD CONSTRAINT FK_FMATCH_NEW$M$D
+                FOREIGN KEY (METHOD_AC, DBCODE)
+                    REFERENCES INTERPRO.FEATURE_METHOD (METHOD_AC, DBCODE)
+                """
+            )
+            cur.execute(
+                """
+                ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
+                ADD CONSTRAINT FK_FMATCH_NEW$P
+                FOREIGN KEY (PROTEIN_AC) 
+                    REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
+                """
+            )
+
+            cur.execute("SELECT COUNT(*) FROM INTERPRO.FEATURE_MATCH_NEW")
+            cnt, = cur.fetchone()
+            if not cnt:
+                raise RuntimeError(f"no rows inserted "
+                                   f"for analysis ID {database.analysis_id}")
+
+            logger.debug(f"\texchanging partition")
+            partition = FEATURE_MATCH_PARTITIONS[database.identifier]
+            cur.execute(
+                f"""
                 ALTER TABLE INTERPRO.FEATURE_MATCH
                 EXCHANGE PARTITION ({partition})
                 WITH TABLE INTERPRO.FEATURE_MATCH_NEW
                 """
-        )
-        oracle.drop_table(cur, "INTERPRO.FEATURE_MATCH_NEW", purge=True)
+            )
+            oracle.drop_table(cur, "INTERPRO.FEATURE_MATCH_NEW", purge=True)
 
         logger.debug("\tgathering statistics")
         oracle.gather_stats(cur, "INTERPRO", "FEATURE_MATCH", partition)
