@@ -21,6 +21,7 @@ DATABASES = [
     'X',    # CATH-Gene3D
     'Y',    # SUPERFAMILY
     'a',    # AntiFam
+    'd',    # Pfam-N
     'f',    # FunFam
     'g',    # MobiDB
     'u',    # UniProtKB
