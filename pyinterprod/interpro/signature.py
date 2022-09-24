@@ -502,7 +502,7 @@ def update_features(uri: str, update: list[tuple[Database, str]]):
             features = contrib.antifam.parse_models(src)
         elif db.identifier == 'd':
             # Pfam-N
-            features = contrib.pfam.get_protenn_entries(src)
+            features = contrib.pfam.get_protenn_entries(cur, src)
         elif db.identifier == 'f':
             # FunFams
             features = contrib.cath.parse_functional_families(src)
