@@ -151,7 +151,8 @@ def iter_protenn_matches(file: str):
     with open(file, "rt") as fh:
         for line in fh:
             uniprot_acc, pfam_acc, start, end = line.rstrip().split("\t")
-            yield uniprot_acc, pfam_acc, int(start), int(end)
+            if re.fullmatch(r"PF\d+", pfam_acc):
+                yield uniprot_acc, pfam_acc, int(start), int(end)
 
 
 def get_protenn_entries(file: str) -> list[Method]:
