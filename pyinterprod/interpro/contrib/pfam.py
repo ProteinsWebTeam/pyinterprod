@@ -192,7 +192,7 @@ def get_protenn_entries(cur, file: str) -> list[Method]:
     if uniparc:
         cur.execute(
             """
-            CREATE TABLE IPRSCAN.PFAMN_MATCH NOLOGGING
+            CREATE TABLE INTERPRO.PFAMN_MATCH NOLOGGING
             AS SELECT * FROM INTERPRO.PFAMN_MATCH_TMP WHERE 1 = 0
             """
         )
