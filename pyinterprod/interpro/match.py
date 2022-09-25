@@ -68,8 +68,8 @@ def update_database_matches(uri: str, databases: Sequence):
     for database in databases:
         logger.info(f"{database.name}")
         oracle.drop_table(cur, "INTERPRO.MATCH_NEW", purge=True)
-        logger.debug(f"\tpopulating MATCH_MEW "
-                     f"(ANALYSIS_ID: {database.analysis_id})")
+        logger.info(f"\tpopulating MATCH_MEW "
+                    f"(ANALYSIS_ID: {database.analysis_id})")
         cur.execute(
             """
             CREATE TABLE INTERPRO.MATCH_NEW NOLOGGING
@@ -98,7 +98,7 @@ def update_database_matches(uri: str, databases: Sequence):
         con.commit()
 
         # Add constraints/indexes to be able to exchange partition
-        logger.debug("\tcreating indexes and constraints")
+        logger.info("\tcreating indexes and constraints")
         for col in ("PROTEIN_AC", "METHOD_AC", "STATUS", "DBCODE", "EVIDENCE"):
             cur.execute(
                 f"""
@@ -193,7 +193,7 @@ def update_database_matches(uri: str, databases: Sequence):
             raise RuntimeError(f"no rows inserted "
                                f"for analysis ID {database.analysis_id}")
 
-        logger.debug(f"\texchanging partition")
+        logger.info(f"\texchanging partition")
         partition = MATCH_PARTITIONS[database.identifier]
         cur.execute(
             f"""
@@ -204,7 +204,7 @@ def update_database_matches(uri: str, databases: Sequence):
         )
         oracle.drop_table(cur, "INTERPRO.MATCH_NEW", purge=True)
 
-        logger.debug("\tgathering statistics")
+        logger.info("\tgathering statistics")
         oracle.gather_stats(cur, "INTERPRO", "MATCH", partition)
 
     for index in oracle.get_indexes(cur, "INTERPRO", "MATCH"):
@@ -237,17 +237,20 @@ def update_database_feature_matches(uri: str, databases: Sequence):
 
     for database in databases:
         logger.info(f"{database.name}")
+        oracle.drop_table(cur, "INTERPRO.FEATURE_MATCH_NEW", purge=True)
+        cur.execute(
+            """
+            CREATE TABLE INTERPRO.FEATURE_MATCH_NEW NOLOGGING
+            AS SELECT * FROM INTERPRO.FEATURE_MATCH WHERE 1 = 0
+            """
+        )
 
         if database.identifier == "d":
             # Pfam-N matches updated in update-features task
             partition = FEATURE_MATCH_PARTITIONS[database.identifier]
-            oracle.truncate_partition(cur=cur,
-                                      table="INTERPRO.FEATURE_MATCH",
-                                      partition=partition)
-
             cur.execute(
                 """
-                INSERT INTO INTERPRO.FEATURE_MATCH
+                INSERT /*+ APPEND */ INTO INTERPRO.FEATURE_MATCH_NEW
                 SELECT PROTEIN_ID, METHOD_AC, NULL, POS_FROM, POS_TO, :1
                 FROM INTERPRO.PFAMN_MATCH
                 """,
@@ -255,15 +258,8 @@ def update_database_feature_matches(uri: str, databases: Sequence):
             )
             con.commit()
         else:
-            oracle.drop_table(cur, "INTERPRO.FEATURE_MATCH_NEW", purge=True)
-            logger.debug(f"\tpopulating FEATURE_MATCH_NEW "
-                         f"(ANALYSIS_ID: {database.analysis_id})")
-            cur.execute(
-                """
-                CREATE TABLE INTERPRO.FEATURE_MATCH_NEW NOLOGGING
-                AS SELECT * FROM INTERPRO.FEATURE_MATCH WHERE 1 = 0
-                """
-            )
+            logger.info(f"\tpopulating FEATURE_MATCH_NEW "
+                        f"(ANALYSIS_ID: {database.analysis_id})")
             cur.execute(
                 """
                 INSERT /*+ APPEND */ INTO INTERPRO.FEATURE_MATCH_NEW
@@ -283,64 +279,64 @@ def update_database_feature_matches(uri: str, databases: Sequence):
             )
             con.commit()
 
-            # Add indexes to be able to exchange partition
-            logger.debug("\tcreating constraints")
-            cur.execute(
-                """
-                ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
-                ADD CONSTRAINT CK_FMATCH_NEW$FROM
-                CHECK ( POS_FROM >= 1 )
-                """
-            )
-            cur.execute(
-                """
-                ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
-                ADD CONSTRAINT CK_FMATCH_NEW$NEG
-                CHECK ( POS_TO >= POS_FROM )
-                """
-            )
-            cur.execute(
-                """
-                ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
-                ADD CONSTRAINT PK_FMATCH_NEW
-                PRIMARY KEY (PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, DBCODE)
-                """
-            )
-            cur.execute(
-                f"""
-                ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
-                ADD CONSTRAINT FK_FMATCH_NEW$M$D
-                FOREIGN KEY (METHOD_AC, DBCODE)
-                    REFERENCES INTERPRO.FEATURE_METHOD (METHOD_AC, DBCODE)
-                """
-            )
-            cur.execute(
-                """
-                ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
-                ADD CONSTRAINT FK_FMATCH_NEW$P
-                FOREIGN KEY (PROTEIN_AC) 
-                    REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
-                """
-            )
+        # Add indexes to be able to exchange partition
+        logger.info("\tcreating constraints")
+        cur.execute(
+            """
+            ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
+            ADD CONSTRAINT CK_FMATCH_NEW$FROM
+            CHECK ( POS_FROM >= 1 )
+            """
+        )
+        cur.execute(
+            """
+            ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
+            ADD CONSTRAINT CK_FMATCH_NEW$NEG
+            CHECK ( POS_TO >= POS_FROM )
+            """
+        )
+        cur.execute(
+            """
+            ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
+            ADD CONSTRAINT PK_FMATCH_NEW
+            PRIMARY KEY (PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, DBCODE)
+            """
+        )
+        cur.execute(
+            f"""
+            ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
+            ADD CONSTRAINT FK_FMATCH_NEW$M$D
+            FOREIGN KEY (METHOD_AC, DBCODE)
+                REFERENCES INTERPRO.FEATURE_METHOD (METHOD_AC, DBCODE)
+            """
+        )
+        cur.execute(
+            """
+            ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
+            ADD CONSTRAINT FK_FMATCH_NEW$P
+            FOREIGN KEY (PROTEIN_AC) 
+                REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
+            """
+        )
 
-            cur.execute("SELECT COUNT(*) FROM INTERPRO.FEATURE_MATCH_NEW")
-            cnt, = cur.fetchone()
-            if not cnt:
-                raise RuntimeError(f"no rows inserted "
-                                   f"for analysis ID {database.analysis_id}")
+        cur.execute("SELECT COUNT(*) FROM INTERPRO.FEATURE_MATCH_NEW")
+        cnt, = cur.fetchone()
+        if not cnt:
+            raise RuntimeError(f"no rows inserted "
+                               f"for analysis ID {database.analysis_id}")
 
-            logger.debug(f"\texchanging partition")
-            partition = FEATURE_MATCH_PARTITIONS[database.identifier]
-            cur.execute(
-                f"""
-                ALTER TABLE INTERPRO.FEATURE_MATCH
-                EXCHANGE PARTITION ({partition})
-                WITH TABLE INTERPRO.FEATURE_MATCH_NEW
-                """
-            )
-            oracle.drop_table(cur, "INTERPRO.FEATURE_MATCH_NEW", purge=True)
+        logger.info(f"\texchanging partition")
+        partition = FEATURE_MATCH_PARTITIONS[database.identifier]
+        cur.execute(
+            f"""
+            ALTER TABLE INTERPRO.FEATURE_MATCH
+            EXCHANGE PARTITION ({partition})
+            WITH TABLE INTERPRO.FEATURE_MATCH_NEW
+            """
+        )
+        oracle.drop_table(cur, "INTERPRO.FEATURE_MATCH_NEW", purge=True)
 
-        logger.debug("\tgathering statistics")
+        logger.info("\tgathering statistics")
         oracle.gather_stats(cur, "INTERPRO", "FEATURE_MATCH", partition)
 
     for index in oracle.get_indexes(cur, "INTERPRO", "FEATURE_MATCH"):
@@ -390,7 +386,7 @@ def update_database_site_matches(uri: str, databases: Sequence):
             """
         )
 
-        logger.debug(f"\tinserting site matches")
+        logger.info(f"\tinserting site matches")
         cur.execute(
             f"""
             INSERT /*+ APPEND */ INTO INTERPRO.SITE_MATCH_NEW
@@ -410,7 +406,7 @@ def update_database_site_matches(uri: str, databases: Sequence):
         )
         con.commit()
 
-        logger.debug(f"\tindexing")
+        logger.info(f"\tindexing")
         cur.execute(
             """
             CREATE INDEX I_SITE_MATCH_NEW
@@ -423,7 +419,7 @@ def update_database_site_matches(uri: str, databases: Sequence):
         )
 
         if ck_matches:
-            logger.debug(f"\tchecking matches")
+            logger.info(f"\tchecking matches")
             match_partition = MATCH_PARTITIONS[database.identifier]
             cur.execute(
                 f"""
@@ -445,7 +441,7 @@ def update_database_site_matches(uri: str, databases: Sequence):
                 raise RuntimeError(f"{database.name}: {cnt} matches "
                                    f"in SITE_MATCH_NEW that are not in MATCH")
 
-        logger.debug(f"\tadding constraint")
+        logger.info(f"\tadding constraint")
         cur.execute(
             """
             ALTER TABLE INTERPRO.SITE_MATCH_NEW
@@ -461,7 +457,7 @@ def update_database_site_matches(uri: str, databases: Sequence):
             """
         )
 
-        logger.debug(f"\texchanging partition")
+        logger.info(f"\texchanging partition")
         cur.execute(
             f"""
             ALTER TABLE INTERPRO.SITE_MATCH
