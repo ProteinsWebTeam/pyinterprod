@@ -842,7 +842,7 @@ def run_uniprot_update():
             args=(ora_interpro_uri,),
             name="update-sites",
             scheduler=dict(queue=lsf_queue),
-            requires=["import-ipm-sites", "update-matches"]
+            requires=["update-ipm-sites", "update-matches"]
         ),
     ]
 
