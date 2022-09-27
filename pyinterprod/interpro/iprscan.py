@@ -633,9 +633,7 @@ def _update_partition(uri: str, table: str, partitioned_table: str,
                 f"""
                 SELECT MAX(UPI)
                 FROM IPRSCAN.{table}
-                WHERE ANALYSIS_ID = :1
-                """,
-                [analysis_id]
+                """
             )
             max_upi_1, = cur.fetchone()
 
