@@ -1,13 +1,12 @@
-# -*- coding: utf-8 -*-
-
 import re
-from typing import List
 
 import MySQLdb
 import MySQLdb.cursors
 
 from .common import Clan, Method
 from pyinterprod import logger
+from pyinterprod.utils import Table
+from pyinterprod.utils.oracle import drop_table
 from pyinterprod.utils.pg import url2dict
 
 
@@ -31,7 +30,7 @@ def connect_mysql(url: str) -> MySQLdb.Connection:
     return MySQLdb.connect(**obj)
 
 
-def get_clans(url: str) -> List[Clan]:
+def get_clans(url: str) -> list[Clan]:
     con = connect_mysql(url)
     cur = MySQLdb.cursors.SSCursor(con)
     cur.execute(
@@ -97,7 +96,7 @@ class AbstractFormater:
         return f"[{', '.join(refs)}]"
 
 
-def get_signatures(url: str) -> List[Method]:
+def get_signatures(url: str) -> list[Method]:
     con = connect_mysql(url)
     cur = con.cursor()
     cur.execute(
@@ -146,3 +145,71 @@ def get_signatures(url: str) -> List[Method]:
         signatures.append(m)
 
     return signatures
+
+
+def iter_protenn_matches(file: str):
+    """Iterate ProtENN matches from the Pfam-N domain calls TSV file
+    """
+    with open(file, "rt") as fh:
+        for line in fh:
+            sequence_id, pfam_acc, start, end = line.rstrip().split("\t")
+            if re.fullmatch(r"PF\d+", pfam_acc):
+                yield sequence_id, pfam_acc, int(start), int(end)
+
+
+def get_protenn_entries(cur, file: str) -> list[Method]:
+    drop_table(cur, "INTERPRO.PFAMN_MATCH_TMP", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.PFAMN_MATCH_TMP (
+            PROTEIN_ID VARCHAR(15) NOT NULL,
+            METHOD_AC VARCHAR2(25) NOT NULL,
+            POS_FROM NUMBER(5) NOT NULL,
+            POS_TO NUMBER(5) NOT NULL
+        ) NOLOGGING
+        """
+    )
+
+    query = """
+        INSERT /*+ APPEND */ 
+        INTO INTERPRO.PFAMN_MATCH_TMP 
+        VALUES (:1, :2, :3, :4)
+    """
+
+    with Table(con=cur.connection, query=query, autocommit=True) as table:
+        it = iter_protenn_matches(file)
+
+        sequence_id, pfam_acc, start, end = next(it)
+        accessions = {pfam_acc}
+        uniparc = sequence_id.startswith("UPI")
+        table.insert((sequence_id, pfam_acc, start, end))
+
+        for sequence_id, pfam_acc, start, end in it:
+            accessions.add(pfam_acc)
+            table.insert((sequence_id, pfam_acc, start, end))
+
+    drop_table(cur, "INTERPRO.PFAMN_MATCH", purge=True)
+    if uniparc:
+        cur.execute(
+            """
+            CREATE TABLE INTERPRO.PFAMN_MATCH NOLOGGING
+            AS SELECT * FROM INTERPRO.PFAMN_MATCH_TMP WHERE 1 = 0
+            """
+        )
+
+        cur.execute(
+            """
+            INSERT /*+ APPEND */ INTO INTERPRO.PFAMN_MATCH
+            SELECT X.AC, M.METHOD_AC, M.POS_FROM, M.POS_TO
+            FROM INTERPRO.PFAMN_MATCH_TMP M
+            INNER JOIN UNIPARC.XREF X ON M.PROTEIN_ID = X.UPI
+            WHERE X.DBID IN (2, 3) AND X.DELETED = 'N'
+            """
+        )
+
+        cur.connection.commit()
+        drop_table(cur, "INTERPRO.PFAMN_MATCH_TMP", purge=True)
+    else:
+        cur.execute("RENAME INTERPRO.PFAMN_MATCH_TMP TO INTERPRO.PFAMN_MATCH")
+
+    return [Method(pfam_acc, sig_type=None) for pfam_acc in accessions]

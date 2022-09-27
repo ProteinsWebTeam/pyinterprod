@@ -9,6 +9,12 @@ from pyinterprod.utils import oracle
 
 
 FILE_ENTRY_PROT_COUNTS = "entries.prot.counts.pickle"
+
+"""
+To add a partition:
+SQL> ALTER TABLE <TABLE> 
+     ADD PARTITION <NAME> VALUES ('<DBCODE>');
+"""
 MATCH_PARTITIONS = {
     "B": "MATCH_DBCODE_B",  # SFLD
     "F": "MATCH_DBCODE_F",  # PRINTS
@@ -26,6 +32,7 @@ MATCH_PARTITIONS = {
 }
 FEATURE_MATCH_PARTITIONS = {
     "a": "ANTIFAM",
+    "d": "PFAM_N",
     "f": "FUNFAM",
     "g": "MOBIDBLITE",
     "j": "PHOBIUS",
@@ -48,21 +55,21 @@ def export_entries_protein_counts(cur: cx_Oracle.Cursor, data_dir: str):
         pickle.dump(_get_entries_protein_counts(cur), fh)
 
 
-def update_database_matches(url: str, databases: Sequence):
+def update_database_matches(uri: str, databases: Sequence):
     """
 
-    :param url:
+    :param uri:
     :param databases: Sequence of Database objects
     :return:
     """
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     for database in databases:
         logger.info(f"{database.name}")
         oracle.drop_table(cur, "INTERPRO.MATCH_NEW", purge=True)
-        logger.debug(f"\tpopulating MATCH_MEW "
-                     f"(ANALYSIS_ID: {database.analysis_id})")
+        logger.info(f"\tpopulating MATCH_MEW "
+                    f"(ANALYSIS_ID: {database.analysis_id})")
         cur.execute(
             """
             CREATE TABLE INTERPRO.MATCH_NEW NOLOGGING
@@ -91,7 +98,7 @@ def update_database_matches(url: str, databases: Sequence):
         con.commit()
 
         # Add constraints/indexes to be able to exchange partition
-        logger.debug("\tcreating indexes and constraints")
+        logger.info("\tcreating indexes and constraints")
         for col in ("PROTEIN_AC", "METHOD_AC", "STATUS", "DBCODE", "EVIDENCE"):
             cur.execute(
                 f"""
@@ -186,7 +193,7 @@ def update_database_matches(url: str, databases: Sequence):
             raise RuntimeError(f"no rows inserted "
                                f"for analysis ID {database.analysis_id}")
 
-        logger.debug(f"\texchanging partition")
+        logger.info(f"\texchanging partition")
         partition = MATCH_PARTITIONS[database.identifier]
         cur.execute(
             f"""
@@ -197,7 +204,7 @@ def update_database_matches(url: str, databases: Sequence):
         )
         oracle.drop_table(cur, "INTERPRO.MATCH_NEW", purge=True)
 
-        logger.debug("\tgathering statistics")
+        logger.info("\tgathering statistics")
         oracle.gather_stats(cur, "INTERPRO", "MATCH", partition)
 
     for index in oracle.get_indexes(cur, "INTERPRO", "MATCH"):
@@ -218,47 +225,62 @@ def update_database_matches(url: str, databases: Sequence):
     logger.info("complete")
 
 
-def update_database_feature_matches(url: str, databases: Sequence):
+def update_database_feature_matches(uri: str, databases: Sequence):
     """
 
-    :param url:
+    :param uri:
     :param databases: Sequence of Database objects
     :return:
     """
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     for database in databases:
         logger.info(f"{database.name}")
         oracle.drop_table(cur, "INTERPRO.FEATURE_MATCH_NEW", purge=True)
-        logger.debug(f"\tpopulating FEATURE_MATCH_NEW "
-                     f"(ANALYSIS_ID: {database.analysis_id})")
         cur.execute(
             """
             CREATE TABLE INTERPRO.FEATURE_MATCH_NEW NOLOGGING
             AS SELECT * FROM INTERPRO.FEATURE_MATCH WHERE 1 = 0
             """
         )
-        cur.execute(
-            """
-            INSERT /*+ APPEND */ INTO INTERPRO.FEATURE_MATCH_NEW
-            SELECT
-              X.AC, M.METHOD_AC, M.SEQ_FEATURE, M.SEQ_START, M.SEQ_END,
-              D.DBCODE
-            FROM IPRSCAN.MV_IPRSCAN M
-            INNER JOIN UNIPARC.XREF X
-              ON M.UPI = X.UPI
-            INNER JOIN INTERPRO.IPRSCAN2DBCODE D
-              ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
-            WHERE M.ANALYSIS_ID = :1
-            AND X.DBID IN (2, 3)  -- Swiss-Prot or TrEMBL
-            AND X.DELETED = 'N'
-            """, (database.analysis_id,)
-        )
-        con.commit()
+
+        if database.identifier == "d":
+            # Pfam-N matches updated in update-features task
+            partition = FEATURE_MATCH_PARTITIONS[database.identifier]
+            cur.execute(
+                """
+                INSERT /*+ APPEND */ INTO INTERPRO.FEATURE_MATCH_NEW
+                SELECT PROTEIN_ID, METHOD_AC, NULL, POS_FROM, POS_TO, :1
+                FROM INTERPRO.PFAMN_MATCH
+                """,
+                [database.identifier]
+            )
+            con.commit()
+        else:
+            logger.info(f"\tpopulating FEATURE_MATCH_NEW "
+                        f"(ANALYSIS_ID: {database.analysis_id})")
+            cur.execute(
+                """
+                INSERT /*+ APPEND */ INTO INTERPRO.FEATURE_MATCH_NEW
+                SELECT
+                  X.AC, M.METHOD_AC, M.SEQ_FEATURE, M.SEQ_START, M.SEQ_END,
+                  D.DBCODE
+                FROM IPRSCAN.MV_IPRSCAN M
+                INNER JOIN UNIPARC.XREF X
+                  ON M.UPI = X.UPI
+                INNER JOIN INTERPRO.IPRSCAN2DBCODE D
+                  ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
+                WHERE M.ANALYSIS_ID = :1
+                AND X.DBID IN (2, 3)  -- Swiss-Prot or TrEMBL
+                AND X.DELETED = 'N'
+                """,
+                [database.analysis_id]
+            )
+            con.commit()
 
         # Add indexes to be able to exchange partition
-        logger.debug("\tcreating constraints")
+        logger.info("\tcreating constraints")
         cur.execute(
             """
             ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
@@ -292,7 +314,8 @@ def update_database_feature_matches(url: str, databases: Sequence):
             """
             ALTER TABLE INTERPRO.FEATURE_MATCH_NEW
             ADD CONSTRAINT FK_FMATCH_NEW$P
-            FOREIGN KEY (PROTEIN_AC) REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
+            FOREIGN KEY (PROTEIN_AC) 
+                REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
             """
         )
 
@@ -302,18 +325,18 @@ def update_database_feature_matches(url: str, databases: Sequence):
             raise RuntimeError(f"no rows inserted "
                                f"for analysis ID {database.analysis_id}")
 
-        logger.debug(f"\texchanging partition")
+        logger.info(f"\texchanging partition")
         partition = FEATURE_MATCH_PARTITIONS[database.identifier]
         cur.execute(
             f"""
-                ALTER TABLE INTERPRO.FEATURE_MATCH
-                EXCHANGE PARTITION ({partition})
-                WITH TABLE INTERPRO.FEATURE_MATCH_NEW
-                """
+            ALTER TABLE INTERPRO.FEATURE_MATCH
+            EXCHANGE PARTITION ({partition})
+            WITH TABLE INTERPRO.FEATURE_MATCH_NEW
+            """
         )
         oracle.drop_table(cur, "INTERPRO.FEATURE_MATCH_NEW", purge=True)
 
-        logger.debug("\tgathering statistics")
+        logger.info("\tgathering statistics")
         oracle.gather_stats(cur, "INTERPRO", "FEATURE_MATCH", partition)
 
     for index in oracle.get_indexes(cur, "INTERPRO", "FEATURE_MATCH"):
@@ -335,14 +358,14 @@ def update_database_feature_matches(url: str, databases: Sequence):
     logger.info("complete")
 
 
-def update_database_site_matches(url: str, databases: Sequence):
+def update_database_site_matches(uri: str, databases: Sequence):
     """
 
-    :param url:
+    :param uri:
     :param databases: Sequence of Database objects
     :return:
     """
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     for database in databases:
@@ -363,7 +386,7 @@ def update_database_site_matches(url: str, databases: Sequence):
             """
         )
 
-        logger.debug(f"\tinserting site matches")
+        logger.info(f"\tinserting site matches")
         cur.execute(
             f"""
             INSERT /*+ APPEND */ INTO INTERPRO.SITE_MATCH_NEW
@@ -383,7 +406,7 @@ def update_database_site_matches(url: str, databases: Sequence):
         )
         con.commit()
 
-        logger.debug(f"\tindexing")
+        logger.info(f"\tindexing")
         cur.execute(
             """
             CREATE INDEX I_SITE_MATCH_NEW
@@ -396,7 +419,7 @@ def update_database_site_matches(url: str, databases: Sequence):
         )
 
         if ck_matches:
-            logger.debug(f"\tchecking matches")
+            logger.info(f"\tchecking matches")
             match_partition = MATCH_PARTITIONS[database.identifier]
             cur.execute(
                 f"""
@@ -418,7 +441,7 @@ def update_database_site_matches(url: str, databases: Sequence):
                 raise RuntimeError(f"{database.name}: {cnt} matches "
                                    f"in SITE_MATCH_NEW that are not in MATCH")
 
-        logger.debug(f"\tadding constraint")
+        logger.info(f"\tadding constraint")
         cur.execute(
             """
             ALTER TABLE INTERPRO.SITE_MATCH_NEW
@@ -434,7 +457,7 @@ def update_database_site_matches(url: str, databases: Sequence):
             """
         )
 
-        logger.debug(f"\texchanging partition")
+        logger.info(f"\texchanging partition")
         cur.execute(
             f"""
             ALTER TABLE INTERPRO.SITE_MATCH
@@ -463,26 +486,26 @@ def update_database_site_matches(url: str, databases: Sequence):
     logger.info("complete")
 
 
-def update_matches(url: str):
+def update_matches(uri: str):
     """
     Add protein matches for recently added/modified sequences
 
-    :param url: Oracle connection string
+    :param uri: Oracle connection string
     """
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     _prepare_matches(con)
     _check_matches(con)
     _insert_matches(con)
     con.close()
 
 
-def update_feature_matches(url: str):
+def update_feature_matches(uri: str):
     """
     Add protein feature matches for recently added/modified sequences
 
-    :param url: Oracle connection string
+    :param uri: Oracle connection string
     """
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
     logger.info("updating FEATURE_MATCH")
     cur.execute(
@@ -521,15 +544,15 @@ def update_feature_matches(url: str):
     con.close()
 
 
-def update_variant_matches(url: str):
+def update_variant_matches(uri: str):
     """
     Recreate splice-variants table with the most recent data
     from SWISSPROT_VARSPLIC. TREMBL_VARSPLIC (DBID=25) is obsolete and
     only contains deleted cross-references.
 
-    :param url: Oracle connection string
+    :param uri: Oracle connection string
     """
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
     logger.info("updating VARSPLIC_MASTER")
     oracle.truncate_table(cur, "INTERPRO.VARSPLIC_MASTER", reuse_storage=True)
@@ -582,13 +605,13 @@ def update_variant_matches(url: str):
     con.close()
 
 
-def update_site_matches(url: str):
+def update_site_matches(uri: str):
     """
     Add protein site matches for recently added/modified sequences
 
-    :param url: Oracle connection string
+    :param uri: Oracle connection string
     """
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     logger.info("populating SITE_MATCH_NEW")

@@ -19,13 +19,13 @@ FILE_DB_SIG = "signatures.update.pickle"
 FILE_SIG_DESCR = "signatures.descr.pickle"
 
 
-def export_swissprot_descriptions(pg_url, data_dir: str):
+def export_swissprot_descriptions(pg_uri, data_dir: str):
     with open(os.path.join(data_dir, FILE_SIG_DESCR), "wb") as fh:
-        pickle.dump(get_swissprot_descriptions(pg_url), fh)
+        pickle.dump(get_swissprot_descriptions(pg_uri), fh)
 
 
-def add_staging(url: str, update: list[tuple[Database, str]]):
-    con = cx_Oracle.connect(url)
+def add_staging(uri: str, update: list[tuple[Database, str]]):
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     ora.drop_table(cur, "METHOD_STG", purge=True)
@@ -129,14 +129,14 @@ def add_staging(url: str, update: list[tuple[Database, str]]):
     con.close()
 
 
-def track_signature_changes(ora_url: str, pg_url: str,
+def track_signature_changes(ora_uri: str, pg_uri: str,
                             databases: list[Database], data_dir: str):
     os.makedirs(data_dir, exist_ok=True)
 
     # First, get the SwissProt descriptions (before the update)
-    all_sig2descs = get_swissprot_descriptions(pg_url)
+    all_sig2descs = get_swissprot_descriptions(pg_uri)
 
-    con = cx_Oracle.connect(ora_url)
+    con = cx_Oracle.connect(ora_uri)
     cur = con.cursor()
     results = {}
     for db in databases:
@@ -211,9 +211,9 @@ def track_signature_changes(ora_url: str, pg_url: str,
         pickle.dump(results, fh)
 
 
-def delete_from_table(url: str, table: str, partition: Optional[str],
+def delete_from_table(uri: str, table: str, partition: Optional[str],
                       column: str, step: int, stop: int) -> int:
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     if partition:
@@ -257,11 +257,11 @@ def delete_from_table(url: str, table: str, partition: Optional[str],
     return num_rows
 
 
-def delete_obsoletes(url: str, databases: list[Database], **kwargs):
+def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
     step = kwargs.get("step", 10000)
     threads = kwargs.get("threads", 8)
 
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     # track signatures that need to be deleted
@@ -359,7 +359,7 @@ def delete_obsoletes(url: str, databases: list[Database], **kwargs):
         fs = {}
 
         for table, partition, column in tasks:
-            args = (url, table, partition, column, step, stop)
+            args = (uri, table, partition, column, step, stop)
             f = executor.submit(delete_from_table, *args)
             fs[f] = (table, partition)
 
@@ -383,7 +383,7 @@ def delete_obsoletes(url: str, databases: list[Database], **kwargs):
             raise RuntimeError(f"{num_errors} tables failed")
 
     logger.info("enabling referential constraints")
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
     num_errors = 0
     constraints = set()
@@ -473,8 +473,8 @@ def update_signatures(uri: str, go_sources: dict[str, tuple[str, bool]]):
             contrib.panther.update_go_terms(uri, source)
 
 
-def update_features(url: str, update: list[tuple[Database, str]]):
-    con = cx_Oracle.connect(url)
+def update_features(uri: str, update: list[tuple[Database, str]]):
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     for db, src in update:
@@ -500,6 +500,9 @@ def update_features(url: str, update: list[tuple[Database, str]]):
         if db.identifier == 'a':
             # AntiFam
             features = contrib.antifam.parse_models(src)
+        elif db.identifier == 'd':
+            # Pfam-N
+            features = contrib.pfam.get_protenn_entries(cur, src)
         elif db.identifier == 'f':
             # FunFams
             features = contrib.cath.parse_functional_families(src)
