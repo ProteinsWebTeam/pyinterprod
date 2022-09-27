@@ -494,13 +494,14 @@ def _import_table(uri: str, remote_table: str, analyses: list[Analysis],
     Use remote table name to have fewer characters (no prefix)
     as Oracle < 12.2 do not allow object names longer than 30 characters
     """
-    cur.execute(
-        f"""
-            CREATE INDEX {remote_table}$ID
-            ON IPRSCAN.{local_table} (ANALYSIS_ID)
+    for suffix, column in [("UPI", "UPI"), ("AC", "METHOD_AC")]:
+        cur.execute(
+            f"""
+            CREATE INDEX {remote_table}${suffix}
+            ON IPRSCAN.{local_table} ({column})
             NOLOGGING
             """
-    )
+        )
 
     cur.close()
     con.close()
