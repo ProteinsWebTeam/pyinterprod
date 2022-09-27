@@ -40,7 +40,8 @@ def import_databases(ora_url: str, pg_url: str):
                 name VARCHAR(50) NOT NULL,
                 name_long VARCHAR(50) NOT NULL,
                 version VARCHAR(50) NOT NULL,
-                updated DATE NOT NULL
+                updated DATE NOT NULL,
+                ready BOOLEAN DEFAULT FALSE NOT NULL
             )
             """
         )
@@ -72,6 +73,23 @@ def import_databases(ora_url: str, pg_url: str):
             """
             CREATE UNIQUE INDEX database_name_idx
             ON database (name)
+            """
+        )
+        pg_con.commit()
+
+    pg_con.close()
+    logger.info("complete")
+
+
+def set_ready(pg_url: str):
+    logger.info("updating status")
+    pg_con = psycopg2.connect(**url2dict(pg_url))
+    with pg_con.cursor() as pg_cur:
+        pg_cur.execute(
+            f"""
+                UPDATE database 
+                SET ready='true'
+                WHERE NAME='interpro'
             """
         )
         pg_con.commit()
