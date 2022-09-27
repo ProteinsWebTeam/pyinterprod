@@ -41,7 +41,7 @@ def import_databases(ora_url: str, pg_url: str):
                 name_long VARCHAR(50) NOT NULL,
                 version VARCHAR(50) NOT NULL,
                 updated DATE NOT NULL,
-                ready BOOLEAN
+                ready BOOLEAN DEFAULT FALSE NOT NULL
             )
             """
         )
@@ -61,21 +61,13 @@ def import_databases(ora_url: str, pg_url: str):
             if row[0] in DATABASES:
                 pg_cur.execute(
                     """
-                    INSERT INTO database (name, name_long, version, updated, ready)
-                    VALUES (%s, %s, %s, %s, null)
+                    INSERT INTO database (name, name_long, version, updated)
+                    VALUES (%s, %s, %s, %s)
                     """, row[1:]
                 )
 
         ora_cur.close()
         ora_con.close()
-
-        pg_cur.execute(
-            f"""
-                UPDATE database 
-                SET ready='false'
-                WHERE NAME='interpro'
-            """
-        )
 
         pg_cur.execute(
             """
@@ -87,6 +79,7 @@ def import_databases(ora_url: str, pg_url: str):
 
     pg_con.close()
     logger.info("complete")
+
 
 def set_ready(pg_url: str):
     logger.info("updating status")

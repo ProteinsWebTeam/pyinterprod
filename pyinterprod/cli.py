@@ -126,9 +126,10 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
         Task(
             fn=pronto.database.set_ready,
             args=(pg_ipr_uri,),
-            name="pronto-ready",
+            name="ready",
             scheduler=dict(queue=lsf_queue),
-            requires=["signatures"]
+            requires=["taxonomy","index-signature2proteins","index-matches", "proteins", 
+            "proteins-similarities", "proteomes", "annotations", "signatures"]
         ),
     ]
 
