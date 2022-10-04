@@ -501,7 +501,12 @@ def build_xref_summary(uri: str):
         FROM INTERPRO.METHOD
         """
     )
-    signatures = {row[0]: row[1:] for row in cur.fetchall()}
+    signatures = {}
+    for sig_acc, sig_name, sig_descr in cur.fetchall():
+        if sig_name is not None and sig_name != sig_acc:
+            signatures[sig_acc] = sig_name
+        elif sig_descr is not None:
+            signatures[sig_acc] = sig_descr
 
     sql = """
         INSERT /*+ APPEND */ INTO INTERPRO.XREF_SUMMARY
@@ -518,7 +523,6 @@ def build_xref_summary(uri: str):
 
         for (dbcode, protein_acc, sig_acc, pos_from, pos_to, status, score,
              fragments, model_acc) in cur:
-            sig_name, sig_descr = signatures[sig_acc]
 
             try:
                 entry_acc, entry_name = integrated[sig_acc]
@@ -531,7 +535,7 @@ def build_xref_summary(uri: str):
                 entry_acc,
                 entry_name,
                 sig_acc,
-                sig_descr if sig_acc == sig_name and sig_descr else sig_name,
+                signatures.get(sig_acc),
                 pos_from,
                 pos_to,
                 status,
@@ -542,14 +546,13 @@ def build_xref_summary(uri: str):
             if dbcode == "V" and "SF" in model_acc:
                 # Has a PANTHER subfamily annotation
 
-                sig_name, sig_descr = signatures[model_acc]
                 table.insert([
                     dbcode,
                     protein_acc,
                     None,
                     None,
                     model_acc,
-                    sig_name if sig_name != model_acc else sig_descr,
+                    signatures.get(model_acc),
                     pos_from,
                     pos_to,
                     status,
