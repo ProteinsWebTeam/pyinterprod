@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import gzip
 import re
 from typing import List
@@ -12,13 +10,19 @@ _TYPE = 'D'
 def parse_signatures(filepath: str) -> List[Method]:
     """
     Parse the cdd_interpro.xml file provided by CDD
-    As of CDD 3.18, the file is available here:
-        ftp://ftp.ncbi.nih.gov/pub/mmdb/cdd/cdd_interpro.xml.gz
+    As of CDD 3.20, the file is available here:
+        https://ftp.ncbi.nlm.nih.gov/pub/mmdb/cdd/cdd_interpro.xml.gz
 
     :param filepath:
     :return:
     """
-    return parse_xml(filepath, _TYPE)
+    signatures = parse_xml(filepath, _TYPE)
+
+    for s in signatures:
+        if s.description is not None and s.description.endswith("..."):
+            s.description = None
+
+    return signatures
 
 
 def get_clans(cddid: str, fam2supfam: str) -> List[Clan]:
