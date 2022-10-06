@@ -141,7 +141,7 @@ def update_database(uri: str, name: str, version: str, date: str,
     if current_id is not None:
         cur.execute(
             """
-            SELECT ID, NAME
+            SELECT ID, NAME, VERSION
             FROM IPRSCAN.ANALYSIS@ISPRO
             WHERE NAME = (
                 SELECT NAME
