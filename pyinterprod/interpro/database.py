@@ -157,7 +157,7 @@ def update_database(uri: str, name: str, version: str, date: str,
         # Not in IPRSCAN2DBCODE: fallback to name
         cur.execute(
             """
-            SELECT ID, NAME
+            SELECT ID, NAME, VERSION
             FROM IPRSCAN.ANALYSIS@ISPRO
             WHERE LOWER(NAME) = LOWER(:1)
             AND ACTIVE = 'Y'
@@ -175,20 +175,14 @@ def update_database(uri: str, name: str, version: str, date: str,
     elif not rows:
         raise ValueError("Missing analysis")
     else:
-        print("Analyses found:")
-        actives = set()
-        for active_id, active_name in rows:
-            print(f"  {active_id}: {active_name}")
-            actives.add(str(active_id))
+        id_to_use = None
+        for _id, _name, _version in rows:
+            if _name.lower() == name.lower() and _version == version:
+                id_to_use = _id
+                break
 
-        if len(actives) == 1:
-            id_to_use = actives.pop()
-        else:
-            id_to_use = None
-            while id_to_use not in actives:
-                id_to_use = input("Enter analysis ID to use: ")
-
-            id_to_use = int(id_to_use)
+        if id_to_use is None:
+            raise ValueError(f"No active analysis for {name}-{version}")
 
     print(f"Updating {name}")
     if current_version and current_date:
