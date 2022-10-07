@@ -346,27 +346,16 @@ def run_member_db_update():
             try:
                 go_source = props["go-terms"]
             except KeyError:
-                pass
+                if dbname == "panther":
+                    parser.error(f"Missing go-terms property for PANTHER")
             else:
-                go_sources.append((db, go_source))
+                go_sources.append((dbname, go_source))
 
         if db.has_site_matches:
             site_updates.append(db)
 
     if not mem_updates and not non_mem_updates and not site_updates:
         parser.error("No database to update")
-
-    """
-    Sources of GO terms for all databases, 
-    with a flag if they should be updated
-    """
-    go_sources = {
-        db.identifier: (
-            src,
-            db in mem_updates or db in non_mem_updates
-        )
-        for db, src in go_sources
-    }
 
     tasks = [
         Task(

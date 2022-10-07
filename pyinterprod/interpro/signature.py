@@ -419,7 +419,7 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
     logger.info("complete")
 
 
-def update_signatures(uri: str, go_sources: dict[str, tuple[str, bool]]):
+def update_signatures(uri: str, go_sources: list[tuple[str, str]]):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
     cur.execute(
@@ -463,12 +463,8 @@ def update_signatures(uri: str, go_sources: dict[str, tuple[str, bool]]):
     cur.close()
     con.close()
 
-    try:
-        source, update = go_sources["V"]
-    except KeyError:
-        raise RuntimeError("No source for GO terms in PANTHER")
-    else:
-        if update:
+    for dbname, source in go_sources:
+        if dbname == "panther":
             logger.info("updating PANTHER GO terms")
             contrib.panther.update_go_terms(uri, source)
 
@@ -544,4 +540,3 @@ def update_features(uri: str, update: list[tuple[Database, str]]):
     con.commit()
     cur.close()
     con.close()
-
