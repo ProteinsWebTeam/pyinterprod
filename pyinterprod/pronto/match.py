@@ -289,7 +289,8 @@ def _iter_proteins(names_db: str, matches_file: str, src: Queue, dst: Queue):
                     continue
 
                 name_id = names[prot_acc]
-                md5 = _hash_matches(matches)
+                domains = _calc_organisation(matches)
+                md5 = _hash_organisation(domains)
 
                 for sig_acc in matches:
                     yield sig_acc, prot_acc, is_rev, left_num, name_id, md5
@@ -297,7 +298,7 @@ def _iter_proteins(names_db: str, matches_file: str, src: Queue, dst: Queue):
             dst.put(count)
 
 
-def _hash_matches(matches: dict[str, tuple[str, list[str]]]) -> str:
+def _calc_organisation(matches: dict[str, tuple[str, list[str]]]) -> list[str]:
     # Flatten all matches
     locations = []
 
@@ -349,8 +350,11 @@ def _hash_matches(matches: dict[str, tuple[str, list[str]]]) -> str:
         loc_org.append(signature_acc)
 
     dom_org += loc_org
+    return dom_org
 
-    return hashlib.md5('/'.join(dom_org).encode("utf-8")).hexdigest()
+
+def _hash_organisation(domains: list[str]) -> str:
+    return hashlib.md5("/".join(domains).encode("utf-8")).hexdigest()
 
 
 def merge_overlapping(hits: list[str]) -> list[tuple[int, int]]:
