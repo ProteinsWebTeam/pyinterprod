@@ -483,82 +483,53 @@ def build_xref_summary(uri: str):
         """
     )
 
-    # Load signature-entry mapping
     cur.execute(
         """
-        SELECT EM.METHOD_AC, E.ENTRY_AC, E.SHORT_NAME
-        FROM INTERPRO.ENTRY E
-        INNER JOIN INTERPRO.ENTRY2METHOD EM ON EM.ENTRY_AC = E.ENTRY_AC
-        WHERE E.CHECKED = 'Y'
-        """
-    )
-    integrated = {row[0]: row[1:] for row in cur.fetchall()}
-
-    # Load signature names/descriptions
-    cur.execute(
-        """
-        SELECT METHOD_AC, NAME, DESCRIPTION 
-        FROM INTERPRO.METHOD
-        """
-    )
-    signatures = {}
-    for sig_acc, sig_name, sig_descr in cur.fetchall():
-        if sig_name is not None and sig_name != sig_acc:
-            signatures[sig_acc] = sig_name
-        elif sig_descr is not None:
-            signatures[sig_acc] = sig_descr
-
-    sql = """
         INSERT /*+ APPEND */ INTO INTERPRO.XREF_SUMMARY
-        VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11)
-    """
-    with Table(con, sql, autocommit=True) as table:
-        cur.execute(
-            """
-            SELECT DBCODE, PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, STATUS, 
-                   SCORE, FRAGMENTS, MODEL_AC
-            FROM INTERPRO.MATCH
-            """
-        )
+        SELECT
+            MA.DBCODE,
+            MA.PROTEIN_AC,
+            E.ENTRY_AC,
+            E.SHORT_NAME,
+            MA.METHOD_AC,
+            CASE WHEN ME.NAME IS NOT NULL AND MA.METHOD_AC != ME.NAME 
+                THEN ME.NAME ELSE ME.DESCRIPTION END,
+            MA.POS_FROM,
+            MA.POS_TO,
+            MA.STATUS,
+            MA.SCORE,
+            MA.FRAGMENTS
+        FROM INTERPRO.MATCH MA
+        INNER JOIN INTERPRO.METHOD ME 
+            ON MA.METHOD_AC = ME.METHOD_AC
+        LEFT OUTER JOIN INTERPRO.ENTRY2METHOD EM 
+            ON ME.METHOD_AC = EM.METHOD_AC
+        LEFT OUTER JOIN INTERPRO.ENTRY E 
+            ON EM.ENTRY_AC = E.ENTRY_AC AND E.CHECKED = 'Y'
+        UNION ALL
+        -- PANTHER subfamilies
+        SELECT
+            MA.DBCODE,
+            MA.PROTEIN_AC,
+            NULL,
+            NULL,
+            MA.MODEL_AC,
+            CASE WHEN ME.NAME IS NOT NULL AND MA.MODEL_AC != ME.NAME 
+                THEN ME.NAME ELSE ME.DESCRIPTION END,
+            MA.POS_FROM,
+            MA.POS_TO,
+            MA.STATUS,
+            MA.SCORE,
+            MA.FRAGMENTS
+        FROM INTERPRO.MATCH PARTITION (MATCH_DBCODE_V) MA
+        INNER JOIN INTERPRO.METHOD ME 
+            ON MA.MODEL_AC = ME.METHOD_AC
+        WHERE MA.MODEL_AC IS NOT NULL 
+          AND REGEXP_LIKE(MA.MODEL_AC, '^PTHR\d+:SF\d+$')
+        """
+    )
 
-        for (dbcode, protein_acc, sig_acc, pos_from, pos_to, status, score,
-             fragments, model_acc) in cur:
-
-            try:
-                entry_acc, entry_name = integrated[sig_acc]
-            except KeyError:
-                entry_acc = entry_name = None
-
-            table.insert([
-                dbcode,
-                protein_acc,
-                entry_acc,
-                entry_name,
-                sig_acc,
-                signatures.get(sig_acc),
-                pos_from,
-                pos_to,
-                status,
-                score,
-                fragments
-            ])
-
-            if dbcode == "V" and "SF" in model_acc:
-                # Has a PANTHER subfamily annotation
-
-                table.insert([
-                    dbcode,
-                    protein_acc,
-                    None,
-                    None,
-                    model_acc,
-                    signatures.get(model_acc),
-                    pos_from,
-                    pos_to,
-                    status,
-                    score,
-                    fragments
-                ])
+    con.commit()
 
     logger.info("indexing")
     for col in ("PROTEIN_AC", "ENTRY_AC", "METHOD_AC"):
