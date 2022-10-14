@@ -35,7 +35,7 @@ def export(url: str, output: str, cachesize: int = 10000000,
     index = []
     with open(output, "wb") as fh:
         i = o = 0
-        for protein in _merge_files(files):
+        for protein in _merge_matches(files):
             pickle.dump(protein, fh)
 
             i += 1
@@ -128,11 +128,7 @@ def _export_matches(url: str, cachesize: int,
 
         i += 1
         if i % cachesize == 0:
-            fd, file = mkstemp(dir=tmpdir)
-            os.close(fd)
-            _dump(cache, file)
-            cache.clear()
-            files.append(file)
+            files.append(_dump(cache, tmpdir))
 
         if i % 1e8 == 0:
             logger.info(f"{i:>15,}")
@@ -140,24 +136,24 @@ def _export_matches(url: str, cachesize: int,
     cur.close()
     con.close()
 
-    fd, file = mkstemp(dir=tmpdir)
-    os.close(fd)
-    _dump(cache, file)
-    cache.clear()
-    files.append(file)
-
+    files.append(_dump(cache, tmpdir))
     logger.info(f"{i:>15,}")
 
     return files
 
 
-def _dump(data: dict, file: str):
+def _dump(data: dict, tmpdir: Optional[str] = None) -> str:
+    fd, file = mkstemp(dir=tmpdir)
+    os.close(fd)
     with gzip.open(file, "wb", compresslevel=6) as fh:
         for key in sorted(data):
             pickle.dump((key, data[key]), fh)
 
+    data.clear()
+    return file
 
-def _merge_files(files: list[str]):
+
+def _merge_matches(files: list[str]):
     iterable = [iter_util_eof(file, compressed=True) for file in files]
     protein_acc = is_reviewed = is_complete = left_number = None
     matches = {}
