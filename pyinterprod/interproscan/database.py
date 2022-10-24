@@ -324,17 +324,18 @@ def is_job_done(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
 
 
 def set_job_done(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
-                 upi_to: str):
+                 upi_to: str, num_sequences: int):
     cur.execute(
         """
         UPDATE IPRSCAN.ANALYSIS_JOBS
-        SET SUCCESS = 'Y'
-        WHERE ANALYSIS_ID = :1
-          AND UPI_FROM = :2
-          AND UPI_TO = :3
+        SET SUCCESS = 'Y',
+            SEQUENCES = :1
+        WHERE ANALYSIS_ID = :2
+          AND UPI_FROM = :3
+          AND UPI_TO = :4
           AND END_TIME IS NULL
         """,
-        [analysis_id, upi_from, upi_to]
+        [num_sequences, analysis_id, upi_from, upi_to]
     )
 
 
