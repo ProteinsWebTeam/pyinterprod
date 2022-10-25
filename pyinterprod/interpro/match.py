@@ -76,14 +76,20 @@ def update_database_matches(uri: str, databases: Sequence):
             AS SELECT * FROM INTERPRO.MATCH WHERE 1 = 0
             """
         )
+
+        if database.identifier == "V":
+            feature = "M.SEQ_FEATURE"
+        else:
+            feature = "NULL"
+
         cur.execute(
-            """
+            f"""
             INSERT /*+ APPEND */ INTO INTERPRO.MATCH_NEW
             SELECT
               X.AC, M.METHOD_AC, M.SEQ_START, M.SEQ_END, 'T',
               D.DBCODE, D.EVIDENCE,
               SYSDATE, SYSDATE, SYSDATE, 'INTERPRO',
-              M.EVALUE, M.MODEL_AC, M.FRAGMENTS, M.SEQ_FEATURE
+              M.EVALUE, M.MODEL_AC, M.FRAGMENTS, {feature}
             FROM IPRSCAN.MV_IPRSCAN M
             INNER JOIN UNIPARC.XREF X
               ON M.UPI = X.UPI
@@ -93,7 +99,8 @@ def update_database_matches(uri: str, databases: Sequence):
             AND M.SEQ_START != M.SEQ_END
             AND X.DBID IN (2, 3)  -- Swiss-Prot or TrEMBL
             AND X.DELETED = 'N'
-            """, (database.analysis_id,)
+            """,
+            [database.analysis_id]
         )
         con.commit()
 
@@ -739,7 +746,8 @@ def _prepare_matches(con: cx_Oracle.Connection):
           P.PROTEIN_AC, M.METHOD_AC, M.SEQ_START, M.SEQ_END, 'T',
           D.DBCODE, D.EVIDENCE,
           SYSDATE, SYSDATE, SYSDATE, 'INTERPRO',
-          M.EVALUE, M.MODEL_AC, M.FRAGMENTS, M.SEQ_FEATURE
+          M.EVALUE, M.MODEL_AC, M.FRAGMENTS, 
+          CASE WHEN D.DBCODE = 'V' THEN M.SEQ_FEATURE ELSE NULL END
         FROM INTERPRO.PROTEIN_TO_SCAN P
         INNER JOIN IPRSCAN.MV_IPRSCAN M
           ON P.UPI = M.UPI
