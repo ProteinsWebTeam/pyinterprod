@@ -731,7 +731,7 @@ def _prepare_matches(con: cx_Oracle.Connection):
     )
 
     params = ",".join([":" + str(i + 1)
-                       for i in range(len(FEATURE_MATCH_PARTITIONS))])
+                       for i in range(len(MATCH_PARTITIONS))])
     cur.execute(
         f"""
         INSERT /*+ APPEND */ INTO INTERPRO.MATCH_NEW
@@ -745,10 +745,10 @@ def _prepare_matches(con: cx_Oracle.Connection):
           ON P.UPI = M.UPI
         INNER JOIN INTERPRO.IPRSCAN2DBCODE D
           ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
-        WHERE D.DBCODE NOT IN ({params})
+        WHERE D.DBCODE IN ({params})
         AND M.SEQ_START != M.SEQ_END
         """,
-        list(FEATURE_MATCH_PARTITIONS.keys())
+        list(MATCH_PARTITIONS.keys())
     )
     con.commit()
 
