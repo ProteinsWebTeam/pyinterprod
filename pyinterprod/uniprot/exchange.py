@@ -53,7 +53,7 @@ Body
 Dear Swiss-Prot team,
 
 The interpro.tar.gz archive for UniProt private release {version} \
-is available at ftp://ftp-private-beta.ebi.ac.uk/interpro/
+is available at ftp://ftp-private.ebi.ac.uk/interpro/
 
 Kind regards,
 The InterPro Production Team
