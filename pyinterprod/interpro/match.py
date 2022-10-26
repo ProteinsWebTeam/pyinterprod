@@ -21,7 +21,7 @@ MATCH_PARTITIONS = {
     "H": "MATCH_DBCODE_H",  # Pfam
     "J": "MATCH_DBCODE_J",  # CDD
     "M": "MATCH_DBCODE_M",  # PROSITE profiles
-    "N": "MATCH_DBCODE_N",  # TIGRFAMs
+    "N": "MATCH_DBCODE_N",  # NCBIfam
     "P": "MATCH_DBCODE_P",  # PROSITE patterns
     "Q": "MATCH_DBCODE_Q",  # HAMAP
     "R": "MATCH_DBCODE_R",  # SMART

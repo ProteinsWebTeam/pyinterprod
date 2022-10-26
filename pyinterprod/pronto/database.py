@@ -12,7 +12,7 @@ DATABASES = [
     'I',    # InterPro
     'J',    # CDD
     'M',    # PROSITE profiles
-    'N',    # TIGRFAMs
+    'N',    # NCBIfam
     'P',    # PROSITE patterns
     'Q',    # HAMAP
     'R',    # SMART

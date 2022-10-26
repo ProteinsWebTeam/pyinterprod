@@ -199,14 +199,14 @@ MATCH_PARTITIONS = {
         ],
         "partition": "SUPERFAMILY"
     },
-    "TIGRFAMs": {
+    "NCBIfam": {
         "columns": [
             'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
             'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
             'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
             'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
-        "partition": "TIGRFAM"
+        "partition": "NCBIFAM"
     },
     "TMHMM": {
         "columns": [

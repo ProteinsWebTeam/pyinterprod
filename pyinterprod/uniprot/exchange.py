@@ -99,19 +99,19 @@ def export_xrefs(url: str, outdir: str, emails: dict):
     )
 
     dbcodes = {
-        'B': ("SFLD", "SFLD"),
-        'F': ("PRINTS", "PP"),
-        'H': ("Pfam", "PF"),
-        'J': ("CDD", "CDD"),
-        'M': ("PROSITE", "PR"),
-        'N': ("TIGRFAMs", "TF"),
-        'P': ("PROSITE", "PR"),
-        'Q': ("HAMAP", "HP"),
-        'R': ("SMART", "SM"),
-        'U': ("PIRSF", "PI"),
-        'V': ("PANTHER", "PTHR"),
-        'X': ("Gene3D", "G3D"),
-        'Y': ("SUPFAM", "SF"),
+        'B': "SFLD",
+        'F': "PRINTS",
+        'H': "Pfam",
+        'J': "CDD",
+        'M': "PROSITE",
+        'N': "NCBIfam",
+        'P': "PROSITE",
+        'Q': "HAMAP",
+        'R': "SMART",
+        'U': "PIRSF",
+        'V': "PANTHER",
+        'X': "Gene3D",
+        'Y': "SUPFAM",
     }
 
     files = []
@@ -119,7 +119,7 @@ def export_xrefs(url: str, outdir: str, emails: dict):
     for dbcode in dbcodes:
         if dbcode != 'P':
             # P (PROSITE patterns) -> same file than M (PROSITE profiles)
-            dbname, dbkey = dbcodes[dbcode]
+            dbname = dbcodes[dbcode]
 
             filepath = os.path.join(outdir, dbname + ".dat")
             files.append(filepath)
@@ -143,7 +143,7 @@ def export_xrefs(url: str, outdir: str, emails: dict):
         entry_name = row[5]
         num_matches = int(row[6])
 
-        dbname, dbkey = dbcodes[dbcode]
+        dbname = dbcodes[dbcode]
         fh = handlers[dbcode]
 
         # CATH-Gene3D: G3DSA:3.50.70.10 -> 3.50.70.10

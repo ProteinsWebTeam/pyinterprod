@@ -50,7 +50,7 @@ _DB_TO_I5 = {
                               persistence.signalp_matches, None),
     "SMART": ("SMART", persistence.smart_matches, None),
     "SUPERFAMILY": ("SUPERFAMILY", persistence.superfamily_matches, None),
-    "TIGRFAMs": ("TIGRFAM", persistence.hmmer3_matches, None),
+    "NCBIfam": ("NCBIfam", persistence.hmmer3_matches, None),
     "TMHMM": ("TMHMM", persistence.tmhmm_matches, None),
 }
 

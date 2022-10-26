@@ -33,7 +33,7 @@ class _Mapper:
                     model, fam, _ = line.rstrip().split('\t')
                     self.model2fam[model] = fam
 
-        if database.lower() in ("pirsf", "sfld", "tigrfams"):
+        if database.lower() in ("ncbifam", "pirsf", "sfld"):
             self.map = self.basic
         elif database.lower() == "cath-gene3d":
             self.map = self.cathgene3d
