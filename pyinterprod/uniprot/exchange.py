@@ -143,7 +143,11 @@ def export_xrefs(url: str, outdir: str, emails: dict):
         entry_name = row[5]
         num_matches = int(row[6])
 
-        dbname, dbkey = dbcodes[dbcode]
+        try:
+            dbname, dbkey = dbcodes[dbcode]
+        except KeyError:
+            continue
+
         fh = handlers[dbcode]
 
         # CATH-Gene3D: G3DSA:3.50.70.10 -> 3.50.70.10
