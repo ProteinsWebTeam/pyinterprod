@@ -90,7 +90,7 @@ def add_staging(uri: str, update: list[tuple[Database, str]]):
                     # Sanitize name (strip + remove multi-spaces)
                     name = re.sub(r"\s{2,}", " ", m.name.strip())
                 else:
-                    name = m.accession
+                    name = None
 
                 if m.description:
                     descr = re.sub(r"\s{2,}", " ", m.description.strip())
@@ -512,7 +512,7 @@ def update_features(uri: str, update: list[tuple[Database, str]]):
         for f in features:
             params.append((
                 f.accession,
-                f.name or f.accession,  # NAME is NOT NULL: fallback to acc
+                f.name if f.name else None,
                 db.identifier,
                 f.description,
                 f.abstract[:4000] if f.abstract else None
