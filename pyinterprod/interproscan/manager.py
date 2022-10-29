@@ -525,15 +525,21 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             shutil.rmtree(outdir)
 
 
-def get_lsf_max_memory(stdout: str) -> int:
+def get_lsf_max_memory(stdout: str) -> Optional[int]:
     match = re.search(r"^\s*Max Memory :\s+(\d+\sMB|-)$", stdout, re.M)
-    group = match.group(1)
-    return 0 if group == "-" else int(group.split()[0])
+    try:
+        group = match.group(1)
+        return 0 if group == "-" else int(group.split()[0])
+    except (AttributeError, ValueError):
+        return None
 
 
-def get_lsf_cpu_time(stdout: str) -> int:
+def get_lsf_cpu_time(stdout: str) -> Optional[int]:
     match = re.search(r"^\s*CPU time :\s+(\d+)\.\d+ sec.$", stdout, re.M)
-    return int(match.group(1))
+    try:
+        return int(match.group(1))
+    except (AttributeError, ValueError):
+        return None
 
 
 def get_lsf_unfinished_jobs() -> dict[str, int]:
