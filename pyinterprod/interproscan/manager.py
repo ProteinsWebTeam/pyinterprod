@@ -31,6 +31,7 @@ _DB_TO_I5 = {
     "FunFam": ("FunFam", persistence.funfam_matches, None),
     "HAMAP": ("Hamap", persistence.hamap_matches, None),
     "MobiDB Lite": ("MobiDBLite", persistence.mobidb_lite_matches, None),
+    "NCBIfam": ("NCBIfam", persistence.hmmer3_matches, None),
     "PANTHER": ("PANTHER", persistence.panther_matches, None),
     "Pfam": ("Pfam", persistence.hmmer3_matches, None),
     "Phobius": ("Phobius", persistence.coils_phobius_matches, None),
@@ -49,7 +50,7 @@ _DB_TO_I5 = {
                               persistence.signalp_matches, None),
     "SMART": ("SMART", persistence.smart_matches, None),
     "SUPERFAMILY": ("SUPERFAMILY", persistence.superfamily_matches, None),
-    "NCBIfam": ("NCBIfam", persistence.hmmer3_matches, None),
+    "TIGRFAMs": ("TIGRFAM", persistence.hmmer3_matches, None),
     "TMHMM": ("TMHMM", persistence.tmhmm_matches, None),
 }
 
