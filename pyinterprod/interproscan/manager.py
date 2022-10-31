@@ -1,6 +1,5 @@
 import os
 import random
-import re
 import shutil
 import subprocess
 import sys
@@ -9,7 +8,7 @@ from typing import Callable, Optional
 
 import cx_Oracle
 from mundone import Pool, Task
-from mundone.task import STATUS_PENDING, STATUS_RUNNING
+from mundone.statuses import PENDING, RUNNING
 
 from pyinterprod import logger
 from pyinterprod.uniprot.uniparc import int_to_upi, upi_to_int, range_upi
@@ -231,7 +230,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     # Flagged as running in the database
 
                     # Assumes task is running
-                    task.status = STATUS_RUNNING
+                    task.status = RUNNING
 
                     # Checks if the associated job is running
                     if task.name in name2id:
@@ -251,7 +250,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                         break
                     else:
-                        task.status = STATUS_PENDING
+                        task.status = PENDING
                         to_run.append(task)
                         n_tasks_analysis += 1
                 elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
@@ -263,7 +262,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     database.add_job(cur, analysis_id, upi_from, upi_to)
 
                     # Add task to queue
-                    task.status = STATUS_PENDING
+                    task.status = PENDING
                     to_run.append(task)
                     n_tasks_analysis += 1
 
@@ -326,13 +325,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 # Check if job updated as completed in Oracle
                 ok = database.is_job_done(cur, analysis_id, upi_from, upi_to)
 
-                # Get max memory and CPU time
-                max_mem = get_lsf_max_memory(task.stdout)
-                cpu_time = get_lsf_cpu_time(task.stdout)
-
                 # Update job metadata
-                database.update_job(cur, analysis_id, upi_from, upi_to,
-                                    task, max_mem, cpu_time)
+                database.update_job(cur, analysis_id, upi_from, upi_to, task)
 
                 logfile = os.path.join(temp_dir, f"{task.name}.log")
                 if ok:
@@ -353,17 +347,21 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     num_retries = retries.get(task.name, 0)
 
                     # Did the job reached the memory usage limit?
-                    mem_err = max_mem >= task.scheduler["mem"]
+                    maxmem = task.maxmem
+                    if maxmem is not None and maxmem >= task.scheduler["mem"]:
+                        mem_err = True
+                    else:
+                        mem_err = False
 
                     if num_retries < max_retries or (mem_err and infinite_mem):
                         # Task allowed to be re-submitted
 
                         # Increase memory requirement if needed
-                        while task.scheduler["mem"] < max_mem:
+                        while task.scheduler["mem"] < maxmem:
                             task.scheduler["mem"] *= 1.5
 
                         # Resubmit task
-                        task.status = STATUS_PENDING
+                        task.status = PENDING
                         pool.submit(task)
 
                         # Add new job
@@ -523,17 +521,6 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
     finally:
         if keep_files != "all" and (keep_files != "failed" or ok):
             shutil.rmtree(outdir)
-
-
-def get_lsf_max_memory(stdout: str) -> int:
-    match = re.search(r"^\s*Max Memory :\s+(\d+\sMB|-)$", stdout, re.M)
-    group = match.group(1)
-    return 0 if group == "-" else int(group.split()[0])
-
-
-def get_lsf_cpu_time(stdout: str) -> int:
-    match = re.search(r"^\s*CPU time :\s+(\d+)\.\d+ sec.$", stdout, re.M)
-    return int(match.group(1))
 
 
 def get_lsf_unfinished_jobs() -> dict[str, int]:

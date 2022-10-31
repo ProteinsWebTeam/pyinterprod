@@ -285,7 +285,7 @@ def add_job(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
 
 
 def update_job(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
-               upi_to: str, task: Task, max_mem: int, cpu_time: int):
+               upi_to: str, task: Task):
     cur.execute(
         """
         UPDATE IPRSCAN.ANALYSIS_JOBS
@@ -300,8 +300,9 @@ def update_job(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
             AND UPI_TO = :9
             AND END_TIME IS NULL
         """,
-        [task.submit_time, task.start_time, task.end_time, max_mem,
-         int(task.scheduler["mem"]), cpu_time, analysis_id, upi_from, upi_to]
+        [task.submit_time, task.start_time, task.end_time, task.maxmem,
+         int(task.scheduler["mem"]), task.cputime, analysis_id, upi_from,
+         upi_to]
     )
     cur.connection.commit()
 

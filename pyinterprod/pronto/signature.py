@@ -250,7 +250,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 accession VARCHAR(25) NOT NULL 
                     CONSTRAINT signature_pkey PRIMARY KEY,
                 database_id INTEGER NOT NULL,
-                name VARCHAR(100) NOT NULL,
+                name VARCHAR(100),
                 description VARCHAR(400),
                 type VARCHAR(25) NOT NULL,
                 abstract TEXT,
