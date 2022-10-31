@@ -8,7 +8,7 @@ from typing import Callable, Optional
 
 import cx_Oracle
 from mundone import Pool, Task
-from mundone.statuses import STATUS_PENDING, STATUS_RUNNING
+from mundone.statuses import PENDING, RUNNING
 
 from pyinterprod import logger
 from pyinterprod.uniprot.uniparc import int_to_upi, upi_to_int, range_upi
@@ -230,7 +230,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     # Flagged as running in the database
 
                     # Assumes task is running
-                    task.status = STATUS_RUNNING
+                    task.status = RUNNING
 
                     # Checks if the associated job is running
                     if task.name in name2id:
@@ -250,7 +250,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                         break
                     else:
-                        task.status = STATUS_PENDING
+                        task.status = PENDING
                         to_run.append(task)
                         n_tasks_analysis += 1
                 elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
@@ -262,7 +262,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     database.add_job(cur, analysis_id, upi_from, upi_to)
 
                     # Add task to queue
-                    task.status = STATUS_PENDING
+                    task.status = PENDING
                     to_run.append(task)
                     n_tasks_analysis += 1
 
@@ -361,7 +361,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                             task.scheduler["mem"] *= 1.5
 
                         # Resubmit task
-                        task.status = STATUS_PENDING
+                        task.status = PENDING
                         pool.submit(task)
 
                         # Add new job
