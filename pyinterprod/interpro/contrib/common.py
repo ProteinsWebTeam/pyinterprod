@@ -1,7 +1,8 @@
+import re
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime
-import xml.etree.ElementTree as ET
-from typing import List, Optional
+from typing import Optional
 
 
 @dataclass
@@ -12,6 +13,7 @@ class Method:
     description: Optional[str] = None
     abstract: Optional[str] = None
     date: Optional[datetime] = None
+    references: Optional[list[int]] = None
 
 
 @dataclass
@@ -22,7 +24,51 @@ class Clan:
     members: list = field(default_factory=list)
 
 
-def parse_xml(filepath: str, sig_type: str) -> List[Method]:
+def parse_hmm(filepath: str):
+    reg_name = re.compile(r"^NAME\s+(.+)$", flags=re.M)
+    reg_acc = re.compile(r"^ACC\s+(.+)$", flags=re.M)
+    reg_desc = re.compile(r"^DESC\s+(.+)$", flags=re.M)
+    reg_date = re.compile(r"^DATE\s+(.+)$", flags=re.M)
+
+    with open(filepath, "rt") as fh:
+        buffer = ""
+        for line in fh:
+            buffer += line
+
+            if line[:2] == "//":
+                # Mandatory field
+                name = reg_name.search(buffer).group(1)
+                acc = descr = dt = None
+
+                try:
+                    # Optional field
+                    acc = reg_acc.search(buffer).group(1)
+                except AttributeError:
+                    pass
+
+                try:
+                    # Optional
+                    descr = reg_desc.search(buffer).group(1)
+                except AttributeError:
+                    pass
+
+                try:
+                    date_string = reg_date.search(buffer).group(1)
+                except AttributeError:
+                    pass
+                else:
+                    # Example: Wed Sep  1 14:33:46 2021
+                    parts = date_string.split()
+                    if len(parts[2]) == 1:
+                        parts[2] = f"0{parts[2]}"
+
+                    date_string = " ".join(parts)
+                    dt = datetime.strptime(date_string, "%a %b %d %H:%M:%S %Y")
+
+                yield acc, name, descr, dt
+
+
+def parse_xml(filepath: str, sig_type: str) -> list[Method]:
     """
     Parse the interpro XML file provided by member databases
 
