@@ -59,6 +59,9 @@ def add_staging(uri: str, update: list[tuple[Database, str]]):
             elif db.identifier == 'M':
                 # PROSITE profiles
                 signatures = contrib.prosite.parse_profiles(src)
+            elif db.identifier == 'N':
+                # NCBIFam
+                signatures = contrib.ncbifam.get_signatures(src)
             elif db.identifier == 'P':
                 # PROSITE patterns
                 signatures = contrib.prosite.parse_patterns(src)
