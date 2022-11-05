@@ -318,7 +318,7 @@ def run_member_db_update():
     mem_updates = []
     non_mem_updates = []
     site_updates = []
-    sig_sources = {}
+    model_sources = {}
     go_sources = []
     for dbname, db in databases.items():
         if db.is_member_db or db.is_feature_db:
@@ -336,12 +336,24 @@ def run_member_db_update():
                              f"'signatures' property missing "
                              f"or empty for database '{dbname}'")
 
+            if dbname == "ncbifam":
+                try:
+                    hmm_source = props["hmm"]
+                except KeyError:
+                    parser.error(f"{config['misc']['members']}: "
+                                 f"'hmm' property missing "
+                                 f"or empty for database '{dbname}'")
+                else:
+                    db_sources = [hmm_source, sig_source]
+            else:
+                db_sources = [sig_source]
+
             if db.is_member_db:
                 mem_updates.append(db)
-                sig_sources[db.identifier] = sig_source
+                model_sources[db.identifier] = db_sources
             elif db.is_feature_db:
                 non_mem_updates.append(db)
-                sig_sources[db.identifier] = sig_source
+                model_sources[db.identifier] = db_sources
 
             try:
                 go_source = props["go-terms"]
@@ -383,7 +395,7 @@ def run_member_db_update():
         tasks += [
             Task(
                 fn=interpro.signature.add_staging,
-                args=(ora_interpro_uri, [(db, sig_sources[db.identifier])
+                args=(ora_interpro_uri, [(db, model_sources[db.identifier])
                                          for db in mem_updates]),
                 name="load-signatures",
                 scheduler=dict(queue=lsf_queue)
@@ -429,7 +441,7 @@ def run_member_db_update():
         tasks += [
             Task(
                 fn=interpro.signature.update_features,
-                args=(ora_interpro_uri, [(db, sig_sources[db.identifier])
+                args=(ora_interpro_uri, [(db, model_sources[db.identifier])
                                          for db in non_mem_updates]),
                 name="update-features",
                 scheduler=dict(queue=lsf_queue),

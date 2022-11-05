@@ -1,3 +1,5 @@
+import json
+
 from .common import Method, parse_hmm
 
 
@@ -8,17 +10,19 @@ _KNOWN_SOURCES = {
 }
 
 
-def get_signatures(filepath: str):
+def get_signatures(hmm_file: str, info_file: str):
     """
-    Parse the NCBIFam HMM file,
-    available at https://ftp.ncbi.nlm.nih.gov/hmm/current/hmm_PGAP.LIB
-
-    :param filepath:
-    :return:
+    NCBIFam HMM file: https://ftp.ncbi.nlm.nih.gov/hmm/current/hmm_PGAP.LIB
     """
 
-    models = []
-    for acc, name, descr, date in parse_hmm(filepath):
+    info = {}
+    with open(info_file, "rt") as fh:
+        for e in json.load(fh):
+            acc = e["accession"]
+            info[acc] = e
+
+    signatures = []
+    for acc, name, descr, date in parse_hmm(hmm_file):
         if descr:
             parts = descr.split(":", 1)
 
@@ -27,6 +31,26 @@ def get_signatures(filepath: str):
 
             descr = descr[1].strip()
 
-        models.append(Method(acc, "TODO", name, descr, "TODO", date))
+        try:
+            obj = info[acc]
+        except KeyError:
+            abstract = None
+            references = None
+            _type = 'family'
+        else:
+            abstract = obj["abstract"]
+            references = obj["pubmed"]
+            _type = obj["type"]
 
-    return models
+        if _type == "repeat":
+            _type = "R"
+        elif _type == "domain":
+            _type = "D"
+        else:
+            # Defaults to family
+            _type = "F"
+
+        signatures.append(Method(acc, _type, name, descr, abstract, date,
+                                 references))
+
+    return signatures
