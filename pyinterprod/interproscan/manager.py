@@ -186,7 +186,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     with Pool(temp_dir, max_running_jobs,
               kill_on_exit=False,
               threads=pool_threads) as pool:
-        to_run = []
+        running_jobs = []
+        pending_jobs = []
         for analysis_id, analysis in analyses.items():
             name = analysis["name"]
             version = analysis["version"]
@@ -220,7 +221,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                         break
                     else:
-                        to_run.append(None)
+                        running_jobs.append(None)
                         n_tasks_analysis += 1
                         continue
 
@@ -237,7 +238,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     if task.name in name2id:
                         # It is!
                         task.jobid = name2id.pop(task.name)
-                        to_run.append(task)
+                        running_jobs.append(task)
                         n_tasks_analysis += 1
                         continue
 
@@ -247,12 +248,12 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         Completed or failed. Will be submitted to the pool
                         which will send it back without restarting it.
                         """
-                        to_run.append(task)
+                        running_jobs.append(task)
                     elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                         break
                     else:
                         task.status = PENDING
-                        to_run.append(task)
+                        running_jobs.append(task)
                         n_tasks_analysis += 1
                 elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                     break
@@ -264,7 +265,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
                     # Add task to queue
                     task.status = PENDING
-                    to_run.append(task)
+                    running_jobs.append(task)
                     n_tasks_analysis += 1
 
             if analysis["max_upi"]:
@@ -277,11 +278,11 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                     break
                 elif dry_run:
-                    to_run.append(None)
+                    pending_jobs.append(None)
                     n_tasks_analysis += 1
                     continue
 
-                to_run.append(factory.make(upi_from, upi_to))
+                pending_jobs.append(factory.make(upi_from, upi_to))
                 database.add_job(cur, analysis_id, upi_from, upi_to)
                 n_tasks_analysis += 1
 
@@ -290,7 +291,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         cur.close()
         con.close()
 
-        n_tasks = len(to_run)
+        n_tasks = len(running_jobs) + len(pending_jobs)
         logger.info(f"Tasks: {n_tasks:,}")
 
         if dry_run:
@@ -306,10 +307,12 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         re-arranged, so we use random.randint to destructively iterate 
         over the list.
         """
-        while to_run:
-            i = random.randrange(len(to_run))  # 0 <= i < len(to_run)
-            task = to_run.pop(i)
-            pool.submit(task)
+        for obj in [running_jobs, pending_jobs]:
+            # Take care of already submitted jobs first, then new ones
+            while obj:
+                i = random.randrange(len(obj))  # 0 <= i < len(obj)
+                task = obj.pop(i)
+                pool.submit(task)
 
         con = oracle.try_connect(uri)
         cur = con.cursor()
