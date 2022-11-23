@@ -254,7 +254,6 @@ def update_database_feature_matches(uri: str, databases: Sequence):
 
         if database.identifier == "d":
             # Pfam-N matches updated in update-features task
-            partition = FEATURE_MATCH_PARTITIONS[database.identifier]
             cur.execute(
                 """
                 INSERT /*+ APPEND */ INTO INTERPRO.FEATURE_MATCH_NEW
