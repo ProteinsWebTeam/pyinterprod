@@ -485,15 +485,20 @@ def build_xref_summary(uri: str):
 
     cur.execute(
         """
-        INSERT /*+ APPEND */ INTO INTERPRO.XREF_SUMMARY
+        INSERT INTO INTERPRO.XREF_SUMMARY
         SELECT
             MA.DBCODE,
             MA.PROTEIN_AC,
             E.ENTRY_AC,
             E.SHORT_NAME,
             MA.METHOD_AC,
-            CASE WHEN ME.NAME IS NOT NULL AND MA.METHOD_AC != ME.NAME 
-                THEN ME.NAME ELSE ME.DESCRIPTION END,
+            CASE 
+                WHEN ME.NAME IS NOT NULL AND MA.METHOD_AC != ME.NAME 
+                    THEN ME.NAME
+                WHEN ME.DESCRIPTION IS NOT NULL
+                    THEN REGEXP_REPLACE(DESCRIPTION, '"', '''')
+                ELSE NULL 
+            END,
             MA.POS_FROM,
             MA.POS_TO,
             MA.STATUS,
@@ -514,8 +519,13 @@ def build_xref_summary(uri: str):
             NULL,
             NULL,
             MA.MODEL_AC,
-            CASE WHEN ME.NAME IS NOT NULL AND MA.MODEL_AC != ME.NAME 
-                THEN ME.NAME ELSE ME.DESCRIPTION END,
+            CASE 
+                WHEN ME.NAME IS NOT NULL AND MA.MODEL_AC != ME.NAME 
+                    THEN ME.NAME
+                WHEN ME.DESCRIPTION IS NOT NULL
+                    THEN REGEXP_REPLACE(DESCRIPTION, '"', '''')
+                ELSE NULL 
+            END,
             MA.POS_FROM,
             MA.POS_TO,
             MA.STATUS,

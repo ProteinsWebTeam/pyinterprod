@@ -148,7 +148,7 @@ def export_xrefs(url: str, outdir: str, emails: dict):
 
         # CATH-Gene3D: G3DSA:3.50.70.10 -> 3.50.70.10
         identifier = signature_acc[6:] if dbcode == "X" else signature_acc
-        optional_1 = (signature_name or "-").replace("\"", "'")
+        optional_1 = (signature_name or "-")
         optional_2 = "" if dbcode == "F" else f"; {num_matches}"
 
         fh.write(f"{protein_acc}    DR   {dbname}; {identifier}; "
