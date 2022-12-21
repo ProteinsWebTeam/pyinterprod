@@ -172,7 +172,7 @@ def _hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str,
         VALUES (:analysis_id, :analysis_name, :relno_major, :relno_minor,
                 :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments,
                 :seq_score, :seq_evalue, :hmm_bounds, :hmm_start, :hmm_end,
-                :hmm_length, :env_start, :env_end, :score, :evalue
+                :hmm_length, :env_start, :env_end, :score, :evalue)
     """
 
     cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE,
@@ -226,7 +226,7 @@ def funfam_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                 :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments,
                 :seq_score, :seq_evalue, :hmm_bounds, :hmm_start, :hmm_end,
                 :hmm_length, :env_start, :env_end, :score, :evalue, 
-                :hmmer_seq_start, :hmmer_seq_end, :alignment
+                :hmmer_seq_start, :hmmer_seq_end, :alignment)
         """
 
     cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE,
