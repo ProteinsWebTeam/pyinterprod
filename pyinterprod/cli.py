@@ -11,8 +11,8 @@ from pyinterprod.interpro.clan import update_cdd_clans, update_hmm_clans
 
 
 def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
-                     pg_ipr_uri: str, data_dir: str, lsf_queue: str
-                     ) -> list[Task]:
+                     pg_ipr_uri: str, data_dir: str, temp_dir: str,
+                     lsf_queue: str) -> list[Task]:
     names_db = os.path.join(data_dir, "names.sqlite")
     matches_file = os.path.join(data_dir, "matches")
     return [
@@ -41,9 +41,9 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
         Task(
             fn=pronto.protein.import_protein_names,
             args=(ora_swp_uri, pg_ipr_uri, names_db),
-            kwargs=dict(tmpdir="/tmp"),
+            kwargs=dict(tmpdir=temp_dir),
             name="proteins-names",
-            scheduler=dict(mem=2000, tmp=15000, queue=lsf_queue),
+            scheduler=dict(mem=2000, queue=lsf_queue),
         ),
         Task(
             fn=pronto.proteome.import_proteomes,
@@ -68,9 +68,9 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
         Task(
             fn=pronto.match.export,
             args=(ora_ipr_uri, matches_file),
-            kwargs=dict(tmpdir="/tmp"),
+            kwargs=dict(tmpdir=temp_dir),
             name="export-matches",
-            scheduler=dict(mem=4000, tmp=100000, queue=lsf_queue)
+            scheduler=dict(mem=4000, queue=lsf_queue)
         ),
         Task(
             fn=pronto.match.insert_fmatches,
@@ -97,9 +97,9 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
         Task(
             fn=pronto.match.insert_signature2protein,
             args=(pg_ipr_uri, names_db, matches_file),
-            kwargs=dict(processes=8, tmpdir="/tmp"),
+            kwargs=dict(processes=8, tmpdir=temp_dir),
             name="insert-signature2proteins",
-            scheduler=dict(cpu=8, mem=4000, tmp=15000, queue=lsf_queue),
+            scheduler=dict(cpu=8, mem=4000, queue=lsf_queue),
             requires=["export-matches", "proteins-names"]
         ),
         Task(
@@ -491,7 +491,8 @@ def run_member_db_update():
         # Adding Pronto tasks
         after_pronto = []
         for t in get_pronto_tasks(ora_interpro_uri, ora_swpread_uri,
-                                  ora_goa_uri, pg_uri, data_dir, lsf_queue):
+                                  ora_goa_uri, pg_uri, data_dir, temp_dir,
+                                  lsf_queue):
             # Adding 'pronto-' prefix
             t.name = f"pronto-{t.name}"
             if t.requires:
@@ -568,7 +569,7 @@ def run_pronto_update():
     wflow_dir = config["misc"]["workflows_dir"]
 
     tasks = get_pronto_tasks(ora_interpro_uri, ora_swpread_uri, ora_goa_uri,
-                             pg_uri, data_dir, lsf_queue)
+                             pg_uri, data_dir, temp_dir, lsf_queue)
 
     database = os.path.join(wflow_dir, f"{uniprot_version}_pronto.sqlite")
     with Workflow(tasks, dir=temp_dir, database=database) as wf:
@@ -692,9 +693,9 @@ def run_uniprot_update():
                   uniprot_version,
                   config["uniprot"]["date"],
                   data_dir),
-            kwargs=dict(tmpdir="/tmp"),
+            kwargs=dict(tmpdir=temp_dir),
             name="update-proteins",
-            scheduler=dict(mem=4000, queue=lsf_queue, tmp=40000),
+            scheduler=dict(mem=4000, queue=lsf_queue),
         ),
 
         # Update IPPRO
@@ -812,14 +813,14 @@ def run_uniprot_update():
     # Adding Pronto tasks
     after_pronto = []
     for t in get_pronto_tasks(ora_interpro_uri, ora_swpread_uri, ora_goa_uri,
-                              pg_uri, data_dir, lsf_queue):
+                              pg_uri, data_dir, temp_dir, lsf_queue):
         # Adding 'pronto-' prefix
         t.name = f"pronto-{t.name}"
         if t.requires:
             t.requires = {f"pronto-{r}" for r in t.requires}
         else:
             # Task without dependency:
-            # add some so it's submitted at the end of the protein update
+            # add some, so it's submitted at the end of the protein update
             t.requires = {"swissprot-de", "taxonomy", "unirule",
                           "update-fmatches"}
 
