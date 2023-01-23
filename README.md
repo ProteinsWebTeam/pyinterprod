@@ -66,8 +66,8 @@ All files can be renamed. `main.conf` is passed as an command line argument, and
     - **pronto_url**: URL of the Pronto curation application
     - **data_dir**: directory where to store staging files
     - **match_calc_dir**: directory where to run InterProScan match calculation
-    - **temporary_dir**: directory for temporary files (i.e. job input/output)
-    - **workflows_dir**: directory for workflows SQLite files
+    - **temporary_dir**: directory for temporary files
+    - **workflows_dir**: directory for workflows SQLite files, and jobs' input/output files
 
     
 ### members.conf

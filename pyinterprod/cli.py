@@ -523,7 +523,7 @@ def run_member_db_update():
         versions.append(f"{db.name.lower().replace(' ', '')}{db.version}")
 
     database = os.path.join(wflow_dir, f"{'_'.join(versions)}.sqlite")
-    with Workflow(tasks, dir=temp_dir, database=database) as wf:
+    with Workflow(tasks, dir=wflow_dir, database=database) as wf:
         if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
             sys.exit(0)
         else:
@@ -572,7 +572,7 @@ def run_pronto_update():
                              pg_uri, data_dir, temp_dir, lsf_queue)
 
     database = os.path.join(wflow_dir, f"{uniprot_version}_pronto.sqlite")
-    with Workflow(tasks, dir=temp_dir, database=database) as wf:
+    with Workflow(tasks, dir=wflow_dir, database=database) as wf:
         if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
             sys.exit(0)
         else:
@@ -855,7 +855,7 @@ def run_uniprot_update():
     ]
 
     database = os.path.join(wflow_dir, f"{uniprot_version}.sqlite")
-    with Workflow(tasks, dir=temp_dir, database=database) as wf:
+    with Workflow(tasks, dir=wflow_dir, database=database) as wf:
         if wf.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach):
             sys.exit(0)
         else:
@@ -994,7 +994,7 @@ def run_interproscan_manager():
 
         interproscan.manager.run(uri=iscn_iprscan_uri,
                                  work_dir=config["misc"]["match_calc_dir"],
-                                 temp_dir=config["misc"]["temporary_dir"],
+                                 temp_dir=config["misc"]["match_calc_dir"],
                                  # Default config
                                  job_cpu=job_cpu,
                                  job_mem=job_mem,
