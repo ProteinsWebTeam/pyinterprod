@@ -92,7 +92,7 @@ def get_all_accessions_list(ids_list: list) -> set:
     return set(ncbi_accessions_list)
 
 
-def get_ncbifam_json(accessions_list: set):
+def get_ncbifam_info(accessions_list: set):
     url_list = []
     for accession in accessions_list:
         url_list.append(f"{BASE_NCBIFAM_URL}&match=accession_._{accession}")
@@ -113,8 +113,8 @@ def get_ncbifam_json(accessions_list: set):
                     result_list.append(filtered_info)
                     total_complete_requests += 1
                 futures_to_data.pop(future)
-    with open('ncbifam_info.json', 'w') as json_file:
-        json.dump(list(result_list), json_file, indent=4)
+    json_string = json.dumps(list(result_list), indent=4)
+    return json_string
 
 
 def _retry(future, futures_to_data, executor):
@@ -141,3 +141,12 @@ def _fetch_url_xml(url: str) -> xmlET:
     with request.urlopen(url) as f:
         response = f.read()
     return xmlET.fromstring(response.decode('utf-8'))
+
+
+if __name__ == "__main__":
+    ids_list = get_all_ids_list()
+    logger.info(f"returned {len(ids_list)} ids")
+    accessions_list = get_all_accessions_list(list(ids_list))
+    logger.info(f"returned {len(accessions_list)} accessions")
+    info_string_parsed = get_ncbifam_info(accessions_list)
+    print(info_string_parsed)
