@@ -901,9 +901,8 @@ def run_interproscan_manager():
     parser_import = subparsers.add_parser("import",
                                           help="import sequences from UniParc")
     parser_import.add_argument("--top-up", action="store_true", default=False,
-                               help="if used with --import-sequences: "
-                                    "only import sequences not already in "
-                                    "the InterProScan database (default: off)")
+                               help="import new sequences instead of importing"
+                                    " all sequences (default: off)")
 
     parser_clean = subparsers.add_parser("clean", help="delete obsolete data")
     parser_clean.add_argument("-a", "--analyses", nargs="*", default=[],
