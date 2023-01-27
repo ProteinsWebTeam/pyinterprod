@@ -79,15 +79,16 @@ def get_ids() -> set:
     return ids
 
 
-def get_all_accessions_list(ids_list: list) -> set:
-    ncbi_accessions_list = []
-    step = 500
-    for i in range(0, len(ids_list), step):
-        r = _fetch_url_xml(f"{BASE_ACCESSIONS_URL}&id={','.join(ids_list[i:i+step])}")
-        accession = r.findall('./DocumentSummarySet/DocumentSummary/DispFamilyAcc')
-        for a in accession:
-            ncbi_accessions_list.append(a.text.split(".")[0])
-    return set(ncbi_accessions_list)
+def get_accessions(ids: set) -> set:
+    ncbi_accessions = set()
+    params = {"db": "protfam", "step": 500}
+    for i in range(0, len(ids), params['step']):
+        params["id"] = ','.join(list(ids)[i:i+params['step']])
+        r = _fetch_url_xml(ESUMMARY, params, post_request=True)
+        elements = r.findall('./DocumentSummarySet/DocumentSummary/DispFamilyAcc')
+        for a in elements:
+            ncbi_accessions.add(a.text.split(".")[0])
+    return ncbi_accessions
 
 
 def get_ncbifam_info(accessions: set) -> dict:
