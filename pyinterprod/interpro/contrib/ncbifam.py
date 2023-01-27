@@ -1,10 +1,10 @@
 import json
-from urllib import request
 import xml.etree.ElementTree as xmlET
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib import parse, request
+from concurrent.futures import as_completed, ThreadPoolExecutor
 
-from pyinterprod import logger
 from .common import Method, parse_hmm
+from pyinterprod import logger
 
 
 _KNOWN_SOURCES = {
@@ -13,10 +13,11 @@ _KNOWN_SOURCES = {
     "NCBI Protein Cluster (PRK)"
 }
 
-BASE_IDS_URL = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=protfam&term=hmm&field=method'
-BASE_ACCESSIONS_URL = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=protfam'
-BASE_NCBIFAM_URL = 'https://www.ncbi.nlm.nih.gov/genome/annotation_prok/evidence/api/data/?collection=hmm_info'
-FILTER_LIST = ['public_comment', 'product_name', 'short_name', 'go_terms', 'pubmed', 'family_type']
+EUTILS = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils'
+ESEARCH = f'{EUTILS}/esearch.fcgi'
+ESUMMARY = f'{EUTILS}/esummary.fcgi'
+NCBI_API = 'https://www.ncbi.nlm.nih.gov/genome/annotation_prok/evidence/api/data/'
+INFO_FILTER_LIST = ['public_comment', 'product_name', 'short_name', 'go_terms', 'pubmed', 'family_type']
 
 
 def get_signatures(hmm_file: str, info_file: str):
@@ -65,20 +66,17 @@ def get_signatures(hmm_file: str, info_file: str):
     return signatures
 
 
-def get_all_ids_list() -> set:
-    total_ids = _fetch_url_xml(BASE_IDS_URL).find('Count').text
-    list_ids = []
+def get_ids() -> set:
+    ids = set()
     retmax = 10000
-    if int(total_ids) > retmax:
-        for retstart in range(0, int(total_ids), retmax):
-            r = _fetch_url_xml(f"{BASE_IDS_URL}&retmax={retmax}&retstart={retstart}")
-            for i in r.findall('./IdList/Id'):
-                list_ids.append(i.text)
-    else:
-        r = _fetch_url_xml(f"{BASE_IDS_URL}&retmax={total_ids}")
+    esearch_ids_query = f'{ESEARCH}?db=protfam&term=hmm&field=method&retmax={retmax}'
+    r = _fetch_url_xml(esearch_ids_query)
+    total_ids = r.find('Count').text
+    for retstart in range(retmax, int(total_ids)+retmax, retmax):
         for i in r.findall('./IdList/Id'):
-            list_ids.append(i.text)
-    return set(list_ids)
+            ids.add(i.text)
+        r = _fetch_url_xml(f"{esearch_ids_query}&retstart={retstart}")
+    return ids
 
 
 def get_all_accessions_list(ids_list: list) -> set:
