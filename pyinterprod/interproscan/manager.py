@@ -360,9 +360,12 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     if num_retries < max_retries or (mem_err and infinite_mem):
                         # Task allowed to be re-submitted
 
-                        # Increase memory requirement if needed
-                        while task.scheduler["mem"] < maxmem:
-                            task.scheduler["mem"] *= 1.5
+                        try:
+                            # Increase memory requirement if needed
+                            while task.scheduler["mem"] < maxmem:
+                                task.scheduler["mem"] *= 1.5
+                        except TypeError:
+                            pass
 
                         # Resubmit task
                         task.status = PENDING
