@@ -93,20 +93,19 @@ def get_accessions(ids: set) -> set:
 
 def get_ncbifam_info(accessions: set) -> dict:
     result_dict = {}
-    total_accessions_count = len(accessions)
-    total_complete_requests = 0
     ncbi_infos_query = f'{NCBI_API}?collection=hmm_info&match=accession_._'
     with ThreadPoolExecutor(max_workers=8) as executor:
-        futures_to_data = {executor.submit(request.urlopen, f"{ncbi_infos_query}{i}"): i for i in accessions}
-        while total_complete_requests < total_accessions_count:
+        futures_to_data = {executor.submit(_request_ncbi_info, f"{ncbi_infos_query}{i}"): i for i in accessions}
+        while futures_to_data:
             for future in as_completed(futures_to_data):
                 if future.exception():
-                    _retry(future, futures_to_data, executor)
+                    data = futures_to_data[future]
+                    retry = executor.submit(request.urlopen, data)
+                    futures_to_data[retry] = data
                 else:
                     result = future.result().read()
                     filtered_info = _filter_ncbifam_info(result.decode('utf-8'))
                     result_dict.update(filtered_info)
-                    total_complete_requests += 1
                 futures_to_data.pop(future)
     info = result_dict
     return info
@@ -119,22 +118,31 @@ def _retry(future, futures_to_data, executor):
     return data
 
 
+def _request_ncbi_info(url: str):
+    try:
+        result = request.urlopen(url)
+    except error.HTTPError as e:
+        print(e)
+        #different of 429 HTTP code, break
+    return result
+
+
 def _filter_ncbifam_info(info: str) -> dict:
-    dict_info = {}
+    infos = {}
     json_info = json.loads(info)
     for i in range(json_info['totalCount']):
-        for filter_key in FILTER_LIST:
+        for filter_key in INFO_FILTER_LIST:
             try:
                 value = json_info['data'][i][filter_key]
             except KeyError:
                 value = None
-            dict_info[filter_key+str(i)] = value
-    return dict_info
+            infos[filter_key+str(i)] = value
+    return infos
 
 
 def _fetch_url_xml(url: str, params: dict, post_request: bool = False) -> xmlET.Element:
     data = parse.urlencode(params)
-    url = request.Request(url, data=data) if post_request else f'{url}?{data}'
+    url = request.Request(url, data=data.encode('ascii')) if post_request else f'{url}?{data}'
     with request.urlopen(url) as f:
         response = f.read()
     return xmlET.fromstring(response.decode('utf-8'))
@@ -142,9 +150,9 @@ def _fetch_url_xml(url: str, params: dict, post_request: bool = False) -> xmlET.
 
 if __name__ == "__main__":
     ids = get_ids()
-    logger.info(f"returned {len(ids)} ids")
+    print(f"returned {len(ids)} ids")
     accessions = get_accessions(ids)
-    logger.info(f"returned {len(accessions)} accessions")
+    print(f"returned {len(accessions)} accessions")
     ncbifam_info = get_ncbifam_info(accessions)
     info_json_parsed = json.dumps(ncbifam_info, indent=4)
     print(info_json_parsed)
