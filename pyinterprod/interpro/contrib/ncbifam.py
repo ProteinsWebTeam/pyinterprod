@@ -68,20 +68,20 @@ def get_signatures(hmm_file: str, info_file: str):
 
 def get_ids() -> set:
     ids = set()
-    retmax = 10000
-    esearch_ids_query = f'{ESEARCH}?db=protfam&term=hmm&field=method&retmax={retmax}'
-    r = _fetch_url_xml(esearch_ids_query)
+    params = {"db": "protfam", "term": "hmm", "field": "method", "retmax": 10000}
+    r = _fetch_url_xml(ESEARCH, params)
     total_ids = r.find('Count').text
-    for retstart in range(retmax, int(total_ids)+retmax, retmax):
+    for retstart in range(params["retmax"], int(total_ids)+params["retmax"], params["retmax"]):
         for i in r.findall('./IdList/Id'):
             ids.add(i.text)
-        r = _fetch_url_xml(f"{esearch_ids_query}&retstart={retstart}")
+        params["retstart"] = retstart
+        r = _fetch_url_xml(ESEARCH, params)
     return ids
 
 
 def get_all_accessions_list(ids_list: list) -> set:
     ncbi_accessions_list = []
-    step = 200
+    step = 500
     for i in range(0, len(ids_list), step):
         r = _fetch_url_xml(f"{BASE_ACCESSIONS_URL}&id={','.join(ids_list[i:i+step])}")
         accession = r.findall('./DocumentSummarySet/DocumentSummary/DispFamilyAcc')
@@ -90,29 +90,25 @@ def get_all_accessions_list(ids_list: list) -> set:
     return set(ncbi_accessions_list)
 
 
-def get_ncbifam_info(accessions_list: set):
-    url_list = []
-    for accession in accessions_list:
-        url_list.append(f"{BASE_NCBIFAM_URL}&match=accession_._{accession}")
-
-    result_list = []
-    total_accessions_count = len(accessions_list)
+def get_ncbifam_info(accessions: set) -> dict:
+    result_dict = {}
+    total_accessions_count = len(accessions)
     total_complete_requests = 0
+    ncbi_infos_query = f'{NCBI_API}?collection=hmm_info&match=accession_._'
     with ThreadPoolExecutor(max_workers=8) as executor:
-        futures_to_data = {executor.submit(request.urlopen, i): i for i in url_list}
+        futures_to_data = {executor.submit(request.urlopen, f"{ncbi_infos_query}{i}"): i for i in accessions}
         while total_complete_requests < total_accessions_count:
             for future in as_completed(futures_to_data):
                 if future.exception():
-                    data = _retry(future, futures_to_data, executor)
-                    logger.info(f'Failure, retrying {data}')
+                    _retry(future, futures_to_data, executor)
                 else:
                     result = future.result().read()
                     filtered_info = _filter_ncbifam_info(result.decode('utf-8'))
-                    result_list.append(filtered_info)
+                    result_dict.update(filtered_info)
                     total_complete_requests += 1
                 futures_to_data.pop(future)
-    json_string = json.dumps(list(result_list), indent=4)
-    return json_string
+    info = result_dict
+    return info
 
 
 def _retry(future, futures_to_data, executor):
@@ -135,16 +131,19 @@ def _filter_ncbifam_info(info: str) -> dict:
     return dict_info
 
 
-def _fetch_url_xml(url: str) -> xmlET:
+def _fetch_url_xml(url: str, params: dict, post_request: bool = False) -> xmlET.Element:
+    data = parse.urlencode(params)
+    url = request.Request(url, data=data) if post_request else f'{url}?{data}'
     with request.urlopen(url) as f:
         response = f.read()
     return xmlET.fromstring(response.decode('utf-8'))
 
 
 if __name__ == "__main__":
-    ids_list = get_all_ids_list()
-    logger.info(f"returned {len(ids_list)} ids")
-    accessions_list = get_all_accessions_list(list(ids_list))
-    logger.info(f"returned {len(accessions_list)} accessions")
-    info_string_parsed = get_ncbifam_info(accessions_list)
-    print(info_string_parsed)
+    ids = get_ids()
+    logger.info(f"returned {len(ids)} ids")
+    accessions = get_accessions(ids)
+    logger.info(f"returned {len(accessions)} accessions")
+    ncbifam_info = get_ncbifam_info(accessions)
+    info_json_parsed = json.dumps(ncbifam_info, indent=4)
+    print(info_json_parsed)
