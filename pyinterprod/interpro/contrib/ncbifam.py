@@ -91,8 +91,8 @@ def get_accessions(ids: set) -> set:
     return ncbi_accessions
 
 
-def get_ncbifam_info(accessions: set) -> dict:
-    result_dict = {}
+def get_ncbifam_info(accessions: set) -> list:
+    result_dict = []
     ncbi_infos_query = f'{NCBI_API}?collection=hmm_info&match=accession_._'
     with ThreadPoolExecutor(max_workers=8) as executor:
         futures_to_data = {executor.submit(_request_ncbi_info, f"{ncbi_infos_query}{i}"): i for i in accessions}
@@ -105,10 +105,9 @@ def get_ncbifam_info(accessions: set) -> dict:
                 else:
                     result = future.result().read()
                     filtered_info = _filter_ncbifam_info(result.decode('utf-8'))
-                    result_dict.update(filtered_info)
+                    result_dict.append(filtered_info)
                 futures_to_data.pop(future)
-    info = result_dict
-    return info
+    return result_dict
 
 
 def _retry(future, futures_to_data, executor):
@@ -118,13 +117,15 @@ def _retry(future, futures_to_data, executor):
     return data
 
 
-def _request_ncbi_info(url: str):
+def _request_ncbi_info(url: str) -> str:
     try:
         result = request.urlopen(url)
     except error.HTTPError as e:
-        print(e)
-        #different of 429 HTTP code, break
-    return result
+        if e.code != 429:
+            print('Error code: ', e.code)
+            exit(1)
+    else:
+        return result
 
 
 def _filter_ncbifam_info(info: str) -> dict:
