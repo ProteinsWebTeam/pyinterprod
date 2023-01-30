@@ -72,7 +72,7 @@ def parse():
                 if m:
                     profile_type = m.group(1)
 
-                    m = re.match(r"^AC\s+(PS\d+);$")
+                    m = re.match(r"^AC\s+(PS\d+);$", buffer, re.M)
                     accession = m.group(1)
 
                     if profile_type == "MATRIX":
