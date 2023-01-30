@@ -1,1 +1,1 @@
-from . import antifam, cath, cdd, hamap, panther, pfam, pirsf, prosite
+from . import antifam, cath, cdd, hamap, panther, pfam, pirsf, prosite, smart

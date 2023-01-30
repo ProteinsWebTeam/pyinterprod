@@ -65,6 +65,8 @@ def add_staging(uri: str, update: list[tuple[Database, str]]):
             elif db.identifier == 'Q':
                 # HAMAP
                 signatures = contrib.hamap.parse_signatures(src)
+            elif db.identifier == 'R':
+                signatures = contrib.smart.parse_signatures(src)
             elif db.identifier == 'V':
                 # PANTHER
                 signatures = contrib.panther.parse_signatures(src)
