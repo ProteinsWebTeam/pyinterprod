@@ -68,11 +68,11 @@ def parse():
             buffer += line
 
             if line[:2] == "//":
-                m = re.match(r"^ID\s+\w+;\s*(\w+)\.$", buffer, re.M)
+                m = re.search(r"^ID\s+\w+;\s*(\w+)\.$", buffer, re.M)
                 if m:
                     profile_type = m.group(1)
 
-                    m = re.match(r"^AC\s+(PS\d+);$", buffer, re.M)
+                    m = re.search(r"^AC\s+(PS\d+)\;$", buffer, re.M)
                     accession = m.group(1)
 
                     if profile_type == "MATRIX":
