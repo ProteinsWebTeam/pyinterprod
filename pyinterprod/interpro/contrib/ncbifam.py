@@ -16,7 +16,8 @@ EUTILS = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils'
 ESEARCH = f'{EUTILS}/esearch.fcgi'
 ESUMMARY = f'{EUTILS}/esummary.fcgi'
 NCBI_API = 'https://www.ncbi.nlm.nih.gov/genome/annotation_prok/evidence/api/data/'
-INFO_FILTER_LIST = ['public_comment', 'product_name', 'short_name', 'go_terms', 'pubmed', 'family_type']
+INFO_FILTER_LIST = ['public_comment', 'product_name', 'short_name',
+                    'go_terms', 'pubmed', 'family_type']
 
 
 def get_signatures(hmm_file: str, info_file: str):
@@ -65,20 +66,22 @@ def get_signatures(hmm_file: str, info_file: str):
     return signatures
 
 
-def get_ids() -> set:
+def get_ids() -> set[str]:
     ids = set()
-    params = {"db": "protfam", "term": "hmm", "field": "method", "retmax": 10000}
-    r = _fetch_url_xml(ESEARCH, params)
-    total_ids = r.find('Count').text
-    for retstart in range(params["retmax"], int(total_ids)+params["retmax"], params["retmax"]):
+    params = {"db": "protfam", "term": "hmm", "field": "method", "retstart": 0, "retmax": 10000}
+    while True:
+        r = _fetch_url_xml(ESEARCH, params)
+        cnt = 0
         for i in r.findall('./IdList/Id'):
             ids.add(i.text)
-        params["retstart"] = retstart
-        r = _fetch_url_xml(ESEARCH, params)
+            cnt += 1
+        if cnt == 0:
+            break
+        params["retstart"] += params["retmax"]
     return ids
 
 
-def get_accessions(ids: set) -> set:
+def get_accessions(ids: set[str]) -> set[str]:
     ncbi_accessions = set()
     params = {"db": "protfam", "step": 500}
     for i in range(0, len(ids), params['step']):
@@ -91,40 +94,33 @@ def get_accessions(ids: set) -> set:
 
 
 def get_ncbifam_info(accessions: set) -> list:
-    result_dict = []
-    ncbi_infos_query = f'{NCBI_API}?collection=hmm_info&match=accession_._'
+    results = []
     with ThreadPoolExecutor(max_workers=8) as executor:
-        futures_to_data = {executor.submit(_request_ncbi_info, f"{ncbi_infos_query}{i}"): i for i in accessions}
-        while futures_to_data:
-            for future in as_completed(futures_to_data):
+        fs = {executor.submit(_request_ncbi_info, i): i for i in accessions}
+        while fs:
+            for future in as_completed(fs):
                 if future.exception():
-                    data = futures_to_data[future]
-                    retry = executor.submit(request.urlopen, data)
-                    futures_to_data[retry] = data
+                    data = fs[future]
+                    retry = executor.submit(_request_ncbi_info, data)
+                    fs[retry] = data
                 else:
-                    result = future.result().read()
-                    filtered_info = _filter_ncbifam_info(result.decode('utf-8'))
-                    result_dict.append(filtered_info)
-                futures_to_data.pop(future)
-    return result_dict
+                    results.append(future.result())
+                fs.pop(future)
+    return results
 
 
-def _retry(future, futures_to_data, executor):
-    data = futures_to_data[future]
-    retry = executor.submit(request.urlopen, data)
-    futures_to_data[retry] = data
-    return data
-
-
-def _request_ncbi_info(url: str) -> str:
+def _request_ncbi_info(accession: str) -> dict:
+    url = f'{NCBI_API}?collection=hmm_info&match=accession_._{accession}'
     try:
         result = request.urlopen(url)
     except error.HTTPError as e:
+        print(e.code)
         if e.code != 429:
-            print('Error code: ', e.code)
-            exit(1)
+            raise
     else:
-        return result
+        parsed_result = result.read().decode('utf-8')
+        filtered_info = _filter_ncbifam_info(parsed_result)
+        return filtered_info
 
 
 def _filter_ncbifam_info(info: str) -> dict:
@@ -142,9 +138,11 @@ def _filter_ncbifam_info(info: str) -> dict:
 
 def _fetch_url_xml(url: str, params: dict, post_request: bool = False) -> xmlET.Element:
     data = parse.urlencode(params)
-    url = request.Request(url, data=data.encode('ascii')) if post_request else f'{url}?{data}'
-    with request.urlopen(url) as f:
-        response = f.read()
+    if post_request:
+        url = request.Request(url, data=data.encode('ascii'))
+    else:
+        url = f'{url}?{data}'
+    response = request.urlopen(url).read()
     return xmlET.fromstring(response.decode('utf-8'))
 
 
