@@ -4,7 +4,6 @@ from urllib import parse, request, error
 from concurrent.futures import as_completed, ThreadPoolExecutor
 
 from .common import Method, parse_hmm
-from import
 
 
 _KNOWN_SOURCES = {
