@@ -4,6 +4,7 @@ from urllib import parse, request, error
 from concurrent.futures import as_completed, ThreadPoolExecutor
 
 from .common import Method, parse_hmm
+from import
 
 
 _KNOWN_SOURCES = {
@@ -148,9 +149,7 @@ def _fetch_url_xml(url: str, params: dict, post_request: bool = False) -> xmlET.
 
 if __name__ == "__main__":
     ids = get_ids()
-    print(f"returned {len(ids)} ids")
     accessions = get_accessions(ids)
-    print(f"returned {len(accessions)} accessions")
     ncbifam_info = get_ncbifam_info(accessions)
     info_json_parsed = json.dumps(ncbifam_info, indent=4)
     print(info_json_parsed)
