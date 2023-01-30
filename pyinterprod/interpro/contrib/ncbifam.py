@@ -1,10 +1,9 @@
 import json
 import xml.etree.ElementTree as xmlET
-from urllib import parse, request
+from urllib import parse, request, error
 from concurrent.futures import as_completed, ThreadPoolExecutor
 
 from .common import Method, parse_hmm
-from pyinterprod import logger
 
 
 _KNOWN_SOURCES = {
