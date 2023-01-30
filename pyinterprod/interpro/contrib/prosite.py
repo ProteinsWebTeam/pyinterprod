@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import sys
 from typing import List
 
@@ -48,31 +49,45 @@ def parse():
 
     outdir = os.path.dirname(os.path.realpath(file))
 
-    patterns_dst = os.path.join(outdir, "prosite_patterns.dat")
-    profiles_dst = os.path.join(outdir, "prosite_profiles.dat")
+    patterns_dir = os.path.join(outdir, "prosite_patterns")
+    profiles_dir = os.path.join(outdir, "prosite_profiles")
+
+    for dst in [patterns_dir, profiles_dir]:
+        try:
+            shutil.rmtree(dst)
+        except FileNotFoundError:
+            pass
+
+        os.mkdir(dst)
+
     patterns_cnt = profiles_cnt = 0
 
-    with open(patterns_dst, "wt") as fh1, open(profiles_dst, "wt") as fh2:
-        with open(file, "rt") as fh:
-            buffer = ""
-            for line in fh:
-                buffer += line
+    with open(file, "rt") as fh:
+        buffer = ""
+        for line in fh:
+            buffer += line
 
-                if line[:2] == "//":
-                    m = re.match(r"^ID\s+\w+;\s*(\w+)\.$", buffer, re.M)
-                    if m:
-                        profile_type = m.group(1)
+            if line[:2] == "//":
+                m = re.match(r"^ID\s+\w+;\s*(\w+)\.$", buffer, re.M)
+                if m:
+                    profile_type = m.group(1)
 
-                        if profile_type == "MATRIX":
-                            fh2.write(buffer)
-                            profiles_cnt += 1
-                        elif profile_type == "PATTERN":
-                            fh1.write(buffer)
-                            patterns_cnt += 1
-                        else:
-                            raise ValueError(f"Unknown type {profile_type}")
+                    m = re.match(r"^AC\s+(PS\d+);$")
+                    accession = m.group(1)
 
-                    buffer = ""
+                    if profile_type == "MATRIX":
+                        dst = os.path.join(profiles_dir, f"{accession}.prf")
+                        profiles_cnt += 1
+                    elif profile_type == "PATTERN":
+                        dst = os.path.join(patterns_dir, f"{accession}.prf")
+                        patterns_cnt += 1
+                    else:
+                        raise ValueError(f"Unknown type {profile_type}")
+
+                    with open(dst, "wt") as fh2:
+                        fh2.write(buffer)
+
+                buffer = ""
 
     print(f"PROSITE Patterns: {patterns_cnt:>10,}")
     print(f"PROSITE Profiles: {profiles_cnt:>10,}")
