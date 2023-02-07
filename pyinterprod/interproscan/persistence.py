@@ -161,25 +161,18 @@ def hamap_matches(cur: Cursor, file: str, analysis_id: int, table: str):
 
 
 def _hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str,
-                    relno_maj_as_int: bool, has_alignment: bool):
-    if has_alignment:
-        ali_col = ", ALIGNMENT"
-        ali_val = ", :alignment"
-    else:
-        ali_col = ""
-        ali_val = ""
-
+                    relno_maj_as_int: bool):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
             UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
             SEQSCORE, SEQEVALUE, HMM_BOUNDS, HMM_START, HMM_END,
-            HMM_LENGTH, ENV_START, ENV_END, SCORE, EVALUE{ali_col}
+            HMM_LENGTH, ENV_START, ENV_END, SCORE, EVALUE
         )
         VALUES (:analysis_id, :analysis_name, :relno_major, :relno_minor,
                 :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments,
                 :seq_score, :seq_evalue, :hmm_bounds, :hmm_start, :hmm_end,
-                :hmm_length, :env_start, :env_end, :score, :evalue{ali_val})
+                :hmm_length, :env_start, :env_end, :score, :evalue)
     """
 
     cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE,
@@ -189,7 +182,7 @@ def _hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str,
     with open(file, "rt") as fh:
         for line in fh:
             cols = line.rstrip().split('\t')
-            record = {
+            values.append({
                 "analysis_id": analysis_id,
                 "analysis_name": cols[0],
                 "relno_major": int(cols[1]) if relno_maj_as_int else cols[1],
@@ -210,12 +203,7 @@ def _hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str,
                 "env_end": int(cols[16]),
                 "score": Decimal(cols[17]),
                 "evalue": Decimal(cols[18])
-            }
-
-            if has_alignment:
-                record["alignment"] = cols[19]
-
-            values.append(record)
+            })
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
@@ -226,13 +214,64 @@ def _hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str,
 
 
 def funfam_matches(cur: Cursor, file: str, analysis_id: int, table: str):
-    _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=True,
-                    has_alignment=True)
+    sql = f"""
+        INSERT INTO {table} (
+            ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
+            UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, FRAGMENTS,
+            SEQSCORE, SEQEVALUE, HMM_BOUNDS, HMM_START, HMM_END,
+            HMM_LENGTH, ENV_START, ENV_END, SCORE, EVALUE, HMMER_SEQ_START,
+            HMMER_SEQ_END, ALIGNMENT
+        )
+        VALUES (:analysis_id, :analysis_name, :relno_major, :relno_minor,
+                :upi, :method_ac, :model_ac, :seq_start, :seq_end, :fragments,
+                :seq_score, :seq_evalue, :hmm_bounds, :hmm_start, :hmm_end,
+                :hmm_length, :env_start, :env_end, :score, :evalue, 
+                :hmmer_seq_start, :hmmer_seq_end, :alignment)
+        """
+
+    cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE,
+                      evalue=DB_TYPE_BINARY_DOUBLE)
+
+    values = []
+    with open(file, "rt") as fh:
+        for line in fh:
+            cols = line.rstrip().split('\t')
+            values.append({
+                "analysis_id": analysis_id,
+                "analysis_name": cols[0],
+                "relno_major": int(cols[1]),
+                "relno_minor": cols[2],
+                "upi": cols[3],
+                "method_ac": cols[4],
+                "model_ac": cols[5],
+                "seq_start": int(cols[6]),
+                "seq_end": int(cols[7]),
+                "fragments": cols[8],
+                "seq_score": Decimal(cols[9]),
+                "seq_evalue": Decimal(cols[10]),
+                "hmm_bounds": cols[11],
+                "hmm_start": int(cols[12]),
+                "hmm_end": int(cols[13]),
+                "hmm_length": int(cols[14]),
+                "env_start": int(cols[15]),
+                "env_end": int(cols[16]),
+                "score": Decimal(cols[17]),
+                "evalue": Decimal(cols[18]),
+                "hmmer_seq_start": int(cols[19]),
+                "hmmer_seq_end": int(cols[20]),
+                "alignment": cols[21],
+            })
+
+            if len(values) == _COMMIT_SIZE:
+                cur.executemany(sql, values)
+                values.clear()
+
+    if values:
+        cur.executemany(sql, values)
 
 
 def hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str):
-    _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=True,
-                    has_alignment=False)
+    _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=True)
 
 
 def mobidb_lite_matches(cur: Cursor, file: str, analysis_id: int, table: str):
@@ -339,8 +378,7 @@ def panther_matches(cur: Cursor, file: str, analysis_id: int, table: str):
 
 
 def pirsr_matches(cur: Cursor, file: str, analysis_id: int, table: str):
-    _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=False,
-                    has_alignment=False)
+    _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=False)
 
 
 def prints_matches(cur: Cursor, file: str, analysis_id: int, table: str):
@@ -476,8 +514,7 @@ def signalp_matches(cur: Cursor, file: str, analysis_id: int, table: str):
 
 
 def sfld_matches(cur: Cursor, file: str, analysis_id: int, table: str):
-    _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=True,
-                    has_alignment=False)
+    _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=True)
 
 
 def smart_matches(cur: Cursor, file: str, analysis_id: int, table: str):
