@@ -114,7 +114,6 @@ def _request_ncbi_info(accession: str) -> dict:
     try:
         result = request.urlopen(url)
     except error.HTTPError as e:
-        print(e.code)
         if e.code != 429:
             raise
     else:
