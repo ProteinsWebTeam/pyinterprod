@@ -467,7 +467,8 @@ def build_xref_summary(uri: str):
         )
         PARTITION BY LIST (DBCODE) (
           PARTITION PART_B VALUES ('B'),
-          PARTITION PART_F VALUES ('F'),
+          PARTITION PART_F1 VALUES ('F'),
+          PARTITION PART_F2 VALUES ('f'),
           PARTITION PART_H VALUES ('H'),
           PARTITION PART_J VALUES ('J'),
           PARTITION PART_M VALUES ('M'),
@@ -536,6 +537,23 @@ def build_xref_summary(uri: str):
             ON MA.MODEL_AC = ME.METHOD_AC
         WHERE MA.MODEL_AC IS NOT NULL 
           AND REGEXP_LIKE(MA.MODEL_AC, '^PTHR\d+:SF\d+$')
+        -- FunFams
+        SELECT
+            FM.DBCODE,
+            FM.PROTEIN_AC,
+            NULL,
+            NULL,
+            FM.METHOD_AC,
+            CASE WHEN ME.NAME IS NOT NULL AND FM.METHOD_AC != ME.NAME
+                THEN ME.NAME ELSE ME.DESCRIPTION END,
+            FM.POS_FROM,
+            FM.POS_TO,
+            'T',
+            NULL,
+            NULL
+        FROM INTERPRO.FEATURE_MATCH PARTITION (FUNFAM) FM
+        INNER JOIN INTERPRO.FEATURE_METHOD ME
+            ON FM.METHOD_AC = ME.METHOD_AC
         """
     )
 
