@@ -83,9 +83,10 @@ def get_ids() -> set[str]:
 
 def get_accessions(ids: set[str]) -> set[str]:
     ncbi_accessions = set()
-    params = {"db": "protfam", "step": 500}
-    for i in range(0, len(ids), params['step']):
-        params["id"] = ','.join(list(ids)[i:i+params['step']])
+    step = 500
+    params = {"db": "protfam"}
+    for i in range(0, len(ids), step):
+        params["id"] = ','.join(list(ids)[i:i+step])
         r = _fetch_url_xml(ESUMMARY, params, post_request=True)
         elements = r.findall('./DocumentSummarySet/DocumentSummary/DispFamilyAcc')
         for a in elements:
@@ -138,16 +139,19 @@ def _filter_ncbifam_info(info: str) -> dict:
 def _fetch_url_xml(url: str, params: dict, post_request: bool = False) -> xmlET.Element:
     data = parse.urlencode(params)
     if post_request:
-        url = request.Request(url, data=data.encode('ascii'))
+        response = request.urlopen(url, data=data.encode('ascii'))
     else:
-        url = f'{url}?{data}'
-    response = request.urlopen(url).read()
-    return xmlET.fromstring(response.decode('utf-8'))
+        response = request.urlopen(f'{url}?{data}')
+    return xmlET.fromstring(response.read().decode('utf-8'))
 
 
-if __name__ == "__main__":
+def main():
     ids = get_ids()
     accessions = get_accessions(ids)
     ncbifam_info = get_ncbifam_info(accessions)
     info_json_parsed = json.dumps(ncbifam_info, indent=4)
     print(info_json_parsed)
+
+
+if __name__ == "__main__":
+    main()
