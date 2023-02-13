@@ -101,9 +101,12 @@ def get_ncbifam_info(accessions: set) -> list:
         while fs:
             for future in as_completed(fs):
                 if future.exception():
-                    data = fs[future]
-                    retry = executor.submit(_request_ncbi_info, data)
-                    fs[retry] = data
+                    if future.result().code != 429:
+                        raise
+                    else:
+                        data = fs[future]
+                        retry = executor.submit(_request_ncbi_info, data)
+                        fs[retry] = data
                 else:
                     results.append(future.result())
                 fs.pop(future)
@@ -112,15 +115,10 @@ def get_ncbifam_info(accessions: set) -> list:
 
 def _request_ncbi_info(accession: str) -> dict:
     url = f'{NCBI_API}?collection=hmm_info&match=accession_._{accession}'
-    try:
-        result = request.urlopen(url)
-    except error.HTTPError as e:
-        if e.code != 429:
-            raise
-    else:
-        parsed_result = result.read().decode('utf-8')
-        filtered_info = _filter_ncbifam_info(parsed_result)
-        return filtered_info
+    result = request.urlopen(url)
+    parsed_result = result.read().decode('utf-8')
+    filtered_info = _filter_ncbifam_info(parsed_result)
+    return filtered_info
 
 
 def _filter_ncbifam_info(info: str) -> dict:
