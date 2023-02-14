@@ -103,7 +103,6 @@ def get_ncbifam_info(accessions: set) -> list:
                 try:
                     future.result()
                 except error.HTTPError as e:
-                    print(f"enter in except: {e.code}")
                     if e.code != 429:
                         raise
                     else:
