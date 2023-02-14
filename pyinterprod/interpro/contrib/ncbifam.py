@@ -100,8 +100,11 @@ def get_ncbifam_info(accessions: set) -> list:
         fs = {executor.submit(_request_ncbi_info, i): i for i in accessions}
         while fs:
             for future in as_completed(fs):
-                if future.exception():
-                    if future.result().code != 429:
+                try:
+                    future.result()
+                except error.HTTPError as e:
+                    print(f"enter in except: {e.code}")
+                    if e.code != 429:
                         raise
                     else:
                         data = fs[future]
