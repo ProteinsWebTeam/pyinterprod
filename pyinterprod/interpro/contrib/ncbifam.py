@@ -3,7 +3,7 @@ import xml.etree.ElementTree as xmlET
 from urllib import parse, request, error
 from concurrent.futures import as_completed, ThreadPoolExecutor
 
-from .common import Method, parse_hmm
+from common import Method, parse_hmm
 
 
 _KNOWN_SOURCES = {
