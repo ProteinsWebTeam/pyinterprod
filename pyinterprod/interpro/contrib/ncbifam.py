@@ -120,19 +120,21 @@ def _request_ncbi_info(accession: str) -> dict:
     result = request.urlopen(url)
     parsed_result = result.read().decode('utf-8')
     filtered_info = _filter_ncbifam_info(parsed_result)
+    filtered_info.update({"accession": accession})
     return filtered_info
 
 
 def _filter_ncbifam_info(info: str) -> dict:
     infos = {}
     json_info = json.loads(info)
-    for i in range(json_info['totalCount']):
-        for filter_key in INFO_FILTER_LIST:
-            try:
-                value = json_info['data'][i][filter_key]
-            except KeyError:
-                value = None
-            infos[filter_key+str(i)] = value
+    if json_info['totalCount'] > 1:
+        raise Exception("Returned more than one info version for the same accession.")
+    for filter_key in INFO_FILTER_LIST:
+        try:
+            value = json_info['data'][0][filter_key]
+        except KeyError:
+            value = None
+        infos[filter_key] = value
     return infos
 
 
