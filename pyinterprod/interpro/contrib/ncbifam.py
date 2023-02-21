@@ -16,7 +16,7 @@ EUTILS = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils'
 ESEARCH = f'{EUTILS}/esearch.fcgi'
 ESUMMARY = f'{EUTILS}/esummary.fcgi'
 NCBI_API = 'https://www.ncbi.nlm.nih.gov/genome/annotation_prok/evidence/api/data/'
-INFO_FILTER_LIST = ['public_comment', 'product_name', 'short_name',
+INFO_FILTER_LIST = ['accession', 'public_comment', 'product_name', 'short_name',
                     'go_terms', 'pubmed', 'family_type']
 
 
@@ -120,7 +120,6 @@ def _request_ncbi_info(accession: str) -> dict:
     result = request.urlopen(url)
     parsed_result = result.read().decode('utf-8')
     filtered_info = _filter_ncbifam_info(parsed_result)
-    filtered_info.update({"accession": accession})
     return filtered_info
 
 
@@ -128,7 +127,7 @@ def _filter_ncbifam_info(info: str) -> dict:
     infos = {}
     json_info = json.loads(info)
     if json_info['totalCount'] > 1:
-        raise Exception("Returned more than one info version for the same accession.")
+        raise Exception(f"Returned more than one info version for the same accession: {json_info['data'][0]['accession']}.")
     for filter_key in INFO_FILTER_LIST:
         try:
             value = json_info['data'][0][filter_key]
