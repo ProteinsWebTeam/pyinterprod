@@ -131,7 +131,7 @@ def _filter_ncbifam_info(info: str) -> dict:
     for filter_key in INFO_FILTER_LIST:
         try:
             value = json_info['data'][0][filter_key]
-            if filter_key == 'go_terms':
+            if filter_key in ['go_terms', "pubmed"]:
                 value = value.split(';')
         except KeyError:
             value = None
