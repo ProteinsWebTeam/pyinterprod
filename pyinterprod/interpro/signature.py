@@ -28,6 +28,8 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
+    mapping_pmid_pubid = get_mapping_pmid_pubid(cur)
+
     ora.drop_table(cur, "METHOD_STG", purge=True)
     cur.execute(
         """
@@ -83,6 +85,7 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
                 continue
 
             for m in signatures:
+                m.abstract = update_abstract_pmid(cur, m.abstract, m.accession, mapping_pmid_pubid)
                 if m.abstract is None:
                     abstract = abstract_long = None
                 elif len(m.abstract) <= 4000:
@@ -546,3 +549,115 @@ def update_features(uri: str, update: list[tuple[Database, list[str]]]):
     con.commit()
     cur.close()
     con.close()
+
+
+def get_mapping_pmid_pubid(cur: cx_Oracle.Cursor) -> dict:
+    pmid_pubid = {}
+    cur.execute(
+        """
+        SELECT DISTINCT PUB_ID, PUBMED_ID 
+        FROM interpro.CITATION
+        """
+    )
+    for pub_id, pubmed_id in cur:
+        pmid_pubid.update({pubmed_id: pub_id})
+
+    return pmid_pubid
+
+
+def update_abstract_pmid(cur: cx_Oracle.Cursor, abstract: str, method_ac: str, pubid_pubmed: dict) -> str:
+    method2pub = []
+    pmids = re.findall('PMID:\s*[0-9]+', str(abstract))
+    for pmid in pmids:
+        pmid = int(pmid.split(':')[1].strip())
+        try:
+            pub_id = pubid_pubmed[pmid]
+        except KeyError:
+            pub_id = update_citation(cur, pmid)
+        if pub_id:
+            abstract = abstract.replace(f'PMID:{pmid}', f'[cite:{pub_id}]')
+            method2pub.append(f"{pub_id}:{method_ac}")
+    update_method2pub(cur, method2pub)
+    return abstract
+
+
+def update_method2pub(cur: cx_Oracle.Cursor, new_entries: list):  # or try and pass if integrity error?
+    current_method2pub = []
+    cur.execute(
+        """
+        SELECT DISTINCT PUB_ID, METHOD_AC FROM interpro.METHOD2PUB
+        """
+    )
+    for pub_id, method_ac in cur:
+        current_method2pub.append(f"{pub_id}:{method_ac}")
+
+    no_entries_method2pub = set(new_entries).difference(set(current_method2pub))
+    for entry in no_entries_method2pub:
+        pub_method = entry.split(':')
+        cur.execute(
+            """
+            INSERT INTO interpro.METHOD2PUB (PUB_ID, METHOD_AC)
+            VALUES (:1, :2)
+            """,
+            [pub_method[0], pub_method[1]]
+        )
+
+
+def update_citation(cur: cx_Oracle.Cursor, pmid: int) -> str:
+    pub_id = None
+
+    cur.execute(
+        f"""
+            SELECT
+              C.EXTERNAL_ID, I.VOLUME, I.ISSUE, I.PUBYEAR, C.TITLE,
+              C.PAGE_INFO, J.MEDLINE_ABBREVIATION, J.ISO_ABBREVIATION,
+              A.AUTHORS, U.URL
+            FROM CDB.CITATIONS@LITPUB C
+              LEFT OUTER JOIN CDB.JOURNAL_ISSUES@LITPUB I
+                ON C.JOURNAL_ISSUE_ID = I.ID
+              LEFT JOIN CDB.CV_JOURNALS@LITPUB J
+                ON I.JOURNAL_ID = J.ID
+              LEFT OUTER JOIN CDB.FULLTEXT_URL@LITPUB U
+                ON (
+                    C.EXTERNAL_ID = U.EXTERNAL_ID AND
+                    U.DOCUMENT_STYLE  ='DOI' AND
+                    U.SOURCE = 'MED'
+                )
+              LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
+                ON (
+                  C.ID = A.CITATION_ID AND
+                  A.HAS_SPECIAL_CHARS = 'N'
+                )
+            WHERE C.EXTERNAL_ID = :1
+            """, pmid
+    )
+
+    citations = {}
+    for row in cur:
+        row = list(row)
+        row[0] = int(row[0])
+        try:
+            citations[row[0]] = row
+        except KeyError:
+            raise Warning(f"Citation related to PMID {pmid} not found.")
+
+    for pmid, row in citations.items():
+        if len(row[4]) > 740:
+            row[4] = row[4][:737] + "..."
+        pub_id = cur.var(cx_Oracle.STRING)
+        cur.execute(
+            """
+            INSERT INTO INTERPRO.CITATION (
+              PUB_ID, PUB_TYPE, PUBMED_ID, VOLUME, ISSUE,
+              YEAR, TITLE, RAWPAGES, MEDLINE_JOURNAL,
+              ISO_JOURNAL, AUTHORS, DOI_URL
+            ) VALUES (
+              INTERPRO.NEW_PUB_ID(), 'J', :1, :2, :3, :4, :5,
+              :6, :7, :8, :9, :10
+            )
+            RETURNING PUB_ID INTO :11
+            """,
+            (*row, pub_id)
+        )
+
+    return pub_id
