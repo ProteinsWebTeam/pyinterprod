@@ -68,7 +68,13 @@ def get_signatures(hmm_file: str, info_file: str):
 
 def get_ids() -> set[str]:
     ids = set()
-    params = {"db": "protfam", "term": "hmm", "field": "method", "retstart": 0, "retmax": 10000}
+    params = {
+        "db": "protfam", 
+        "term": "hmm", 
+        "field": "method", 
+        "retstart": 0, 
+        "retmax": 10000
+    }
     while True:
         r = _fetch_url_xml(ESEARCH, params)
         cnt = 0
