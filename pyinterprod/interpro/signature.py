@@ -605,7 +605,6 @@ def update_method2pub(cur: cx_Oracle.Cursor, new_entries: list):  # or try and p
 
 def update_citation(cur: cx_Oracle.Cursor, pmid: int) -> str:
     pub_id = None
-
     cur.execute(
         f"""
             SELECT
@@ -628,8 +627,8 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: int) -> str:
                   C.ID = A.CITATION_ID AND
                   A.HAS_SPECIAL_CHARS = 'N'
                 )
-            WHERE C.EXTERNAL_ID = :1
-            """, pmid
+            WHERE C.EXTERNAL_ID = '{pmid}'
+            """
     )
 
     citations = {}
