@@ -3,6 +3,7 @@ import pickle
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
+import warnings
 
 import cx_Oracle
 
@@ -652,8 +653,8 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: int) -> str:
                 (*citation, pub_id)
             )
         except cx_Oracle.IntegrityError:
-            raise Warning(f"IntegrityError. Pub_id {pub_id} not inserted.")
+            warnings.warn(f"IntegrityError. Pub_id {pub_id} not inserted.")
     else:
-        raise Warning(f"Citation related to PMID {pmid} not found.")
+        warnings.warn(f"Citation related to PMID {pmid} not found.")
 
     return pub_id
