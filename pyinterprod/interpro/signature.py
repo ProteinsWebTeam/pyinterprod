@@ -631,32 +631,29 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: int) -> str:
             """
     )
 
-    citations = {}
-    for row in cur:
-        row = list(row)
-        row[0] = int(row[0])
-        try:
-            citations[row[0]] = row
-        except KeyError:
-            raise Warning(f"Citation related to PMID {pmid} not found.")
-
-    for pmid, row in citations.items():
-        if len(row[4]) > 740:
-            row[4] = row[4][:737] + "..."
+    citation = cur.fetchone()
+    if citation:
+        if len(citation[4]) > 740:
+            citation[4] = citation[4][:737] + "..."
         pub_id = cur.var(cx_Oracle.STRING)
-        cur.execute(
-            """
-            INSERT INTO INTERPRO.CITATION (
-              PUB_ID, PUB_TYPE, PUBMED_ID, VOLUME, ISSUE,
-              YEAR, TITLE, RAWPAGES, MEDLINE_JOURNAL,
-              ISO_JOURNAL, AUTHORS, DOI_URL
-            ) VALUES (
-              INTERPRO.NEW_PUB_ID(), 'J', :1, :2, :3, :4, :5,
-              :6, :7, :8, :9, :10
+        try:
+            cur.execute(
+                """
+                INSERT INTO INTERPRO.CITATION (
+                  PUB_ID, PUB_TYPE, PUBMED_ID, VOLUME, ISSUE,
+                  YEAR, TITLE, RAWPAGES, MEDLINE_JOURNAL,
+                  ISO_JOURNAL, AUTHORS, DOI_URL
+                ) VALUES (
+                  INTERPRO.NEW_PUB_ID(), 'J', :1, :2, :3, :4, :5,
+                  :6, :7, :8, :9, :10
+                )
+                RETURNING PUB_ID INTO :11
+                """,
+                (*citation, pub_id)
             )
-            RETURNING PUB_ID INTO :11
-            """,
-            (*row, pub_id)
-        )
+        except cx_Oracle.IntegrityError:
+            raise Warning(f"IntegrityError. Pub_id {pub_id} not inserted.")
+    else:
+        raise Warning(f"Citation related to PMID {pmid} not found.")
 
     return pub_id
