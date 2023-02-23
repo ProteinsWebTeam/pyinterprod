@@ -1,9 +1,10 @@
 import os
 import pickle
 import re
+import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
-import warnings
+
 
 import cx_Oracle
 
@@ -582,7 +583,7 @@ def update_abstract_pmid(cur: cx_Oracle.Cursor, abstract: str, method_ac: str, p
     return abstract
 
 
-def update_method2pub(cur: cx_Oracle.Cursor, new_entries: list):  # or try and pass if integrity error?
+def update_method2pub(cur: cx_Oracle.Cursor, new_entries: list):
     current_method2pub = []
     cur.execute(
         """
@@ -604,8 +605,7 @@ def update_method2pub(cur: cx_Oracle.Cursor, new_entries: list):  # or try and p
         )
 
 
-def update_citation(cur: cx_Oracle.Cursor, pmid: int) -> str:
-    pub_id = None
+def update_citation(cur: cx_Oracle.Cursor, pmid: int):
     cur.execute(
         f"""
             SELECT
@@ -637,24 +637,21 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: int) -> str:
         if len(citation[4]) > 740:
             citation[4] = citation[4][:737] + "..."
         pub_id = cur.var(cx_Oracle.STRING)
-        try:
-            cur.execute(
-                """
-                INSERT INTO INTERPRO.CITATION (
-                  PUB_ID, PUB_TYPE, PUBMED_ID, VOLUME, ISSUE,
-                  YEAR, TITLE, RAWPAGES, MEDLINE_JOURNAL,
-                  ISO_JOURNAL, AUTHORS, DOI_URL
-                ) VALUES (
-                  INTERPRO.NEW_PUB_ID(), 'J', :1, :2, :3, :4, :5,
-                  :6, :7, :8, :9, :10
-                )
-                RETURNING PUB_ID INTO :11
-                """,
-                (*citation, pub_id)
+        cur.execute(
+            """
+            INSERT INTO INTERPRO.CITATION (
+              PUB_ID, PUB_TYPE, PUBMED_ID, VOLUME, ISSUE,
+              YEAR, TITLE, RAWPAGES, MEDLINE_JOURNAL,
+              ISO_JOURNAL, AUTHORS, DOI_URL
+            ) VALUES (
+              INTERPRO.NEW_PUB_ID(), 'J', :1, :2, :3, :4, :5,
+              :6, :7, :8, :9, :10
             )
-        except cx_Oracle.IntegrityError:
-            warnings.warn(f"IntegrityError. Pub_id {pub_id} not inserted.")
+            RETURNING PUB_ID INTO :11
+            """,
+            (*citation, pub_id)
+        )
     else:
         warnings.warn(f"Citation related to PMID {pmid} not found.")
-
+        return None
     return pub_id
