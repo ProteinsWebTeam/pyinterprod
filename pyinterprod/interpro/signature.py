@@ -5,7 +5,6 @@ import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
-
 import cx_Oracle
 
 from pyinterprod import logger
