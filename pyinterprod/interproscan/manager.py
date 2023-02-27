@@ -8,7 +8,7 @@ from typing import Callable, Optional
 
 import cx_Oracle
 from mundone import Pool, Task
-from mundone.statuses import PENDING, RUNNING
+from mundone.states import PENDING, RUNNING
 
 from pyinterprod import logger
 from pyinterprod.uniprot.uniparc import int_to_upi, upi_to_int, range_upi
@@ -81,7 +81,7 @@ class TaskFactory:
     site_table: Optional[str] = None
     persist_sites: Optional[Callable] = None
     keep_files: Optional[str] = None
-    lsf_queue: Optional[str] = None
+    queue: Optional[str] = None
 
     def make(self, upi_from: str, upi_to: str) -> Task:
         return Task(
@@ -105,7 +105,7 @@ class TaskFactory:
             name=self.make_name(upi_from, upi_to),
             scheduler=dict(cpu=self.config["job_cpu"],
                            mem=self.config["job_mem"],
-                           queue=self.lsf_queue),
+                           queue=self.queue),
             random_suffix=False
         )
 
@@ -124,11 +124,11 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     dry_run = kwargs.get("dry_run", False)
     infinite_mem = kwargs.get("infinite_mem", False)
     keep_files = kwargs.get("keep_files", None)
-    lsf_queue = kwargs.get("lsf_queue")
     max_retries = kwargs.get("max_retries", 0)
     max_running_jobs = kwargs.get("max_running_jobs", 1000)
     max_jobs_per_analysis = kwargs.get("max_jobs_per_analysis", -1)
     pool_threads = kwargs.get("pool_threads", 4)
+    queue = kwargs.get("queue")
     to_run = kwargs.get("analyses", [])
     to_exclude = kwargs.get("exclude", [])
 
@@ -208,7 +208,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                                   site_table=analysis["tables"]["sites"],
                                   persist_sites=persist_sites,
                                   keep_files=keep_files,
-                                  lsf_queue=lsf_queue)
+                                  queue=queue)
 
             n_tasks_analysis = 0
             jobs = incomplete_jobs.pop(analysis_id, [])
