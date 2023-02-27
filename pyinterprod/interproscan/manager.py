@@ -81,6 +81,7 @@ class TaskFactory:
     site_table: Optional[str] = None
     persist_sites: Optional[Callable] = None
     keep_files: Optional[str] = None
+    scheduler: Optional[str] = None
     queue: Optional[str] = None
 
     def make(self, upi_from: str, upi_to: str) -> Task:
@@ -105,7 +106,9 @@ class TaskFactory:
             name=self.make_name(upi_from, upi_to),
             scheduler=dict(cpu=self.config["job_cpu"],
                            mem=self.config["job_mem"],
-                           queue=self.queue),
+                           type=self.scheduler,
+                           queue=self.queue,
+                           hours=self.config["job_timeout"]),
             random_suffix=False
         )
 
@@ -128,6 +131,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     max_running_jobs = kwargs.get("max_running_jobs", 1000)
     max_jobs_per_analysis = kwargs.get("max_jobs_per_analysis", -1)
     pool_threads = kwargs.get("pool_threads", 4)
+    scheduler = kwargs.get("scheduler")
     queue = kwargs.get("queue")
     to_run = kwargs.get("analyses", [])
     to_exclude = kwargs.get("exclude", [])
@@ -181,7 +185,12 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     max_upi, = cur.fetchone()
 
-    name2id = get_lsf_unfinished_jobs()
+    if scheduler.lower() == "lsf":
+        name2id = get_unfinished_lsf_jobs()
+    elif scheduler.lower() == "slurm":
+        name2id = get_unfinished_slurm_jobs()
+    else:
+        raise ValueError(scheduler)
 
     with Pool(temp_dir, max_running_jobs,
               kill_on_exit=False,
@@ -208,6 +217,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                                   site_table=analysis["tables"]["sites"],
                                   persist_sites=persist_sites,
                                   keep_files=keep_files,
+                                  scheduler=scheduler,
                                   queue=queue)
 
             n_tasks_analysis = 0
@@ -530,7 +540,7 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             shutil.rmtree(outdir)
 
 
-def get_lsf_unfinished_jobs() -> dict[str, int]:
+def get_unfinished_lsf_jobs() -> dict[str, int]:
     stdout = subprocess.run(["bjobs", "-o", "jobid name"],
                             capture_output=True,
                             encoding="utf-8").stdout
@@ -546,8 +556,16 @@ def get_lsf_unfinished_jobs() -> dict[str, int]:
     return jobs
 
 
-# def kill_lsf_job(name: str) -> bool:
-#     process = subprocess.run(["bkill", "-r", "-J", name],
-#                              stdout=subprocess.DEVNULL,
-#                              stderr=subprocess.DEVNULL)
-#     return process.returncode == 0
+def get_unfinished_slurm_jobs() -> dict[str, int]:
+    stdout = subprocess.run(["squeue", "-h" "-O", "JobId,Name",
+                             "-t", "pending,running"],
+                            capture_output=True,
+                            encoding="utf-8").stdout
+
+    jobs = {}
+    for line in stdout.split("\n")[1:]:
+        if line:
+            job_id, name = line.split(maxsplit=1)
+            jobs[name] = int(job_id)
+
+    return jobs
