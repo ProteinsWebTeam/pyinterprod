@@ -1,7 +1,6 @@
 import os
 import pickle
 import re
-import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
@@ -29,7 +28,11 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
-    mapping_pmid_pubid = get_mapping_pmid_pubid(cur)
+    pmid2pubid = get_pmid2pubid(cur)
+    new_method2pub = []
+
+    ora.drop_table(cur, "METHOD2PUB_STG", purge=True)
+    cur.execute("CREATE TABLE INTERPRO.METHOD2PUB_STG AS (SELECT * FROM INTERPRO.METHOD2PUB)")
 
     ora.drop_table(cur, "METHOD_STG", purge=True)
     cur.execute(
@@ -86,7 +89,7 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
                 continue
 
             for m in signatures:
-                m.abstract = update_abstract_pmid(cur, m.abstract, m.accession, mapping_pmid_pubid)
+                update_references(cur, m, pmid2pubid, new_method2pub)
                 if m.abstract is None:
                     abstract = abstract_long = None
                 elif len(m.abstract) <= 4000:
@@ -116,6 +119,9 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
                     abstract,
                     abstract_long
                 ))
+
+    current_method2pub = get_method2pub(cur)
+    update_method2pub(cur, new_method2pub, current_method2pub)
 
     if errors:
         cur.close()
@@ -469,6 +475,13 @@ def update_signatures(uri: str, go_sources: list[tuple[str, str]]):
         """, counts
     )
 
+    ora.drop_table(cur, "METHOD2PUB", purge=True)
+    cur.execute(
+        """
+        RENAME INTERPRO.METHOD2PUB_STG TO INTERPRO.METHOD2PUB
+        """
+    )
+
     con.commit()
     cur.close()
     con.close()
@@ -552,61 +565,44 @@ def update_features(uri: str, update: list[tuple[Database, list[str]]]):
     con.close()
 
 
-def get_mapping_pmid_pubid(cur: cx_Oracle.Cursor) -> dict:
-    pmid_pubid = {}
-    cur.execute(
-        """
-        SELECT DISTINCT PUB_ID, PUBMED_ID 
-        FROM interpro.CITATION
-        """
-    )
-    for pub_id, pubmed_id in cur:
-        pmid_pubid.update({pubmed_id: pub_id})
-
-    return pmid_pubid
+def get_pmid2pubid(cur: cx_Oracle.Cursor) -> dict:
+    cur.execute("SELECT DISTINCT PUBMED_ID, PUB_ID FROM INTERPRO.CITATION")
+    return dict(cur.fetchall())
 
 
-def update_abstract_pmid(cur: cx_Oracle.Cursor, abstract: str, method_ac: str, pubid_pubmed: dict) -> str:
-    method2pub = []
-    pmids = re.findall('PMID:\s*[0-9]+', str(abstract))
-    for pmid in pmids:
-        pmid = int(pmid.split(':')[1].strip())
-        try:
-            pub_id = pubid_pubmed[pmid]
-        except KeyError:
-            pub_id = update_citation(cur, pmid)
-        if pub_id:
-            abstract = abstract.replace(f'PMID:{pmid}', f'[cite:{pub_id}]')
-            method2pub.append(f"{pub_id}:{method_ac}")
-    update_method2pub(cur, method2pub)
-    return abstract
+def get_method2pub(cur: cx_Oracle.Cursor) -> list:
+    cur.execute("SELECT DISTINCT PUB_ID, METHOD_AC FROM INTERPRO.METHOD2PUB")
+    return list(cur.fetchall())
 
 
-def update_method2pub(cur: cx_Oracle.Cursor, new_entries: list):
-    current_method2pub = []
-    cur.execute(
-        """
-        SELECT DISTINCT PUB_ID, METHOD_AC FROM interpro.METHOD2PUB
-        """
-    )
-    for pub_id, method_ac in cur:
-        current_method2pub.append(f"{pub_id}:{method_ac}")
+def update_references(cur: cx_Oracle.Cursor, method, pubid_pubmed: dict[tuple], new_method2pub: list):
+    if method.abstract is not None:
+        pmids = re.findall('PMID:\s*([0-9]+)', method.abstract)
+        for pmid in pmids:
+            try:
+                pub_id = (item for item in pubid_pubmed if item[0] == pmid)
+            except KeyError:
+                pub_id = update_citation(cur, pmid)
+            if pub_id:
+                method.abstract = method.abstract.replace(f'PMID:{pmid}', f'[cite:{pub_id}]')
+                new_method2pub.append(tuple((pub_id, method.method_ac)))
 
-    no_entries_method2pub = set(new_entries).difference(set(current_method2pub))
+
+def update_method2pub(cur: cx_Oracle.Cursor, new_method2pub: list, current_method2pub: list):
+    no_entries_method2pub = set(new_method2pub) - (set(current_method2pub))
     for entry in no_entries_method2pub:
-        pub_method = entry.split(':')
         cur.execute(
             """
-            INSERT INTO interpro.METHOD2PUB (PUB_ID, METHOD_AC)
+            INSERT INTO INTERPRO.METHOD2PUB_STG (PUB_ID, METHOD_AC)
             VALUES (:1, :2)
             """,
-            [pub_method[0], pub_method[1]]
+            [entry[0], entry[1]]
         )
 
 
-def update_citation(cur: cx_Oracle.Cursor, pmid: int):
+def update_citation(cur: cx_Oracle.Cursor, pmid: str):
     cur.execute(
-        f"""
+        """
             SELECT
               C.EXTERNAL_ID, I.VOLUME, I.ISSUE, I.PUBYEAR, C.TITLE,
               C.PAGE_INFO, J.MEDLINE_ABBREVIATION, J.ISO_ABBREVIATION,
@@ -627,8 +623,8 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: int):
                   C.ID = A.CITATION_ID AND
                   A.HAS_SPECIAL_CHARS = 'N'
                 )
-            WHERE C.EXTERNAL_ID = '{pmid}'
-            """
+            WHERE C.EXTERNAL_ID = :1
+            """, pmid
     )
 
     citation = cur.fetchone()
@@ -651,6 +647,6 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: int):
             (*citation, pub_id)
         )
     else:
-        warnings.warn(f"Citation related to PMID {pmid} not found.")
+        logger.warning(f"Citation related to PMID {pmid} not found.")
         return None
     return pub_id
