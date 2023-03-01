@@ -624,7 +624,7 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: str):
                   A.HAS_SPECIAL_CHARS = 'N'
                 )
             WHERE C.EXTERNAL_ID = :1
-            """, pmid
+            """, (pmid,)
     )
 
     citation = cur.fetchone()
