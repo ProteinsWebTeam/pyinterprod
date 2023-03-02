@@ -48,9 +48,9 @@ def get_signatures(hmm_file: str, info_file: str):
             references = None
             _type = 'family'
         else:
-            abstract = obj["abstract"]
+            abstract = obj["public_comment"]
             references = obj["pubmed"]
-            _type = obj["type"]
+            _type = obj["family_type"]
 
         if _type == "repeat":
             _type = "R"
