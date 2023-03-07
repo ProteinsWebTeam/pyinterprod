@@ -586,7 +586,7 @@ def update_references(cur: cx_Oracle.Cursor, method,
         pmids = re.findall(r"PMID:\s*([0-9]+)", method.abstract)
         for pmid in pmids:
             try:
-                pub_id = (item for item in pubid_pubmed if item[0] == pmid)
+                pub_id = pmid2pubid[pmid]
             except KeyError:
                 pub_id = update_citation(cur, pmid)
 
