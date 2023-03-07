@@ -1,6 +1,7 @@
 import os
 import pickle
 import re
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
@@ -29,13 +30,21 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
     cur = con.cursor()
 
     pmid2pubid = get_pmid2pubid(cur)
-    new_method2pub = []
+    method2pub = get_method2pub(cur)
+    new_method2pub = defaultdict(list)
 
     ora.drop_table(cur, "METHOD2PUB_STG", purge=True)
     cur.execute(
         """
-        CREATE TABLE INTERPRO.METHOD2PUB_STG 
-        AS SELECT * FROM INTERPRO.METHOD2PUB
+        CREATE TABLE INTERPRO.METHOD2PUB_STG AS 
+            SELECT * 
+            FROM INTERPRO.METHOD2PUB
+        """
+    )
+
+    cur.execute(
+        """
+        TRUNCATE TABLE INTERPRO.METHOD2PUB_STG 
         """
     )
 
@@ -95,6 +104,7 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
 
             for m in signatures:
                 update_references(cur, m, pmid2pubid, new_method2pub)
+                method2pub[m.accession] = new_method2pub[m.accession]
                 if m.abstract is None:
                     abstract = abstract_long = None
                 elif len(m.abstract) <= 4000:
@@ -125,8 +135,7 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
                     abstract_long
                 ))
 
-    current_method2pub = get_method2pub(cur)
-    update_method2pub(cur, new_method2pub, current_method2pub)
+    update_method2pub(cur, method2pub)
 
     if errors:
         cur.close()
@@ -480,10 +489,17 @@ def update_signatures(uri: str, go_sources: list[tuple[str, str]]):
         """, counts
     )
 
-    ora.drop_table(cur, "METHOD2PUB", purge=True)
     cur.execute(
         """
-        RENAME INTERPRO.METHOD2PUB_STG TO INTERPRO.METHOD2PUB
+        TRUNCATE TABLE INTERPRO.METHOD2PUB
+        """
+    )
+
+    cur.execute(
+        """
+        INSERT INTO INTERPRO.METHOD2PUB_STG 
+            SELECT * 
+            FROM INTERPRO.METHOD2PUB
         """
     )
 
@@ -571,17 +587,32 @@ def update_features(uri: str, update: list[tuple[Database, list[str]]]):
 
 
 def get_pmid2pubid(cur: cx_Oracle.Cursor) -> dict[str, str]:
-    cur.execute("SELECT DISTINCT PUBMED_ID, PUB_ID FROM INTERPRO.CITATION")
+    cur.execute(
+        """
+        SELECT DISTINCT PUBMED_ID, PUB_ID 
+        FROM INTERPRO.CITATION
+        """
+    )
     return dict(cur.fetchall())
 
 
-def get_method2pub(cur: cx_Oracle.Cursor) -> list:
-    cur.execute("SELECT DISTINCT PUB_ID, METHOD_AC FROM INTERPRO.METHOD2PUB")
-    return list(cur.fetchall())
+def get_method2pub(cur: cx_Oracle.Cursor) -> dict[str, list]:
+    cur.execute(
+        """
+        SELECT METHOD_AC, LISTAGG(PUB_ID, ';')
+        FROM INTERPRO.METHOD2PUB
+        GROUP BY METHOD_AC;
+        """
+    )
+
+    current_method2pub = {}
+    for method_ac, pub_ids in cur:
+        current_method2pub[method_ac] = pub_ids.splir(";")
+    return current_method2pub
 
 
 def update_references(cur: cx_Oracle.Cursor, method, 
-                      pmid2pubid: dict[str, str], new_method2pub: list):
+                      pmid2pubid: dict[str, str], new_method2pub: dict):
     if method.abstract is not None:
         pmids = re.findall(r"PMID:\s*([0-9]+)", method.abstract)
         for pmid in pmids:
@@ -592,28 +623,28 @@ def update_references(cur: cx_Oracle.Cursor, method,
 
             if pub_id:
                 method.abstract = method.abstract.replace(f'PMID:{pmid}', f'[cite:{pub_id}]')
-                new_method2pub.append(tuple((pub_id, method.method_ac)))
+                new_method2pub[method.method_ac].append(pub_id)
 
     for pmid in method.references:
         try:
-            pub_id = (item for item in pubid_pubmed if item[0] == pmid)
+            pub_id = (item for item in pmid2pubid if item[0] == pmid)
         except KeyError:
             pub_id = update_citation(cur, pmid)
 
         if pub_id:
-            new_method2pub.append(tuple((pub_id, method.method_ac)))
+            new_method2pub[method.method_ac].append(pub_id)
 
 
-def update_method2pub(cur: cx_Oracle.Cursor, new_method2pub: list, current_method2pub: list):
-    no_entries_method2pub = set(new_method2pub) - (set(current_method2pub))
-    for entry in no_entries_method2pub:
-        cur.execute(
-            """
-            INSERT INTO INTERPRO.METHOD2PUB_STG (PUB_ID, METHOD_AC)
-            VALUES (:1, :2)
-            """,
-            [entry[0], entry[1]]
-        )
+def update_method2pub(cur: cx_Oracle.Cursor, method2pub: dict[str, list]):
+    for entry in method2pub:
+        for pub_id in method2pub[entry]:
+            cur.execute(
+                """
+                INSERT INTO INTERPRO.METHOD2PUB_STG (PUB_ID, METHOD_AC)
+                VALUES (:1, :2)
+                """,
+                [entry, pub_id]
+            )
 
 
 def update_citation(cur: cx_Oracle.Cursor, pmid: str) -> Optional[str]:
