@@ -676,8 +676,11 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: str) -> Optional[str]:
 
     citation = cur.fetchone()
     if citation:
+        citation = list(citation)
+        citation[0] = int(citation[0])
         if len(citation[4]) > 740:
             citation[4] = citation[4][:737] + "..."
+
         pub_id = cur.var(cx_Oracle.STRING)
         cur.execute(
             """
