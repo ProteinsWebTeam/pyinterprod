@@ -32,7 +32,12 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
     new_method2pub = []
 
     ora.drop_table(cur, "METHOD2PUB_STG", purge=True)
-    cur.execute("CREATE TABLE INTERPRO.METHOD2PUB_STG AS (SELECT * FROM INTERPRO.METHOD2PUB)")
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.METHOD2PUB_STG 
+        AS SELECT * FROM INTERPRO.METHOD2PUB
+        """
+    )
 
     ora.drop_table(cur, "METHOD_STG", purge=True)
     cur.execute(
