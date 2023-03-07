@@ -616,7 +616,7 @@ def update_method2pub(cur: cx_Oracle.Cursor, new_method2pub: list, current_metho
         )
 
 
-def update_citation(cur: cx_Oracle.Cursor, pmid: str):
+def update_citation(cur: cx_Oracle.Cursor, pmid: str) -> Optional[str]:
     cur.execute(
         """
             SELECT
