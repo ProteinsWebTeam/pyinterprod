@@ -504,6 +504,7 @@ def _import_table(uri: str, remote_table: str, analyses: list[Analysis],
             f"""
             CREATE INDEX {remote_table}${suffix}
             ON IPRSCAN.{local_table} ({column})
+            TABLESPACE IPRSCAN_IND
             NOLOGGING
             """
         )

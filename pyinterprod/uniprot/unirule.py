@@ -202,7 +202,9 @@ def build_aa_alignment(uri: str):
         cur.execute(
             f"""
             CREATE INDEX I_AA_ALIGNMENT${col}
-            ON IPRSCAN.AA_ALIGNMENT ({col}) NOLOGGING
+            ON IPRSCAN.AA_ALIGNMENT ({col}) 
+            TABLESPACE IPRSCAN_IND
+            NOLOGGING
             """
         )
 
@@ -289,7 +291,9 @@ def build_aa_iprscan(uri: str):
         cur.execute(
             f"""
             CREATE INDEX I_AA_IPRSCAN${col}
-            ON IPRSCAN.AA_IPRSCAN ({col}) NOLOGGING
+            ON IPRSCAN.AA_IPRSCAN ({col}) 
+            TABLESPACE IPRSCAN_IND
+            NOLOGGING
             """
         )
 
@@ -433,7 +437,9 @@ def build_xref_condensed(uri: str):
         cur.execute(
             f"""
             CREATE INDEX I_XREF_CONDENSED${col}
-            ON INTERPRO.XREF_CONDENSED ({col}) NOLOGGING
+            ON INTERPRO.XREF_CONDENSED ({col}) 
+            TABLESPACE IPRSCAN_IND
+            NOLOGGING
             """
         )
 
@@ -564,7 +570,9 @@ def build_xref_summary(uri: str):
         cur.execute(
             f"""
             CREATE INDEX I_XREF_SUMMARY${col}
-            ON INTERPRO.XREF_SUMMARY ({col}) NOLOGGING
+            ON INTERPRO.XREF_SUMMARY ({col}) 
+            TABLESPACE IPRSCAN_IND
+            NOLOGGING
             """
         )
 
