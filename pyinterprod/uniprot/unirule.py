@@ -438,7 +438,7 @@ def build_xref_condensed(uri: str):
             f"""
             CREATE INDEX I_XREF_CONDENSED${col}
             ON INTERPRO.XREF_CONDENSED ({col}) 
-            TABLESPACE IPRSCAN_IND
+            TABLESPACE INTERPRO_IND
             NOLOGGING
             """
         )
@@ -571,7 +571,7 @@ def build_xref_summary(uri: str):
             f"""
             CREATE INDEX I_XREF_SUMMARY${col}
             ON INTERPRO.XREF_SUMMARY ({col}) 
-            TABLESPACE IPRSCAN_IND
+            TABLESPACE INTERPRO_IND
             NOLOGGING
             """
         )
