@@ -601,13 +601,13 @@ def get_method2pub(cur: cx_Oracle.Cursor) -> dict[str, list]:
         """
         SELECT METHOD_AC, LISTAGG(PUB_ID, ';')
         FROM INTERPRO.METHOD2PUB
-        GROUP BY METHOD_AC;
+        GROUP BY METHOD_AC
         """
     )
 
     current_method2pub = {}
     for method_ac, pub_ids in cur:
-        current_method2pub[method_ac] = pub_ids.splir(";")
+        current_method2pub[method_ac] = pub_ids.split(";")
     return current_method2pub
 
 
@@ -623,7 +623,7 @@ def update_references(cur: cx_Oracle.Cursor, method,
 
             if pub_id:
                 method.abstract = method.abstract.replace(f'PMID:{pmid}', f'[cite:{pub_id}]')
-                new_method2pub[method.method_ac].append(pub_id)
+                new_method2pub[method.accession].append(pub_id)
 
     for pmid in method.references:
         try:
@@ -632,7 +632,7 @@ def update_references(cur: cx_Oracle.Cursor, method,
             pub_id = update_citation(cur, pmid)
 
         if pub_id:
-            new_method2pub[method.method_ac].append(pub_id)
+            new_method2pub[method.accession].append(pub_id)
 
 
 def update_method2pub(cur: cx_Oracle.Cursor, method2pub: dict[str, list]):
