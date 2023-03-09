@@ -33,7 +33,7 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
 
     pmid2pubid = get_pmid2pubid(cur)
     method2pub = get_method2pub(cur)
-    new_method2pub = defaultdict(set)
+    new_method2pub = defaultdict(list)
 
     ora.drop_table(cur, "METHOD2PUB_STG", purge=True)
     cur.execute(
@@ -99,7 +99,7 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
 
             for m in signatures:
                 update_references(cur, m, pmid2pubid, new_method2pub)
-                method2pub[m.accession] = new_method2pub[m.accession]
+                method2pub[m.accession] = set(new_method2pub[m.accession])
                 if m.abstract is None:
                     abstract = abstract_long = None
                 elif len(m.abstract) <= 4000:
@@ -685,7 +685,7 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: str) -> Optional[str]:
             )
             RETURNING PUB_ID INTO :11
             """,
-            (*citation, str(pub_id))
+            (*citation, pub_id)
         )
         return pub_id.getvalue()[0]
     else:
