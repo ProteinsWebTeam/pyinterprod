@@ -12,6 +12,7 @@ from pyinterprod import logger
 from pyinterprod.pronto.signature import get_swissprot_descriptions
 from pyinterprod.utils import Table, oracle as ora
 from . import contrib
+from .contrib.common import Method
 from .database import Database
 from .match import FEATURE_MATCH_PARTITIONS, MATCH_PARTITIONS, SITE_PARTITIONS
 from .match import get_sig_protein_counts
@@ -483,11 +484,7 @@ def update_signatures(uri: str, go_sources: list[tuple[str, str]]):
         """, counts
     )
 
-    cur.execute(
-        """
-        TRUNCATE TABLE INTERPRO.METHOD2PUB
-        """
-    )
+    ora.truncate_table(cur, "INTERPRO.METHOD2PUB", reuse_storage=True)
 
     cur.execute(
         """
@@ -605,8 +602,8 @@ def get_method2pub(cur: cx_Oracle.Cursor) -> dict[str, list]:
     return current_method2pub
 
 
-def update_references(cur: cx_Oracle.Cursor, method, 
-                      pmid2pubid: dict[str, str], new_method2pub: dict):
+def update_references(cur: cx_Oracle.Cursor, method: Method,
+                      pmid2pubid: dict[int, str], new_method2pub: dict):
     if method.abstract is not None:
         pmids = re.findall(r"PMID:\s*([0-9]+)", method.abstract)
         for pmid in pmids:
@@ -621,7 +618,7 @@ def update_references(cur: cx_Oracle.Cursor, method,
 
     for pmid in method.references:
         try:
-            pub_id = (item for item in pmid2pubid if item[0] == pmid)
+            pub_id = (item for item in pmid2pubid if ast.literal_eval(str(item[0])) == pmid)
         except KeyError:
             pub_id = update_citation(cur, pmid)
 
@@ -631,14 +628,13 @@ def update_references(cur: cx_Oracle.Cursor, method,
 
 def update_method2pub(cur: cx_Oracle.Cursor, method2pub: dict[str, list]):
     for entry in method2pub:
-        for pub_id in method2pub[entry]:
-            cur.execute(
-                """
-                INSERT INTO INTERPRO.METHOD2PUB_STG (PUB_ID, METHOD_AC)
-                VALUES (:1, :2)
-                """,
-                [entry, pub_id]
-            )
+        cur.executemany(
+            """
+            INSERT INTO INTERPRO.METHOD2PUB_STG (PUB_ID, METHOD_AC)
+            VALUES (:1, :2)
+            """,
+            [entry, method2pub[entry]]
+        )
 
 
 def update_citation(cur: cx_Oracle.Cursor, pmid: str) -> Optional[str]:
