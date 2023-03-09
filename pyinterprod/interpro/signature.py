@@ -587,7 +587,7 @@ def update_features(uri: str, update: list[tuple[Database, list[str]]]):
     con.close()
 
 
-def get_pmid2pubid(cur: cx_Oracle.Cursor) -> dict[str, str]:
+def get_pmid2pubid(cur: cx_Oracle.Cursor) -> dict[int, str]:
     cur.execute(
         """
         SELECT DISTINCT PUBMED_ID, PUB_ID 
