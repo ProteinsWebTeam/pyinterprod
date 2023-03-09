@@ -587,7 +587,7 @@ def get_pmid2pubid(cur: cx_Oracle.Cursor) -> dict[int, str]:
     return dict(cur.fetchall())
 
 
-def get_method2pub(cur: cx_Oracle.Cursor) -> dict[str, list]:
+def get_method2pub(cur: cx_Oracle.Cursor) -> dict[str, set]:
     cur.execute(
         """
         SELECT METHOD_AC, LISTAGG(PUB_ID, ';')
@@ -598,7 +598,7 @@ def get_method2pub(cur: cx_Oracle.Cursor) -> dict[str, list]:
 
     current_method2pub = {}
     for method_ac, pub_ids in cur:
-        current_method2pub[method_ac] = pub_ids.split(";")
+        current_method2pub[method_ac] = set(pub_ids.split(";"))
     return current_method2pub
 
 
@@ -628,12 +628,13 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
 
 def update_method2pub(cur: cx_Oracle.Cursor, method2pub: dict[str, list]):
     for entry in method2pub:
+        method_ids = [(entry, pub_id) for pub_id in method2pub[entry]]
         cur.executemany(
             """
             INSERT INTO INTERPRO.METHOD2PUB_STG (PUB_ID, METHOD_AC)
             VALUES (:1, :2)
             """,
-            [entry, method2pub[entry]]
+            [method_ids]
         )
 
 
@@ -684,7 +685,7 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: str) -> Optional[str]:
             )
             RETURNING PUB_ID INTO :11
             """,
-            (*citation, pub_id)
+            (*citation, str(pub_id))
         )
         return pub_id
     else:
