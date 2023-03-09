@@ -33,7 +33,7 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
 
     pmid2pubid = get_pmid2pubid(cur)
     method2pub = get_method2pub(cur)
-    new_method2pub = defaultdict(list)
+    new_method2pub = defaultdict(set)
 
     ora.drop_table(cur, "METHOD2PUB_STG", purge=True)
     cur.execute(
@@ -618,7 +618,7 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
 
     for pmid in method.references:
         try:
-            pub_id = (item for item in pmid2pubid if ast.literal_eval(str(item[0])) == pmid)
+            pub_id = pmid2pubid[ast.literal_eval(pmid)]
         except KeyError:
             pub_id = update_citation(cur, pmid)
 
@@ -626,15 +626,15 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
             new_method2pub[method.accession].append(pub_id)
 
 
-def update_method2pub(cur: cx_Oracle.Cursor, method2pub: dict[str, list]):
+def update_method2pub(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
     for entry in method2pub:
-        method_ids = [(entry, pub_id) for pub_id in method2pub[entry]]
+        method_ids = [(pub_id, entry) for pub_id in method2pub[entry]]
         cur.executemany(
             """
             INSERT INTO INTERPRO.METHOD2PUB_STG (PUB_ID, METHOD_AC)
             VALUES (:1, :2)
             """,
-            [method_ids]
+            method_ids
         )
 
 
@@ -672,7 +672,7 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: str) -> Optional[str]:
         if len(citation[4]) > 740:
             citation[4] = citation[4][:737] + "..."
 
-        pub_id = citation[0]
+        pub_id = cur.var(cx_Oracle.STRING)
         cur.execute(
             """
             INSERT INTO INTERPRO.CITATION (
@@ -687,7 +687,7 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: str) -> Optional[str]:
             """,
             (*citation, str(pub_id))
         )
-        return pub_id
+        return pub_id.getvalue()[0]
     else:
         logger.warning(f"Citation related to PMID {pmid} not found.")
         return None
