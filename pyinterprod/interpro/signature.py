@@ -682,7 +682,7 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: str) -> Optional[str]:
         if len(citation[4]) > 740:
             citation[4] = citation[4][:737] + "..."
 
-        pub_id = cur.var(cx_Oracle.STRING)
+        pub_id = citation[0]
         cur.execute(
             """
             INSERT INTO INTERPRO.CITATION (
