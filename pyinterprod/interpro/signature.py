@@ -1,3 +1,4 @@
+import ast
 import os
 import pickle
 import re
@@ -617,7 +618,7 @@ def update_references(cur: cx_Oracle.Cursor, method,
         pmids = re.findall(r"PMID:\s*([0-9]+)", method.abstract)
         for pmid in pmids:
             try:
-                pub_id = pmid2pubid[pmid]
+                pub_id = pmid2pubid[ast.literal_eval(pmid)]
             except KeyError:
                 pub_id = update_citation(cur, pmid)
 
