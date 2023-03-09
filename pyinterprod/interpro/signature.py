@@ -697,7 +697,7 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: str) -> Optional[str]:
             """,
             (*citation, pub_id)
         )
+        return pub_id
     else:
         logger.warning(f"Citation related to PMID {pmid} not found.")
         return None
-    return pub_id
