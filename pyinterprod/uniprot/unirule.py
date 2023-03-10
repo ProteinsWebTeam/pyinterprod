@@ -543,6 +543,7 @@ def build_xref_summary(uri: str):
             ON MA.MODEL_AC = ME.METHOD_AC
         WHERE MA.MODEL_AC IS NOT NULL 
           AND REGEXP_LIKE(MA.MODEL_AC, '^PTHR\d+:SF\d+$')
+        UNION ALL
         -- FunFams
         SELECT
             FM.DBCODE,
