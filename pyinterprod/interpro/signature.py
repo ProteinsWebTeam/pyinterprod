@@ -628,15 +628,14 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
 
 
 def update_method2pub(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
-    for entry in method2pub:
-        method_ids = [(pub_id, entry) for pub_id in method2pub[entry]]
-        cur.executemany(
-            """
-            INSERT INTO INTERPRO.METHOD2PUB_STG (PUB_ID, METHOD_AC)
-            VALUES (:1, :2)
-            """,
-            method_ids
-        )
+    method_ids = (i for sublist in [[(m, pmid) for pmid in pmdis] for m, pmdis in method2pub.items()] for i in sublist)
+    cur.executemany(
+        """
+        INSERT INTO INTERPRO.METHOD2PUB_STG (PUB_ID, METHOD_AC)
+        VALUES (:1, :2)
+        """,
+        method_ids
+    )
 
 
 def update_citation(cur: cx_Oracle.Cursor, pmid: int) -> Optional[str]:
