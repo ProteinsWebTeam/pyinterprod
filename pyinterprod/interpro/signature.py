@@ -1,4 +1,3 @@
-import ast
 import os
 import pickle
 import re
@@ -33,7 +32,7 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
 
     pmid2pubid = get_pmid2pubid(cur)
     method2pub = get_method2pub(cur)
-    new_method2pub = defaultdict(list)
+    new_method2pub = defaultdict(set)
 
     ora.drop_table(cur, "METHOD2PUB_STG", purge=True)
     cur.execute(
@@ -99,7 +98,7 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
 
             for m in signatures:
                 update_references(cur, m, pmid2pubid, new_method2pub)
-                method2pub[m.accession] = set(new_method2pub[m.accession])
+                method2pub[m.accession] = new_method2pub[m.accession]
                 if m.abstract is None:
                     abstract = abstract_long = None
                 elif len(m.abstract) <= 4000:
@@ -611,19 +610,21 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
                 pub_id = pmid2pubid[pmid]
             except KeyError:
                 pub_id = update_citation(cur, pmid)
+                pmid2pubid.update({pmid: pub_id})
 
             if pub_id:
                 method.abstract = method.abstract.replace(f'PMID:{pmid}', f'[cite:{pub_id}]')
-                new_method2pub[method.accession].append(pub_id)
+                new_method2pub[method.accession].add(pub_id)
 
     for pmid in method.references:
         try:
             pub_id = pmid2pubid[pmid]
         except KeyError:
             pub_id = update_citation(cur, pmid)
+            pmid2pubid.update({pmid: pub_id})
 
         if pub_id:
-            new_method2pub[method.accession].append(pub_id)
+            new_method2pub[method.accession].add(pub_id)
 
 
 def update_method2pub(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
