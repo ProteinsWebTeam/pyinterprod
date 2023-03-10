@@ -1,5 +1,3 @@
-import re
-
 import cx_Oracle
 
 from pyinterprod import logger
