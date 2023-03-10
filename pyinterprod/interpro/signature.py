@@ -487,9 +487,9 @@ def update_signatures(uri: str, go_sources: list[tuple[str, str]]):
 
     cur.execute(
         """
-        INSERT INTO INTERPRO.METHOD2PUB_STG 
+        INSERT INTO INTERPRO.METHOD2PUB 
             SELECT * 
-            FROM INTERPRO.METHOD2PUB
+            FROM INTERPRO.METHOD2PUB_STG
         """
     )
 
