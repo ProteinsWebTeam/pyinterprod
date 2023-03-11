@@ -20,7 +20,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             fn=pronto.match.create_match_table,
             args=(pg_ipr_uri,),
             name="init-matches",
-            scheduler=dict(mem=100, type=scheduler, queue=queue)
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=1)
         ),
 
         # Data from GOAPRO
@@ -28,7 +28,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             fn=pronto.goa.import_annotations,
             args=(ora_goa_uri, pg_ipr_uri),
             name="annotations",
-            scheduler=dict(mem=500, type=scheduler, queue=queue)
+            scheduler=dict(mem=500, type=scheduler, queue=queue, hours=1)
         ),
 
         # Data from SWPREAD
@@ -36,20 +36,20 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             fn=pronto.protein.import_similarity_comments,
             args=(ora_swp_uri, pg_ipr_uri),
             name="proteins-similarities",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=3),
         ),
         Task(
             fn=pronto.protein.import_protein_names,
             args=(ora_swp_uri, pg_ipr_uri, names_db),
             kwargs=dict(tmpdir=temp_dir),
             name="proteins-names",
-            scheduler=dict(mem=2000, type=scheduler, queue=queue),
+            scheduler=dict(mem=2000, type=scheduler, queue=queue, hours=12),
         ),
         Task(
             fn=pronto.proteome.import_proteomes,
             args=(ora_swp_uri, pg_ipr_uri),
             name="proteomes",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=6),
         ),
 
         # Data from IPPRO
@@ -57,26 +57,26 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             fn=pronto.database.import_databases,
             args=(ora_ipr_uri, pg_ipr_uri),
             name="databases",
-            scheduler=dict(mem=100, type=scheduler, queue=queue)
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=1)
         ),
         Task(
             fn=pronto.protein.import_proteins,
             args=(ora_ipr_uri, pg_ipr_uri),
             name="proteins",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=3),
         ),
         Task(
             fn=pronto.match.export,
             args=(ora_ipr_uri, matches_file),
             kwargs=dict(tmpdir=temp_dir),
             name="export-matches",
-            scheduler=dict(mem=4000, type=scheduler, queue=queue)
+            scheduler=dict(mem=4000, type=scheduler, queue=queue, hours=6)
         ),
         Task(
             fn=pronto.match.insert_fmatches,
             args=(ora_ipr_uri, pg_ipr_uri),
             name="insert-fmatches",
-            scheduler=dict(mem=1000, type=scheduler, queue=queue),
+            scheduler=dict(mem=1000, type=scheduler, queue=queue, hours=1),
             requires=["databases", "init-matches"]
         ),
         Task(
@@ -84,14 +84,15 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             args=(pg_ipr_uri, matches_file),
             kwargs=dict(processes=8),
             name="insert-matches",
-            scheduler=dict(cpu=8, mem=8000, type=scheduler, queue=queue),
+            scheduler=dict(cpu=8, mem=8000, type=scheduler, queue=queue,
+                           hours=2),
             requires=["databases", "export-matches", "init-matches"]
         ),
         Task(
             fn=pronto.match.finalize_match_table,
             args=(pg_ipr_uri, ),
             name="index-matches",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=18),
             requires=["insert-fmatches", "insert-matches"]
         ),
         Task(
@@ -99,14 +100,15 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             args=(pg_ipr_uri, names_db, matches_file),
             kwargs=dict(processes=8, tmpdir=temp_dir),
             name="insert-signature2proteins",
-            scheduler=dict(cpu=8, mem=4000, type=scheduler, queue=queue),
+            scheduler=dict(cpu=8, mem=4000, type=scheduler, queue=queue,
+                           hours=12),
             requires=["export-matches", "proteins-names"]
         ),
         Task(
             fn=pronto.match.finalize_signature2protein,
             args=(pg_ipr_uri,),
             name="index-signature2proteins",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=12),
             requires=["insert-signature2proteins"]
         ),
         Task(
@@ -114,7 +116,8 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             args=(ora_ipr_uri, pg_ipr_uri, matches_file),
             kwargs=dict(processes=8),
             name="signatures",
-            scheduler=dict(cpu=8, mem=16000, type=scheduler, queue=queue),
+            scheduler=dict(cpu=8, mem=16000, type=scheduler, queue=queue,
+                           hours=3),
             requires=["databases", "export-matches"]
         ),
         Task(
@@ -127,7 +130,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             fn=pronto.database.set_ready,
             args=(pg_ipr_uri,),
             name="ready",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=1),
             requires=["taxonomy", "index-signature2proteins", "index-matches",
                       "proteins", "proteins-similarities", "proteomes",
                       "annotations", "signatures"]
@@ -634,13 +637,13 @@ def run_uniprot_update():
             args=(ora_uniparc_uri, ora_uaread_uri),
             kwargs=dict(top_up=True),
             name="update-uniparc-proteins",
-            scheduler=dict(mem=100, type=scheduler, queue=queue)
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=6)
         ),
         Task(
             fn=uniprot.uniparc.update_xrefs,
             args=(ora_uniparc_uri, ora_uaread_uri),
             name="update-uniparc-xrefs",
-            scheduler=dict(mem=100, type=scheduler, queue=queue)
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=36)
         ),
 
         # Data from SWPREAD
@@ -648,7 +651,7 @@ def run_uniprot_update():
             fn=interpro.taxonomy.refresh_taxonomy,
             args=(ora_interpro_uri, ora_swpread_uri),
             name="taxonomy",
-            scheduler=dict(mem=100, type=scheduler, queue=queue)
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=1)
         ),
 
         # Data from ISPRO
@@ -657,7 +660,7 @@ def run_uniprot_update():
             args=(ora_iprscan_uri, "matches"),
             kwargs=dict(force=True, threads=8),
             name="import-ipm-matches",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=6),
             requires=["update-uniparc-proteins"]
         ),
         Task(
@@ -665,7 +668,7 @@ def run_uniprot_update():
             args=(ora_iprscan_uri, "matches"),
             kwargs=dict(force=True, threads=8),
             name="update-ipm-matches",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=10),
             requires=["import-ipm-matches"]
         ),
         Task(
@@ -673,7 +676,7 @@ def run_uniprot_update():
             args=(ora_iprscan_uri, "sites"),
             kwargs=dict(force=True, threads=2),
             name="import-ipm-sites",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=12),
             requires=["update-uniparc-proteins"]
         ),
         Task(
@@ -681,7 +684,7 @@ def run_uniprot_update():
             args=(ora_iprscan_uri, "sites"),
             kwargs=dict(force=True, threads=2),
             name="update-ipm-sites",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=12),
             requires=["import-ipm-sites"]
         ),
 
@@ -696,7 +699,7 @@ def run_uniprot_update():
                   data_dir),
             kwargs=dict(tmpdir=temp_dir),
             name="update-proteins",
-            scheduler=dict(mem=4000, type=scheduler, queue=queue),
+            scheduler=dict(mem=4000, type=scheduler, queue=queue, hours=12),
         ),
 
         # Update IPPRO
@@ -705,14 +708,14 @@ def run_uniprot_update():
             args=(ora_interpro_uri,),
             kwargs=dict(truncate=True),
             name="delete-proteins",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=12),
             requires=["update-proteins"]
         ),
         Task(
             fn=interpro.protein.check_proteins_to_scan,
             args=(ora_interpro_uri,),
             name="check-proteins",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=3),
             requires=["delete-proteins", "update-uniparc-proteins",
                       "update-uniparc-xrefs"]
         ),
@@ -720,14 +723,14 @@ def run_uniprot_update():
             fn=interpro.match.update_matches,
             args=(ora_interpro_uri,),
             name="update-matches",
-            scheduler=dict(mem=1000, type=scheduler, queue=queue),
+            scheduler=dict(mem=1000, type=scheduler, queue=queue, hours=6),
             requires=["check-proteins", "update-ipm-matches"]
         ),
         Task(
             fn=interpro.match.update_feature_matches,
             args=(ora_interpro_uri,),
             name="update-fmatches",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=2),
             requires=["update-matches"]
         ),
 
@@ -736,21 +739,21 @@ def run_uniprot_update():
             fn=uniprot.exchange.export_sib,
             args=(ora_interpro_uri, emails),
             name="export-sib",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=2),
             requires=["xref-condensed"]
         ),
         Task(
             fn=uniprot.unirule.report_integration_changes,
             args=(ora_interpro_uri, emails),
             name="report-changes",
-            scheduler=dict(mem=2000, type=scheduler, queue=queue),
+            scheduler=dict(mem=2000, type=scheduler, queue=queue, hours=1),
             requires=["update-matches"]
         ),
         Task(
             fn=uniprot.unirule.build_aa_alignment,
             args=(ora_iprscan_uri,),
             name="aa-alignment",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=6),
             # Actually depends on update-ipm-matches
             requires=["update-matches"]
         ),
@@ -758,7 +761,7 @@ def run_uniprot_update():
             fn=uniprot.unirule.build_aa_iprscan,
             args=(ora_iprscan_uri,),
             name="aa-iprscan",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=12),
             # Actually depends on update-ipm-matches
             requires=["update-matches"]
         ),
@@ -766,14 +769,14 @@ def run_uniprot_update():
             fn=uniprot.unirule.build_xref_condensed,
             args=(ora_interpro_uri,),
             name="xref-condensed",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=6),
             requires=["update-matches"]
         ),
         Task(
             fn=uniprot.unirule.build_xref_summary,
             args=(ora_interpro_uri,),
             name="xref-summary",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=6),
             # `report-changes` uses XREF_SUMMARY, so we need to wait
             # until it completes before re-creating the table
             requires=["report-changes"]
@@ -782,14 +785,14 @@ def run_uniprot_update():
             fn=uniprot.exchange.export_xrefs,
             args=(ora_interpro_uri, xrefs_dir, emails),
             name="export-xrefs",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=6),
             requires=["xref-summary"]
         ),
         Task(
             fn=uniprot.unirule.ask_to_snapshot,
             args=(ora_interpro_uri, emails),
             name="notify-interpro",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=1),
             requires=["aa-alignment", "aa-iprscan", "xref-condensed",
                       "xref-summary", "update-fmatches"]
         ),
@@ -799,7 +802,7 @@ def run_uniprot_update():
             fn=interpro.signature.export_swissprot_descriptions,
             args=(pg_uri, data_dir),
             name="swissprot-de",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=1),
         ),
 
         # Update signatures used by UniRule
@@ -807,7 +810,7 @@ def run_uniprot_update():
             fn=uniprot.unirule.update_signatures,
             args=(config["uniprot"]["unirule"], ora_interpro_uri),
             name="unirule",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=1),
         )
     ]
 
@@ -834,7 +837,7 @@ def run_uniprot_update():
             fn=interpro.report.send_prot_update_report,
             args=(ora_interpro_uri, pg_uri, data_dir, pronto_url, emails),
             name="send-report",
-            scheduler=dict(mem=4000, type=scheduler, queue=queue),
+            scheduler=dict(mem=4000, type=scheduler, queue=queue, hours=1),
             requires=after_pronto
         ),
 
@@ -843,14 +846,14 @@ def run_uniprot_update():
             fn=interpro.match.update_variant_matches,
             args=(ora_interpro_uri,),
             name="update-varsplic",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=1),
             requires=["update-ipm-matches"]
         ),
         Task(
             fn=interpro.match.update_site_matches,
             args=(ora_interpro_uri,),
             name="update-sites",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=3),
             requires=["update-ipm-sites", "update-matches"]
         ),
     ]
