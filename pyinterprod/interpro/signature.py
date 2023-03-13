@@ -473,6 +473,9 @@ def update_signatures(uri: str, go_sources: list[tuple[str, str]]):
         if dbname == "panther":
             logger.info("updating PANTHER GO terms")
             contrib.panther.update_go_terms(uri, source)
+        if dbname == "ncbifam":
+            logger.info("updating NCBIFAM GO terms")
+            contrib.panther.update_go_terms(uri, source)
 
 
 def update_features(uri: str, update: list[tuple[Database, list[str]]]):

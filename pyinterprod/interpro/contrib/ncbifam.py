@@ -3,6 +3,9 @@ import xml.etree.ElementTree as xmlET
 from urllib import parse, request, error
 from concurrent.futures import as_completed, ThreadPoolExecutor
 
+import cx_Oracle
+
+from pyinterprod.utils.oracle import drop_table
 from .common import Method, parse_hmm
 
 
@@ -154,6 +157,55 @@ def _fetch_url_xml(url: str, params: dict, post_request: bool = False) -> xmlET.
     else:
         response = request.urlopen(f'{url}?{data}')
     return xmlET.fromstring(response.read().decode('utf-8'))
+
+
+def update_go_terms(uri: str, file_path: str):
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+    drop_table(cur, "INTERPRO.NCBIFAM2GO", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.NCBIFAM2GO
+        (
+            METHOD_AC VARCHAR2(25) NOT NULL
+                CONSTRAINT FK_NCBIFAM2GO
+                REFERENCES INTERPRO.METHOD (METHOD_AC) ON DELETE CASCADE,
+            GO_ID VARCHAR2(10) NOT NULL,
+            CONSTRAINT PK_NCBIFAM2GO
+            PRIMARY KEY (METHOD_AC, GO_ID)
+        ) NOLOGGING
+        """
+    )
+
+    sql = """
+            INSERT /*+ APPEND */ 
+            INTO INTERPRO.NCBIFAM2GO
+            VALUES (:1, :2)
+        """
+
+    records = []
+
+    with open(file_path, "rt") as fh:
+        data = json.load(fh)
+
+        for accession, _, _, _, go_terms, _, _ in data.items():
+            if go_terms:
+                #go_terms": "GO:0003746;GO:0006414",
+                for go_id in set(go_terms.split(";")):
+                    records.append((accession, go_id))
+
+                    if len(records) == 1000:
+                        cur.executemany(sql, records)
+                        con.commit()
+                        records.clear()
+
+    if records:
+        cur.executemany(sql, records)
+        con.commit()
+        records.clear()
+
+    cur.close()
+    con.close()
 
 
 def main():
