@@ -188,9 +188,8 @@ def update_go_terms(uri: str, file_path: str):
     with open(file_path, "rt") as fh:
         data = json.load(fh)
 
-        for accession, _, _, _, go_terms, _, _ in data.items():
+        for accession, _, _, _, go_terms, _, _ in data:
             if go_terms:
-                #go_terms": "GO:0003746;GO:0006414",
                 for go_id in set(go_terms.split(";")):
                     records.append((accession, go_id))
 
