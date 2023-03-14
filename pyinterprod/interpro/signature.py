@@ -625,7 +625,7 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
         if pub_id:
             pub_ids.add(pub_id)
 
-    return set(new_method2pub)
+    return pub_ids
 
 
 def update_method2pub(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
