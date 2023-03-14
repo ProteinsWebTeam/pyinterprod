@@ -602,8 +602,9 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
                       pmid2pubid: dict[int, str]) -> set[str]:
     pub_ids = set()
     if method.abstract is not None:
-        pmids = re.findall(r"PMID:\s*([0-9]+)", method.abstract)
-        for pmid in map(int, pmids):
+        pmids = re.finditer(r"PMID:\s*([0-9]+)", method.abstract)
+        for match in pmids:
+            pmid = int(match.group(1))
             try:
                 pub_id = pmid2pubid[pmid]
             except KeyError:
@@ -611,7 +612,7 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
                 pmid2pubid[pmid] = pub_id
 
             if pub_id:
-                method.abstract = method.abstract.replace(f'PMID:{pmid}', f'[cite:{pub_id}]')
+                method.abstract = method.abstract.replace(match.group(0), f'[cite:{pub_id}]')
                 pub_ids.add(pub_id)
 
     for pmid in method.references:
