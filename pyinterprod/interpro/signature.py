@@ -623,7 +623,7 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
             pmid2pubid[pmid] = pub_id
 
         if pub_id:
-            new_method2pub.append(pub_id)
+            pub_ids.add(pub_id)
 
     return set(new_method2pub)
 
