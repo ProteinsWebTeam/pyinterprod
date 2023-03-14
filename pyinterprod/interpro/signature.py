@@ -628,7 +628,7 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
 
 
 def update_method2pub(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
-    method_ids = [i for sublist in [[(m, pmid) for pmid in pmdis] for m, pmdis in method2pub.items()] for i in sublist]
+    data = [(pmid, acc) for acc, pmids in method2pub.items() for pmid in pmids]
     step = 1000
     for i in range(0, len(data), step):
         cur.executemany(
