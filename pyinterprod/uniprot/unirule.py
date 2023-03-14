@@ -461,7 +461,7 @@ def build_xref_summary(uri: str):
             PROTEIN_AC VARCHAR2(15) NOT NULL,
             ENTRY_AC VARCHAR2(9),
             SHORT_NAME VARCHAR2(30),
-            METHOD_AC VARCHAR2(25) NOT NULL,
+            METHOD_AC VARCHAR2(50) NOT NULL,
             METHOD_NAME VARCHAR2(400),
             POS_FROM NUMBER(5) NOT NULL,
             POS_TO NUMBER(5) NOT NULL,
