@@ -1,7 +1,6 @@
 import os
 import pickle
 import re
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
@@ -32,7 +31,6 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
 
     pmid2pubid = get_pmid2pubid(cur)
     method2pub = get_method2pub(cur)
-    new_method2pub = defaultdict(set)
 
     ora.drop_table(cur, "METHOD2PUB_STG", purge=True)
     cur.execute(
@@ -97,8 +95,8 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
                 continue
 
             for m in signatures:
-                update_references(cur, m, pmid2pubid, new_method2pub)
-                method2pub[m.accession] = new_method2pub[m.accession]
+                new_method2pub = update_references(cur, m, pmid2pubid)
+                method2pub[m.accession] = new_method2pub
                 if m.abstract is None:
                     abstract = abstract_long = None
                 elif len(m.abstract) <= 4000:
@@ -602,7 +600,8 @@ def get_method2pub(cur: cx_Oracle.Cursor) -> dict[str, set]:
 
 
 def update_references(cur: cx_Oracle.Cursor, method: Method,
-                      pmid2pubid: dict[int, str], new_method2pub: dict):
+                      pmid2pubid: dict[int, str]) -> set[str]:
+    new_method2pub = []
     if method.abstract is not None:
         pmids = re.findall(r"PMID:\s*([0-9]+)", method.abstract)
         for pmid in map(int, pmids):
@@ -614,7 +613,7 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
 
             if pub_id:
                 method.abstract = method.abstract.replace(f'PMID:{pmid}', f'[cite:{pub_id}]')
-                new_method2pub[method.accession].add(pub_id)
+                new_method2pub.append(pub_id)
 
     for pmid in method.references:
         try:
@@ -624,7 +623,9 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
             pmid2pubid[pmid] = pub_id
 
         if pub_id:
-            new_method2pub[method.accession].add(pub_id)
+            new_method2pub.append(pub_id)
+
+    return set(new_method2pub)
 
 
 def update_method2pub(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
