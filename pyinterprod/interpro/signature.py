@@ -613,7 +613,7 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
 
             if pub_id:
                 method.abstract = method.abstract.replace(f'PMID:{pmid}', f'[cite:{pub_id}]')
-                new_method2pub.append(pub_id)
+                pub_ids.add(pub_id)
 
     for pmid in method.references:
         try:
