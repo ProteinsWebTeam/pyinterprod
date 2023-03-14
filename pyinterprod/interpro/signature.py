@@ -601,7 +601,7 @@ def get_method2pub(cur: cx_Oracle.Cursor) -> dict[str, set]:
 
 def update_references(cur: cx_Oracle.Cursor, method: Method,
                       pmid2pubid: dict[int, str]) -> set[str]:
-    new_method2pub = []
+    pub_ids = set()
     if method.abstract is not None:
         pmids = re.findall(r"PMID:\s*([0-9]+)", method.abstract)
         for pmid in map(int, pmids):
