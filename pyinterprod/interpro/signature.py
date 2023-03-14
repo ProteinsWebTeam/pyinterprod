@@ -610,7 +610,7 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
                 pub_id = pmid2pubid[pmid]
             except KeyError:
                 pub_id = update_citation(cur, pmid)
-                pmid2pubid.update({pmid: pub_id})
+                pmid2pubid[pmid] = pub_id
 
             if pub_id:
                 method.abstract = method.abstract.replace(f'PMID:{pmid}', f'[cite:{pub_id}]')
