@@ -95,8 +95,7 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
                 continue
 
             for m in signatures:
-                new_method2pub = update_references(cur, m, pmid2pubid)
-                method2pub[m.accession] = new_method2pub
+                method2pub[m.accession] = update_references(cur, m, pmid2pubid)
                 if m.abstract is None:
                     abstract = abstract_long = None
                 elif len(m.abstract) <= 4000:
