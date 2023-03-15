@@ -12,12 +12,10 @@ _KNOWN_SOURCES = {
     "NCBI Protein Cluster (PRK)"
 }
 
-EUTILS = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils'
-ESEARCH = f'{EUTILS}/esearch.fcgi'
-ESUMMARY = f'{EUTILS}/esummary.fcgi'
-NCBI_API = 'https://www.ncbi.nlm.nih.gov/genome/annotation_prok/evidence/api/data/'
-INFO_FILTER_LIST = ['accession', 'public_comment', 'product_name', 'short_name',
-                    'go_terms', 'pubmed', 'family_type']
+EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+ESEARCH = f"{EUTILS}/esearch.fcgi"
+ESUMMARY = f"{EUTILS}/esummary.fcgi"
+NCBI_API = "https://www.ncbi.nlm.nih.gov/genome/annotation_prok/evidence/api/data/"
 
 
 def get_signatures(hmm_file: str, info_file: str):
@@ -46,7 +44,7 @@ def get_signatures(hmm_file: str, info_file: str):
         except KeyError:
             abstract = None
             references = None
-            _type = 'family'
+            _type = "family"
         else:
             abstract = obj["public_comment"]
             references = obj["pubmed"]
@@ -78,7 +76,7 @@ def get_ids() -> set[str]:
     while True:
         r = _fetch_url_xml(ESEARCH, params)
         cnt = 0
-        for i in r.findall('./IdList/Id'):
+        for i in r.findall("./IdList/Id"):
             ids.add(i.text)
             cnt += 1
         if cnt == 0:
@@ -92,9 +90,9 @@ def get_accessions(ids: set[str]) -> set[str]:
     step = 500
     params = {"db": "protfam"}
     for i in range(0, len(ids), step):
-        params["id"] = ','.join(list(ids)[i:i+step])
+        params["id"] = ",".join(list(ids)[i:i+step])
         r = _fetch_url_xml(ESUMMARY, params, post_request=True)
-        elements = r.findall('./DocumentSummarySet/DocumentSummary/DispFamilyAcc')
+        elements = r.findall("./DocumentSummarySet/DocumentSummary/DispFamilyAcc")
         for a in elements:
             ncbi_accessions.add(a.text.split(".")[0])
     return ncbi_accessions
@@ -122,46 +120,49 @@ def get_ncbifam_info(accessions: set) -> list:
 
 
 def _request_ncbi_info(accession: str) -> dict:
-    url = f'{NCBI_API}?collection=hmm_info&match=accession_._{accession}'
-    result = request.urlopen(url)
-    parsed_result = result.read().decode('utf-8')
-    filtered_info = _filter_ncbifam_info(parsed_result)
-    return filtered_info
+    url = f"{NCBI_API}?collection=hmm_info&match=accession_._{accession}"
+    response = request.urlopen(url)
+    payload = json.loads(response.read().decode("utf-8"))
+    if payload["totalCount"] > 1:
+        raise Exception(f"{accession}: more than one entry")
+
+    entry = payload[0]
+    go_terms = set()
+    for term in entry.get("go_terms", "").split(";"):
+        if term.strip():
+            go_terms.add(term.strip())
+
+    references = set()
+    for pmid in entry.get("pubmed", "").split(";"):
+        if pmid.strip():
+            references.add(int(pmid.strip()))
+
+    return {
+        "accession": entry["accession"],
+        "family_type": entry.get("family_type"),
+        "go_terms": list(go_terms),
+        "product_name": entry.get("product_name"),
+        "public_comment": entry.get("public_comment"),
+        "pubmed": list(references),
+        "short_name": entry.get("short_name"),
+    }
 
 
-def _filter_ncbifam_info(info: str) -> dict:
-    infos = {}
-    json_info = json.loads(info)
-    if json_info['totalCount'] > 1:
-        raise Exception(f"Returned more than one info version for the same accession: {json_info['data'][0]['accession']}.")
-    for filter_key in INFO_FILTER_LIST:
-        try:
-            value = json_info['data'][0][filter_key]
-            if filter_key in ['go_terms', "pubmed"]:
-                value = value.split(';')
-                if filter_key == "pubmed":
-                    value = list(map(int, value))
-        except KeyError:
-            value = None
-        infos[filter_key] = value
-    return infos
-
-
-def _fetch_url_xml(url: str, params: dict, post_request: bool = False) -> xmlET.Element:
+def _fetch_url_xml(url: str, params: dict,
+                   post_request: bool = False) -> xmlET.Element:
     data = parse.urlencode(params)
     if post_request:
-        response = request.urlopen(url, data=data.encode('ascii'))
+        response = request.urlopen(url, data=data.encode("ascii"))
     else:
-        response = request.urlopen(f'{url}?{data}')
-    return xmlET.fromstring(response.read().decode('utf-8'))
+        response = request.urlopen(f"{url}?{data}")
+    return xmlET.fromstring(response.read().decode("utf-8"))
 
 
 def main():
     ids = get_ids()
     accessions = get_accessions(ids)
-    ncbifam_info = get_ncbifam_info(accessions)
-    info_json_parsed = json.dumps(ncbifam_info, indent=4)
-    print(info_json_parsed)
+    info = get_ncbifam_info(accessions)
+    print(json.dumps(info, indent=4))
 
 
 if __name__ == "__main__":
