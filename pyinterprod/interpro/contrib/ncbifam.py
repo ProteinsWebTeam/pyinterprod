@@ -189,7 +189,6 @@ def update_go_terms(uri: str, file_path: str):
         data = json.load(fh)
         for row in data:
             if row["go_terms"]:
-                print(row["go_terms"])
                 for go_id in set(row["go_terms"]):
                     records.append((row["accession"], go_id))
 
