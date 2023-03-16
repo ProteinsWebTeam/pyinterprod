@@ -43,7 +43,7 @@ def get_signatures(hmm_file: str, info_file: str):
             obj = info[acc]
         except KeyError:
             abstract = None
-            references = None
+            references = []
             _type = "family"
         else:
             abstract = obj["public_comment"]
