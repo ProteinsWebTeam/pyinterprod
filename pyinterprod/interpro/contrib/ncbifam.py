@@ -39,7 +39,7 @@ def get_signatures(hmm_file: str, info_file: str):
             if parts[0] not in _KNOWN_SOURCES:
                 raise ValueError(f"{name}: invalid DESC field {descr}")
 
-            descr = descr[1].strip()
+            descr = parts[1].strip()
 
         try:
             obj = info[acc]
