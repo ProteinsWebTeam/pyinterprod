@@ -66,6 +66,7 @@ def parse_hmm(filepath: str):
                     dt = datetime.strptime(date_string, "%a %b %d %H:%M:%S %Y")
 
                 yield acc, name, descr, dt
+                buffer = ""
 
 
 def parse_xml(filepath: str, sig_type: str) -> list[Method]:
