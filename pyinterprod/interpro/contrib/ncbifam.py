@@ -31,6 +31,8 @@ def get_signatures(hmm_file: str, info_file: str):
 
     signatures = []
     for acc, name, descr, date in parse_hmm(hmm_file):
+        acc, _ = acc.split('.')
+
         if descr:
             parts = descr.split(":", 1)
 
