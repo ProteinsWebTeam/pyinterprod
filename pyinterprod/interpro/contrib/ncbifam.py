@@ -194,7 +194,6 @@ def update_go_terms(uri: str, file_path: str):
     if records:
         cur.executemany(sql, records)
         con.commit()
-        records.clear()
 
     cur.close()
     con.close()
