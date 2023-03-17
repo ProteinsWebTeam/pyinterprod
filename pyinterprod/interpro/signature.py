@@ -126,7 +126,7 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
                     abstract_long
                 ))
 
-    update_method2pub(cur, method2pub)
+    populate_method2pub_stg(cur, method2pub)
 
     if errors:
         cur.close()
@@ -341,6 +341,12 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
     # Add INTERPRO.METHOD as we want also to delete rows in this table
     tables.append(("METHOD", None, "METHOD_AC"))
 
+    """
+    Any row deleted in METHOD2PUB should be deleted from METHOD2PUB_STG
+    (which does not have a FK to METHOD)
+    """
+    tables.append(("METHOD2PUB_STG", None, "METHOD_AC"))
+
     logger.info("disabling referential constraints")
     num_errors = 0
     for table, constraint, column in tables:
@@ -443,6 +449,8 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
 def update_signatures(uri: str, go_sources: list[tuple[str, str]]):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
+    ora.truncate_table(cur, "INTERPRO.METHOD2PUB", reuse_storage=True)
+
     cur.execute(
         """
         SELECT COUNT(*), DBCODE
@@ -480,13 +488,11 @@ def update_signatures(uri: str, go_sources: list[tuple[str, str]]):
         """, counts
     )
 
-    ora.truncate_table(cur, "INTERPRO.METHOD2PUB", reuse_storage=True)
-
     cur.execute(
         """
         INSERT INTO INTERPRO.METHOD2PUB 
-            SELECT * 
-            FROM INTERPRO.METHOD2PUB_STG
+        SELECT * 
+        FROM INTERPRO.METHOD2PUB_STG
         """
     )
 
@@ -628,7 +634,7 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
     return pub_ids
 
 
-def update_method2pub(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
+def populate_method2pub_stg(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
     data = [(pmid, acc) for acc, pmids in method2pub.items() for pmid in pmids]
     step = 1000
     for i in range(0, len(data), step):
