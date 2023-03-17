@@ -187,10 +187,9 @@ def update_go_terms(uri: str, file_path: str):
 
     with open(file_path, "rt") as fh:
         data = json.load(fh)
-        for row in data:
-            if row["go_terms"]:
-                for go_id in set(row["go_terms"]):
-                    records.append((row["accession"], go_id))
+        for signature in data:
+            for go_id in set(signature["go_terms"]):
+                records.append((signature["accession"], go_id))
 
     if records:
         cur.executemany(sql, records)
