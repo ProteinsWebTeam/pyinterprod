@@ -178,10 +178,10 @@ def update_go_terms(uri: str, file_path: str):
     )
 
     sql = """
-            INSERT /*+ APPEND */ 
-            INTO INTERPRO.NCBIFAM2GO
-            VALUES (:1, :2)
-        """
+        INSERT /*+ APPEND */ 
+        INTO INTERPRO.NCBIFAM2GO
+        VALUES (:1, :2)
+    """
 
     records = []
 
