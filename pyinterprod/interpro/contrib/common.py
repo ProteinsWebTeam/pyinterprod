@@ -13,7 +13,7 @@ class Method:
     description: Optional[str] = None
     abstract: Optional[str] = None
     date: Optional[datetime] = None
-    references: Optional[list[int]] = None
+    references: list[int] = field(default_factory=list)
 
 
 @dataclass
