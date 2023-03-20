@@ -31,19 +31,21 @@ def get_signatures(hmm_file: str, info_file: str):
 
     signatures = []
     for acc, name, descr, date in parse_hmm(hmm_file):
+        acc, _ = acc.split('.')
+
         if descr:
             parts = descr.split(":", 1)
 
             if parts[0] not in _KNOWN_SOURCES:
                 raise ValueError(f"{name}: invalid DESC field {descr}")
 
-            descr = descr[1].strip()
+            descr = parts[1].strip()
 
         try:
             obj = info[acc]
         except KeyError:
             abstract = None
-            references = None
+            references = []
             _type = "family"
         else:
             abstract = obj["public_comment"]
