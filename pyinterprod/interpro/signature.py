@@ -108,11 +108,15 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
                 if m.name:
                     # Sanitize name (strip + remove multi-spaces)
                     name = re.sub(r"\s{2,}", " ", m.name.strip())
+                    if name.lower() == m.accession.lower():
+                        name = None
                 else:
                     name = None
 
                 if m.description:
                     descr = re.sub(r"\s{2,}", " ", m.description.strip())
+                    if descr.lower() == m.accession.lower():
+                        descr = None
                 else:
                     descr = None
 
