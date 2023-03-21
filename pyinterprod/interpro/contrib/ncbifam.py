@@ -166,6 +166,9 @@ def _fetch_url_xml(url: str, params: dict,
 def update_go_terms(uri: str, file_path: str):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
+    cur.execute("SELECT METHOD_AC FROM INTERPRO.METHOD WHERE DBCODE = 'N'")
+    signatures = {acc for acc, in cur.fetchall()}
+
     drop_table(cur, "INTERPRO.NCBIFAM2GO", purge=True)
     cur.execute(
         """
@@ -192,8 +195,10 @@ def update_go_terms(uri: str, file_path: str):
     with open(file_path, "rt") as fh:
         data = json.load(fh)
         for signature in data:
-            for go_id in set(signature["go_terms"]):
-                records.append((signature["accession"], go_id))
+            accession = signature["accession"]
+            if accession in signatures:
+                for go_id in set(signature["go_terms"]):
+                    records.append((accession, go_id))
 
     if records:
         cur.executemany(sql, records)
