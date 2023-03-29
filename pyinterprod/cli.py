@@ -651,7 +651,7 @@ def run_uniprot_update():
             fn=interpro.taxonomy.refresh_taxonomy,
             args=(ora_interpro_uri, ora_swpread_uri),
             name="taxonomy",
-            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=1)
+            scheduler=dict(mem=500, type=scheduler, queue=queue, hours=1)
         ),
 
         # Data from ISPRO
@@ -802,7 +802,7 @@ def run_uniprot_update():
             fn=interpro.signature.export_swissprot_descriptions,
             args=(pg_uri, data_dir),
             name="swissprot-de",
-            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=1),
+            scheduler=dict(mem=500, type=scheduler, queue=queue, hours=1),
         ),
 
         # Update signatures used by UniRule
@@ -810,7 +810,7 @@ def run_uniprot_update():
             fn=uniprot.unirule.update_signatures,
             args=(config["uniprot"]["unirule"], ora_interpro_uri),
             name="unirule",
-            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=1),
+            scheduler=dict(mem=500, type=scheduler, queue=queue, hours=1),
         )
     ]
 
