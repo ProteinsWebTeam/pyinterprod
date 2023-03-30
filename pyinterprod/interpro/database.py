@@ -114,7 +114,7 @@ def get_databases(uri: str, names: list[str],
 
 
 def update_database(uri: str, name: str, version: str, date: str,
-                    confirm: bool = True):
+                    by_name: bool = False, confirm: bool = True):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
     cur.execute(
@@ -138,7 +138,19 @@ def update_database(uri: str, name: str, version: str, date: str,
     dbcode, name, current_version, current_date, current_id, prev_id = row
 
     # Find the 'active' analysis in ISPRO
-    if current_id is not None:
+    if by_name or current_id is None:
+        # Use name instead of analysis ID
+        cur.execute(
+            """
+            SELECT ID, NAME, VERSION
+            FROM IPRSCAN.ANALYSIS@ISPRO
+            WHERE LOWER(NAME) = LOWER(:1)
+            AND ACTIVE = 'Y'
+            ORDER BY ID
+            """,
+            [name]
+        )
+    else:
         cur.execute(
             """
             SELECT ID, NAME, VERSION
@@ -152,18 +164,6 @@ def update_database(uri: str, name: str, version: str, date: str,
             ORDER BY ID
             """,
             [current_id]
-        )
-    else:
-        # Not in IPRSCAN2DBCODE: fallback to name
-        cur.execute(
-            """
-            SELECT ID, NAME, VERSION
-            FROM IPRSCAN.ANALYSIS@ISPRO
-            WHERE LOWER(NAME) = LOWER(:1)
-            AND ACTIVE = 'Y'
-            ORDER BY ID
-            """,
-            [name]
         )
 
     rows = cur.fetchall()

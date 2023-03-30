@@ -10,6 +10,7 @@ from pyinterprod import logger
 from pyinterprod.pronto.signature import get_swissprot_descriptions
 from pyinterprod.utils import Table, oracle as ora
 from . import contrib
+from .contrib.common import Method
 from .database import Database
 from .match import FEATURE_MATCH_PARTITIONS, MATCH_PARTITIONS, SITE_PARTITIONS
 from .match import get_sig_protein_counts
@@ -27,6 +28,17 @@ def export_swissprot_descriptions(pg_uri, data_dir: str):
 def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
+
+    pmid2pubid = get_pmid2pubid(cur)
+    method2pub = get_method2pub(cur)
+
+    ora.drop_table(cur, "METHOD2PUB_STG", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.METHOD2PUB_STG
+        AS SELECT * FROM INTERPRO.METHOD2PUB WHERE 1 = 0        
+        """
+    )
 
     ora.drop_table(cur, "METHOD_STG", purge=True)
     cur.execute(
@@ -83,6 +95,7 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
                 continue
 
             for m in signatures:
+                method2pub[m.accession] = update_references(cur, m, pmid2pubid)
                 if m.abstract is None:
                     abstract = abstract_long = None
                 elif len(m.abstract) <= 4000:
@@ -95,11 +108,15 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
                 if m.name:
                     # Sanitize name (strip + remove multi-spaces)
                     name = re.sub(r"\s{2,}", " ", m.name.strip())
+                    if name.lower() == m.accession.lower():
+                        name = None
                 else:
                     name = None
 
                 if m.description:
                     descr = re.sub(r"\s{2,}", " ", m.description.strip())
+                    if descr.lower() == m.accession.lower():
+                        descr = None
                 else:
                     descr = None
 
@@ -112,6 +129,8 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
                     abstract,
                     abstract_long
                 ))
+
+    populate_method2pub_stg(cur, method2pub)
 
     if errors:
         cur.close()
@@ -326,6 +345,12 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
     # Add INTERPRO.METHOD as we want also to delete rows in this table
     tables.append(("METHOD", None, "METHOD_AC"))
 
+    """
+    Any row deleted in METHOD2PUB should be deleted from METHOD2PUB_STG
+    (which does not have a FK to METHOD)
+    """
+    tables.append(("METHOD2PUB_STG", None, "METHOD_AC"))
+
     logger.info("disabling referential constraints")
     num_errors = 0
     for table, constraint, column in tables:
@@ -428,6 +453,8 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
 def update_signatures(uri: str, go_sources: list[tuple[str, str]]):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
+    ora.truncate_table(cur, "INTERPRO.METHOD2PUB", reuse_storage=True)
+
     cur.execute(
         """
         SELECT COUNT(*), DBCODE
@@ -465,6 +492,14 @@ def update_signatures(uri: str, go_sources: list[tuple[str, str]]):
         """, counts
     )
 
+    cur.execute(
+        """
+        INSERT INTO INTERPRO.METHOD2PUB 
+        SELECT * 
+        FROM INTERPRO.METHOD2PUB_STG
+        """
+    )
+
     con.commit()
     cur.close()
     con.close()
@@ -473,6 +508,9 @@ def update_signatures(uri: str, go_sources: list[tuple[str, str]]):
         if dbname == "panther":
             logger.info("updating PANTHER GO terms")
             contrib.panther.update_go_terms(uri, source)
+        elif dbname == "ncbifam":
+            logger.info("updating NCBIFAM GO terms")
+            contrib.ncbifam.update_go_terms(uri, source)
 
 
 def update_features(uri: str, update: list[tuple[Database, list[str]]]):
@@ -546,3 +584,126 @@ def update_features(uri: str, update: list[tuple[Database, list[str]]]):
     con.commit()
     cur.close()
     con.close()
+
+
+def get_pmid2pubid(cur: cx_Oracle.Cursor) -> dict[int, str]:
+    cur.execute(
+        """
+        SELECT DISTINCT PUBMED_ID, PUB_ID 
+        FROM INTERPRO.CITATION
+        """
+    )
+    return dict(cur.fetchall())
+
+
+def get_method2pub(cur: cx_Oracle.Cursor) -> dict[str, set]:
+    cur.execute(
+        """
+        SELECT METHOD_AC, LISTAGG(PUB_ID, ';')
+        FROM INTERPRO.METHOD2PUB
+        GROUP BY METHOD_AC
+        """
+    )
+
+    current_method2pub = {}
+    for method_ac, pub_ids in cur:
+        current_method2pub[method_ac] = set(pub_ids.split(";"))
+    return current_method2pub
+
+
+def update_references(cur: cx_Oracle.Cursor, method: Method,
+                      pmid2pubid: dict[int, str]) -> set[str]:
+    pub_ids = set()
+    if method.abstract is not None:
+        pmids = re.finditer(r"PMID:\s*([0-9]+)", method.abstract)
+        for match in pmids:
+            pmid = int(match.group(1))
+            try:
+                pub_id = pmid2pubid[pmid]
+            except KeyError:
+                pub_id = update_citation(cur, pmid)
+                pmid2pubid[pmid] = pub_id
+
+            if pub_id:
+                method.abstract = method.abstract.replace(match.group(0), f'[cite:{pub_id}]')
+                pub_ids.add(pub_id)
+
+    for pmid in method.references:
+        try:
+            pub_id = pmid2pubid[pmid]
+        except KeyError:
+            pub_id = update_citation(cur, pmid)
+            pmid2pubid[pmid] = pub_id
+
+        if pub_id:
+            pub_ids.add(pub_id)
+
+    return pub_ids
+
+
+def populate_method2pub_stg(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
+    data = [(pmid, acc) for acc, pmids in method2pub.items() for pmid in pmids]
+    step = 1000
+    for i in range(0, len(data), step):
+        cur.executemany(
+            """
+            INSERT INTO INTERPRO.METHOD2PUB_STG (PUB_ID, METHOD_AC)
+            VALUES (:1, :2)
+            """,
+            data[i:i+step]
+        )
+
+
+def update_citation(cur: cx_Oracle.Cursor, pmid: int) -> Optional[str]:
+    cur.execute(
+        """
+            SELECT
+              C.EXTERNAL_ID, I.VOLUME, I.ISSUE, I.PUBYEAR, C.TITLE,
+              C.PAGE_INFO, J.MEDLINE_ABBREVIATION, J.ISO_ABBREVIATION,
+              A.AUTHORS, U.URL
+            FROM CDB.CITATIONS@LITPUB C
+              LEFT OUTER JOIN CDB.JOURNAL_ISSUES@LITPUB I
+                ON C.JOURNAL_ISSUE_ID = I.ID
+              LEFT JOIN CDB.CV_JOURNALS@LITPUB J
+                ON I.JOURNAL_ID = J.ID
+              LEFT OUTER JOIN CDB.FULLTEXT_URL@LITPUB U
+                ON (
+                    C.EXTERNAL_ID = U.EXTERNAL_ID AND
+                    U.DOCUMENT_STYLE  ='DOI' AND
+                    U.SOURCE = 'MED'
+                )
+              LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
+                ON (
+                  C.ID = A.CITATION_ID AND
+                  A.HAS_SPECIAL_CHARS = 'N'
+                )
+            WHERE C.EXTERNAL_ID = :1
+            """, (str(pmid),)
+    )
+
+    citation = cur.fetchone()
+    if citation:
+        citation = list(citation)
+        citation[0] = int(citation[0])
+        if len(citation[4]) > 740:
+            citation[4] = citation[4][:737] + "..."
+
+        pub_id = cur.var(cx_Oracle.STRING)
+        cur.execute(
+            """
+            INSERT INTO INTERPRO.CITATION (
+              PUB_ID, PUB_TYPE, PUBMED_ID, VOLUME, ISSUE,
+              YEAR, TITLE, RAWPAGES, MEDLINE_JOURNAL,
+              ISO_JOURNAL, AUTHORS, DOI_URL
+            ) VALUES (
+              INTERPRO.NEW_PUB_ID(), 'J', :1, :2, :3, :4, :5,
+              :6, :7, :8, :9, :10
+            )
+            RETURNING PUB_ID INTO :11
+            """,
+            (*citation, pub_id)
+        )
+        return pub_id.getvalue()[0]
+    else:
+        logger.warning(f"Citation related to PMID {pmid} not found.")
+        return None

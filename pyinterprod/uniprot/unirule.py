@@ -1,5 +1,3 @@
-import re
-
 import cx_Oracle
 
 from pyinterprod import logger
@@ -202,7 +200,9 @@ def build_aa_alignment(uri: str):
         cur.execute(
             f"""
             CREATE INDEX I_AA_ALIGNMENT${col}
-            ON IPRSCAN.AA_ALIGNMENT ({col}) NOLOGGING
+            ON IPRSCAN.AA_ALIGNMENT ({col}) 
+            TABLESPACE IPRSCAN_IND
+            NOLOGGING
             """
         )
 
@@ -289,7 +289,9 @@ def build_aa_iprscan(uri: str):
         cur.execute(
             f"""
             CREATE INDEX I_AA_IPRSCAN${col}
-            ON IPRSCAN.AA_IPRSCAN ({col}) NOLOGGING
+            ON IPRSCAN.AA_IPRSCAN ({col}) 
+            TABLESPACE IPRSCAN_IND
+            NOLOGGING
             """
         )
 
@@ -433,7 +435,9 @@ def build_xref_condensed(uri: str):
         cur.execute(
             f"""
             CREATE INDEX I_XREF_CONDENSED${col}
-            ON INTERPRO.XREF_CONDENSED ({col}) NOLOGGING
+            ON INTERPRO.XREF_CONDENSED ({col}) 
+            TABLESPACE INTERPRO_IND
+            NOLOGGING
             """
         )
 
@@ -457,7 +461,7 @@ def build_xref_summary(uri: str):
             PROTEIN_AC VARCHAR2(15) NOT NULL,
             ENTRY_AC VARCHAR2(9),
             SHORT_NAME VARCHAR2(30),
-            METHOD_AC VARCHAR2(25) NOT NULL,
+            METHOD_AC VARCHAR2(50) NOT NULL,
             METHOD_NAME VARCHAR2(400),
             POS_FROM NUMBER(5) NOT NULL,
             POS_TO NUMBER(5) NOT NULL,
@@ -537,6 +541,7 @@ def build_xref_summary(uri: str):
             ON MA.MODEL_AC = ME.METHOD_AC
         WHERE MA.MODEL_AC IS NOT NULL 
           AND REGEXP_LIKE(MA.MODEL_AC, '^PTHR\d+:SF\d+$')
+        UNION ALL
         -- FunFams
         SELECT
             FM.DBCODE,
@@ -564,7 +569,9 @@ def build_xref_summary(uri: str):
         cur.execute(
             f"""
             CREATE INDEX I_XREF_SUMMARY${col}
-            ON INTERPRO.XREF_SUMMARY ({col}) NOLOGGING
+            ON INTERPRO.XREF_SUMMARY ({col}) 
+            TABLESPACE INTERPRO_IND
+            NOLOGGING
             """
         )
 

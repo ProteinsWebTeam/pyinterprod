@@ -208,6 +208,16 @@ MATCH_PARTITIONS = {
         ],
         "partition": "NCBIFAM"
     },
+    # TODO: remove once TIGRFAMs has been replaced by NCBIfam
+    "TIGRFAMs": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
+            'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
+            'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "NCBIFAM"
+    },
     "TMHMM": {
         "columns": [
             'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
@@ -504,6 +514,7 @@ def _import_table(uri: str, remote_table: str, analyses: list[Analysis],
             f"""
             CREATE INDEX {remote_table}${suffix}
             ON IPRSCAN.{local_table} ({column})
+            TABLESPACE IPRSCAN_IND
             NOLOGGING
             """
         )

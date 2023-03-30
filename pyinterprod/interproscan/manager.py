@@ -167,6 +167,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         cur.close()
         con.close()
         logger.error("No analyses to process: exit")
+        return
 
     # Override default config with custom configs
     for name in custom_configs:

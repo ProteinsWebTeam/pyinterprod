@@ -13,7 +13,7 @@ class Method:
     description: Optional[str] = None
     abstract: Optional[str] = None
     date: Optional[datetime] = None
-    references: Optional[list[int]] = None
+    references: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -66,6 +66,7 @@ def parse_hmm(filepath: str):
                     dt = datetime.strptime(date_string, "%a %b %d %H:%M:%S %Y")
 
                 yield acc, name, descr, dt
+                buffer = ""
 
 
 def parse_xml(filepath: str, sig_type: str) -> list[Method]:

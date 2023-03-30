@@ -22,7 +22,6 @@ def send(info: dict, to: Sequence[str], subject: str, content: str, **kwargs):
         port = int(port)
 
     msg = EmailMessage()
-    msg.set_content(content)
     msg["From"] = info["sender"]
     msg["To"] = ", ".join({info[key] for key in to})
 

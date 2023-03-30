@@ -101,6 +101,7 @@ def export_xrefs(url: str, outdir: str, emails: dict):
     dbcodes = {
         'B': "SFLD",
         'F': "PRINTS",
+        'f': "FunFam",
         'H': "Pfam",
         'J': "CDD",
         'M': "PROSITE",
@@ -147,8 +148,12 @@ def export_xrefs(url: str, outdir: str, emails: dict):
         dbname = dbcodes[dbcode]
         fh = handlers[dbcode]
 
-        # CATH-Gene3D: G3DSA:3.50.70.10 -> 3.50.70.10
-        identifier = signature_acc[6:] if dbcode == "X" else signature_acc
+        if dbcode in ("X", "f"):
+            # CATH-Gene3D/FunFam: G3DSA:3.50.70.10 -> 3.50.70.10
+            identifier = signature_acc[6:]
+        else:
+            identifier = signature_acc
+
         optional_1 = (signature_name or "-").replace("\"", "'")
         optional_2 = "" if dbcode == "F" else f"; {num_matches}"
 

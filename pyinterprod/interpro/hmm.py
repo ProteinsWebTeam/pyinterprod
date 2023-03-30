@@ -33,8 +33,10 @@ class _Mapper:
                     model, fam, _ = line.rstrip().split('\t')
                     self.model2fam[model] = fam
 
-        if database.lower() in ("ncbifam", "pirsf", "sfld"):
+        if database.lower() in ("pirsf", "sfld"):
             self.map = self.basic
+        elif database.lower() == "ncbifam":
+            self.map = self.ncbifam
         elif database.lower() == "cath-gene3d":
             self.map = self.cathgene3d
         elif database.lower() == "panther":
@@ -75,6 +77,10 @@ class _Mapper:
     @staticmethod
     def pfam(acc, name):
         return re.match(r"PF\d+", acc).group(), None
+
+    @staticmethod
+    def ncbifam(acc, name):
+        return acc.split(".")[0], None
 
     @staticmethod
     def superfamily(acc, name):
