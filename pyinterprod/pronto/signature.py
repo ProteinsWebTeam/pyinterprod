@@ -13,9 +13,7 @@ from .match import INDEX_SUFFIX, merge_overlapping
 
 
 """
-At least 50% of the residues of the shortest signature
-  must overlap the other signature
-(shorted signature = signature with the least residues in the protein)
+At least 50% of the shortest match must overlap with the other match
 """
 _MIN_OVERLAP = 0.5
 
