@@ -146,6 +146,7 @@ def _request_ncbi_info(accession: str) -> dict:
         "accession": entry["accession"],
         "family_type": entry.get("family_type"),
         "go_terms": list(go_terms),
+        "computed_hmm_name": entry.get("computed_hmm_name"),
         "product_name": entry.get("product_name"),
         "public_comment": entry.get("public_comment"),
         "pubmed": list(references),
