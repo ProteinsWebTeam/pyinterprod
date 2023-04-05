@@ -131,7 +131,7 @@ def _request_ncbi_info(accession: str) -> dict:
     if payload["totalCount"] > 1:
         raise Exception(f"{accession}: more than one entry")
 
-    entry = payload[0]
+    entry = payload["data"][0]
     go_terms = set()
     for term in entry.get("go_terms", "").split(";"):
         if term.strip():
