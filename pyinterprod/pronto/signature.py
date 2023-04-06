@@ -41,9 +41,6 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                 # Merge overlapping hits
                 for signature_acc, (_, hits) in matches.items():
                     matches[signature_acc] = sorted(merge_overlapping(hits))
-                if not is_comp:
-                    # Ignore fragmented proteins
-                    continue
 
                 for signature_acc in matches:
                     """
