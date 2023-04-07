@@ -78,6 +78,7 @@ def update_database_matches(uri: str, databases: Sequence):
         )
 
         if database.identifier == "V":
+            # PANTHER: import annotation node ID
             feature = "M.SEQ_FEATURE"
         else:
             feature = "NULL"
