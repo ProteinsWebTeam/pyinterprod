@@ -135,7 +135,7 @@ def update_database_matches(uri: str, databases: Sequence):
             """
             ALTER TABLE INTERPRO.MATCH_NEW
             ADD CONSTRAINT CK_MATCH_NEW$STATUS
-            CHECK ( STATUS != 'N' OR (STATUS = 'N' AND DBCODE IN ('P', 'M', 'Q')) )
+            CHECK ( STATUS != 'N' OR (STATUS = 'N' AND DBCODE IN ('P','M','Q')))
             """
         )
         cur.execute(
@@ -146,7 +146,7 @@ def update_database_matches(uri: str, databases: Sequence):
             """
         )
         cur.execute(
-            f"""
+            """
             ALTER TABLE INTERPRO.MATCH_NEW
             ADD CONSTRAINT FK_MATCH_NEW$DBCODE
             FOREIGN KEY (DBCODE) REFERENCES INTERPRO.CV_DATABASE (DBCODE)
@@ -160,35 +160,35 @@ def update_database_matches(uri: str, databases: Sequence):
             """
         )
         cur.execute(
-            f"""
+            """
             ALTER TABLE INTERPRO.MATCH_NEW
             ADD CONSTRAINT FK_MATCH_NEW$METHOD
             FOREIGN KEY (METHOD_AC) REFERENCES INTERPRO.METHOD (METHOD_AC)
             """
         )
         cur.execute(
-            f"""
+            """
             ALTER TABLE INTERPRO.MATCH_NEW
             ADD CONSTRAINT FK_MATCH_NEW$PROTEIN
             FOREIGN KEY (PROTEIN_AC) REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
             """
         )
         cur.execute(
-            f"""
+            """
             ALTER TABLE INTERPRO.MATCH_NEW
             ADD CONSTRAINT FK_MATCH_NEW$STATUS
             FOREIGN KEY (STATUS) REFERENCES INTERPRO.CV_STATUS (CODE)
             """
         )
         cur.execute(
-            f"""
+            """
             ALTER TABLE INTERPRO.MATCH_NEW
             ADD CONSTRAINT CK_MATCH_NEW$PROTEIN
             CHECK (PROTEIN_AC IS NOT NULL )
             """
         )
         cur.execute(
-            f"""
+            """
             ALTER TABLE INTERPRO.MATCH_NEW
             ADD CONSTRAINT CK_MATCH_NEW$METHOD
             CHECK (METHOD_AC IS NOT NULL )
