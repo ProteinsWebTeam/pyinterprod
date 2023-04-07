@@ -121,21 +121,21 @@ def update_database_matches(uri: str, databases: Sequence):
             """
             ALTER TABLE INTERPRO.MATCH_NEW
             ADD CONSTRAINT CK_MATCH_NEW$FROM
-            CHECK ( POS_FROM >= 1 )
+            CHECK (POS_FROM >= 1)
             """
         )
         cur.execute(
             """
             ALTER TABLE INTERPRO.MATCH_NEW
             ADD CONSTRAINT CK_MATCH_NEW$NEG
-            CHECK ( POS_TO - POS_FROM > 0 )
+            CHECK (POS_TO - POS_FROM > 0)
             """
         )
         cur.execute(
             """
             ALTER TABLE INTERPRO.MATCH_NEW
             ADD CONSTRAINT CK_MATCH_NEW$STATUS
-            CHECK ( STATUS != 'N' OR (STATUS = 'N' AND DBCODE IN ('P','M','Q')))
+            CHECK (STATUS != 'N' OR (STATUS = 'N' AND DBCODE IN ('P','M','Q')))
             """
         )
         cur.execute(
@@ -184,14 +184,14 @@ def update_database_matches(uri: str, databases: Sequence):
             """
             ALTER TABLE INTERPRO.MATCH_NEW
             ADD CONSTRAINT CK_MATCH_NEW$PROTEIN
-            CHECK (PROTEIN_AC IS NOT NULL )
+            CHECK (PROTEIN_AC IS NOT NULL)
             """
         )
         cur.execute(
             """
             ALTER TABLE INTERPRO.MATCH_NEW
             ADD CONSTRAINT CK_MATCH_NEW$METHOD
-            CHECK (METHOD_AC IS NOT NULL )
+            CHECK (METHOD_AC IS NOT NULL)
             """
         )
 
