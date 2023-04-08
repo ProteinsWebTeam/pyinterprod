@@ -15,7 +15,6 @@ from .database import Database
 from .match import FEATURE_MATCH_PARTITIONS, MATCH_PARTITIONS, SITE_PARTITIONS
 from .match import get_sig_protein_counts
 
-
 FILE_DB_SIG = "signatures.update.pickle"
 FILE_SIG_DESCR = "signatures.descr.pickle"
 
@@ -283,8 +282,9 @@ def delete_from_table(uri: str, table: str, partition: Optional[str],
 
 
 def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
-    step = kwargs.get("step", 10000)
+    step = kwargs.get("step", 1000)
     threads = kwargs.get("threads", 8)
+    truncate_match_tables = kwargs.get("truncate_match_tables", True)
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
@@ -373,13 +373,21 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
         if table == "MATCH":
             for db in databases:
                 partition = MATCH_PARTITIONS[db.identifier]
-                logger.info(f"truncating {table} ({partition})")
-                ora.truncate_partition(cur, table, partition)
+
+                if truncate_match_tables:
+                    logger.info(f"truncating {table} ({partition})")
+                    ora.truncate_partition(cur, table, partition)
+                else:
+                    tasks.append((table, partition, column))
         elif table == "SITE_MATCH":
             for db in databases:
                 partition = SITE_PARTITIONS[db.identifier]
-                logger.info(f"truncating {table} ({partition})")
-                ora.truncate_partition(cur, table, partition)
+
+                if truncate_match_tables:
+                    logger.info(f"truncating {table} ({partition})")
+                    ora.truncate_partition(cur, table, partition)
+                else:
+                    tasks.append((table, partition, column))
         else:
             tasks.append((table, None, column))
 
@@ -625,7 +633,8 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
                 pmid2pubid[pmid] = pub_id
 
             if pub_id:
-                method.abstract = method.abstract.replace(match.group(0), f'[cite:{pub_id}]')
+                method.abstract = method.abstract.replace(match.group(0),
+                                                          f'[cite:{pub_id}]')
                 pub_ids.add(pub_id)
 
     for pmid in method.references:
@@ -650,7 +659,7 @@ def populate_method2pub_stg(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
             INSERT INTO INTERPRO.METHOD2PUB_STG (PUB_ID, METHOD_AC)
             VALUES (:1, :2)
             """,
-            data[i:i+step]
+            data[i:i + step]
         )
 
 
