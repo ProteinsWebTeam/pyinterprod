@@ -128,8 +128,9 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             args=(pg_ipr_uri,),
             name="ready",
             scheduler=dict(queue=lsf_queue),
-            requires=["taxonomy","index-signature2proteins","index-matches", "proteins", 
-            "proteins-similarities", "proteomes", "annotations", "signatures"]
+            requires=["taxonomy", "index-signature2proteins", "index-matches",
+                      "proteins", "proteins-similarities", "proteomes",
+                      "annotations", "signatures"]
         ),
     ]
 

@@ -89,8 +89,8 @@ def set_ready(pg_url: str):
         pg_cur.execute(
             f"""
                 UPDATE database 
-                SET ready='true'
-                WHERE NAME='interpro'
+                SET ready = 'true'
+                WHERE NAME = 'interpro'
             """
         )
         pg_con.commit()
