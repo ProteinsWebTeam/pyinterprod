@@ -86,3 +86,16 @@ def cluster(con, table: str, index: str, **kwargs):
             else:
                 con.commit()
                 break
+
+
+def get_primary_key(cur, table: str):
+    cur.execute(
+        """
+        SELECT constraint_name
+        FROM information_schema.table_constraints
+        WHERE lower(table_name) = %s AND constraint_type = 'PRIMARY KEY'        
+        """,
+        [table.lower()]
+    )
+    row = cur.fetchone()
+    return row[0] if row else None
