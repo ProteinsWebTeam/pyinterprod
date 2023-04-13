@@ -415,6 +415,28 @@ def _flatten_hits(hits: list[str]) -> list[tuple[int, int]]:
 def finalize_signature2protein(uri: str):
     con = psycopg2.connect(**pg.url2dict(uri))
     with con.cursor() as cur:
+        logger.info("adding primary key")
+
+        pkey = pg.get_primary_key(cur, "signature2protein")
+        if pkey:
+            # Drop existing PK first
+            cur.execute(
+                f"""
+                ALTER TABLE signature2protein
+                DROP CONSTRAINT {pkey}
+                """
+            )
+            con.commit()
+
+        cur.execute(
+            """
+            ALTER TABLE signature2protein
+            ADD CONSTRAINT signature2protein_pk
+            PRIMARY KEY (signature_acc, protein_acc) NONCLUSTERED            
+            """
+        )
+        con.commit()
+
         logger.info("indexing")
 
         logger.info("\tprotein_acc")
