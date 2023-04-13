@@ -90,8 +90,8 @@ def _export_matches(url: str, cachesize: int,
 
     cur.execute(
         """
-        SELECT P.PROTEIN_AC, P.DBCODE, P.FRAGMENT, P.TAX_ID, 
-               M.METHOD_AC, M.DBCODE, M.FRAGMENTS, M.POS_FROM, M.POS_TO
+        SELECT P.PROTEIN_AC, P.DBCODE, P.FRAGMENT, P.TAX_ID, M.METHOD_AC, 
+            M.DBCODE, M.FRAGMENTS, M.POS_FROM, M.POS_TO, M.MODEL_AC
         FROM INTERPRO.MATCH M
         INNER JOIN INTERPRO.PROTEIN P 
             ON P.PROTEIN_AC = M.PROTEIN_AC
@@ -123,7 +123,8 @@ def _export_matches(url: str, cachesize: int,
         obj[3].append((
             row[4],  # match accession
             databases[row[5]],  # match DB
-            fragments
+            fragments,
+            row[9] # used for PANTHER subfamilies
         ))
 
         i += 1
@@ -167,11 +168,14 @@ def _merge_matches(files: list[str]):
             is_reviewed, is_complete, left_number, _ = value
             matches = {}
 
-        for signature_acc, signature_db, fragments in value[3]:
+        for signature_acc, signature_db, fragments, model_acc in value[3]:
             if signature_acc in matches:
-                matches[signature_acc][1].append(fragments)
+                if model_acc in matches[signature_acc]:
+                    matches[signature_acc][model_acc][1].append(fragments)
+                else:
+                    matches[signature_acc][model_acc] = (signature_db, [fragments])
             else:
-                matches[signature_acc] = (signature_db, [fragments])
+                matches[signature_acc] = {model_acc:(signature_db, [fragments])}
 
     yield protein_acc, is_reviewed, is_complete, left_number, matches
 
@@ -210,6 +214,7 @@ def insert_signature2protein(url: str, names_db: str, matches_file: str,
             """
             CREATE TABLE signature2protein (
                 signature_acc VARCHAR(25) NOT NULL,
+                model_acc VARCHAR(25) NOT NULL,
                 protein_acc VARCHAR(15) NOT NULL,
                 is_reviewed BOOLEAN NOT NULL,
                 taxon_left_num INTEGER NOT NULL,
@@ -292,7 +297,8 @@ def _iter_proteins(names_db: str, matches_file: str, src: Queue, dst: Queue):
                 md5 = _hash_matches(matches)
 
                 for sig_acc in matches:
-                    yield sig_acc, prot_acc, is_rev, left_num, name_id, md5
+                    for model_acc in matches[sig_acc]:
+                        yield sig_acc, model_acc, prot_acc, is_rev, left_num, name_id, md5
 
             dst.put(count)
 
@@ -301,10 +307,11 @@ def _hash_matches(matches: dict[str, tuple[str, list[str]]]) -> str:
     # Flatten all matches
     locations = []
 
-    for signature_acc, (_, hits) in matches.items():
-        for start, end in merge_overlapping(hits):
-            locations.append((start, signature_acc))
-            locations.append((end, signature_acc))
+    for signature_acc in matches:
+        for model_acc, (_, hits) in matches[signature_acc].items():
+            for start, end in merge_overlapping(hits):
+                locations.append((start, signature_acc))
+                locations.append((end, signature_acc))
 
     """
     Evaluate the protein's match structure,
