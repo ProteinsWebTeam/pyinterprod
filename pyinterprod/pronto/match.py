@@ -124,7 +124,7 @@ def _export_matches(url: str, cachesize: int,
             row[4],  # match accession
             databases[row[5]],  # match DB
             fragments,
-            row[9] # used for PANTHER subfamilies
+            row[9]  # used for PANTHER subfamilies
         ))
 
         i += 1
