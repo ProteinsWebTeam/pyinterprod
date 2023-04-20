@@ -381,7 +381,7 @@ def run_member_db_update():
                         force=True,
                         threads=8),
             name="import-ipm-matches",
-            scheduler=dict(mem=100, type=scheduler, queue=queue)
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=4)
         ),
         Task(
             fn=interpro.iprscan.update_partitions,
@@ -390,7 +390,7 @@ def run_member_db_update():
                         force=True,
                         threads=8),
             name="update-ipm-matches",
-            scheduler=dict(mem=100, type=scheduler, queue=queue),
+            scheduler=dict(mem=100, type=scheduler, queue=queue, hours=6),
             requires=["import-ipm-matches"]
         ),
     ]
@@ -402,41 +402,41 @@ def run_member_db_update():
                 args=(ora_interpro_uri, [(db, model_sources[db.identifier])
                                          for db in mem_updates]),
                 name="load-signatures",
-                scheduler=dict(mem=100, type=scheduler, queue=queue)
+                scheduler=dict(mem=100, type=scheduler, queue=queue, hours=1)
             ),
             Task(
                 fn=interpro.signature.track_signature_changes,
                 args=(ora_interpro_uri, pg_uri, mem_updates, data_dir),
                 name="track-changes",
-                scheduler=dict(mem=4000, type=scheduler, queue=queue),
+                scheduler=dict(mem=4000, type=scheduler, queue=queue, hours=1),
                 requires=["load-signatures"]
             ),
             Task(
                 fn=interpro.signature.delete_obsoletes,
                 args=(ora_interpro_uri, mem_updates),
                 name="delete-obsoletes",
-                scheduler=dict(mem=100, type=scheduler, queue=queue),
+                scheduler=dict(mem=100, type=scheduler, queue=queue, hours=4),
                 requires=["track-changes"]
             ),
             Task(
                 fn=interpro.signature.update_signatures,
                 args=(ora_interpro_uri, go_sources),
                 name="update-signatures",
-                scheduler=dict(mem=100, type=scheduler, queue=queue),
+                scheduler=dict(mem=100, type=scheduler, queue=queue, hours=2),
                 requires=["delete-obsoletes"]
             ),
             Task(
                 fn=interpro.match.update_database_matches,
                 args=(ora_interpro_uri, mem_updates),
                 name="update-matches",
-                scheduler=dict(mem=100, type=scheduler, queue=queue),
+                scheduler=dict(mem=100, type=scheduler, queue=queue, hours=8),
                 requires=["update-ipm-matches", "update-signatures"]
             ),
             Task(
                 fn=interpro.match.update_variant_matches,
                 args=(ora_interpro_uri,),
                 name="update-varsplic",
-                scheduler=dict(mem=100, type=scheduler, queue=queue),
+                scheduler=dict(mem=100, type=scheduler, queue=queue, hours=2),
                 requires=["update-ipm-matches", "update-signatures"]
             )
         ]
@@ -448,14 +448,14 @@ def run_member_db_update():
                 args=(ora_interpro_uri, [(db, model_sources[db.identifier])
                                          for db in non_mem_updates]),
                 name="update-features",
-                scheduler=dict(mem=100, type=scheduler, queue=queue),
+                scheduler=dict(mem=100, type=scheduler, queue=queue, hours=2),
                 requires=["update-ipm-matches"]
             ),
             Task(
                 fn=interpro.match.update_database_feature_matches,
                 args=(ora_interpro_uri, non_mem_updates),
                 name="update-fmatches",
-                scheduler=dict(mem=100, type=scheduler, queue=queue),
+                scheduler=dict(mem=100, type=scheduler, queue=queue, hours=4),
                 requires=["update-features"]
             )
         ]
@@ -472,21 +472,24 @@ def run_member_db_update():
                 args=(ora_iprscan_uri, "sites"),
                 kwargs=dict(databases=site_updates, force=True, threads=2),
                 name="import-ipm-sites",
-                scheduler=dict(mem=100, type=scheduler, queue=queue)
+                # TODO: adjust hours
+                scheduler=dict(mem=100, type=scheduler, queue=queue, hours=12)
             ),
             Task(
                 fn=interpro.iprscan.update_partitions,
                 args=(ora_iprscan_uri, "sites"),
                 kwargs=dict(databases=site_updates, force=True, threads=2),
                 name="update-ipm-sites",
-                scheduler=dict(mem=100, type=scheduler, queue=queue),
+                # TODO: adjust hours
+                scheduler=dict(mem=100, type=scheduler, queue=queue, hours=12),
                 requires=["import-ipm-sites"]
             ),
             Task(
                 fn=interpro.match.update_database_site_matches,
                 args=(ora_interpro_uri, site_updates),
                 name="update-sites",
-                scheduler=dict(mem=100, type=scheduler, queue=queue),
+                # TODO: adjust hours
+                scheduler=dict(mem=100, type=scheduler, queue=queue, hours=12),
                 requires=req
             )
         ]
@@ -515,7 +518,7 @@ def run_member_db_update():
                 args=(ora_interpro_uri, pg_uri, mem_updates, data_dir,
                       pronto_url, emails),
                 name="send-report",
-                scheduler=dict(mem=4000, type=scheduler, queue=queue),
+                scheduler=dict(mem=4000, type=scheduler, queue=queue, hours=1),
                 requires=after_pronto
             ),
         ]
