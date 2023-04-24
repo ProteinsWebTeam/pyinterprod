@@ -36,6 +36,7 @@ FEATURE_MATCH_PARTITIONS = {
     "f": "FUNFAM",
     "g": "MOBIDBLITE",
     "j": "PHOBIUS",
+    "l": "ELM",
     "n": "SIGNALP_E",
     "q": "TMHMM",
     "s": "SIGNALP_GP",

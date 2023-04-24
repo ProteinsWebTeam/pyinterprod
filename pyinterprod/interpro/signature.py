@@ -24,7 +24,7 @@ def export_swissprot_descriptions(pg_uri, data_dir: str):
         pickle.dump(get_swissprot_descriptions(pg_uri), fh)
 
 
-def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
+def add_staging(uri: str, update: list[tuple[Database, dict[str, str]]]):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
@@ -63,31 +63,31 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
         for db, db_sources in update:
             if db.identifier == 'H':
                 # Pfam
-                signatures = contrib.pfam.get_signatures(*db_sources)
+                signatures = contrib.pfam.get_signatures(db_sources)
             elif db.identifier == 'J':
                 # CDD
-                signatures = contrib.cdd.parse_signatures(*db_sources)
+                signatures = contrib.cdd.parse_signatures(db_sources)
             elif db.identifier == 'M':
                 # PROSITE profiles
-                signatures = contrib.prosite.parse_profiles(*db_sources)
+                signatures = contrib.prosite.parse_profiles(db_sources)
             elif db.identifier == 'N':
                 # NCBIFam
-                signatures = contrib.ncbifam.get_signatures(*db_sources)
+                signatures = contrib.ncbifam.get_signatures(db_sources)
             elif db.identifier == 'P':
                 # PROSITE patterns
-                signatures = contrib.prosite.parse_patterns(*db_sources)
+                signatures = contrib.prosite.parse_patterns(db_sources)
             elif db.identifier == 'Q':
                 # HAMAP
-                signatures = contrib.hamap.parse_signatures(*db_sources)
+                signatures = contrib.hamap.parse_signatures(db_sources)
             elif db.identifier == 'R':
                 # SMART
-                signatures = contrib.smart.parse_signatures(*db_sources)
+                signatures = contrib.smart.parse_signatures(db_sources)
             elif db.identifier == 'V':
                 # PANTHER
-                signatures = contrib.panther.parse_signatures(*db_sources)
+                signatures = contrib.panther.parse_signatures(db_sources)
             elif db.identifier == 'X':
                 # CATH-Gene3D
-                signatures = contrib.cath.parse_superfamilies(*db_sources)
+                signatures = contrib.cath.parse_superfamilies(db_sources)
             else:
                 logger.error(f"{db.name}: unsupported member database")
                 errors += 1
@@ -521,7 +521,7 @@ def update_signatures(uri: str, go_sources: list[tuple[str, str]]):
             contrib.ncbifam.update_go_terms(uri, source)
 
 
-def update_features(uri: str, update: list[tuple[Database, list[str]]]):
+def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
@@ -547,13 +547,16 @@ def update_features(uri: str, update: list[tuple[Database, list[str]]]):
 
         if db.identifier == 'a':
             # AntiFam
-            features = contrib.antifam.parse_models(*db_sources)
+            features = contrib.antifam.parse_models(db_sources)
         elif db.identifier == 'd':
             # Pfam-N
-            features = contrib.pfam.get_protenn_entries(cur, *db_sources)
+            features = contrib.pfam.get_protenn_entries(cur, db_sources)
         elif db.identifier == 'f':
             # FunFams
-            features = contrib.cath.parse_functional_families(*db_sources)
+            features = contrib.cath.parse_functional_families(db_sources)
+        elif db.identifier == 'l':
+            # ELM
+            features = contrib.elm.parse_instances(db_sources)
         else:
             cur.close()
             con.close()

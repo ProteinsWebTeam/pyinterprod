@@ -345,9 +345,9 @@ def run_member_db_update():
                                  f"'hmm' property missing "
                                  f"or empty for database '{dbname}'")
                 else:
-                    db_sources = [hmm_source, sig_source]
+                    db_sources = {'hmm_source': hmm_source, 'sig_source': sig_source}
             else:
-                db_sources = [sig_source]
+                db_sources = {'sig_source': sig_source}
 
             if db.is_member_db:
                 mem_updates.append(db)

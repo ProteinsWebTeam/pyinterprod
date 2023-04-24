@@ -21,19 +21,19 @@ ESUMMARY = f"{EUTILS}/esummary.fcgi"
 NCBI_API = "https://www.ncbi.nlm.nih.gov/genome/annotation_prok/evidence/api/data/"
 
 
-def get_signatures(hmm_file: str, info_file: str):
+def get_signatures(db_sources: dict):
     """
     NCBIFam HMM file: https://ftp.ncbi.nlm.nih.gov/hmm/current/hmm_PGAP.LIB
     """
 
     info = {}
-    with open(info_file, "rt") as fh:
+    with open(db_sources["sig_source"], "rt") as fh:
         for e in json.load(fh):
             acc = e["accession"]
             info[acc] = e
 
     signatures = []
-    for acc, name, descr, date in parse_hmm(hmm_file):
+    for acc, name, descr, date in parse_hmm(db_sources["hmm_source"]):
         acc, _ = acc.split('.')
 
         if descr:

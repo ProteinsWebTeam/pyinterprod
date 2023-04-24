@@ -7,16 +7,16 @@ from .common import Clan, Method, parse_xml
 _TYPE = 'D'
 
 
-def parse_signatures(filepath: str) -> List[Method]:
+def parse_signatures(db_sources: dict) -> List[Method]:
     """
     Parse the cdd_interpro.xml file provided by CDD
     As of CDD 3.20, the file is available here:
         https://ftp.ncbi.nlm.nih.gov/pub/mmdb/cdd/cdd_interpro.xml.gz
 
-    :param filepath:
+    :param db_sources:
     :return:
     """
-    signatures = parse_xml(filepath, _TYPE)
+    signatures = parse_xml(db_sources["sig_source"], _TYPE)
 
     for s in signatures:
         if s.description is not None and s.description.endswith("..."):

@@ -24,6 +24,7 @@ DATABASES = [
     'd',    # Pfam-N
     'f',    # FunFam
     'g',    # MobiDB
+    'l',    # ELM
     'u',    # UniProtKB
 ]
 

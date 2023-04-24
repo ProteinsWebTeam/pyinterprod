@@ -10,16 +10,16 @@ _TYPE_SUPFAM = 'H'
 _TYPE_FUNFAM = 'D'
 
 
-def parse_superfamilies(filepath: str) -> list[Method]:
+def parse_superfamilies(db_sources: dict) -> list[Method]:
     """
     Parse the CathNames.txt file distributed with CATH-Gene3D releases
 
-    :param filepath:
+    :param db_sources:
     :return:
     """
     signatures = []
     reg = re.compile(r"^(\d\.\d+\.\d+\.\d+)\s+([a-zA-Z0-9]+)\s+:(.*)$")
-    with open(filepath, "rt") as fh:
+    with open(db_sources["sig_source"], "rt") as fh:
         for line in fh:
             if line[0] == '#':
                 continue
@@ -37,15 +37,15 @@ def parse_superfamilies(filepath: str) -> list[Method]:
     return signatures
 
 
-def parse_functional_families(file: str) -> list[Method]:
+def parse_functional_families(db_sources: dict) -> list[Method]:
     """
-    :param file: TSV file of FunFam names.
+    :param db_sources: TSV file of FunFam names.
                  Can be generated using `get_funfam_names()`.
     :return: A list of FunFam signatures
     """
 
     signatures = []
-    with open(file, "rt") as fh:
+    with open(db_sources["sig_source"], "rt") as fh:
         for line in fh:
             accession, name = line.rstrip().split("\t")
 

@@ -9,11 +9,11 @@ from .common import Method
 _TYPE = 'F'
 
 
-def parse_signatures(filepath: str) -> List[Method]:
+def parse_signatures(db_sources: dict) -> List[Method]:
     """
     Parse the hamap.prf file distributed with HAMAP releases
 
-    :param filepath:
+    :param db_sources:
     :return:
     """
     signatures = []
@@ -22,7 +22,7 @@ def parse_signatures(filepath: str) -> List[Method]:
     reg_dt = re.compile(r"^DT\s+(\d\d-[A-Z]-\d{4} CREATED)", flags=re.M)
     reg_de = re.compile(r"^DE\s+(.+?).$", flags=re.M)
 
-    with open(filepath, "rt") as fh:
+    with open(db_sources["sig_source"], "rt") as fh:
         profile = ""
         for line in fh:
             profile += line
