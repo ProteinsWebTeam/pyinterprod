@@ -213,6 +213,10 @@ def _hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str,
         cur.executemany(sql, values)
 
 
+def elm_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+    pass
+
+
 def funfam_matches(cur: Cursor, file: str, analysis_id: int, table: str):
     sql = f"""
         INSERT INTO {table} (
