@@ -346,6 +346,14 @@ def run_member_db_update():
                                  f"or empty for database '{dbname}'")
                 else:
                     db_sources = {'hmm_source': hmm_source, 'sig_source': sig_source}
+            elif dbname == "elm":
+                try:
+                    fasta_source = props["fasta"]
+                except KeyError:
+                    parser.error(f"{config['misc']['members']}: "
+                                 f"'hmm' property missing "
+                                 f"or empty for database '{dbname}'")
+                db_sources = {'fasta_source': fasta_source, 'sig_source': sig_source}
             else:
                 db_sources = {'sig_source': sig_source}
 

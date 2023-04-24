@@ -1,4 +1,5 @@
 from datetime import datetime
+import re
 
 from .common import Method
 
@@ -10,6 +11,8 @@ def parse_instances(db_sources: dict) -> list[Method]:
     :param db_sources:
     :return:
     """
+    sequences = get_sequences(db_sources["fasta_source"])
+
     instances = []
     with open(db_sources["sig_source"], "rt") as fh:
         date = None
@@ -23,6 +26,18 @@ def parse_instances(db_sources: dict) -> list[Method]:
             else:
                 cols = line.split("\t")
                 if cols[10].strip('"') == 'true positive':
+
                     instances.append(Method(cols[0].strip('"'), None, cols[9].strip('"'), None, None, date))
 
     return instances
+
+
+def get_sequences(filepath: str) -> dict[str, tuple]:
+    sequences = {}
+    with open(filepath, "rt") as fh:
+        for line in fh:
+            if line.startswith('>'):
+                sp, protein_acc, protein_id = line.split('|')
+                sequence = next(fh)
+            sequences[protein_acc] = (protein_id, sequence)
+    return sequences
