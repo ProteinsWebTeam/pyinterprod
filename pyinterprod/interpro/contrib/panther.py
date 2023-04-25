@@ -42,16 +42,16 @@ def get_clans(uri: str) -> list[Clan]:
     return list(clans.values())
 
 
-def parse_signatures(db_sources: dict) -> list[Method]:
+def parse_signatures(filepath: str) -> list[Method]:
     """
     Parse the names.tab file distributed with PANTHER releases
 
-    :param db_sources:
+    :param filepath:
     :return:
     """
     signatures = []
     prog = re.compile(r"(PTHR\d+)\.(SF\d+)?")
-    with open(db_sources["sig_source"], "rt") as fh:
+    with open(filepath, "rt") as fh:
         for line in fh:
             cols = line.rstrip().split(sep='\t', maxsplit=1)
             try:

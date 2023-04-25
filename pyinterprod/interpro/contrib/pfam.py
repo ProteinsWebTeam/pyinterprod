@@ -96,8 +96,8 @@ class AbstractFormater:
         return f"[{', '.join(refs)}]"
 
 
-def get_signatures(db_sources: dict) -> list[Method]:
-    con = connect_mysql(db_sources["sig_source"])
+def get_signatures(url: str) -> list[Method]:
+    con = connect_mysql(url)
     cur = con.cursor()
     cur.execute(
         """
@@ -157,7 +157,7 @@ def iter_protenn_matches(file: str):
                 yield sequence_id, pfam_acc, int(start), int(end)
 
 
-def get_protenn_entries(cur, db_sources: dict) -> list[Method]:
+def get_protenn_entries(cur, file: str) -> list[Method]:
     drop_table(cur, "INTERPRO.PFAMN_MATCH_TMP", purge=True)
     cur.execute(
         """
@@ -177,7 +177,7 @@ def get_protenn_entries(cur, db_sources: dict) -> list[Method]:
     """
 
     with Table(con=cur.connection, query=query, autocommit=True) as table:
-        it = iter_protenn_matches(db_sources["sig_source"])
+        it = iter_protenn_matches(file)
 
         sequence_id, pfam_acc, start, end = next(it)
         accessions = {pfam_acc}

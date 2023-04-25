@@ -10,26 +10,26 @@ _TYPE_PATTERNS = 'C'  # conserved sites
 _TYPE_PROFILES = 'D'
 
 
-def parse_patterns(db_sources: dict) -> List[Method]:
+def parse_patterns(filepath: str) -> List[Method]:
     """
     Parse the pattern_model.cgi file provided by PROSITE (XML format)
     http://prosite.expasy.org/cgi-bin/prosite/pattern_model.cgi
 
-    :param db_sources:
+    :param filepath:
     :return:
     """
-    return parse_xml(db_sources["sig_source"], _TYPE_PATTERNS)
+    return parse_xml(filepath, _TYPE_PATTERNS)
 
 
-def parse_profiles(db_sources: dict) -> List[Method]:
+def parse_profiles(filepath: str) -> List[Method]:
     """
     Parse the profile_model.cgi file provided by PROSITE (XML format)
     http://prosite.expasy.org/cgi-bin/prosite/profile_model.cgi
 
-    :param db_sources:
+    :param filepath:
     :return:
     """
-    return parse_xml(db_sources["sig_source"], _TYPE_PROFILES)
+    return parse_xml(filepath, _TYPE_PROFILES)
 
 
 def parse():

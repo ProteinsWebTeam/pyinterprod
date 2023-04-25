@@ -63,31 +63,31 @@ def add_staging(uri: str, update: list[tuple[Database, dict[str, str]]]):
         for db, db_sources in update:
             if db.identifier == 'H':
                 # Pfam
-                signatures = contrib.pfam.get_signatures(db_sources)
+                signatures = contrib.pfam.get_signatures(db_sources["signatures"])
             elif db.identifier == 'J':
                 # CDD
-                signatures = contrib.cdd.parse_signatures(db_sources)
+                signatures = contrib.cdd.parse_signatures(db_sources["signatures"])
             elif db.identifier == 'M':
                 # PROSITE profiles
-                signatures = contrib.prosite.parse_profiles(db_sources)
+                signatures = contrib.prosite.parse_profiles(db_sources["signatures"])
             elif db.identifier == 'N':
                 # NCBIFam
-                signatures = contrib.ncbifam.get_signatures(db_sources)
+                signatures = contrib.ncbifam.get_signatures(db_sources["hmm"], db_sources["signatures"])
             elif db.identifier == 'P':
                 # PROSITE patterns
-                signatures = contrib.prosite.parse_patterns(db_sources)
+                signatures = contrib.prosite.parse_patterns(db_sources["signatures"])
             elif db.identifier == 'Q':
                 # HAMAP
-                signatures = contrib.hamap.parse_signatures(db_sources)
+                signatures = contrib.hamap.parse_signatures(db_sources["signatures"])
             elif db.identifier == 'R':
                 # SMART
-                signatures = contrib.smart.parse_signatures(db_sources)
+                signatures = contrib.smart.parse_signatures(db_sources["signatures"])
             elif db.identifier == 'V':
                 # PANTHER
-                signatures = contrib.panther.parse_signatures(db_sources)
+                signatures = contrib.panther.parse_signatures(db_sources["signatures"])
             elif db.identifier == 'X':
                 # CATH-Gene3D
-                signatures = contrib.cath.parse_superfamilies(db_sources)
+                signatures = contrib.cath.parse_superfamilies(db_sources["signatures"])
             else:
                 logger.error(f"{db.name}: unsupported member database")
                 errors += 1
@@ -547,16 +547,16 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
 
         if db.identifier == 'a':
             # AntiFam
-            features = contrib.antifam.parse_models(db_sources)
+            features = contrib.antifam.parse_models(db_sources["signatures"])
         elif db.identifier == 'd':
             # Pfam-N
-            features = contrib.pfam.get_protenn_entries(cur, db_sources)
+            features = contrib.pfam.get_protenn_entries(cur, db_sources["signatures"])
         elif db.identifier == 'f':
             # FunFams
-            features = contrib.cath.parse_functional_families(db_sources)
+            features = contrib.cath.parse_functional_families(db_sources["signatures"])
         elif db.identifier == 'l':
             # ELM
-            features = contrib.elm.parse_instances(db_sources)
+            features = contrib.elm.parse_instances(db_sources["signatures"], db_sources["sequences"])
         else:
             cur.close()
             con.close()

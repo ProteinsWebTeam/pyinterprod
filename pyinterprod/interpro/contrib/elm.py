@@ -1,20 +1,19 @@
 from datetime import datetime
-import re
 
 from .common import Method
 
 
-def parse_instances(db_sources: dict) -> list[Method]:
+def parse_instances(signatures_source: str, sequences_source: str) -> list[Method]:
     """
     Parse the ELM instances.tsv file, available at http://elm.eu.org/
 
     :param db_sources:
     :return:
     """
-    sequences = get_sequences(db_sources["fasta_source"])
+    sequences = get_sequences(sequences_source)
 
     instances = []
-    with open(db_sources["sig_source"], "rt") as fh:
+    with open(signatures_source, "rt") as fh:
         date = None
         for line in fh:
             if line[0] == '#':
