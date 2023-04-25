@@ -28,7 +28,6 @@ _DB_TO_I5 = {
     "CATH-Gene3D": ("Gene3D", persistence.hmmer3_matches, None),
     "CDD": ("CDD", persistence.cdd_matches, persistence.sites),
     "COILS": ("Coils", persistence.coils_phobius_matches, None),
-    "ELM": ("ELM", persistence.elm_matches, None),
     "FunFam": ("FunFam", persistence.funfam_matches, None),
     "HAMAP": ("Hamap", persistence.hamap_matches, None),
     "MobiDB Lite": ("MobiDBLite", persistence.mobidb_lite_matches, None),
