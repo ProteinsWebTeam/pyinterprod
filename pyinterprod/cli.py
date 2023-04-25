@@ -330,39 +330,12 @@ def run_member_db_update():
                 parser.error(f"{config['misc']['members']}: "
                              f"missing database '{dbname}'")
 
-            try:
-                sig_source = props["signatures"]
-            except KeyError:
-                parser.error(f"{config['misc']['members']}: "
-                             f"'signatures' property missing "
-                             f"or empty for database '{dbname}'")
-
-            if dbname == "ncbifam":
-                try:
-                    hmm_source = props["hmm"]
-                except KeyError:
-                    parser.error(f"{config['misc']['members']}: "
-                                 f"'hmm' property missing "
-                                 f"or empty for database '{dbname}'")
-                else:
-                    db_sources = {'hmm_source': hmm_source, 'sig_source': sig_source}
-            elif dbname == "elm":
-                try:
-                    fasta_source = props["fasta"]
-                except KeyError:
-                    parser.error(f"{config['misc']['members']}: "
-                                 f"'hmm' property missing "
-                                 f"or empty for database '{dbname}'")
-                db_sources = {'fasta_source': fasta_source, 'sig_source': sig_source}
-            else:
-                db_sources = {'sig_source': sig_source}
-
             if db.is_member_db:
                 mem_updates.append(db)
-                model_sources[db.identifier] = db_sources
+                model_sources[db.identifier] = props
             elif db.is_feature_db:
                 non_mem_updates.append(db)
-                model_sources[db.identifier] = db_sources
+                model_sources[db.identifier] = props
 
             try:
                 go_source = props["go-terms"]
