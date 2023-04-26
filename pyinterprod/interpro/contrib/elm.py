@@ -1,5 +1,7 @@
 import hashlib
+
 from .common import Method
+from pyinterprod.utils.oracle import drop_table
 
 
 def parse_instances(cur, signatures_source: str, sequences_source: str) -> list[Method]:
@@ -9,17 +11,18 @@ def parse_instances(cur, signatures_source: str, sequences_source: str) -> list[
     valid_acc = get_updated_sequences(cur, sequences_source)
 
     instances = []
+    match_data = []
     with open(signatures_source, "rt") as fh:
-        date = None
         for line in fh:
             if line[0] == '#':
                 continue
             else:
-                cols = line.split("\t")
-                if cols[10].strip('"') == 'true positive':
-
-                    instances.append(Method(cols[0].strip('"'), None, cols[9].strip('"'), None, None, date))
-
+                elm_acc, elm_type, elm_id, protein_name, primary_acc, accessions, start, end, refs, methods, inst_logic, pdb, organism = line.split("\t")
+                if inst_logic.strip('"') == 'true positive':
+                    if primary_acc in valid_acc:
+                        instances.append(Method(elm_id, None, None, None, None, None))
+                        match_data.append((primary_acc, elm_id, methods, int(start), int(end)))
+        insert_matches(cur, match_data)
     return instances
 
 
@@ -44,3 +47,28 @@ def get_updated_sequences(cur, filepath: str) -> list[str]:
             if fasta_md5.upper() == sequences_md5[protein_acc].upper():
                 valid_acc.append(protein_acc)
     return valid_acc
+
+
+def insert_matches(cur, data: list):
+    drop_table(cur, "INTERPRO.ELM_MATCH", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.ELM_MATCH (
+            PROTEIN_ID VARCHAR(15) NOT NULL,
+            METHOD_AC VARCHAR2(25) NOT NULL,
+            POS_FROM NUMBER(5) NOT NULL,
+            POS_TO NUMBER(5) NOT NULL
+        ) NOLOGGING
+        """
+    )
+
+    for i in range(0, len(data)):
+        cur.executemany(
+            """
+            INSERT INTO INTERPRO.ELM_MATCH_TMP (PROTEIN_ID, METHOD_AC, POS_FROM, POS_TO)
+            VALUES (:1, :2, :3, :4)
+            """,
+            data[i]
+        )
+
+    cur.connection.commit()
