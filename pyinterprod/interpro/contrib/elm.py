@@ -22,7 +22,7 @@ def parse_instances(cur, signatures_source: str, sequences_source: str) -> list[
                     if primary_acc in valid_acc:
                         instances.append(Method(elm_id, None, None, None, None, None))
                         match_data.append((primary_acc, elm_id, methods, int(start), int(end)))
-        insert_matches(cur, match_data)
+    insert_matches(cur, match_data)
     return instances
 
 
@@ -32,7 +32,7 @@ def get_updated_sequences(cur, filepath: str) -> list[str]:
         FROM UNIPARC.XREF xr, UNIPARC.PROTEIN p
         WHERE xr.UPI = p.UPI 
             AND xr.DELETED = 'N' 
-            AND xr.DBID IN (2, 3);
+            AND xr.DBID IN (2, 3)
     """)
     sequences_md5 = dict(cur.fetchall())
 
@@ -65,7 +65,7 @@ def insert_matches(cur, data: list):
     for i in range(0, len(data)):
         cur.executemany(
             """
-            INSERT INTO INTERPRO.ELM_MATCH_TMP (PROTEIN_ID, METHOD_AC, POS_FROM, POS_TO)
+            INSERT INTO INTERPRO.ELM_MATCH (PROTEIN_ID, METHOD_AC, POS_FROM, POS_TO)
             VALUES (:1, :2, :3, :4)
             """,
             data[i]
