@@ -556,7 +556,7 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
             features = contrib.cath.parse_functional_families(db_sources["signatures"])
         elif db.identifier == 'l':
             # ELM
-            features = contrib.elm.parse_instances(cur, db_sources["signatures"], db_sources["sequences"])
+            features = contrib.elm.parse_instances(cur, db_sources["signatures"], db_sources["sequences"], db_sources["last_modified"])
         else:
             cur.close()
             con.close()

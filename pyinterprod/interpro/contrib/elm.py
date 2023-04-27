@@ -1,10 +1,11 @@
 import hashlib
+from datetime import datetime
 
 from .common import Method
 from pyinterprod.utils.oracle import drop_table
 
 
-def parse_instances(cur, signatures_source: str, sequences_source: str) -> list[Method]:
+def parse_instances(cur, signatures_source: str, sequences_source: str, last_modified: str) -> list[Method]:
     """
     Parse the ELM instances.tsv file, available at http://elm.eu.org/
     """
@@ -12,15 +13,16 @@ def parse_instances(cur, signatures_source: str, sequences_source: str) -> list[
 
     instances = []
     match_data = []
+    date = datetime.strptime(last_modified, "%d-%b-%Y-%H:%M:%S")
     with open(signatures_source, "rt") as fh:
         for line in fh:
             if line[0] == '#':
                 continue
             else:
-                elm_acc, elm_type, elm_id, protein_name, primary_acc, accessions, start, end, refs, methods, inst_logic, pdb, organism = line.split("\t")
+                elm_acc, _, elm_id, _, primary_acc, _, start, end, _, methods, inst_logic, _, _ = line.split("\t")
                 if inst_logic.strip('"') == 'true positive':
                     if primary_acc in valid_acc:
-                        instances.append(Method(elm_id, None, None, None, None, None))
+                        instances.append(Method(elm_id, None, None, None, None, date))
                         match_data.append((primary_acc, elm_id, methods, int(start), int(end)))
     insert_matches(cur, match_data)
     return instances
