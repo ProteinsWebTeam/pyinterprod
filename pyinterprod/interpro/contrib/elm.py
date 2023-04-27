@@ -1,6 +1,5 @@
 import hashlib
 import logging
-from datetime import datetime
 
 from .common import Method
 from pyinterprod.utils.oracle import drop_table
@@ -37,7 +36,7 @@ def get_updated_sequences(cur, filepath: str) -> list[str]:
                 _, protein_acc, _ = line.split('|')
                 protein_acc = protein_acc.split("-")[0]
                 fasta_sequence = next(fh)
-                fasta_md5[protein_acc] = hashlib.md5(fasta_sequence.encode('utf-8')).hexdigest()
+                fasta_md5[protein_acc] = hashlib.md5(fasta_sequence.strip().encode('utf-8')).hexdigest()
                 fasta_acc.append(protein_acc)
 
     valid_acc = []
