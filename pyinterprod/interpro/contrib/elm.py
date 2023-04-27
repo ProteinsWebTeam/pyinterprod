@@ -57,7 +57,7 @@ def get_updated_sequences(cur, filepath: str) -> list[str]:
         for acc in fasta_acc[i:i+step]:
             try:
                 if fasta_md5[acc].upper() == protein_md5[acc].upper():
-                    valid_acc.append(protein_acc)
+                    valid_acc.append(acc)
             except KeyError:
                 logging.warning(f"Can't find a valid protein accession '{acc}'")
 
