@@ -71,7 +71,7 @@ def insert_matches(cur, data: list):
         CREATE TABLE INTERPRO.ELM_MATCH (
             PROTEIN_ID VARCHAR(15) NOT NULL,
             METHOD_AC VARCHAR2(25) NOT NULL,
-            SEQ_FEATURE VARCHAR2(100) NOT NULL, -- in feature_match table the limit is 60!
+            SEQ_FEATURE VARCHAR2(500), -- in feature_match table the limit is 60!
             POS_FROM NUMBER(5) NOT NULL,
             POS_TO NUMBER(5) NOT NULL
         ) NOLOGGING
