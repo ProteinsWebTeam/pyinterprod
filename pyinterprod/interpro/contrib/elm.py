@@ -1,5 +1,4 @@
 import hashlib
-import logging
 
 from .common import Method
 from pyinterprod.utils.oracle import drop_table
@@ -60,7 +59,7 @@ def get_updated_sequences(cur, filepath: str) -> list[str]:
                 if fasta_md5[acc].upper() == protein_md5[acc].upper():
                     valid_acc.append(acc)
             except KeyError:
-                logging.warning(f"Can't find a valid protein accession '{acc}'")
+                continue
 
     return valid_acc
 
@@ -72,7 +71,7 @@ def insert_matches(cur, data: list):
         CREATE TABLE INTERPRO.ELM_MATCH (
             PROTEIN_ID VARCHAR(15) NOT NULL,
             METHOD_AC VARCHAR2(25) NOT NULL,
-            SEQ_FEATURE VARCHAR2(60) NOT NULL,
+            SEQ_FEATURE VARCHAR2(100) NOT NULL, -- in feature_match table the limit is 60!
             POS_FROM NUMBER(5) NOT NULL,
             POS_TO NUMBER(5) NOT NULL
         ) NOLOGGING
