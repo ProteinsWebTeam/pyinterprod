@@ -11,8 +11,8 @@ def parse_instances(cur, signatures_source: str, sequences_source: str, last_mod
     """
     valid_acc = get_updated_sequences(cur, sequences_source)
 
-    instances = []
-    match_data = []
+    instances = set()
+    match_data = set()
     date = datetime.strptime(last_modified, "%d-%b-%Y-%H:%M:%S")
     with open(signatures_source, "rt") as fh:
         for line in fh:
@@ -22,10 +22,10 @@ def parse_instances(cur, signatures_source: str, sequences_source: str, last_mod
                 elm_acc, _, elm_id, _, primary_acc, _, start, end, _, methods, inst_logic, _, _ = line.split("\t")
                 if inst_logic.strip('"') == 'true positive':
                     if primary_acc in valid_acc:
-                        instances.append(Method(elm_id, None, None, None, None, date))
-                        match_data.append((primary_acc, elm_id, methods, int(start), int(end)))
-    insert_matches(cur, match_data)
-    return instances
+                        instances.add(Method(elm_id, None, None, None, None, date))
+                        match_data.add((primary_acc, elm_id, methods, int(start), int(end)))
+    insert_matches(cur, list(match_data))
+    return list(instances)
 
 
 def get_updated_sequences(cur, filepath: str) -> list[str]:
@@ -42,7 +42,8 @@ def get_updated_sequences(cur, filepath: str) -> list[str]:
     with open(filepath, "rt") as fh:
         for line in fh:
             if line.startswith('>'):
-                db, protein_acc, protein_id = line.split('|')
+                _, protein_acc, _ = line.split('|')
+                protein_acc = protein_acc.split("-")[0]
                 fasta_sequence = next(fh)
                 fasta_md5 = hashlib.md5(fasta_sequence.encode('utf-8')).hexdigest()
 
