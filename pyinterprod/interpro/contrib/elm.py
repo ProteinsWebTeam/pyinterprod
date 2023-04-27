@@ -20,9 +20,10 @@ def parse_instances(cur, signatures_source: str, sequences_source: str) -> list[
             else:
                 elm_acc, _, elm_id, _, primary_acc, _, start, end, _, methods, inst_logic, _, _ = line.split("\t")
                 if inst_logic.strip('"') == 'true positive':
-                    if primary_acc in valid_acc:
+                    if primary_acc.strip('"') in valid_acc:
                         instances.add(Method(elm_id, None))
-                        match_data.add((primary_acc, elm_id, methods, int(start), int(end)))
+                        match_data.add((primary_acc.strip('"'), elm_id.strip('"'), methods.strip('"'),
+                                        int(start.strip('"')), int(end.strip('"'))))
     insert_matches(cur, list(match_data))
     return list(instances)
 
@@ -78,13 +79,12 @@ def insert_matches(cur, data: list):
         """
     )
 
-    for i in range(0, len(data)):
-        cur.executemany(
-            """
-            INSERT INTO INTERPRO.ELM_MATCH (PROTEIN_ID, METHOD_AC, SEQ_FEATURE, POS_FROM, POS_TO)
-            VALUES (:1, :2, :3, :4, :5)
-            """,
-            data[i]
-        )
+    cur.executemany(
+        """
+        INSERT INTO INTERPRO.ELM_MATCH (PROTEIN_ID, METHOD_AC, SEQ_FEATURE, POS_FROM, POS_TO)
+        VALUES (:1, :2, :3, :4, :5)
+        """,
+        data
+    )
 
     cur.connection.commit()
