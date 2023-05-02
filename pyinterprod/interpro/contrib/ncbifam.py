@@ -1,4 +1,5 @@
 import json
+import re
 import xml.etree.ElementTree as xmlET
 from urllib import parse, request, error
 from concurrent.futures import as_completed, ThreadPoolExecutor
@@ -15,10 +16,109 @@ _KNOWN_SOURCES = {
     "NCBI Protein Cluster (PRK)"
 }
 
+VALID_SOURCES = {
+    "JCVI",
+    "NCBIFAM"
+}
+
 EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 ESEARCH = f"{EUTILS}/esearch.fcgi"
 ESUMMARY = f"{EUTILS}/esummary.fcgi"
 NCBI_API = "https://www.ncbi.nlm.nih.gov/genome/annotation_prok/evidence/api/data/"
+
+
+def load_families(file: str) -> list[Method]:
+    """Parse NCBIfam TSV file
+    https://ftp.ncbi.nlm.nih.gov/hmm/current/hmm_PGAP.tsv
+
+    :param file: Path to TSV file
+    :return:
+    """
+    methods = []
+
+    with open(file, "rt") as fh:
+        for line in map(str.rstrip, fh):
+            if line[0] != "#":
+                values = line.split("\t")
+                model_acc = values[0]
+                signature_acc = model_acc.split(".")[0]
+
+                name = values[2]
+                _type = values[6]
+                for_AMRFinder = values[9] == "Y"
+
+                if values[13]:
+                    go_terms = list(set(values[13].split(",")))
+                else:
+                    go_terms = []
+
+                if values[14]:
+                    references = list(map(int, set(values[14].split(","))))
+                else:
+                    references = []
+
+                source = values[19]
+                hmm_name = values[21]
+                comment = values[22] or None
+
+                if for_AMRFinder or source not in VALID_SOURCES:
+                    continue
+
+                if _type == "repeat":
+                    _type = "R"
+                elif _type == "domain":
+                    _type = "D"
+                else:
+                    # Defaults to family
+                    _type = "F"
+
+                m = Method(
+                    accession=signature_acc,
+                    sig_type=_type,
+                    name=name,
+                    description=hmm_name,
+                    abstract=comment,
+                    references=references,
+                    model=model_acc
+                )
+                methods.append(m)
+
+    return methods
+
+
+def create_custom_hmm(tsv_file: str, hmm_file: str):
+    models = {m.model: m for m in load_families(tsv_file)}
+
+    reg_acc = re.compile(r"^ACC\s+(\w+\.\d+)$", flags=re.M)
+    reg_desc = re.compile(r"^(DESC\s+)(.+)$", flags=re.M)
+
+    with open(hmm_file, "rt") as fh:
+        buffer = ""
+        for line in fh:
+            buffer += line
+
+            if line[:2] == "//":
+                model_acc = reg_acc.search(buffer).group(1)
+                if model_acc in models:
+                    desc = models[model_acc].description
+                    buffer = reg_desc.sub(replace_desc(desc), buffer)
+                    print(buffer)
+
+                buffer = ""
+
+        if buffer:
+            model_acc = reg_acc.search(buffer).group(1)
+            if model_acc in models:
+                desc = models[model_acc].description
+                buffer = reg_desc.sub(replace_desc(desc), buffer)
+                print(buffer)
+
+
+def replace_desc(new_desc: str):
+    def repl(match: re.Match):
+        return f"{match.group(1)}{new_desc}"
+
+    return repl
 
 
 def get_signatures(hmm_file: str, info_file: str):

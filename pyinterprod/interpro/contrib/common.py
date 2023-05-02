@@ -14,6 +14,7 @@ class Method:
     abstract: Optional[str] = None
     date: Optional[datetime] = None
     references: list[int] = field(default_factory=list)
+    model: Optional[str] = None
 
 
 @dataclass
