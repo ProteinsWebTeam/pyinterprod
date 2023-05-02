@@ -60,34 +60,53 @@ def add_staging(uri: str, update: list[tuple[Database, dict[str, str]]]):
     """
     with Table(con, sql) as table:
         errors = 0
-        for db, db_sources in update:
+        for db, db_props in update:
             if db.identifier == 'H':
                 # Pfam
-                signatures = contrib.pfam.get_signatures(db_sources["signatures"])
+                signatures = contrib.pfam.get_signatures(
+                    db_props["signatures"]
+                )
             elif db.identifier == 'J':
                 # CDD
-                signatures = contrib.cdd.parse_signatures(db_sources["signatures"])
+                signatures = contrib.cdd.parse_signatures(
+                    db_props["signatures"]
+                )
             elif db.identifier == 'M':
                 # PROSITE profiles
-                signatures = contrib.prosite.parse_profiles(db_sources["signatures"])
+                signatures = contrib.prosite.parse_profiles(
+                    db_props["signatures"]
+                )
             elif db.identifier == 'N':
                 # NCBIFam
-                signatures = contrib.ncbifam.get_signatures(db_sources["hmm"], db_sources["signatures"])
+                signatures = contrib.ncbifam.get_signatures(
+                    db_props["hmm"],
+                    db_props["signatures"]
+                )
             elif db.identifier == 'P':
                 # PROSITE patterns
-                signatures = contrib.prosite.parse_patterns(db_sources["signatures"])
+                signatures = contrib.prosite.parse_patterns(
+                    db_props["signatures"]
+                )
             elif db.identifier == 'Q':
                 # HAMAP
-                signatures = contrib.hamap.parse_signatures(db_sources["signatures"])
+                signatures = contrib.hamap.parse_signatures(
+                    db_props["signatures"]
+                )
             elif db.identifier == 'R':
                 # SMART
-                signatures = contrib.smart.parse_signatures(db_sources["signatures"])
+                signatures = contrib.smart.parse_signatures(
+                    db_props["signatures"]
+                )
             elif db.identifier == 'V':
                 # PANTHER
-                signatures = contrib.panther.parse_signatures(db_sources["signatures"])
+                signatures = contrib.panther.parse_signatures(
+                    db_props["signatures"]
+                )
             elif db.identifier == 'X':
                 # CATH-Gene3D
-                signatures = contrib.cath.parse_superfamilies(db_sources["signatures"])
+                signatures = contrib.cath.parse_superfamilies(
+                    db_props["signatures"]
+                )
             else:
                 logger.error(f"{db.name}: unsupported member database")
                 errors += 1
@@ -525,7 +544,7 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
-    for db, db_sources in update:
+    for db, db_props in update:
         try:
             partition = FEATURE_MATCH_PARTITIONS[db.identifier]
         except KeyError:
@@ -547,16 +566,21 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
 
         if db.identifier == 'a':
             # AntiFam
-            features = contrib.antifam.parse_models(db_sources["signatures"])
+            features = contrib.antifam.parse_models(db_props["signatures"])
         elif db.identifier == 'd':
             # Pfam-N
-            features = contrib.pfam.get_protenn_entries(cur, db_sources["signatures"])
+            file = db_props["signatures"]
+            features = contrib.pfam.get_protenn_entries(cur, file)
         elif db.identifier == 'f':
             # FunFams
-            features = contrib.cath.parse_functional_families(db_sources["signatures"])
+            file = db_props["signatures"]
+            features = contrib.cath.parse_functional_families(file)
         elif db.identifier == 'l':
             # ELM
-            features = contrib.elm.parse_instances(cur, db_sources["signatures"], db_sources["sequences"])
+            features = contrib.elm.load_classes(cur,
+                                                db_props["classes"],
+                                                db_props["instances"],
+                                                db_props["sequences"])
         else:
             cur.close()
             con.close()

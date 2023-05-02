@@ -265,12 +265,12 @@ def update_database_feature_matches(uri: str, databases: Sequence):
                 [database.identifier]
             )
             con.commit()
-        if database.identifier == "l":
+        elif database.identifier == "l":
             # ELM matches updated in update-features task
             cur.execute(
                 """
                 INSERT /*+ APPEND */ INTO INTERPRO.FEATURE_MATCH_NEW
-                SELECT PROTEIN_ID, METHOD_AC, SEQ_FEATURE, POS_FROM, POS_TO, :1
+                SELECT PROTEIN_ID, METHOD_AC, NULL, POS_FROM, POS_TO, :1
                 FROM INTERPRO.ELM_MATCH
                 """,
                 [database.identifier]

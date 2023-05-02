@@ -1,89 +1,114 @@
+import csv
 import hashlib
 
-from .common import Method
 from pyinterprod.utils.oracle import drop_table
 
+from .common import Method
 
-def parse_instances(cur, signatures_source: str, sequences_source: str) -> list[Method]:
-    """
-    Parse the ELM instances.tsv file, available at http://elm.eu.org/
-    """
-    valid_acc = get_updated_sequences(cur, sequences_source)
 
-    instances = set()
-    match_data = set()
-    with open(signatures_source, "rt") as fh:
+def ignore_comments(file: str):
+    with open(file, "rt", newline='') as fh:
         for line in fh:
-            if line[0] == '#':
-                continue
-            else:
-                elm_acc, _, elm_id, _, primary_acc, _, start, end, _, methods, inst_logic, _, _ = line.split("\t")
-                if inst_logic.strip('"') == 'true positive':
-                    if primary_acc.strip('"') in valid_acc:
-                        instances.add(Method(elm_id, None))
-                        match_data.add((primary_acc.strip('"'), elm_id.strip('"'), methods.strip('"'),
-                                        int(start.strip('"')), int(end.strip('"'))))
-    insert_matches(cur, list(match_data))
-    return list(instances)
+            if line and line[0] != "#":
+                yield line
 
 
-def get_updated_sequences(cur, filepath: str) -> list[str]:
-    fasta_acc = []
-    fasta_md5 = {}
-    with open(filepath, "rt") as fh:
+def load_classes(cur, classes_file: str, instances_file: str,
+                 sequences_file: str) -> list[Method]:
+    methods = {}
+
+    # Load classes from TSV
+    content = ignore_comments(classes_file)
+    reader = csv.DictReader(content, quotechar='"', delimiter="\t")
+    for row in reader:
+        m = Method(accession=row["accession"],
+                   sig_type=None,
+                   name=row["ELMIdentifier"],
+                   description=row["Description"])
+        methods[m.name] = m
+
+    # Load the MD5 hash of sequences used in ELM
+    checksums = {}
+    with open(sequences_file, "rt") as fh:
         for line in fh:
-            if line.startswith('>'):
-                _, protein_acc, _ = line.split('|')
-                protein_acc = protein_acc.split("-")[0]
-                fasta_sequence = next(fh)
-                fasta_md5[protein_acc] = hashlib.md5(fasta_sequence.strip().encode('utf-8')).hexdigest()
-                fasta_acc.append(protein_acc)
+            if line and line[0] == ">":
+                source, accession, identifier = line[1:].split("|")
+                # Some accessions are suffixed with what I guess is the version
+                accession = accession.split("-")[0]
+                sequence = next(fh).strip().encode("utf-8")
+                checksums[accession] = hashlib.md5(sequence).hexdigest()
 
-    valid_acc = []
+    # Check whether the sequences have changed
+    sequences = list(checksums.keys())
+    sequences_ok = set()
     step = 1000
-    for i in range(0, len(fasta_acc), step):
-        params = fasta_acc[i:i+step]
-        args = ",".join([":" + str(i+1) for i in range(len(params))])
-        cur.execute(f"""
-            SELECT xr.AC, p.MD5
-            FROM UNIPARC.XREF xr
-            JOIN UNIPARC.PROTEIN p ON xr.UPI = p.UPI
-            WHERE xr.DELETED = 'N' 
-                AND xr.DBID IN (2, 3)
-                AND xr.AC IN ({args})
-        """, params)
-        protein_md5 = dict(cur.fetchall())
+    for i in range(0, len(sequences), step):
+        params = sequences[i:i + step]
+        args = ",".join([":" + str(i + 1) for i in range(len(params))])
 
-        for acc in fasta_acc[i:i+step]:
-            try:
-                if fasta_md5[acc].upper() == protein_md5[acc].upper():
-                    valid_acc.append(acc)
-            except KeyError:
-                continue
+        cur.execute(
+            f"""
+            SELECT X.AC, P.MD5
+            FROM UNIPARC.XREF X
+            INNER JOIN UNIPARC.PROTEIN P ON X.UPI = P.UPI
+            WHERE X.AC IN ({args})
+              AND X.DBID IN (2, 3)             
+              AND X.DELETED = 'N'  
+            """,
+            params
+        )
 
-    return valid_acc
+        for accession, md5 in cur.fetchall():
+            if md5 == checksums[accession]:
+                sequences_ok.add(accession)
 
+    # Load instances (i.e. protein matches)
+    matches = []
+    content = ignore_comments(instances_file)
+    reader = csv.DictReader(content, quotechar='"', delimiter="\t")
+    for row in reader:
+        elm_name = row["ELMIdentifier"]
+        uniprot_acc = row["ProteinName"]
+        pos_from = int(row["Start"])
+        pos_to = int(row["End"])
+        evidences = row["Methods"]
+        logic = row["InstanceLogic"]
 
-def insert_matches(cur, data: list):
+        if elm_name not in methods:
+            continue
+        elif uniprot_acc not in sequences_ok:
+            continue
+        elif logic != "true positive":
+            continue
+
+        matches.append((
+            uniprot_acc,
+            methods[elm_name].accession,
+            # evidences,
+            pos_from,
+            pos_to
+        ))
+
+    # Populate ELM_MATCH
     drop_table(cur, "INTERPRO.ELM_MATCH", purge=True)
     cur.execute(
         """
         CREATE TABLE INTERPRO.ELM_MATCH (
             PROTEIN_ID VARCHAR(15) NOT NULL,
             METHOD_AC VARCHAR2(25) NOT NULL,
-            SEQ_FEATURE VARCHAR2(500), -- in feature_match table the limit is 60!
+            -- EVIDENCES VARCHAR2(500),
             POS_FROM NUMBER(5) NOT NULL,
             POS_TO NUMBER(5) NOT NULL
         ) NOLOGGING
         """
     )
-
     cur.executemany(
         """
-        INSERT INTO INTERPRO.ELM_MATCH (PROTEIN_ID, METHOD_AC, SEQ_FEATURE, POS_FROM, POS_TO)
-        VALUES (:1, :2, :3, :4, :5)
+        INSERT INTO INTERPRO.ELM_MATCH
+        VALUES (:1, :2, :3, :4)
         """,
-        data
+        matches
     )
-
     cur.connection.commit()
+
+    return list(methods.values())
