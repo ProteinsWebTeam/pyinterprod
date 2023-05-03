@@ -429,6 +429,7 @@ def run_member_db_update():
             )
         ]
 
+    feature_dbs += non_ipm_dbs
     if feature_dbs:
         tasks += [
             Task(
