@@ -59,7 +59,7 @@ def load_classes(cur, classes_file: str, instances_file: str,
         )
 
         for accession, md5 in cur.fetchall():
-            if md5 == checksums[accession]:
+            if md5.upper() == checksums[accession].upper():
                 sequences_ok.add(accession)
 
     # Load instances (i.e. protein matches)
@@ -68,7 +68,7 @@ def load_classes(cur, classes_file: str, instances_file: str,
     reader = csv.DictReader(content, quotechar='"', delimiter="\t")
     for row in reader:
         elm_name = row["ELMIdentifier"]
-        uniprot_acc = row["ProteinName"]
+        uniprot_acc = row["Primary_Acc"]
         pos_from = int(row["Start"])
         pos_to = int(row["End"])
         evidences = row["Methods"]
