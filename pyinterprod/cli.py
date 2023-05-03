@@ -316,9 +316,10 @@ def run_member_db_update():
     databases = interpro.database.get_databases(uri=ora_interpro_uri,
                                                 names=db_names,
                                                 expects_new=True)
-    mem_updates = []
-    non_mem_updates = []
-    site_updates = []
+    member_dbs = []
+    feature_dbs = []
+    non_ipm_dbs = []
+    site_dbs = []
     model_sources = {}
     go_sources = []
     for dbname, db in databases.items():
@@ -330,12 +331,15 @@ def run_member_db_update():
                 parser.error(f"{config['misc']['members']}: "
                              f"missing database '{dbname}'")
 
-            if db.is_member_db:
-                mem_updates.append(db)
-                model_sources[db.identifier] = props
+            model_sources[db.identifier] = props
+
+            if db.analysis_id is None:
+                # No analysis ID in ISPRO
+                non_ipm_dbs.append(db)
+            elif db.is_member_db:
+                member_dbs.append(db)
             elif db.is_feature_db:
-                non_mem_updates.append(db)
-                model_sources[db.identifier] = props
+                feature_dbs.append(db)
 
             try:
                 go_source = props["go-terms"]
@@ -346,52 +350,58 @@ def run_member_db_update():
                 go_sources.append((dbname, go_source))
 
         if db.has_site_matches:
-            site_updates.append(db)
+            site_dbs.append(db)
 
-    if not mem_updates and not non_mem_updates and not site_updates:
+    if len(member_dbs + feature_dbs + non_ipm_dbs + site_dbs) == 0:
         parser.error("No database to update")
 
-    tasks = [
-        Task(
-            fn=interpro.iprscan.import_tables,
-            args=(ora_iprscan_uri, "matches"),
-            kwargs=dict(databases=mem_updates + non_mem_updates + site_updates,
-                        force=True,
-                        threads=8),
-            name="import-ipm-matches",
-            scheduler=dict(queue=lsf_queue)
-        ),
-        Task(
-            fn=interpro.iprscan.update_partitions,
-            args=(ora_iprscan_uri, "matches"),
-            kwargs=dict(databases=mem_updates + non_mem_updates + site_updates,
-                        force=True,
-                        threads=8),
-            name="update-ipm-matches",
-            scheduler=dict(queue=lsf_queue),
-            requires=["import-ipm-matches"]
-        ),
-    ]
+    tasks = []
 
-    if mem_updates:
+    if member_dbs or feature_dbs or site_dbs:
+        tasks += [
+            Task(
+                fn=interpro.iprscan.import_tables,
+                args=(ora_iprscan_uri, "matches"),
+                kwargs=dict(databases=member_dbs + feature_dbs + site_dbs,
+                            force=True,
+                            threads=8),
+                name="import-ipm-matches",
+                scheduler=dict(queue=lsf_queue)
+            ),
+            Task(
+                fn=interpro.iprscan.update_partitions,
+                args=(ora_iprscan_uri, "matches"),
+                kwargs=dict(databases=member_dbs + feature_dbs + site_dbs,
+                            force=True,
+                            threads=8),
+                name="update-ipm-matches",
+                scheduler=dict(queue=lsf_queue),
+                requires=["import-ipm-matches"]
+            ),
+        ]
+        ipm_dependencies = ["update-ipm-matches"]
+    else:
+        ipm_dependencies = []
+
+    if member_dbs:
         tasks += [
             Task(
                 fn=interpro.signature.add_staging,
                 args=(ora_interpro_uri, [(db, model_sources[db.identifier])
-                                         for db in mem_updates]),
+                                         for db in member_dbs]),
                 name="load-signatures",
                 scheduler=dict(queue=lsf_queue)
             ),
             Task(
                 fn=interpro.signature.track_signature_changes,
-                args=(ora_interpro_uri, pg_uri, mem_updates, data_dir),
+                args=(ora_interpro_uri, pg_uri, member_dbs, data_dir),
                 name="track-changes",
                 scheduler=dict(mem=4000, queue=lsf_queue),
                 requires=["load-signatures"]
             ),
             Task(
                 fn=interpro.signature.delete_obsoletes,
-                args=(ora_interpro_uri, mem_updates),
+                args=(ora_interpro_uri, member_dbs),
                 name="delete-obsoletes",
                 scheduler=dict(queue=lsf_queue),
                 requires=["track-changes"]
@@ -405,41 +415,41 @@ def run_member_db_update():
             ),
             Task(
                 fn=interpro.match.update_database_matches,
-                args=(ora_interpro_uri, mem_updates),
+                args=(ora_interpro_uri, member_dbs),
                 name="update-matches",
                 scheduler=dict(queue=lsf_queue),
-                requires=["update-ipm-matches", "update-signatures"]
+                requires=ipm_dependencies + ["update-signatures"]
             ),
             Task(
                 fn=interpro.match.update_variant_matches,
                 args=(ora_interpro_uri,),
                 name="update-varsplic",
                 scheduler=dict(queue=lsf_queue),
-                requires=["update-ipm-matches", "update-signatures"]
+                requires=ipm_dependencies + ["update-signatures"]
             )
         ]
 
-    if non_mem_updates:
+    if feature_dbs:
         tasks += [
             Task(
                 fn=interpro.signature.update_features,
                 args=(ora_interpro_uri, [(db, model_sources[db.identifier])
-                                         for db in non_mem_updates]),
+                                         for db in feature_dbs]),
                 name="update-features",
                 scheduler=dict(queue=lsf_queue),
-                requires=["update-ipm-matches"]
+                requires=ipm_dependencies
             ),
             Task(
                 fn=interpro.match.update_database_feature_matches,
-                args=(ora_interpro_uri, non_mem_updates),
+                args=(ora_interpro_uri, feature_dbs),
                 name="update-fmatches",
                 scheduler=dict(queue=lsf_queue),
                 requires=["update-features"]
             )
         ]
 
-    if site_updates:
-        if mem_updates:
+    if site_dbs:
+        if member_dbs:
             req = ["update-ipm-sites", "update-matches"]
         else:
             req = ["update-ipm-sites"]
@@ -448,28 +458,28 @@ def run_member_db_update():
             Task(
                 fn=interpro.iprscan.import_tables,
                 args=(ora_iprscan_uri, "sites"),
-                kwargs=dict(databases=site_updates, force=True, threads=2),
+                kwargs=dict(databases=site_dbs, force=True, threads=2),
                 name="import-ipm-sites",
                 scheduler=dict(queue=lsf_queue)
             ),
             Task(
                 fn=interpro.iprscan.update_partitions,
                 args=(ora_iprscan_uri, "sites"),
-                kwargs=dict(databases=site_updates, force=True, threads=2),
+                kwargs=dict(databases=site_dbs, force=True, threads=2),
                 name="update-ipm-sites",
                 scheduler=dict(queue=lsf_queue),
                 requires=["import-ipm-sites"]
             ),
             Task(
                 fn=interpro.match.update_database_site_matches,
-                args=(ora_interpro_uri, site_updates),
+                args=(ora_interpro_uri, site_dbs),
                 name="update-sites",
                 scheduler=dict(queue=lsf_queue),
                 requires=req
             )
         ]
 
-    if mem_updates:
+    if member_dbs:
         # Adding Pronto tasks
         after_pronto = []
         for t in get_pronto_tasks(ora_interpro_uri, ora_swpread_uri,
@@ -490,7 +500,7 @@ def run_member_db_update():
         tasks += [
             Task(
                 fn=interpro.report.send_db_update_report,
-                args=(ora_interpro_uri, pg_uri, mem_updates, data_dir,
+                args=(ora_interpro_uri, pg_uri, member_dbs, data_dir,
                       pronto_url, emails),
                 name="send-report",
                 scheduler=dict(mem=4000, queue=lsf_queue),
