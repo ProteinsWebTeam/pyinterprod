@@ -21,7 +21,7 @@ def load_classes(cur, classes_file: str, instances_file: str,
     content = ignore_comments(classes_file)
     reader = csv.DictReader(content, quotechar='"', delimiter="\t")
     for row in reader:
-        m = Method(accession=row["accession"],
+        m = Method(accession=row["Accession"],
                    sig_type=None,
                    name=row["ELMIdentifier"],
                    description=row["Description"])
