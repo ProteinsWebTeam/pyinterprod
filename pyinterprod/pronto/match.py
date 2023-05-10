@@ -124,7 +124,7 @@ def _export_matches(url: str, cachesize: int,
             row[4],  # match accession
             databases[row[5]],  # match DB
             fragments,
-            row[9]  # used for PANTHER subfamilies
+            row[9] if row[5] == 'V' else row[4]  # used for PANTHER subfamilies
         ))
 
         i += 1
@@ -214,7 +214,7 @@ def insert_signature2protein(url: str, names_db: str, matches_file: str,
             """
             CREATE TABLE signature2protein (
                 signature_acc VARCHAR(25) NOT NULL,
-                model_acc VARCHAR(25) NOT NULL,
+                model_acc VARCHAR(25),
                 protein_acc VARCHAR(15) NOT NULL,
                 is_reviewed BOOLEAN NOT NULL,
                 taxon_left_num INTEGER NOT NULL,
@@ -298,7 +298,10 @@ def _iter_proteins(names_db: str, matches_file: str, src: Queue, dst: Queue):
 
                 for sig_acc in matches:
                     for model_acc in matches[sig_acc]:
-                        yield sig_acc, model_acc, prot_acc, is_rev, left_num, name_id, md5
+                        if matches[sig_acc][model_acc][0] == 'panther':
+                            yield sig_acc, model_acc, prot_acc, is_rev, left_num, name_id, md5
+                        else:
+                            yield sig_acc, None, prot_acc, is_rev, left_num, name_id, md5
 
             dst.put(count)
 
@@ -561,11 +564,12 @@ def _iter_matches(matches_file: str, name2id: dict[str, int],
             for _ in range(count):
                 prot_acc, is_rev, is_comp, left_num, matches = pickle.load(fh)
 
-                for sig_acc, (sig_db, hits) in matches.items():
-                    sig_db_id = name2id[sig_db]
+                for sig_acc in matches:
+                    for model_acc, (sig_db, hits) in matches[sig_acc].items():
+                        sig_db_id = name2id[sig_db]
 
-                    for fragments in hits:
-                        yield prot_acc, sig_acc, sig_db_id, fragments
+                        for fragments in hits:
+                            yield prot_acc, sig_acc, sig_db_id, fragments
 
             dst.put(count)
 
