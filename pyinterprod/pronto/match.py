@@ -299,9 +299,11 @@ def _iter_proteins(names_db: str, matches_file: str, src: Queue, dst: Queue):
                 for sig_acc in matches:
                     for model_acc in matches[sig_acc]:
                         if matches[sig_acc][model_acc][0] == 'panther':
-                            yield sig_acc, model_acc, prot_acc, is_rev, left_num, name_id, md5
+                            yield (sig_acc, model_acc, prot_acc, is_rev, 
+                                   left_num, name_id, md5)
                         else:
-                            yield sig_acc, None, prot_acc, is_rev, left_num, name_id, md5
+                            yield (sig_acc, None, prot_acc, is_rev, 
+                                   left_num, name_id, md5)
 
             dst.put(count)
 
