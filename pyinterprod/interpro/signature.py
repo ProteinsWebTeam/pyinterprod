@@ -756,7 +756,6 @@ def delete_citation(cur: cx_Oracle.Cursor, pmid: str):
             WHERE PUBMED_ID = :1
         """, (str(pmid))
     )
-    # atualizar tabelas relacionadas
 
 
 def _get_citation(cur: cx_Oracle.Cursor, pmid: str):
