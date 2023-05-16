@@ -1,3 +1,4 @@
+import hashlib
 import os
 import pickle
 import re
@@ -629,7 +630,7 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
             try:
                 pub_id = pmid2pubid[pmid]
             except KeyError:
-                pub_id = update_citation(cur, pmid)
+                pub_id = import_citation(cur, pmid)
                 pmid2pubid[pmid] = pub_id
 
             if pub_id:
@@ -641,7 +642,7 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
         try:
             pub_id = pmid2pubid[pmid]
         except KeyError:
-            pub_id = update_citation(cur, pmid)
+            pub_id = import_citation(cur, pmid)
             pmid2pubid[pmid] = pub_id
 
         if pub_id:
@@ -663,7 +664,7 @@ def populate_method2pub_stg(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
         )
 
 
-def update_citation(cur: cx_Oracle.Cursor, pmid: int) -> Optional[str]:
+def import_citation(cur: cx_Oracle.Cursor, pmid: int) -> Optional[str]:
     cur.execute(
         """
             SELECT
@@ -716,3 +717,62 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: int) -> Optional[str]:
     else:
         logger.warning(f"Citation related to PMID {pmid} not found.")
         return None
+
+
+def track_citation_changes(cur: cx_Oracle.Cursor):
+    cur.execute(
+        """
+        SELECT PUBMED_ID, standard_hash(VOLUME || ISSUE || YEAR || TITLE || RAWPAGES || 
+            MEDLINE_JOURNAL || ISO_JOURNAL || AUTHORS || DOI_URL, 'MD5') CITATION_HASH
+        FROM INTERPRO.CITATION
+        """
+    )
+    ip_hash = dict(cur.fetchall())
+
+    step = 1000
+    for i in range(0, len(ip_hash), step):
+        params = list(str(ip_hash.keys()))[i:i + step]
+        args = ",".join([":" + str(i + 1) for i in range(len(params))])
+        cur.execute(
+            f"""
+                SELECT C.EXTERNAL_ID, standard_hash(I.VOLUME || I.ISSUE || I.PUBYEAR || 
+                    C.TITLE || C.PAGE_INFO || J.MEDLINE_ABBREVIATION || 
+                    J.ISO_ABBREVIATION || A.AUTHORS || U.URL, 'MD5')
+                FROM CDB.CITATIONS@LITPUB C
+                  LEFT OUTER JOIN CDB.JOURNAL_ISSUES@LITPUB I
+                    ON C.JOURNAL_ISSUE_ID = I.ID
+                  LEFT JOIN CDB.CV_JOURNALS@LITPUB J
+                    ON I.JOURNAL_ID = J.ID
+                  LEFT OUTER JOIN CDB.FULLTEXT_URL@LITPUB U
+                    ON (
+                        C.EXTERNAL_ID = U.EXTERNAL_ID AND
+                        U.DOCUMENT_STYLE  ='DOI' AND
+                        U.SOURCE = 'MED'
+                    )
+                  LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
+                    ON (
+                      C.ID = A.CITATION_ID AND
+                      A.HAS_SPECIAL_CHARS = 'N'
+                    )
+                WHERE C.EXTERNAL_ID IN ({args})
+                """, params
+        )
+    litpub_hash = dict(cur.fetchall())
+
+    for pmid, hash in ip_hash:
+        try:
+            if hash != litpub_hash[pmid]:
+                update_citation(cur, pmid)
+        except KeyError:
+            delete_citation(cur, pmid)
+
+
+def update_citation(cur: cx_Oracle.Cursor, pmid: str):
+    # fazer update
+    pass
+
+
+def delete_citation(cur: cx_Oracle.Cursor, pmid: str):
+    # deletar
+    # atualizar tabelas relacionadas
+    pass
