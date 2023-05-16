@@ -36,7 +36,7 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
             fh.seek(offset)
 
             for _ in range(count):
-                prot_acc, is_rev, is_comp, left_num, matches_file = pickle.load(fh)
+                prot_acc, is_rev, is_comp, left_num, matches = pickle.load(fh)
 
                 # Merge overlapping hits
                 matches = {}
