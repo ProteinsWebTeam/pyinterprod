@@ -701,7 +701,7 @@ def track_citation_changes(cur: cx_Oracle.Cursor):
     )
     ip_hash = dict(cur.fetchall())
 
-    pmids = list(map(str, set(i for i in ip_hash)))
+    pmids = list(set(i for i in ip_hash))
     step = 1000
     for i in range(0, len(pmids), step):
         params = pmids[i:i + step]
@@ -720,7 +720,7 @@ def track_citation_changes(cur: cx_Oracle.Cursor):
                   LEFT OUTER JOIN CDB.FULLTEXT_URL@LITPUB U
                     ON (
                         C.EXTERNAL_ID = U.EXTERNAL_ID AND
-                        UPPER(U.DOCUMENT_STYLE)  ='DOI' AND
+                        UPPER(U.DOCUMENT_STYLE) = 'DOI' AND
                         UPPER(U.SOURCE) = 'MED'
                     )
                   LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
@@ -729,22 +729,22 @@ def track_citation_changes(cur: cx_Oracle.Cursor):
                       A.HAS_SPECIAL_CHARS = 'N'
                     )
                 WHERE C.EXTERNAL_ID IN ({','.join(args)})
-                """, params
+                """, list(map(str, params))
         )
         litpub_hash = dict(cur.fetchall())
 
         for pmid in params:
-            if pmid2pubid[int(pmid)] not in used_citations_pubid:
+            if pmid2pubid[pmid] not in used_citations_pubid:
                 delete_citation(cur, pmid)
             else:
                 try:
-                    if ip_hash[int(pmid)] != litpub_hash[pmid]:
+                    if ip_hash[int(pmid)] != litpub_hash[str(pmid)]:
                         update_citation(cur, pmid)
                 except KeyError:
                     delete_citation(cur, pmid)
 
 
-def update_citation(cur: cx_Oracle.Cursor, pmid):
+def update_citation(cur: cx_Oracle.Cursor, pmid: int):
     citation = _get_citation(cur, pmid)
 
     cur.execute(
@@ -753,20 +753,20 @@ def update_citation(cur: cx_Oracle.Cursor, pmid):
               SET VOLUME=:2, ISSUE=:3, YEAR=:4, TITLE=:5, RAWPAGES=:6,
                MEDLINE_JOURNAL=:7, ISO_JOURNAL=:8, AUTHORS=:9, DOI_URL=:10
               WHERE PUBMED_ID = :1
-            """, (str(pmid), *citation)
+            """, (str(pmid),), *citation
     )
 
 
-def delete_citation(cur: cx_Oracle.Cursor, pmid):
+def delete_citation(cur: cx_Oracle.Cursor, pmid: int):
     cur.execute(
         """
             DELETE FROM INTERPRO.CITATION
             WHERE PUBMED_ID = :1
-        """, (str(pmid))
+        """, (str(pmid),)
     )
 
 
-def _get_citation(cur: cx_Oracle.Cursor, pmid):
+def _get_citation(cur: cx_Oracle.Cursor, pmid: int):
     cur.execute(
         """
             SELECT
@@ -781,7 +781,7 @@ def _get_citation(cur: cx_Oracle.Cursor, pmid):
               LEFT OUTER JOIN CDB.FULLTEXT_URL@LITPUB U
                 ON (
                     C.EXTERNAL_ID = U.EXTERNAL_ID AND
-                    UPPER(U.DOCUMENT_STYLE) ='DOI' AND
+                    UPPER(U.DOCUMENT_STYLE) = 'DOI' AND
                     UPPER(U.SOURCE) = 'MED'
                 )
               LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
@@ -790,10 +790,10 @@ def _get_citation(cur: cx_Oracle.Cursor, pmid):
                   A.HAS_SPECIAL_CHARS = 'N'
                 )
             WHERE C.EXTERNAL_ID = :1
-            """, (str(pmid))
+            """, (str(pmid),)
     )
-
     citation = cur.fetchone()
+
     if citation:
         citation = list(citation)
         citation[0] = int(citation[0])
