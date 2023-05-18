@@ -688,7 +688,7 @@ def import_citation(cur: cx_Oracle.Cursor, pmid) -> Optional[str]:
 
 
 def track_citation_changes(cur: cx_Oracle.Cursor):
-    used_citations_pmid = _get_used_citations_pmid(cur)
+    used_citations_pubid = _get_used_citations_pubid(cur)
     pmid2pubid = get_pmid2pubid(cur)
 
     cur.execute(
@@ -696,13 +696,13 @@ def track_citation_changes(cur: cx_Oracle.Cursor):
         SELECT PUBMED_ID, standard_hash(VOLUME || ISSUE || YEAR || TITLE || RAWPAGES || 
             MEDLINE_JOURNAL || ISO_JOURNAL || AUTHORS || DOI_URL, 'MD5') CITATION_HASH
         FROM INTERPRO.CITATION
+        WHERE PUBMED_ID IS NOT NULL
         """
     )
-    ip_hash = cur.fetchall()
+    ip_hash = dict(cur.fetchall())
 
-    pmids = list(map(str, set(i[0] for i in ip_hash)))
+    pmids = list(map(str, set(i for i in ip_hash)))
     step = 1000
-
     for i in range(0, len(pmids), step):
         params = pmids[i:i + step]
         args = [":" + str(i + 1) for i in range(len(params))]
@@ -731,18 +731,17 @@ def track_citation_changes(cur: cx_Oracle.Cursor):
                 WHERE C.EXTERNAL_ID IN ({','.join(args)})
                 """, params
         )
-    litpub_hash = dict(cur.fetchall())
+        litpub_hash = dict(cur.fetchall())
 
-    for pmid in pmids:
-        pmid = int(pmid)
-        if pmid2pubid[pmid] not in used_citations_pmid:
-            delete_citation(cur, pmid)
-        else:
-            try:
-                if ip_hash[pmid] != litpub_hash[pmid]:
-                    update_citation(cur, pmid)
-            except KeyError:
+        for pmid in pmids:
+            if pmid2pubid[int(pmid)] not in used_citations_pubid:
                 delete_citation(cur, pmid)
+            else:
+                try:
+                    if ip_hash[int(pmid)] != litpub_hash[pmid]:
+                        update_citation(cur, pmid)
+                except KeyError:
+                    delete_citation(cur, pmid)
 
 
 def update_citation(cur: cx_Oracle.Cursor, pmid):
@@ -804,7 +803,7 @@ def _get_citation(cur: cx_Oracle.Cursor, pmid):
     return citation
 
 
-def _get_used_citations_pmid(cur: cx_Oracle.Cursor) -> set[str]:
+def _get_used_citations_pubid(cur: cx_Oracle.Cursor) -> set[str]:
     cur.execute(
         """
             SELECT * FROM (
