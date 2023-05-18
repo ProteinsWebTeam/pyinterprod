@@ -1,4 +1,3 @@
-import hashlib
 import os
 import pickle
 import re
@@ -664,8 +663,8 @@ def populate_method2pub_stg(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
         )
 
 
-def import_citation(cur: cx_Oracle.Cursor, pmid: str) -> Optional[str]:
-    citation = _get_citation(cur, str(pmid))
+def import_citation(cur: cx_Oracle.Cursor, pmid) -> Optional[str]:
+    citation = _get_citation(cur, pmid)
     if citation:
         pub_id = cur.var(cx_Oracle.STRING)
         cur.execute(
@@ -689,6 +688,8 @@ def import_citation(cur: cx_Oracle.Cursor, pmid: str) -> Optional[str]:
 
 
 def track_citation_changes(cur: cx_Oracle.Cursor):
+    used_citations_pmid = _get_used_citations_pmid(cur)
+
     cur.execute(
         """
         SELECT PUBMED_ID, standard_hash(VOLUME || ISSUE || YEAR || TITLE || RAWPAGES || 
@@ -696,11 +697,11 @@ def track_citation_changes(cur: cx_Oracle.Cursor):
         FROM INTERPRO.CITATION
         """
     )
-    ip_hash = dict(cur.fetchall())
+    ip_hash = cur.fetchall()
 
     step = 1000
     for i in range(0, len(ip_hash), step):
-        params = list(str(ip_hash.keys()))[i:i + step]
+        params = ip_hash[i:i + step]
         args = ",".join([":" + str(i + 1) for i in range(len(params))])
         cur.execute(
             f"""
@@ -724,19 +725,22 @@ def track_citation_changes(cur: cx_Oracle.Cursor):
                       A.HAS_SPECIAL_CHARS = 'N'
                     )
                 WHERE C.EXTERNAL_ID IN ({args})
-                """, params
+                """, params[0]
         )
     litpub_hash = dict(cur.fetchall())
 
     for pmid, hash in ip_hash:
-        try:
-            if hash != litpub_hash[pmid]:
-                update_citation(cur, pmid)
-        except KeyError:
+        if pmid not in used_citations_pmid:
             delete_citation(cur, pmid)
+        else:
+            try:
+                if hash != litpub_hash[pmid]:
+                    update_citation(cur, pmid)
+            except KeyError:
+                delete_citation(cur, pmid)
 
 
-def update_citation(cur: cx_Oracle.Cursor, pmid: str):
+def update_citation(cur: cx_Oracle.Cursor, pmid):
     citation = _get_citation(cur, pmid)
 
     cur.execute(
@@ -749,7 +753,7 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: str):
     )
 
 
-def delete_citation(cur: cx_Oracle.Cursor, pmid: str):
+def delete_citation(cur: cx_Oracle.Cursor, pmid):
     cur.execute(
         """
             DELETE FROM INTERPRO.CITATION
@@ -758,7 +762,7 @@ def delete_citation(cur: cx_Oracle.Cursor, pmid: str):
     )
 
 
-def _get_citation(cur: cx_Oracle.Cursor, pmid: str):
+def _get_citation(cur: cx_Oracle.Cursor, pmid):
     cur.execute(
         """
             SELECT
@@ -782,7 +786,7 @@ def _get_citation(cur: cx_Oracle.Cursor, pmid: str):
                   A.HAS_SPECIAL_CHARS = 'N'
                 )
             WHERE C.EXTERNAL_ID = :1
-            """, pmid
+            """, (str(pmid))
     )
 
     citation = cur.fetchone()
@@ -793,3 +797,20 @@ def _get_citation(cur: cx_Oracle.Cursor, pmid: str):
             citation[4] = citation[4][:737] + "..."
 
     return citation
+
+
+def _get_used_citations_pmid(cur: cx_Oracle.Cursor) -> set[str]:
+    cur.execute(
+        """
+            SELECT * FROM (
+                SELECT PUB_ID
+                FROM INTERPRO.ENTRY2PUB
+                UNION
+                SELECT PUB_ID FROM INTERPRO.SUPPLEMENTARY_REF
+                UNION
+                SELECT m.PUB_ID FROM INTERPRO.METHOD2PUB m
+            )
+        """
+    )
+    current_citations = cur.fetchall()
+    return set(current_citations)
