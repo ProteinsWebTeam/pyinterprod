@@ -753,7 +753,7 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: int):
               SET VOLUME=:2, ISSUE=:3, YEAR=:4, TITLE=:5, RAWPAGES=:6,
                MEDLINE_JOURNAL=:7, ISO_JOURNAL=:8, AUTHORS=:9, DOI_URL=:10
               WHERE PUBMED_ID = :1
-            """, (str(pmid),), *citation
+            """, *citation
     )
 
 
