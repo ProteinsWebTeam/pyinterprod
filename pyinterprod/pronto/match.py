@@ -169,13 +169,15 @@ def _merge_matches(files: list[str]):
             matches = {}
 
         for signature_acc, signature_db, fragments, model_acc in value[3]:
-            if signature_acc in matches:
-                if model_acc in matches[signature_acc]:
-                    matches[signature_acc][model_acc][1].append(fragments)
-                else:
-                    matches[signature_acc][model_acc] = (signature_db, [fragments])
-            else:
-                matches[signature_acc] = {model_acc:(signature_db, [fragments])}
+            try:
+                models = matches[signature_acc]
+            except KeyError:
+                models = matches[signature_acc] = {}
+
+            try:
+                models[model_acc][1].append(fragments)
+            except KeyError:
+                models[model_acc] = (signature_db, [fragments])
 
     yield protein_acc, is_reviewed, is_complete, left_number, matches
 
