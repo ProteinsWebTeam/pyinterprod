@@ -689,6 +689,7 @@ def import_citation(cur: cx_Oracle.Cursor, pmid) -> Optional[str]:
 
 def track_citation_changes(cur: cx_Oracle.Cursor):
     used_citations_pmid = _get_used_citations_pmid(cur)
+    pmid2pubid = get_pmid2pubid(cur)
 
     cur.execute(
         """
@@ -733,7 +734,8 @@ def track_citation_changes(cur: cx_Oracle.Cursor):
     litpub_hash = dict(cur.fetchall())
 
     for pmid in pmids:
-        if pmid not in used_citations_pmid:
+        pmid = int(pmid)
+        if pmid2pubid[pmid] not in used_citations_pmid:
             delete_citation(cur, pmid)
         else:
             try:
