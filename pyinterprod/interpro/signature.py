@@ -720,8 +720,8 @@ def track_citation_changes(cur: cx_Oracle.Cursor):
                   LEFT OUTER JOIN CDB.FULLTEXT_URL@LITPUB U
                     ON (
                         C.EXTERNAL_ID = U.EXTERNAL_ID AND
-                        U.DOCUMENT_STYLE  ='DOI' AND
-                        U.SOURCE = 'MED'
+                        UPPER(U.DOCUMENT_STYLE)  ='DOI' AND
+                        UPPER(U.SOURCE) = 'MED'
                     )
                   LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
                     ON (
@@ -781,8 +781,8 @@ def _get_citation(cur: cx_Oracle.Cursor, pmid):
               LEFT OUTER JOIN CDB.FULLTEXT_URL@LITPUB U
                 ON (
                     C.EXTERNAL_ID = U.EXTERNAL_ID AND
-                    U.DOCUMENT_STYLE  ='DOI' AND
-                    U.SOURCE = 'MED'
+                    UPPER(U.DOCUMENT_STYLE) ='DOI' AND
+                    UPPER(U.SOURCE) = 'MED'
                 )
               LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
                 ON (
