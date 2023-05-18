@@ -699,9 +699,10 @@ def track_citation_changes(cur: cx_Oracle.Cursor):
     )
     ip_hash = cur.fetchall()
 
+    pmids = [i[0] for i in ip_hash]
     step = 1000
-    for i in range(0, len(ip_hash), step):
-        params = ip_hash[i:i + step]
+    for i in range(0, len(pmids), step):
+        params = pmids[i:i + step]
         args = ",".join([":" + str(i + 1) for i in range(len(params))])
         cur.execute(
             f"""
@@ -725,7 +726,7 @@ def track_citation_changes(cur: cx_Oracle.Cursor):
                       A.HAS_SPECIAL_CHARS = 'N'
                     )
                 WHERE C.EXTERNAL_ID IN ({args})
-                """, params[0]
+                """, (str(params))
         )
     litpub_hash = dict(cur.fetchall())
 
