@@ -700,10 +700,14 @@ def track_citation_changes(cur: cx_Oracle.Cursor):
     ip_hash = cur.fetchall()
 
     pmids = [i[0] for i in ip_hash]
-    step = 1000
+    step = 10
     for i in range(0, len(pmids), step):
-        params = pmids[i:i + step]
-        args = ",".join([":" + str(i + 1) for i in range(len(params))])
+        args = []
+        params = []
+        for i, pmid in enumerate(map(str, set(pmids))):
+            args.append(f":{i + 1}")
+            params.append(pmid)
+
         cur.execute(
             f"""
                 SELECT C.EXTERNAL_ID, standard_hash(I.VOLUME || I.ISSUE || I.PUBYEAR || 
@@ -725,17 +729,17 @@ def track_citation_changes(cur: cx_Oracle.Cursor):
                       C.ID = A.CITATION_ID AND
                       A.HAS_SPECIAL_CHARS = 'N'
                     )
-                WHERE C.EXTERNAL_ID IN ({args})
-                """, (str(params))
+                WHERE C.EXTERNAL_ID IN ({','.join(args)})
+                """, params
         )
     litpub_hash = dict(cur.fetchall())
 
-    for pmid, hash in ip_hash:
+    for pmid in pmids:
         if pmid not in used_citations_pmid:
             delete_citation(cur, pmid)
         else:
             try:
-                if hash != litpub_hash[pmid]:
+                if ip_hash[pmid] != litpub_hash[pmid]:
                     update_citation(cur, pmid)
             except KeyError:
                 delete_citation(cur, pmid)
