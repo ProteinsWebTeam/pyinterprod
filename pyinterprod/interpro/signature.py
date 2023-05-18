@@ -699,14 +699,12 @@ def track_citation_changes(cur: cx_Oracle.Cursor):
     )
     ip_hash = cur.fetchall()
 
-    pmids = [i[0] for i in ip_hash]
-    step = 10
+    pmids = list(map(str, set(i[0] for i in ip_hash)))
+    step = 1000
+
     for i in range(0, len(pmids), step):
-        args = []
-        params = []
-        for i, pmid in enumerate(map(str, set(pmids))):
-            args.append(f":{i + 1}")
-            params.append(pmid)
+        params = pmids[i:i + step]
+        args = [":" + str(i + 1) for i in range(len(params))]
 
         cur.execute(
             f"""
@@ -817,5 +815,5 @@ def _get_used_citations_pmid(cur: cx_Oracle.Cursor) -> set[str]:
             )
         """
     )
-    current_citations = cur.fetchall()
+    current_citations = [citations for citations, in cur.fetchall()]
     return set(current_citations)
