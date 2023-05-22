@@ -1,7 +1,7 @@
 import cx_Oracle
 
 
-def get_gp(cur: cx_Oracle.Cursor, file_path: str):
+def import_gp(cur: cx_Oracle.Cursor, file_path: str):
     gp = []
     with open(file_path, "rt") as fh:
         for line in fh:
@@ -31,8 +31,8 @@ def get_gp(cur: cx_Oracle.Cursor, file_path: str):
 
 
 if __name__ == '__main__':
-    con = cx_Oracle.connect('')
+    con = cx_Oracle.connect('connection string')
     cur = con.cursor()
-    get_gp(cur, 'genomeProperties.txt')
+    import_gp(cur, 'path/to/genomeProperties.txt')
     cur.close()
     con.close()
