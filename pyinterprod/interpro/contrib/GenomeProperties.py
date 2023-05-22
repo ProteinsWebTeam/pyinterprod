@@ -35,4 +35,5 @@ if __name__ == '__main__':
     cur = con.cursor()
     import_gp(cur, 'path/to/genomeProperties.txt')
     cur.close()
+    con.commit()
     con.close()
