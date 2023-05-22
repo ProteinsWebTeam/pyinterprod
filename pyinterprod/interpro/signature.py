@@ -780,7 +780,7 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: int):
         """
         MERGE INTO INTERPRO.CITATION IC
         USING (
-                SELECT
+                SELECT DISTINCT
                   C.EXTERNAL_ID AS EXTERNAL_ID, I.VOLUME AS VOLUME, I.ISSUE AS ISSUE,
                   I.PUBYEAR AS YEAR, C.TITLE AS TITLE, C.PAGE_INFO AS RAWPAGES,
                   J.MEDLINE_ABBREVIATION AS MEDLINE_JOURNAL, J.ISO_ABBREVIATION AS ISO_JOURNAL,
