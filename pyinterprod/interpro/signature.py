@@ -664,7 +664,33 @@ def populate_method2pub_stg(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
 
 
 def import_citation(cur: cx_Oracle.Cursor, pmid) -> Optional[str]:
-    citation = _get_citation(cur, pmid)
+    cur.execute(
+        """
+            SELECT
+              C.EXTERNAL_ID, I.VOLUME, I.ISSUE, I.PUBYEAR, C.TITLE,
+              C.PAGE_INFO, J.MEDLINE_ABBREVIATION, J.ISO_ABBREVIATION,
+              A.AUTHORS, U.URL
+            FROM CDB.CITATIONS@LITPUB C
+              LEFT OUTER JOIN CDB.JOURNAL_ISSUES@LITPUB I
+                ON C.JOURNAL_ISSUE_ID = I.ID
+              LEFT JOIN CDB.CV_JOURNALS@LITPUB J
+                ON I.JOURNAL_ID = J.ID
+              LEFT OUTER JOIN CDB.FULLTEXT_URL@LITPUB U
+                ON (
+                    C.EXTERNAL_ID = U.EXTERNAL_ID AND
+                    U.DOCUMENT_STYLE  ='DOI' AND
+                    U.SOURCE = 'MED'
+                )
+              LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
+                ON (
+                  C.ID = A.CITATION_ID AND
+                  A.HAS_SPECIAL_CHARS = 'N'
+                )
+            WHERE C.EXTERNAL_ID = :1
+            """, (str(pmid),)
+    )
+
+    citation = cur.fetchone()
     if citation:
         pub_id = cur.var(cx_Oracle.STRING)
         cur.execute(
@@ -741,18 +767,49 @@ def track_citation_changes(cur: cx_Oracle.Cursor):
                     if ip_hash[int(pmid)] != litpub_hash[str(pmid)]:
                         update_citation(cur, pmid)
                 except KeyError:
-                    delete_citation(cur, pmid)
+                    logger.warning(f"Citation with Pubmed_id: '{pmid}' not found.")
 
 
 def update_citation(cur: cx_Oracle.Cursor, pmid: int):
-    citation = _get_citation(cur, pmid)
-
     cur.execute(
         """
-        UPDATE INTERPRO.CITATION
-        SET VOLUME=:2, ISSUE=:3, YEAR=:4, TITLE=:5, RAWPAGES=:6, MEDLINE_JOURNAL=:7, ISO_JOURNAL=:8, AUTHORS=:9, DOI_URL=:10
-        WHERE PUBMED_ID = :1
-        """, (*citation,)
+        MERGE INTO INTERPRO.CITATION IC
+        USING (
+                SELECT
+                  C.EXTERNAL_ID AS EXTERNAL_ID, I.VOLUME AS VOLUME, I.ISSUE AS ISSUE,
+                  I.PUBYEAR AS YEAR, C.TITLE AS TITLE, C.PAGE_INFO AS RAWPAGES,
+                  J.MEDLINE_ABBREVIATION AS MEDLINE_JOURNAL, J.ISO_ABBREVIATION AS ISO_JOURNAL,
+                  A.AUTHORS AS AUTHORS, U.URL AS DOI_URL
+                FROM CDB.CITATIONS@LITPUB C
+                  LEFT OUTER JOIN CDB.JOURNAL_ISSUES@LITPUB I
+                    ON C.JOURNAL_ISSUE_ID = I.ID
+                  LEFT JOIN CDB.CV_JOURNALS@LITPUB J
+                    ON I.JOURNAL_ID = J.ID
+                  LEFT OUTER JOIN CDB.FULLTEXT_URL@LITPUB U
+                    ON (
+                        C.EXTERNAL_ID = U.EXTERNAL_ID AND
+                        UPPER(U.DOCUMENT_STYLE) = 'DOI' AND
+                        UPPER(U.SOURCE) = 'MED'
+                    )
+                  LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
+                    ON (
+                      C.ID = A.CITATION_ID AND
+                      A.HAS_SPECIAL_CHARS = 'N'
+                    )
+                ) L
+        ON (TO_CHAR(IC.PUBMED_ID) = L.EXTERNAL_ID)
+        WHEN MATCHED THEN
+          UPDATE SET IC.VOLUME = L.VOLUME,
+                     IC.ISSUE = L.ISSUE,
+                     IC.YEAR = L.YEAR,
+                     IC.TITLE = L.TITLE,
+                     IC.RAWPAGES = L.RAWPAGES,
+                     IC.MEDLINE_JOURNAL = L.MEDLINE_JOURNAL,
+                     IC.ISO_JOURNAL = L.ISO_JOURNAL,
+                     IC.AUTHORS = L.AUTHORS,
+                     IC.DOI_URL = L.DOI_URL
+          WHERE PUBMED_ID = :1
+        """, (pmid,)
     )
 
 
@@ -763,43 +820,6 @@ def delete_citation(cur: cx_Oracle.Cursor, pmid: int):
             WHERE PUBMED_ID = :1
         """, (str(pmid),)
     )
-
-
-def _get_citation(cur: cx_Oracle.Cursor, pmid: int) -> list[str, int]:
-    cur.execute(
-        """
-            SELECT
-              C.EXTERNAL_ID, I.VOLUME, I.ISSUE, I.PUBYEAR, C.TITLE,
-              C.PAGE_INFO, J.MEDLINE_ABBREVIATION, J.ISO_ABBREVIATION,
-              A.AUTHORS, U.URL
-            FROM CDB.CITATIONS@LITPUB C
-              LEFT OUTER JOIN CDB.JOURNAL_ISSUES@LITPUB I
-                ON C.JOURNAL_ISSUE_ID = I.ID
-              LEFT JOIN CDB.CV_JOURNALS@LITPUB J
-                ON I.JOURNAL_ID = J.ID
-              LEFT OUTER JOIN CDB.FULLTEXT_URL@LITPUB U
-                ON (
-                    C.EXTERNAL_ID = U.EXTERNAL_ID AND
-                    UPPER(U.DOCUMENT_STYLE) = 'DOI' AND
-                    UPPER(U.SOURCE) = 'MED'
-                )
-              LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
-                ON (
-                  C.ID = A.CITATION_ID AND
-                  A.HAS_SPECIAL_CHARS = 'N'
-                )
-            WHERE C.EXTERNAL_ID = :1
-            """, (str(pmid),)
-    )
-    citation = cur.fetchone()
-
-    if citation:
-        citation = list(citation)
-        citation[0] = int(citation[0])
-        if len(citation[4]) > 740:
-            citation[4] = citation[4][:737] + "..."
-
-    return citation
 
 
 def _get_used_citations_pubid(cur: cx_Oracle.Cursor) -> set[str]:
