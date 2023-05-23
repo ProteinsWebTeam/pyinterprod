@@ -4,7 +4,7 @@ import cx_Oracle
 def import_gp(cur: cx_Oracle.Cursor, file_path: str):
     gp = []
     with open(file_path, "rt") as fh:
-        for line in fh:
+        for line in map(str.rstrip, fh):
             if line.startswith("AC"):
                 entry_ac = line.split()[1]
             elif line.startswith("DE"):
