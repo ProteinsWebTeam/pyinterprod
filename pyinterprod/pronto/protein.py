@@ -3,9 +3,9 @@ import shutil
 from tempfile import mkstemp
 from typing import Optional
 
-import cx_Oracle
-import psycopg2
-from psycopg2.extras import execute_values
+import oracledb
+import psycopg
+from psycopg.extras import execute_values
 
 from pyinterprod import logger
 from pyinterprod.utils.kvdb import KVdb
@@ -14,7 +14,7 @@ from pyinterprod.utils.pg import CsvIO, url2dict
 
 def import_similarity_comments(swp_url: str, ipr_url: str):
     logger.info("populating")
-    pg_con = psycopg2.connect(**url2dict(ipr_url))
+    pg_con = psycopg.connect(**url2dict(ipr_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("DROP TABLE IF EXISTS protein_similarity")
         pg_cur.execute(
@@ -27,7 +27,7 @@ def import_similarity_comments(swp_url: str, ipr_url: str):
             """
         )
 
-        ora_con = cx_Oracle.connect(swp_url)
+        ora_con = oracledb.connect(swp_url)
         ora_cur = ora_con.cursor()
         ora_cur.execute(
             """
@@ -87,7 +87,7 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
     os.close(fd)
     os.remove(tmp_database)
 
-    pg_con = psycopg2.connect(**url2dict(ipr_url))
+    pg_con = psycopg.connect(**url2dict(ipr_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("DROP TABLE IF EXISTS protein_name")
         pg_cur.execute("DROP TABLE IF EXISTS protein2name")
@@ -110,7 +110,7 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
             """
         )
 
-        ora_con = cx_Oracle.connect(swp_url)
+        ora_con = oracledb.connect(swp_url)
         ora_cur = ora_con.cursor()
         ora_cur.execute(
             """
@@ -203,7 +203,7 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
 
 def import_proteins(ora_url: str, pg_url: str):
     logger.info("populating")
-    pg_con = psycopg2.connect(**url2dict(pg_url))
+    pg_con = psycopg.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("DROP TABLE IF EXISTS protein")
         pg_cur.execute(
@@ -220,7 +220,7 @@ def import_proteins(ora_url: str, pg_url: str):
             """
         )
 
-        ora_con = cx_Oracle.connect(ora_url)
+        ora_con = oracledb.connect(ora_url)
         ora_cur = ora_con.cursor()
         ora_cur.execute(
             """

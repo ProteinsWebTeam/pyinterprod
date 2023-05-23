@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, Union
 
-import cx_Oracle
+import oracledb
 from mundone.task import Task
 
 from pyinterprod import logger
@@ -9,9 +9,9 @@ from pyinterprod.uniprot.uniparc import iter_proteins
 from pyinterprod.utils import oracle
 
 
-def get_analyses(obj: Union[str, cx_Oracle.Cursor]) -> dict:
+def get_analyses(obj: Union[str, oracledb.Cursor]) -> dict:
     if isinstance(obj, str):
-        con = cx_Oracle.connect(obj)
+        con = oracledb.connect(obj)
         cur = con.cursor()
     else:
         con = None
@@ -49,7 +49,7 @@ def get_analyses(obj: Union[str, cx_Oracle.Cursor]) -> dict:
 
 
 def clean_tables(uri: str, analysis_ids: Optional[list[int]] = None):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     analyses = get_analyses(cur)
@@ -167,7 +167,7 @@ def clean_tables(uri: str, analysis_ids: Optional[list[int]] = None):
 
 def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
     logger.info("importing sequences from UniParc")
-    con = cx_Oracle.connect(ispro_uri)
+    con = oracledb.connect(ispro_uri)
     cur = con.cursor()
 
     if top_up:
@@ -231,7 +231,7 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
     logger.info(f"\t{cnt:,} sequences imported")
 
 
-def get_incomplete_jobs(cur: cx_Oracle.Cursor) -> dict:
+def get_incomplete_jobs(cur: oracledb.Cursor) -> dict:
     cur.execute(
         """
         SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME
@@ -264,7 +264,7 @@ def get_incomplete_jobs(cur: cx_Oracle.Cursor) -> dict:
     return incomplete_jobs
 
 
-def add_job(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
+def add_job(cur: oracledb.Cursor, analysis_id: int, upi_from: str,
             upi_to: str):
     cur.execute(
         """
@@ -284,7 +284,7 @@ def add_job(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
     cur.connection.commit()
 
 
-def update_job(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
+def update_job(cur: oracledb.Cursor, analysis_id: int, upi_from: str,
                upi_to: str, task: Task):
     cur.execute(
         """
@@ -307,7 +307,7 @@ def update_job(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
     cur.connection.commit()
 
 
-def is_job_done(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
+def is_job_done(cur: oracledb.Cursor, analysis_id: int, upi_from: str,
                 upi_to: str) -> bool:
     cur.execute(
         """
@@ -324,7 +324,7 @@ def is_job_done(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
     return cnt > 0
 
 
-def set_job_done(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
+def set_job_done(cur: oracledb.Cursor, analysis_id: int, upi_from: str,
                  upi_to: str, num_sequences: int):
     cur.execute(
         """
@@ -341,7 +341,7 @@ def set_job_done(cur: cx_Oracle.Cursor, analysis_id: int, upi_from: str,
 
 
 def rebuild_indexes(uri: str, analysis_ids: Optional[list[int]] = None):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     analyses = get_analyses(cur)
@@ -390,7 +390,7 @@ def rebuild_indexes(uri: str, analysis_ids: Optional[list[int]] = None):
 
 def _rebuild_index(uri: str, name: str):
     logger.info(f"rebuilding {name}")
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     oracle.rebuild_index(cur, name)
     cur.close()

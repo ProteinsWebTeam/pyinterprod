@@ -2,9 +2,9 @@
 
 import json
 
-import cx_Oracle
-import psycopg2
-from psycopg2.extras import execute_values
+import oracledb
+import psycopg
+from psycopg.extras import execute_values
 
 from pyinterprod import logger
 from pyinterprod.utils.pg import url2dict
@@ -46,7 +46,7 @@ def get_lineage(taxa: dict, tax_id: int):
 
 def import_taxonomy(ora_url: str, pg_url: str):
     logger.info("loading taxonomy info")
-    ora_con = cx_Oracle.connect(ora_url)
+    ora_con = oracledb.connect(ora_url)
     ora_cur = ora_con.cursor()
     ora_cur.execute(
         """
@@ -74,7 +74,7 @@ def import_taxonomy(ora_url: str, pg_url: str):
     ora_cur.close()
     ora_con.close()
 
-    pg_con = psycopg2.connect(**url2dict(pg_url))
+    pg_con = psycopg.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("DROP TABLE IF EXISTS taxon")
         pg_cur.execute("DROP TABLE IF EXISTS lineage")

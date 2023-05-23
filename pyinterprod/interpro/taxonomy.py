@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 
-import cx_Oracle
+import oracledb
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle, Table
 
 
 def refresh_taxonomy(ipr_url: str, swp_url: str):
-    ipr_con = cx_Oracle.connect(ipr_url)
+    ipr_con = oracledb.connect(ipr_url)
 
     logger.info("creating TAXONOMY_LOAD")
     ipr_cur = ipr_con.cursor()
@@ -32,7 +32,7 @@ def refresh_taxonomy(ipr_url: str, swp_url: str):
         VALUES (:1, :2, :3, :4, :5)
     """
     with Table(ipr_con, req, autocommit=True) as taxonomy_load:
-        swp_con = cx_Oracle.connect(swp_url)
+        swp_con = oracledb.connect(swp_url)
         swp_cur = swp_con.cursor()
         swp_cur.execute(
             """

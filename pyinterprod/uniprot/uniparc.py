@@ -1,6 +1,6 @@
 from typing import Optional
 
-import cx_Oracle
+import oracledb
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
@@ -8,7 +8,7 @@ from pyinterprod.utils import oracle
 
 def update_proteins(ipr_uri: str, unp_uri: str, top_up: bool = False):
     logger.info("creating table PROTEIN")
-    con = cx_Oracle.connect(ipr_uri)
+    con = oracledb.connect(ipr_uri)
     cur = con.cursor()
 
     if top_up:
@@ -74,9 +74,9 @@ def update_proteins(ipr_uri: str, unp_uri: str, top_up: bool = False):
 
 
 def update_xrefs(ipr_uri: str, unp_uri: str):
-    ipr_con = cx_Oracle.connect(ipr_uri)
+    ipr_con = oracledb.connect(ipr_uri)
     ipr_cur = ipr_con.cursor()
-    unp_con = cx_Oracle.connect(unp_uri)
+    unp_con = oracledb.connect(unp_uri)
     unp_cur = unp_con.cursor()
 
     logger.info("creating table CV_DATABASE")
@@ -206,7 +206,7 @@ def update_xrefs(ipr_uri: str, unp_uri: str):
 
 
 def iter_proteins(uri: str, greather_than: Optional[str] = None):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.outputtypehandler = oracle.clob_as_str
 

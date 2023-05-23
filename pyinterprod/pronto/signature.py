@@ -2,9 +2,9 @@ import math
 import pickle
 from multiprocessing import Process, Queue
 
-import cx_Oracle
-import psycopg2
-from psycopg2.extras import execute_values
+import oracledb
+import psycopg
+from psycopg.extras import execute_values
 
 from pyinterprod import logger
 from pyinterprod.utils.oracle import clob_as_str
@@ -198,7 +198,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
 
     # Load signatures from Oracle
     logger.info("loading signatures")
-    con = cx_Oracle.connect(ora_uri)
+    con = oracledb.connect(ora_uri)
     cur = con.cursor()
     cur.outputtypehandler = clob_as_str
     cur.execute(
@@ -216,7 +216,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
     cur.close()
     con.close()
 
-    con = psycopg2.connect(**url2dict(pg_uri))
+    con = psycopg.connect(**url2dict(pg_uri))
     with con.cursor() as cur:
         cur.execute("SELECT name, id FROM database")
         name2id = dict(cur.fetchall())
@@ -356,7 +356,7 @@ def _iter_predictions(comps: dict[str, dict[str, list[int, int, int]]],
 
 
 def get_swissprot_descriptions(pg_url: str) -> dict:
-    con = psycopg2.connect(**url2dict(pg_url))
+    con = psycopg.connect(**url2dict(pg_url))
     with con.cursor() as cur:
         cur.execute(
             """

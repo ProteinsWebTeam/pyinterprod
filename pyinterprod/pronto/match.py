@@ -9,8 +9,8 @@ from multiprocessing import Process, Queue
 from tempfile import mkstemp
 from typing import Optional
 
-import cx_Oracle
-import psycopg2
+import oracledb
+import psycopg
 
 from pyinterprod import logger
 from pyinterprod.utils import pg
@@ -67,7 +67,7 @@ def export(url: str, output: str, cachesize: int = 10000000,
 
 def _export_matches(url: str, cachesize: int,
                     tmpdir: Optional[str] = None) -> list[str]:
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
 
     # Loading databases
@@ -209,7 +209,7 @@ def insert_signature2protein(url: str, names_db: str, matches_file: str,
     shutil.copyfile(names_db, tmp_db)
 
     logger.info("creating signature2protein")
-    con = psycopg2.connect(**pg.url2dict(url))
+    con = psycopg.connect(**pg.url2dict(url))
     with con.cursor() as cur:
         cur.execute("DROP TABLE IF EXISTS signature2protein")
         cur.execute(
@@ -273,7 +273,7 @@ def insert_signature2protein(url: str, names_db: str, matches_file: str,
 
 def _populate_signature2protein(url: str, names_db: str, matches_file: str,
                                 src: Queue, dst: Queue):
-    con = psycopg2.connect(**pg.url2dict(url))
+    con = psycopg.connect(**pg.url2dict(url))
     with con.cursor() as cur:
         proteins = _iter_proteins(names_db, matches_file, src, dst)
         cur.copy_from(file=pg.CsvIO(proteins, sep='|'),
@@ -413,7 +413,7 @@ def _flatten_hits(hits: list[str]) -> list[tuple[int, int]]:
 
 
 def finalize_signature2protein(uri: str):
-    con = psycopg2.connect(**pg.url2dict(uri))
+    con = psycopg.connect(**pg.url2dict(uri))
     with con.cursor() as cur:
         logger.info("indexing")
 
@@ -445,7 +445,7 @@ def finalize_signature2protein(uri: str):
 
 
 def create_match_table(uri: str):
-    con = psycopg2.connect(**pg.url2dict(uri))
+    con = psycopg.connect(**pg.url2dict(uri))
     with con.cursor() as cur:
         cur.execute("DROP TABLE IF EXISTS match")
         cur.execute(
@@ -467,7 +467,7 @@ def create_match_table(uri: str):
 def insert_fmatches(ora_uri: str, pg_uri: str):
     logger.info("populating")
 
-    con = psycopg2.connect(**pg.url2dict(pg_uri))
+    con = psycopg.connect(**pg.url2dict(pg_uri))
     with con.cursor() as cur:
         cur.execute("SELECT name, id FROM database")
         name2id = dict(cur.fetchall())
@@ -482,7 +482,7 @@ def insert_fmatches(ora_uri: str, pg_uri: str):
 
 
 def _get_fmatches(uri: str, name2id: dict[str, int]):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -545,7 +545,7 @@ def insert_matches(uri: str, matches_file: str, processes: int = 1):
 
 
 def _populate_matches(url: str, matches_file: str, src: Queue, dst: Queue):
-    con = psycopg2.connect(**pg.url2dict(url))
+    con = psycopg.connect(**pg.url2dict(url))
     with con.cursor() as cur:
         cur.execute("SELECT name, id FROM database")
         name2id = dict(cur.fetchall())
@@ -579,7 +579,7 @@ def _iter_matches(matches_file: str, name2id: dict[str, int],
 
 
 def finalize_match_table(uri: str):
-    con = psycopg2.connect(**pg.url2dict(uri))
+    con = psycopg.connect(**pg.url2dict(uri))
     with con.cursor() as cur:
 
         logger.info("indexing")

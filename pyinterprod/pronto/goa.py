@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 
-import cx_Oracle
-import psycopg2
-from psycopg2.extras import execute_values
+import oracledb
+import psycopg
+from psycopg.extras import execute_values
 
 from pyinterprod import logger
 from pyinterprod.utils.pg import url2dict
 
 
 def import_annotations(ora_url: str, pg_url: str):
-    pg_con = psycopg2.connect(**url2dict(pg_url))
+    pg_con = psycopg.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         for name in ("protein2go", "publication", "term"):
             pg_cur.execute(f"DROP TABLE IF EXISTS {name}")
@@ -49,7 +49,7 @@ def import_annotations(ora_url: str, pg_url: str):
             """
         )
 
-        ora_con = cx_Oracle.connect(ora_url)
+        ora_con = oracledb.connect(ora_url)
         ora_cur = ora_con.cursor()
 
         logger.info("populating: protein2go")

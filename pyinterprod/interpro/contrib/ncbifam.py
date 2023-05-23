@@ -3,7 +3,7 @@ import xml.etree.ElementTree as xmlET
 from urllib import parse, request, error
 from concurrent.futures import as_completed, ThreadPoolExecutor
 
-import cx_Oracle
+import oracledb
 
 from pyinterprod.utils.oracle import drop_table
 from .common import Method, parse_hmm
@@ -165,7 +165,7 @@ def _fetch_url_xml(url: str, params: dict,
 
 
 def update_go_terms(uri: str, file_path: str):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute("SELECT METHOD_AC FROM INTERPRO.METHOD WHERE DBCODE = 'N'")
     signatures = {acc for acc, in cur.fetchall()}

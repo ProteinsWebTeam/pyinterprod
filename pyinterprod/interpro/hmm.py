@@ -2,7 +2,7 @@ import gzip
 import re
 from typing import Optional
 
-import cx_Oracle
+import oracledb
 
 from pyinterprod import logger
 from .database import Database
@@ -88,7 +88,7 @@ class _Mapper:
 
 
 def update(url: str, database: Database, hmmfile: str, mapfile: Optional[str]):
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
 
     logger.info(f"{database.name}: deleting HMMs")

@@ -6,7 +6,7 @@ import sys
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-import cx_Oracle
+import oracledb
 from mundone import Pool, Task
 from mundone.statuses import PENDING, RUNNING
 
@@ -132,7 +132,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     to_run = kwargs.get("analyses", [])
     to_exclude = kwargs.get("exclude", [])
 
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     # Find analyses to run

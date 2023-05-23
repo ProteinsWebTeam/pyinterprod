@@ -2,8 +2,8 @@ import random
 import time
 from typing import Callable, Optional, Sequence
 
-from cx_Oracle import connect
-from cx_Oracle import Cursor, DatabaseError, DB_TYPE_CLOB, DB_TYPE_LONG
+from oracledb import connect
+from oracledb import Cursor, DatabaseError, DB_TYPE_CLOB, DB_TYPE_LONG
 
 from pyinterprod import logger
 
