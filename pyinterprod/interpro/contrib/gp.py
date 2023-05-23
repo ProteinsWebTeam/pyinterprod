@@ -10,9 +10,10 @@ def import_gp(cur: cx_Oracle.Cursor, file_path: str):
             elif line.startswith("DE"):
                 description = line.split(maxsplit=1)[1]
             elif line.startswith("EV"):
-                ev = line.split()[1].split(";")[0]
-                if ev.startswith("IPR"):
-                    gp.append((ev, "h", description, entry_ac))
+                _, evidence = line.split(maxsplit=1)
+                m = re.match(r"IPR\d+", evidence)
+                if m:
+                    gp.append((m.group(0), "h", description, entry_ac)(
 
     cur.execute(
         """
