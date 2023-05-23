@@ -8,7 +8,7 @@ def import_gp(cur: cx_Oracle.Cursor, file_path: str):
             if line.startswith("AC"):
                 entry_ac = line.split()[1]
             elif line.startswith("DE"):
-                description = line.split(" ", maxsplit=1)[1].strip()
+                description = line.split(maxsplit=1)[1]
             elif line.startswith("EV"):
                 ev = line.split()[1].split(";")[0]
                 if ev.startswith("IPR"):
