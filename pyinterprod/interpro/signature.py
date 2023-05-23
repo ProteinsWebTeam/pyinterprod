@@ -793,8 +793,8 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: int):
                   LEFT OUTER JOIN CDB.FULLTEXT_URL@LITPUB U
                     ON (
                         C.EXTERNAL_ID = U.EXTERNAL_ID AND
-                        UPPER(U.DOCUMENT_STYLE) = 'DOI' AND
-                        UPPER(U.SOURCE) = 'MED'
+                        UPPER(U.DATA_SOURCE) = 'MEDLINE' AND
+                        UPPER(U.SITE) = 'DOI'
                     )
                   LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
                     ON (
