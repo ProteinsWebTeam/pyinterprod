@@ -1,7 +1,21 @@
+import os
+import re
+import sys
+
 import cx_Oracle
 
 
-def import_gp(cur: cx_Oracle.Cursor, file_path: str):
+def update_xrefs(con_url: str, file_path: str):
+    con = cx_Oracle.connect(con_url)
+    cur = con.cursor()
+
+    cur.execute(
+        """
+        SELECT ENTRY_AC FROM INTERPRO.ENTRY
+        """
+    )
+    ip_entry_ac = cur.fetchall()
+
     gp = []
     with open(file_path, "rt") as fh:
         for line in map(str.rstrip, fh):
@@ -12,8 +26,8 @@ def import_gp(cur: cx_Oracle.Cursor, file_path: str):
             elif line.startswith("EV"):
                 _, evidence = line.split(maxsplit=1)
                 m = re.match(r"IPR\d+", evidence)
-                if m:
-                    gp.append((m.group(0), "h", description, entry_ac)(
+                if m and m in ip_entry_ac:
+                    gp.append((m.group(0), "h", description, entry_ac))
 
     cur.execute(
         """
@@ -31,11 +45,11 @@ def import_gp(cur: cx_Oracle.Cursor, file_path: str):
         gp,
     )
 
-
-if __name__ == "__main__":
-    con = cx_Oracle.connect("connection string")
-    cur = con.cursor()
-    import_gp(cur, "path/to/genomeProperties.txt")
     cur.close()
     con.commit()
     con.close()
+
+
+if __name__ == "__main__":
+    gp_file = sys.argv[1]
+    update_xrefs(os.environ["INTERPRO_CONNECTION_URL"], gp_file)
