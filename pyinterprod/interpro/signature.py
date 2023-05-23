@@ -675,11 +675,10 @@ def import_citation(cur: cx_Oracle.Cursor, pmid: int) -> Optional[str]:
                 ON C.JOURNAL_ISSUE_ID = I.ID
               LEFT JOIN CDB.CV_JOURNALS@LITPUB J
                 ON I.JOURNAL_ID = J.ID
-              LEFT OUTER JOIN CDB.FULLTEXT_URL@LITPUB U
+              LEFT OUTER JOIN CDB.FULLTEXT_URL_MEDLINE@LITPUB U
                 ON (
                     C.EXTERNAL_ID = U.EXTERNAL_ID AND
-                    U.DOCUMENT_STYLE  ='DOI' AND
-                    U.SOURCE = 'MED'
+                    UPPER(U.SITE) = 'DOI'
                 )
               LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
                 ON (
@@ -790,10 +789,9 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: int):
                     ON C.JOURNAL_ISSUE_ID = I.ID
                   LEFT JOIN CDB.CV_JOURNALS@LITPUB J
                     ON I.JOURNAL_ID = J.ID
-                  LEFT OUTER JOIN CDB.FULLTEXT_URL@LITPUB U
+                  LEFT OUTER JOIN CDB.FULLTEXT_URL_MEDLINE@LITPUB U
                     ON (
                         C.EXTERNAL_ID = U.EXTERNAL_ID AND
-                        UPPER(U.DATA_SOURCE) = 'MEDLINE' AND
                         UPPER(U.SITE) = 'DOI'
                     )
                   LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
