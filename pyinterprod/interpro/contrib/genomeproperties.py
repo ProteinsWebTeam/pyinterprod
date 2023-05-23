@@ -14,7 +14,7 @@ def update_xrefs(con_url: str, file_path: str):
         SELECT ENTRY_AC FROM INTERPRO.ENTRY
         """
     )
-    ip_entry_ac = cur.fetchall()
+    ip_entry_ac = [row[0] for row in cur.fetchall()]
 
     gp = []
     with open(file_path, "rt") as fh:
@@ -26,7 +26,7 @@ def update_xrefs(con_url: str, file_path: str):
             elif line.startswith("EV"):
                 _, evidence = line.split(maxsplit=1)
                 m = re.match(r"IPR\d+", evidence)
-                if m and m in ip_entry_ac:
+                if m and m.group(0) in ip_entry_ac:
                     gp.append((m.group(0), "h", description, entry_ac))
 
     cur.execute(
