@@ -9,11 +9,7 @@ def update_xrefs(uri: str, file_path: str):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
-    cur.execute(
-        """
-        SELECT ENTRY_AC FROM INTERPRO.ENTRY
-        """
-    )
+    cur.execute("SELECT ENTRY_AC FROM INTERPRO.ENTRY")
     ip_entry_ac = [row[0] for row in cur.fetchall()]
 
     gp = []
