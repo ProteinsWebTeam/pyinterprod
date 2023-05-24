@@ -5,8 +5,8 @@ import sys
 import cx_Oracle
 
 
-def update_xrefs(con_url: str, file_path: str):
-    con = cx_Oracle.connect(con_url)
+def update_xrefs(uri: str, file_path: str):
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     cur.execute(
