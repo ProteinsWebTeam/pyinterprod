@@ -22,7 +22,7 @@ def update_xrefs(uri: str, file_path: str):
             elif line.startswith("EV"):
                 _, evidence = line.split(maxsplit=1)
                 m = re.match(r"IPR\d+", evidence)
-                if m and m.group(0) in ip_entry_ac:
+                if m and m.group(0) in entries:
                     gp.append((m.group(0), "h", description, entry_ac))
 
     cur.execute(
