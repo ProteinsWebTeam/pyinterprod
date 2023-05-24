@@ -12,7 +12,7 @@ def update_xrefs(uri: str, file_path: str):
     cur = con.cursor()
 
     cur.execute("SELECT ENTRY_AC FROM INTERPRO.ENTRY")
-    ip_entry_ac = [row[0] for row in cur.fetchall()]
+    entries = {acc for acc, in cur.fetchall()}
 
     gp = []
     with open(file_path, "rt") as fh:
