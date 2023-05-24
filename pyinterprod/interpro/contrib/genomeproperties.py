@@ -38,7 +38,7 @@ def update_xrefs(uri: str, file_path: str):
     cur.executemany(
         """
         INSERT INTO INTERPRO.ENTRY_XREF (
-        ENTRY_AC, DBCODE, AC, NAME
+        ENTRY_AC, DBCODE, NAME, AC
         ) VALUES (:1, :2, :3, :4)
         """,
         list(gp),
