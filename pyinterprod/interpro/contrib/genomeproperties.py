@@ -30,8 +30,9 @@ def update_xrefs(uri: str, file_path: str):
     cur.execute(
         """
         DELETE FROM INTERPRO.ENTRY_XREF
-        WHERE DBCODE = 'h'
-        """
+        WHERE DBCODE = :1
+        """,
+        [_DBCODE]
     )
 
     cur.executemany(
