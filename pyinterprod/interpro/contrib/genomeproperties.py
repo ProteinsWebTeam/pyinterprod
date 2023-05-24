@@ -14,7 +14,7 @@ def update_xrefs(uri: str, file_path: str):
     cur.execute("SELECT ENTRY_AC FROM INTERPRO.ENTRY")
     entries = {acc for acc, in cur.fetchall()}
 
-    gp = []
+    gp = set()
     with open(file_path, "rt") as fh:
         for line in map(str.rstrip, fh):
             if line.startswith("AC"):
@@ -25,7 +25,7 @@ def update_xrefs(uri: str, file_path: str):
                 _, evidence = line.split(maxsplit=1)
                 m = re.match(r"IPR\d+", evidence)
                 if m and m.group(0) in entries:
-                    gp.append((m.group(0), _DBCODE, description, entry_ac))
+                    gp.add((m.group(0), _DBCODE, description, entry_ac))
 
     cur.execute(
         """
@@ -41,7 +41,7 @@ def update_xrefs(uri: str, file_path: str):
         ENTRY_AC, DBCODE, AC, NAME
         ) VALUES (:1, :2, :3, :4)
         """,
-        gp,
+        list(gp),
     )
 
     cur.close()
