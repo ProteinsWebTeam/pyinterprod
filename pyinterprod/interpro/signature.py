@@ -819,9 +819,10 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: int):
 def delete_citation(cur: cx_Oracle.Cursor, pmid: int):
     cur.execute(
         """
-            DELETE FROM INTERPRO.CITATION
-            WHERE PUBMED_ID = :1
-        """, (str(pmid),)
+        DELETE FROM INTERPRO.CITATION
+        WHERE PUBMED_ID = :1
+        """, 
+        [str(pmid)]
     )
 
 
