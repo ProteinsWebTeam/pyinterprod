@@ -828,15 +828,11 @@ def delete_citation(cur: cx_Oracle.Cursor, pmid: int):
 def _get_used_citations_pubid(cur: cx_Oracle.Cursor) -> set[str]:
     cur.execute(
         """
-            SELECT * FROM (
-                SELECT PUB_ID
-                FROM INTERPRO.ENTRY2PUB
-                UNION
-                SELECT PUB_ID FROM INTERPRO.SUPPLEMENTARY_REF
-                UNION
-                SELECT m.PUB_ID FROM INTERPRO.METHOD2PUB m
-            )
+        SELECT PUB_ID FROM INTERPRO.ENTRY2PUB
+        UNION
+        SELECT PUB_ID FROM INTERPRO.SUPPLEMENTARY_REF
+        UNION
+        SELECT PUB_ID FROM INTERPRO.METHOD2PUB
         """
     )
-    current_citations = [citations for citations, in cur.fetchall()]
-    return set(current_citations)
+    return {pub_id for pub_id, in cur.fetchall()}
