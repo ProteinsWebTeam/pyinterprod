@@ -783,7 +783,7 @@ def update_citation(cur: cx_Oracle.Cursor, pmid: int):
                   C.EXTERNAL_ID AS EXTERNAL_ID, I.VOLUME AS VOLUME, I.ISSUE AS ISSUE,
                   I.PUBYEAR AS YEAR, C.TITLE AS TITLE, C.PAGE_INFO AS RAWPAGES,
                   J.MEDLINE_ABBREVIATION AS MEDLINE_JOURNAL, J.ISO_ABBREVIATION AS ISO_JOURNAL,
-                  A.AUTHORS AS AUTHORS, U.URL AS DOI_URL
+                  A.AUTHORS AS AUTHORS, REGEXP_REPLACE(U.URL, '(^[[:space:]]*|[[:space:]]*$)') AS DOI_URL
                 FROM CDB.CITATIONS@LITPUB C
                   LEFT OUTER JOIN CDB.JOURNAL_ISSUES@LITPUB I
                     ON C.JOURNAL_ISSUE_ID = I.ID
