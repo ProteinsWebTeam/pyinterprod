@@ -14,8 +14,12 @@ from pyinterprod.utils import oracle as ora
 from . import contrib
 from .contrib.common import Method
 from .database import Database
-from .match import (FEATURE_MATCH_PARTITIONS, MATCH_PARTITIONS,
-                    SITE_PARTITIONS, get_sig_protein_counts)
+from .match import (
+    FEATURE_MATCH_PARTITIONS,
+    MATCH_PARTITIONS,
+    SITE_PARTITIONS,
+    get_sig_protein_counts,
+)
 
 FILE_DB_SIG = "signatures.update.pickle"
 FILE_SIG_DESCR = "signatures.descr.pickle"
@@ -751,8 +755,7 @@ def update_citations(cur: cx_Oracle.Cursor):
     for i in range(0, len(pmids), step):
         params = list(pmids)[i : i + step]
         args = ",".join([":" + str(i + 1) for i in range(len(params))])
-
-        cur.executemany(
+        cur.execute(
             f"""
             MERGE INTO INTERPRO.CITATION IC
             USING (
@@ -789,7 +792,7 @@ def update_citations(cur: cx_Oracle.Cursor):
                 IC.AUTHORS = L.AUTHORS,
                 IC.DOI_URL = L.DOI_URL
                 WHERE PUBMED_ID IN ({args})
-            """,
+                """,
             params,
         )
 
