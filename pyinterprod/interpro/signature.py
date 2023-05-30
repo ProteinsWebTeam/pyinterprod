@@ -14,12 +14,8 @@ from pyinterprod.utils import oracle as ora
 from . import contrib
 from .contrib.common import Method
 from .database import Database
-from .match import (
-    FEATURE_MATCH_PARTITIONS,
-    MATCH_PARTITIONS,
-    SITE_PARTITIONS,
-    get_sig_protein_counts,
-)
+from .match import (FEATURE_MATCH_PARTITIONS, MATCH_PARTITIONS,
+                    SITE_PARTITIONS, get_sig_protein_counts)
 
 FILE_DB_SIG = "signatures.update.pickle"
 FILE_SIG_DESCR = "signatures.descr.pickle"
@@ -750,11 +746,14 @@ def update_citations(cur: cx_Oracle.Cursor):
         """
     )
 
-    pmids = _get_used_citations_pmids()
+    pmids = _get_used_citations_pmids(cur)
+    step = 1000
+    for i in range(0, len(pmids), step):
+        params = list(pmids)[i : i + step]
+        args = ",".join([":" + str(i + 1) for i in range(len(params))])
 
-    for pmid in pmids:
-        cur.execute(
-            """
+        cur.executemany(
+            f"""
             MERGE INTO INTERPRO.CITATION IC
             USING (
                 SELECT DISTINCT
@@ -789,9 +788,9 @@ def update_citations(cur: cx_Oracle.Cursor):
                 IC.ISO_JOURNAL = L.ISO_JOURNAL,
                 IC.AUTHORS = L.AUTHORS,
                 IC.DOI_URL = L.DOI_URL
-                WHERE PUBMED_ID = :1
+                WHERE PUBMED_ID IN ({args})
             """,
-            [pmid],
+            params,
         )
 
 
@@ -809,4 +808,4 @@ def _get_used_citations_pmids(cur: cx_Oracle.Cursor) -> set[str]:
         )
         """
     )
-    return {pmid for pmid, in cur.fetchall()}
+    return {str(pmid) for pmid, in cur.fetchall()}
