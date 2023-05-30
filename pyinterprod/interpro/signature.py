@@ -8,12 +8,18 @@ import cx_Oracle
 
 from pyinterprod import logger
 from pyinterprod.pronto.signature import get_swissprot_descriptions
-from pyinterprod.utils import Table, oracle as ora
+from pyinterprod.utils import Table
+from pyinterprod.utils import oracle as ora
+
 from . import contrib
 from .contrib.common import Method
 from .database import Database
-from .match import FEATURE_MATCH_PARTITIONS, MATCH_PARTITIONS, SITE_PARTITIONS
-from .match import get_sig_protein_counts
+from .match import (
+    FEATURE_MATCH_PARTITIONS,
+    MATCH_PARTITIONS,
+    SITE_PARTITIONS,
+    get_sig_protein_counts,
+)
 
 FILE_DB_SIG = "signatures.update.pickle"
 FILE_SIG_DESCR = "signatures.descr.pickle"
@@ -61,31 +67,31 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
     with Table(con, sql) as table:
         errors = 0
         for db, db_sources in update:
-            if db.identifier == 'H':
+            if db.identifier == "H":
                 # Pfam
                 signatures = contrib.pfam.get_signatures(*db_sources)
-            elif db.identifier == 'J':
+            elif db.identifier == "J":
                 # CDD
                 signatures = contrib.cdd.parse_signatures(*db_sources)
-            elif db.identifier == 'M':
+            elif db.identifier == "M":
                 # PROSITE profiles
                 signatures = contrib.prosite.parse_profiles(*db_sources)
-            elif db.identifier == 'N':
+            elif db.identifier == "N":
                 # NCBIFam
                 signatures = contrib.ncbifam.get_signatures(*db_sources)
-            elif db.identifier == 'P':
+            elif db.identifier == "P":
                 # PROSITE patterns
                 signatures = contrib.prosite.parse_patterns(*db_sources)
-            elif db.identifier == 'Q':
+            elif db.identifier == "Q":
                 # HAMAP
                 signatures = contrib.hamap.parse_signatures(*db_sources)
-            elif db.identifier == 'R':
+            elif db.identifier == "R":
                 # SMART
                 signatures = contrib.smart.parse_signatures(*db_sources)
-            elif db.identifier == 'V':
+            elif db.identifier == "V":
                 # PANTHER
                 signatures = contrib.panther.parse_signatures(*db_sources)
-            elif db.identifier == 'X':
+            elif db.identifier == "X":
                 # CATH-Gene3D
                 signatures = contrib.cath.parse_superfamilies(*db_sources)
             else:
@@ -119,15 +125,17 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
                 else:
                     descr = None
 
-                table.insert((
-                    m.accession,
-                    name,
-                    db.identifier,
-                    descr,
-                    m.sig_type,
-                    abstract,
-                    abstract_long
-                ))
+                table.insert(
+                    (
+                        m.accession,
+                        name,
+                        db.identifier,
+                        descr,
+                        m.sig_type,
+                        abstract,
+                        abstract_long,
+                    )
+                )
 
     populate_method2pub_stg(cur, method2pub)
 
@@ -153,8 +161,9 @@ def add_staging(uri: str, update: list[tuple[Database, list[str]]]):
     con.close()
 
 
-def track_signature_changes(ora_uri: str, pg_uri: str,
-                            databases: list[Database], data_dir: str):
+def track_signature_changes(
+    ora_uri: str, pg_uri: str, databases: list[Database], data_dir: str
+):
     os.makedirs(data_dir, exist_ok=True)
 
     # First, get the SwissProt descriptions (before the update)
@@ -171,7 +180,8 @@ def track_signature_changes(ora_uri: str, pg_uri: str,
             LEFT OUTER JOIN INTERPRO.ENTRY2METHOD EM
             ON M.METHOD_AC = EM.METHOD_AC
             WHERE DBCODE = :1
-            """, (db.identifier,)
+            """,
+            (db.identifier,),
         )
         old_signatures = {row[0]: row[1:] for row in cur}
 
@@ -180,7 +190,8 @@ def track_signature_changes(ora_uri: str, pg_uri: str,
             SELECT METHOD_AC, NAME, DESCRIPTION, SIG_TYPE
             FROM INTERPRO.METHOD_STG
             WHERE DBCODE = :1
-            """, (db.identifier,)
+            """,
+            (db.identifier,),
         )
         new_signatures = {row[0]: row[1:] for row in cur}
 
@@ -207,21 +218,19 @@ def track_signature_changes(ora_uri: str, pg_uri: str,
                 type_changes.append((acc, old_type, new_type))
 
         results[db.identifier] = {
-            "new": [
-                (acc, *new_signatures[acc])
-                for acc in sorted(new_signatures)
-            ],
+            "new": [(acc, *new_signatures[acc]) for acc in sorted(new_signatures)],
             "deleted": deleted,
             "changes": {
                 "names": name_changes,
                 "descriptions": descr_changes,
-                "types": type_changes
+                "types": type_changes,
             },
             "proteins": get_sig_protein_counts(cur, db.identifier),
             "descriptions": {
                 acc: all_sig2descs[acc]
-                for acc in all_sig2descs if acc in old_signatures
-            }
+                for acc in all_sig2descs
+                if acc in old_signatures
+            },
         }
 
         logger.info(db.name)
@@ -235,8 +244,9 @@ def track_signature_changes(ora_uri: str, pg_uri: str,
         pickle.dump(results, fh)
 
 
-def delete_from_table(uri: str, table: str, partition: Optional[str],
-                      column: str, step: int, stop: int) -> int:
+def delete_from_table(
+    uri: str, table: str, partition: Optional[str], column: str, step: int, stop: int
+) -> int:
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
@@ -255,7 +265,7 @@ def delete_from_table(uri: str, table: str, partition: Optional[str],
         )
         """
     )
-    num_rows, = cur.fetchone()
+    (num_rows,) = cur.fetchone()
 
     if not num_rows:
         cur.close()
@@ -271,7 +281,8 @@ def delete_from_table(uri: str, table: str, partition: Optional[str],
               FROM INTERPRO.METHOD_TO_DELETE
               WHERE ID BETWEEN :1 and :2
             )
-            """, (i, i + step - 1)
+            """,
+            (i, i + step - 1),
         )
 
     con.commit()
@@ -314,7 +325,8 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
                 FROM INTERPRO.METHOD_STG
                 WHERE DBCODE = :dbcode
             )
-            """, dbcode=db.identifier
+            """,
+            dbcode=db.identifier,
         )
 
     con.commit()
@@ -326,7 +338,7 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
     )
 
     cur.execute("SELECT COUNT(*) FROM INTERPRO.METHOD_TO_DELETE")
-    stop, = cur.fetchone()
+    (stop,) = cur.fetchone()
 
     logger.info(f"{stop:,} signatures to delete")
 
@@ -497,7 +509,8 @@ def update_signatures(uri: str, go_sources: list[tuple[str, str]]):
         UPDATE INTERPRO.DB_VERSION
         SET ENTRY_COUNT = :1
         WHERE DBCODE = :2
-        """, counts
+        """,
+        counts,
     )
 
     cur.execute(
@@ -542,16 +555,16 @@ def update_features(uri: str, update: list[tuple[Database, list[str]]]):
             DELETE FROM INTERPRO.FEATURE_METHOD
             WHERE DBCODE = :1
             """,
-            (db.identifier,)
+            (db.identifier,),
         )
 
-        if db.identifier == 'a':
+        if db.identifier == "a":
             # AntiFam
             features = contrib.antifam.parse_models(*db_sources)
-        elif db.identifier == 'd':
+        elif db.identifier == "d":
             # Pfam-N
             features = contrib.pfam.get_protenn_entries(cur, *db_sources)
-        elif db.identifier == 'f':
+        elif db.identifier == "f":
             # FunFams
             features = contrib.cath.parse_functional_families(*db_sources)
         else:
@@ -562,13 +575,15 @@ def update_features(uri: str, update: list[tuple[Database, list[str]]]):
         # Add features
         params = []
         for f in features:
-            params.append((
-                f.accession,
-                f.name if f.name else None,
-                db.identifier,
-                f.description,
-                f.abstract[:4000] if f.abstract else None
-            ))
+            params.append(
+                (
+                    f.accession,
+                    f.name if f.name else None,
+                    db.identifier,
+                    f.description,
+                    f.abstract[:4000] if f.abstract else None,
+                )
+            )
 
         cur.executemany(
             """
@@ -577,7 +592,7 @@ def update_features(uri: str, update: list[tuple[Database, list[str]]]):
                 DESCRIPTION, ABSTRACT) 
             VALUES (:1, :2, :3, SYSDATE, SYSDATE, USER, :4, :5)
             """,
-            params
+            params,
         )
 
         cur.execute(
@@ -586,7 +601,7 @@ def update_features(uri: str, update: list[tuple[Database, list[str]]]):
             SET ENTRY_COUNT = :1
             WHERE DBCODE = :2
             """,
-            (len(params), db.identifier)
+            (len(params), db.identifier),
         )
 
     con.commit()
@@ -619,8 +634,9 @@ def get_method2pub(cur: cx_Oracle.Cursor) -> dict[str, set]:
     return current_method2pub
 
 
-def update_references(cur: cx_Oracle.Cursor, method: Method,
-                      pmid2pubid: dict[int, str]) -> set[str]:
+def update_references(
+    cur: cx_Oracle.Cursor, method: Method, pmid2pubid: dict[int, str]
+) -> set[str]:
     pub_ids = set()
     if method.abstract is not None:
         pmids = re.finditer(r"PMID:\s*([0-9]+)", method.abstract)
@@ -633,8 +649,9 @@ def update_references(cur: cx_Oracle.Cursor, method: Method,
                 pmid2pubid[pmid] = pub_id
 
             if pub_id:
-                method.abstract = method.abstract.replace(match.group(0),
-                                                          f'[cite:{pub_id}]')
+                method.abstract = method.abstract.replace(
+                    match.group(0), f"[cite:{pub_id}]"
+                )
                 pub_ids.add(pub_id)
 
     for pmid in method.references:
@@ -659,7 +676,7 @@ def populate_method2pub_stg(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
             INSERT INTO INTERPRO.METHOD2PUB_STG (PUB_ID, METHOD_AC)
             VALUES (:1, :2)
             """,
-            data[i:i + step]
+            data[i : i + step],
         )
 
 
@@ -686,7 +703,8 @@ def import_citation(cur: cx_Oracle.Cursor, pmid: int) -> Optional[str]:
                   A.HAS_SPECIAL_CHARS = 'N'
                 )
             WHERE C.EXTERNAL_ID = :1
-            """, (str(pmid),)
+            """,
+        (str(pmid),),
     )
 
     citation = cur.fetchone()
@@ -709,7 +727,7 @@ def import_citation(cur: cx_Oracle.Cursor, pmid: int) -> Optional[str]:
             )
             RETURNING PUB_ID INTO :11
             """,
-            (*citation, pub_id)
+            (*citation, pub_id),
         )
         return pub_id.getvalue()[0]
     else:
@@ -717,123 +735,78 @@ def import_citation(cur: cx_Oracle.Cursor, pmid: int) -> Optional[str]:
         return None
 
 
-def track_citation_changes(cur: cx_Oracle.Cursor):
-    used_citations_pubid = _get_used_citations_pubid(cur)
-    pmid2pubid = get_pmid2pubid(cur)
-
-    cur.execute(
-        """
-        SELECT PUBMED_ID, standard_hash(VOLUME || ISSUE || YEAR || TITLE || RAWPAGES || 
-            MEDLINE_JOURNAL || ISO_JOURNAL || AUTHORS || DOI_URL, 'MD5') CITATION_HASH
-        FROM INTERPRO.CITATION
-        WHERE PUBMED_ID IS NOT NULL
-        """
-    )
-    ip_hash = dict(cur.fetchall())
-
-    pmids = list(set(i for i in ip_hash))
-    step = 1000
-    for i in range(0, len(pmids), step):
-        params = pmids[i:i + step]
-        args = [":" + str(i + 1) for i in range(len(params))]
-
-        cur.execute(
-            f"""
-                SELECT C.EXTERNAL_ID, standard_hash(I.VOLUME || I.ISSUE || I.PUBYEAR || 
-                    C.TITLE || C.PAGE_INFO || J.MEDLINE_ABBREVIATION || 
-                    J.ISO_ABBREVIATION || A.AUTHORS || U.URL, 'MD5')
-                FROM CDB.CITATIONS@LITPUB C
-                  LEFT OUTER JOIN CDB.JOURNAL_ISSUES@LITPUB I
-                    ON C.JOURNAL_ISSUE_ID = I.ID
-                  LEFT JOIN CDB.CV_JOURNALS@LITPUB J
-                    ON I.JOURNAL_ID = J.ID
-                  LEFT OUTER JOIN CDB.FULLTEXT_URL@LITPUB U
-                    ON (
-                        C.EXTERNAL_ID = U.EXTERNAL_ID AND
-                        UPPER(U.DOCUMENT_STYLE) = 'DOI' AND
-                        UPPER(U.SOURCE) = 'MED'
-                    )
-                  LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
-                    ON (
-                      C.ID = A.CITATION_ID AND
-                      A.HAS_SPECIAL_CHARS = 'N'
-                    )
-                WHERE C.EXTERNAL_ID IN ({','.join(args)})
-                """, list(map(str, params))
-        )
-        litpub_hash = dict(cur.fetchall())
-
-        for pmid in params:
-            if pmid2pubid[pmid] not in used_citations_pubid:
-                delete_citation(cur, pmid)
-            else:
-                try:
-                    if ip_hash[int(pmid)] != litpub_hash[str(pmid)]:
-                        update_citation(cur, pmid)
-                except KeyError:
-                    logger.warning(f"Citation with Pubmed_id: '{pmid}' not found.")
-
-
-def update_citation(cur: cx_Oracle.Cursor, pmid: int):
-        """
-        MERGE INTO INTERPRO.CITATION IC
-        USING (
-            SELECT DISTINCT
-                C.EXTERNAL_ID AS EXTERNAL_ID, I.VOLUME AS VOLUME, I.ISSUE AS ISSUE,
-                I.PUBYEAR AS YEAR, C.TITLE AS TITLE, C.PAGE_INFO AS RAWPAGES,
-                J.MEDLINE_ABBREVIATION AS MEDLINE_JOURNAL, J.ISO_ABBREVIATION AS ISO_JOURNAL,
-                A.AUTHORS AS AUTHORS, LOWER(REGEXP_REPLACE(U.URL, '(^[[:space:]]*|[[:space:]]*$)')) AS DOI_URL
-            FROM CDB.CITATIONS@LITPUB C
-            LEFT OUTER JOIN CDB.JOURNAL_ISSUES@LITPUB I
-                ON C.JOURNAL_ISSUE_ID = I.ID
-            LEFT JOIN CDB.CV_JOURNALS@LITPUB J
-                ON I.JOURNAL_ID = J.ID
-            LEFT OUTER JOIN CDB.FULLTEXT_URL_MEDLINE@LITPUB U
-                ON (
-                    C.EXTERNAL_ID = U.EXTERNAL_ID AND
-                    UPPER(U.SITE) = 'DOI'
-                )
-            LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
-                ON (
-                    C.ID = A.CITATION_ID AND
-                    A.HAS_SPECIAL_CHARS = 'N'
-                )
-        ) L
-        ON (TO_CHAR(IC.PUBMED_ID) = L.EXTERNAL_ID)
-        WHEN MATCHED THEN
-            UPDATE SET IC.VOLUME = L.VOLUME,
-            IC.ISSUE = L.ISSUE,
-            IC.YEAR = L.YEAR,
-            IC.TITLE = L.TITLE,
-            IC.RAWPAGES = L.RAWPAGES,
-            IC.MEDLINE_JOURNAL = L.MEDLINE_JOURNAL,
-            IC.ISO_JOURNAL = L.ISO_JOURNAL,
-            IC.AUTHORS = L.AUTHORS,
-            IC.DOI_URL = L.DOI_URL
-            WHERE PUBMED_ID = :1
-        """,
-        [pmid]
-    )
-
-
-def delete_citation(cur: cx_Oracle.Cursor, pmid: int):
+def update_citations(cur: cx_Oracle.Cursor):
     cur.execute(
         """
         DELETE FROM INTERPRO.CITATION
-        WHERE PUBMED_ID = :1
-        """, 
-        [str(pmid)]
+        WHERE PUB_ID NOT IN 
+        (
+            SELECT PUB_ID FROM INTERPRO.ENTRY2PUB
+            UNION
+            SELECT PUB_ID FROM INTERPRO.METHOD2PUB
+            UNION
+            SELECT PUB_ID FROM INTERPRO.SUPPLEMENTARY_REF
+        )
+        """
     )
 
+    pmids = _get_used_citations_pmids()
 
-def _get_used_citations_pubid(cur: cx_Oracle.Cursor) -> set[str]:
+    for pmid in pmids:
+        cur.execute(
+            """
+            MERGE INTO INTERPRO.CITATION IC
+            USING (
+                SELECT DISTINCT
+                    C.EXTERNAL_ID AS EXTERNAL_ID, I.VOLUME AS VOLUME, I.ISSUE AS ISSUE,
+                    I.PUBYEAR AS YEAR, C.TITLE AS TITLE, C.PAGE_INFO AS RAWPAGES,
+                    J.MEDLINE_ABBREVIATION AS MEDLINE_JOURNAL, J.ISO_ABBREVIATION AS ISO_JOURNAL,
+                    A.AUTHORS AS AUTHORS, LOWER(REGEXP_REPLACE(U.URL, '(^[[:space:]]*|[[:space:]]*$)')) AS DOI_URL
+                FROM CDB.CITATIONS@LITPUB C
+                LEFT OUTER JOIN CDB.JOURNAL_ISSUES@LITPUB I
+                    ON C.JOURNAL_ISSUE_ID = I.ID
+                LEFT JOIN CDB.CV_JOURNALS@LITPUB J
+                    ON I.JOURNAL_ID = J.ID
+                LEFT OUTER JOIN CDB.FULLTEXT_URL_MEDLINE@LITPUB U
+                    ON (
+                        C.EXTERNAL_ID = U.EXTERNAL_ID AND
+                        UPPER(U.SITE) = 'DOI'
+                    )
+                LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
+                    ON (
+                        C.ID = A.CITATION_ID AND
+                        A.HAS_SPECIAL_CHARS = 'N'
+                    )
+            ) L
+            ON (TO_CHAR(IC.PUBMED_ID) = L.EXTERNAL_ID)
+            WHEN MATCHED THEN
+                UPDATE SET IC.VOLUME = L.VOLUME,
+                IC.ISSUE = L.ISSUE,
+                IC.YEAR = L.YEAR,
+                IC.TITLE = L.TITLE,
+                IC.RAWPAGES = L.RAWPAGES,
+                IC.MEDLINE_JOURNAL = L.MEDLINE_JOURNAL,
+                IC.ISO_JOURNAL = L.ISO_JOURNAL,
+                IC.AUTHORS = L.AUTHORS,
+                IC.DOI_URL = L.DOI_URL
+                WHERE PUBMED_ID = :1
+            """,
+            [pmid],
+        )
+
+
+def _get_used_citations_pmids(cur: cx_Oracle.Cursor) -> set[str]:
     cur.execute(
         """
-        SELECT PUB_ID FROM INTERPRO.ENTRY2PUB
-        UNION
-        SELECT PUB_ID FROM INTERPRO.SUPPLEMENTARY_REF
-        UNION
-        SELECT PUB_ID FROM INTERPRO.METHOD2PUB
+        SELECT PUBMED_ID
+        FROM INTERPRO.CITATION
+        WHERE PUB_ID IN (
+            SELECT PUB_ID FROM INTERPRO.ENTRY2PUB
+            UNION
+            SELECT PUB_ID FROM INTERPRO.SUPPLEMENTARY_REF
+            UNION
+            SELECT PUB_ID FROM INTERPRO.METHOD2PUB
+        )
         """
     )
-    return {pub_id for pub_id, in cur.fetchall()}
+    return {pmid for pmid, in cur.fetchall()}
