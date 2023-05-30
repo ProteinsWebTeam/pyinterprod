@@ -759,27 +759,32 @@ def update_citations(cur: cx_Oracle.Cursor):
             f"""
             MERGE INTO INTERPRO.CITATION IC
             USING (
-                SELECT DISTINCT
-                    C.EXTERNAL_ID AS EXTERNAL_ID, I.VOLUME AS VOLUME, I.ISSUE AS ISSUE,
-                    I.PUBYEAR AS YEAR, C.TITLE AS TITLE, C.PAGE_INFO AS RAWPAGES,
-                    J.MEDLINE_ABBREVIATION AS MEDLINE_JOURNAL, J.ISO_ABBREVIATION AS ISO_JOURNAL,
-                    A.AUTHORS AS AUTHORS, LOWER(REGEXP_REPLACE(U.URL, '(^[[:space:]]*|[[:space:]]*$)')) AS DOI_URL
-                FROM CDB.CITATIONS@LITPUB C
-                LEFT OUTER JOIN CDB.JOURNAL_ISSUES@LITPUB I
-                    ON C.JOURNAL_ISSUE_ID = I.ID
-                LEFT JOIN CDB.CV_JOURNALS@LITPUB J
-                    ON I.JOURNAL_ID = J.ID
-                LEFT OUTER JOIN CDB.FULLTEXT_URL_MEDLINE@LITPUB U
-                    ON (
-                        C.EXTERNAL_ID = U.EXTERNAL_ID AND
-                        UPPER(U.SITE) = 'DOI'
-                    )
-                LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
-                    ON (
-                        C.ID = A.CITATION_ID AND
-                        A.HAS_SPECIAL_CHARS = 'N'
-                    )
-            ) L
+                SELECT *  FROM (
+                    SELECT DISTINCT
+                        C.EXTERNAL_ID AS EXTERNAL_ID, I.VOLUME AS VOLUME, I.ISSUE AS ISSUE,
+                        I.PUBYEAR AS YEAR, C.TITLE AS TITLE, C.PAGE_INFO AS RAWPAGES,
+                        J.MEDLINE_ABBREVIATION AS MEDLINE_JOURNAL, J.ISO_ABBREVIATION AS ISO_JOURNAL,
+                        A.AUTHORS AS AUTHORS, LOWER(REGEXP_REPLACE(U.URL, '(^[[:space:]]*|[[:space:]]*$)')) AS DOI_URL,
+                        ROW_NUMBER() OVER (
+                              PARTITION BY C.EXTERNAL_ID
+                              ORDER BY U.DATE_UPDATED DESC
+                          ) R
+                    FROM CDB.CITATIONS@LITPUB C
+                    LEFT OUTER JOIN CDB.JOURNAL_ISSUES@LITPUB I
+                        ON C.JOURNAL_ISSUE_ID = I.ID
+                    LEFT JOIN CDB.CV_JOURNALS@LITPUB J
+                        ON I.JOURNAL_ID = J.ID
+                    LEFT OUTER JOIN CDB.FULLTEXT_URL_MEDLINE@LITPUB U
+                        ON (
+                            C.EXTERNAL_ID = U.EXTERNAL_ID AND
+                            UPPER(U.SITE) = 'DOI'
+                        )
+                    LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
+                        ON (
+                            C.ID = A.CITATION_ID AND
+                            A.HAS_SPECIAL_CHARS = 'N'
+                        )
+                )  WHERE R = 1) L
             ON (TO_CHAR(IC.PUBMED_ID) = L.EXTERNAL_ID)
             WHEN MATCHED THEN
                 UPDATE SET IC.VOLUME = L.VOLUME,
