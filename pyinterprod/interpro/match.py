@@ -36,6 +36,7 @@ FEATURE_MATCH_PARTITIONS = {
     "f": "FUNFAM",
     "g": "MOBIDBLITE",
     "j": "PHOBIUS",
+    "l": "ELM",
     "n": "SIGNALP_E",
     "q": "TMHMM",
     "s": "SIGNALP_GP",
@@ -260,6 +261,17 @@ def update_database_feature_matches(uri: str, databases: Sequence):
                 INSERT /*+ APPEND */ INTO INTERPRO.FEATURE_MATCH_NEW
                 SELECT PROTEIN_ID, METHOD_AC, NULL, POS_FROM, POS_TO, :1
                 FROM INTERPRO.PFAMN_MATCH
+                """,
+                [database.identifier]
+            )
+            con.commit()
+        elif database.identifier == "l":
+            # ELM matches updated in update-features task
+            cur.execute(
+                """
+                INSERT /*+ APPEND */ INTO INTERPRO.FEATURE_MATCH_NEW
+                SELECT PROTEIN_ID, METHOD_AC, NULL, POS_FROM, POS_TO, :1
+                FROM INTERPRO.ELM_MATCH
                 """,
                 [database.identifier]
             )

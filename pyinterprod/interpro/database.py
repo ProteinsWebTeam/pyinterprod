@@ -6,7 +6,7 @@ import cx_Oracle
 from .match import MATCH_PARTITIONS, FEATURE_MATCH_PARTITIONS
 
 
-_NOT_IN_ISPRO = ["Pfam-N"]
+_NOT_IN_ISPRO = ["ELM", "Pfam-N"]
 
 
 @dataclass

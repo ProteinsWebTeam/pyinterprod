@@ -39,9 +39,11 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                 prot_acc, is_rev, is_comp, left_num, matches = pickle.load(fh)
 
                 # Merge overlapping hits
-                for signature_acc, (_, hits) in matches.items():
-                    matches[signature_acc] = sorted(merge_overlapping(hits))
-
+                for signature_acc, models in matches.items():
+                    for model_acc, (_, hits) in models.items():
+                        hits = sorted(merge_overlapping(hits))
+                        matches[signature_acc] = hits
+                            
                 for signature_acc in matches:
                     """
                     Count the number of proteins,
