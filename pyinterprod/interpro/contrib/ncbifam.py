@@ -118,7 +118,7 @@ def create_custom_hmm(tsvfile: str, txtfile: str, hmmfile: str):
                 if model_acc in models:
                     # desc = models[model_acc].description
                     # buffer = reg_desc.sub(replace_desc(desc), buffer)
-                    print(buffer)
+                    print(buffer, end="")
 
                 buffer = ""
 
@@ -127,7 +127,7 @@ def create_custom_hmm(tsvfile: str, txtfile: str, hmmfile: str):
             if model_acc in models:
                 # desc = models[model_acc].description
                 # buffer = reg_desc.sub(replace_desc(desc), buffer)
-                print(buffer)
+                print(buffer, end="")
 
 
 def replace_desc(new_desc: str):
