@@ -79,8 +79,7 @@ def add_staging(uri: str, update: list[tuple[Database, dict[str, str]]]):
             elif db.identifier == 'N':
                 # NCBIFam
                 signatures = contrib.ncbifam.get_signatures(
-                    db_props["hmm"],
-                    db_props["signatures"]
+                    db_props["signatures"], db_props["triage"]
                 )
             elif db.identifier == 'P':
                 # PROSITE patterns
@@ -516,7 +515,8 @@ def update_signatures(uri: str, go_sources: list[tuple[str, str]]):
         UPDATE INTERPRO.DB_VERSION
         SET ENTRY_COUNT = :1
         WHERE DBCODE = :2
-        """, counts
+        """,
+        counts
     )
 
     cur.execute(
@@ -532,12 +532,12 @@ def update_signatures(uri: str, go_sources: list[tuple[str, str]]):
     con.close()
 
     for dbname, source in go_sources:
-        if dbname == "panther":
-            logger.info("updating PANTHER GO terms")
-            contrib.panther.update_go_terms(uri, source)
-        elif dbname == "ncbifam":
+        if dbname == "ncbifam":
             logger.info("updating NCBIFAM GO terms")
             contrib.ncbifam.update_go_terms(uri, source)
+        elif dbname == "panther":
+            logger.info("updating PANTHER GO terms")
+            contrib.panther.update_go_terms(uri, source)
 
 
 def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
