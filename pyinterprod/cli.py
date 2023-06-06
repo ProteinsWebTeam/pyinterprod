@@ -340,8 +340,8 @@ def run_member_db_update():
             try:
                 go_source = props["go-terms"]
             except KeyError:
-                if dbname == "panther":
-                    parser.error(f"Missing go-terms property for PANTHER")
+                if dbname in ("ncbifam", "panther"):
+                    parser.error(f"Missing go-terms property for {db.name}")
             else:
                 go_sources.append((dbname, go_source))
 
