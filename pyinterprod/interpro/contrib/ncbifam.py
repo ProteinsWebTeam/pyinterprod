@@ -27,7 +27,7 @@ _SOURCES_IN_TSV = {
 
 def parse_tsv(tsvfile: str):
     with open(tsvfile, "rt") as fh:
-        for line in map(str.rstrip, fh):
+        for line in fh:
             if line[0] != "#":
                 yield line.split("\t")
 
@@ -65,7 +65,7 @@ def get_signatures(tsvfile: str, txtfile: str) -> list[Method]:
             raise ValueError(f"Unknown source in {tsvfile}: {source}")
 
         hmm_name = values[21]
-        comment = values[22] or None
+        comment = values[22].strip() or None
 
         if source == "JCVI":
             pass
