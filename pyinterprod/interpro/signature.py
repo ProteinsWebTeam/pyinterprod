@@ -634,15 +634,19 @@ def get_pmid2pubid(cur: cx_Oracle.Cursor) -> dict[int, str]:
 def get_method2pub(cur: cx_Oracle.Cursor) -> dict[str, set]:
     cur.execute(
         """
-        SELECT METHOD_AC, LISTAGG(PUB_ID, ';')
+        SELECT METHOD_AC, PUB_ID
         FROM INTERPRO.METHOD2PUB
-        GROUP BY METHOD_AC
         """
     )
+    method2pub = cur.fetchall()
 
     current_method2pub = {}
-    for method_ac, pub_ids in cur:
-        current_method2pub[method_ac] = set(pub_ids.split(";"))
+    for method_ac, pub_id in method2pub:
+        try:
+            current_method2pub[method_ac].update(pub_id)
+        except KeyError:
+            current_method2pub[method_ac] = {pub_id}
+
     return current_method2pub
 
 
