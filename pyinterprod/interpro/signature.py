@@ -632,22 +632,16 @@ def get_pmid2pubid(cur: cx_Oracle.Cursor) -> dict[int, str]:
 
 
 def get_method2pub(cur: cx_Oracle.Cursor) -> dict[str, set]:
-    cur.execute(
-        """
-        SELECT METHOD_AC, PUB_ID
-        FROM INTERPRO.METHOD2PUB
-        """
-    )
-    method2pub = cur.fetchall()
+    cur.execute("SELECT METHOD_AC, PUB_ID FROM INTERPRO.METHOD2PUB")
 
-    current_method2pub = {}
-    for method_ac, pub_id in method2pub:
+    method2pub = {}
+    for signature_acc, pub_id in cur:
         try:
-            current_method2pub[method_ac].update(pub_id)
+            method2pub[signature_acc].add(pub_id)
         except KeyError:
-            current_method2pub[method_ac] = {pub_id}
+            method2pub[signature_acc] = {pub_id}
 
-    return current_method2pub
+    return method2pub
 
 
 def update_references(cur: cx_Oracle.Cursor, method: Method,
