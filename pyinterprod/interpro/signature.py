@@ -631,7 +631,7 @@ def get_pmid2pubid(cur: cx_Oracle.Cursor) -> dict[int, str]:
     return dict(cur.fetchall())
 
 
-def get_method2pub(cur: cx_Oracle.Cursor) -> dict[str, set]:
+def get_method2pub(cur: cx_Oracle.Cursor) -> dict[str, list]:
     cur.execute(
         """
         SELECT METHOD_AC, PUB_ID
@@ -643,9 +643,9 @@ def get_method2pub(cur: cx_Oracle.Cursor) -> dict[str, set]:
     current_method2pub = {}
     for method_ac, pub_id in method2pub:
         try:
-            current_method2pub[method_ac].update(pub_id)
+            current_method2pub[method_ac].append(pub_id)
         except KeyError:
-            current_method2pub[method_ac] = {pub_id}
+            current_method2pub[method_ac] = [pub_id]
 
     return current_method2pub
 
