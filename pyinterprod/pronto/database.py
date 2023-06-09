@@ -1,4 +1,4 @@
-import cx_Oracle
+import oracledb
 import psycopg2
 
 from pyinterprod import logger
@@ -48,7 +48,7 @@ def import_databases(ora_url: str, pg_url: str):
             """
         )
 
-        ora_con = cx_Oracle.connect(ora_url)
+        ora_con = oracledb.connect(ora_url)
         ora_cur = ora_con.cursor()
         ora_cur.execute(
             f"""

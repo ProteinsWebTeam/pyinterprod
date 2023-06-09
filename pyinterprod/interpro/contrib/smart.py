@@ -1,11 +1,9 @@
-from typing import List
-
 from .common import Method, parse_xml
 
 _TYPE = 'D'
 
 
-def parse_signatures(filepath: str) -> List[Method]:
+def parse_signatures(filepath: str) -> list[Method]:
     """
     Parse the SIGNATURE_LIBRARY.xml provided by SMART.
     """

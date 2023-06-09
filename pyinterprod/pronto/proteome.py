@@ -1,4 +1,4 @@
-import cx_Oracle
+import oracledb
 import psycopg2
 from psycopg2.extras import execute_values
 
@@ -12,7 +12,7 @@ class ProteomeIterator:
         self.proteomes = {}
 
     def __iter__(self):
-        con = cx_Oracle.connect(self.url)
+        con = oracledb.connect(self.url)
         cur = con.cursor()
         cur.execute(
             """

@@ -2,13 +2,13 @@ import os
 import re
 import sys
 
-import cx_Oracle
+import oracledb
 
 _DBCODE = "h"
 
 
 def update_xrefs(uri: str, file_path: str):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     cur.execute("SELECT ENTRY_AC FROM INTERPRO.ENTRY")

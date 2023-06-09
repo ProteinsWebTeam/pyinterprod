@@ -2,7 +2,7 @@
 
 import json
 
-import cx_Oracle
+import oracledb
 import psycopg2
 from psycopg2.extras import execute_values
 
@@ -46,7 +46,7 @@ def get_lineage(taxa: dict, tax_id: int):
 
 def import_taxonomy(ora_url: str, pg_url: str):
     logger.info("loading taxonomy info")
-    ora_con = cx_Oracle.connect(ora_url)
+    ora_con = oracledb.connect(ora_url)
     ora_cur = ora_con.cursor()
     ora_cur.execute(
         """

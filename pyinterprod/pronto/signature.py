@@ -2,7 +2,7 @@ import math
 import pickle
 from multiprocessing import Process, Queue
 
-import cx_Oracle
+import oracledb
 import psycopg2
 from psycopg2.extras import execute_values
 
@@ -198,7 +198,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
 
     # Load signatures from Oracle
     logger.info("loading signatures")
-    con = cx_Oracle.connect(ora_uri)
+    con = oracledb.connect(ora_uri)
     cur = con.cursor()
     cur.outputtypehandler = clob_as_str
     cur.execute(

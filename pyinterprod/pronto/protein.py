@@ -1,9 +1,8 @@
 import os
 import shutil
 from tempfile import mkstemp
-from typing import Optional
 
-import cx_Oracle
+import oracledb
 import psycopg2
 from psycopg2.extras import execute_values
 
@@ -27,7 +26,7 @@ def import_similarity_comments(swp_url: str, ipr_url: str):
             """
         )
 
-        ora_con = cx_Oracle.connect(swp_url)
+        ora_con = oracledb.connect(swp_url)
         ora_cur = ora_con.cursor()
         ora_cur.execute(
             """
@@ -79,7 +78,7 @@ def import_similarity_comments(swp_url: str, ipr_url: str):
 
 
 def import_protein_names(swp_url: str, ipr_url: str, database: str,
-                         tmpdir: Optional[str] = None):
+                         tmpdir: str | None = None):
     os.makedirs(os.path.dirname(database), exist_ok=True)
 
     logger.info("populating protein2name")
@@ -110,7 +109,7 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
             """
         )
 
-        ora_con = cx_Oracle.connect(swp_url)
+        ora_con = oracledb.connect(swp_url)
         ora_cur = ora_con.cursor()
         ora_cur.execute(
             """
@@ -220,7 +219,7 @@ def import_proteins(ora_url: str, pg_url: str):
             """
         )
 
-        ora_con = cx_Oracle.connect(ora_url)
+        ora_con = oracledb.connect(ora_url)
         ora_cur = ora_con.cursor()
         ora_cur.execute(
             """

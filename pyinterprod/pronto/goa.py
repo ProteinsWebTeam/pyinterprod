@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-import cx_Oracle
+import oracledb
 import psycopg2
 from psycopg2.extras import execute_values
 
@@ -49,7 +49,7 @@ def import_annotations(ora_url: str, pg_url: str):
             """
         )
 
-        ora_con = cx_Oracle.connect(ora_url)
+        ora_con = oracledb.connect(ora_url)
         ora_cur = ora_con.cursor()
 
         logger.info("populating: protein2go")

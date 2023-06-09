@@ -7,9 +7,8 @@ import pickle
 import shutil
 from multiprocessing import Process, Queue
 from tempfile import mkstemp
-from typing import Optional
 
-import cx_Oracle
+import oracledb
 import psycopg2
 
 from pyinterprod import logger
@@ -24,7 +23,7 @@ INDEX_SUFFIX = ".i"
 
 
 def export(url: str, output: str, cachesize: int = 10000000,
-           tmpdir: Optional[str] = None):
+           tmpdir: str | None = None):
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
@@ -66,8 +65,8 @@ def export(url: str, output: str, cachesize: int = 10000000,
 
 
 def _export_matches(url: str, cachesize: int,
-                    tmpdir: Optional[str] = None) -> list[str]:
-    con = cx_Oracle.connect(url)
+                    tmpdir: str | None = None) -> list[str]:
+    con = oracledb.connect(url)
     cur = con.cursor()
 
     # Loading databases
@@ -143,7 +142,7 @@ def _export_matches(url: str, cachesize: int,
     return files
 
 
-def _dump(data: dict, tmpdir: Optional[str] = None) -> str:
+def _dump(data: dict, tmpdir: str | None = None) -> str:
     fd, file = mkstemp(dir=tmpdir)
     os.close(fd)
     with gzip.open(file, "wb", compresslevel=6) as fh:
@@ -199,7 +198,7 @@ def iter_util_eof(file: str, compressed: bool):
 
 
 def insert_signature2protein(url: str, names_db: str, matches_file: str,
-                             processes: int = 1, tmpdir: Optional[str] = None):
+                             processes: int = 1, tmpdir: str | None = None):
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
@@ -482,7 +481,7 @@ def insert_fmatches(ora_uri: str, pg_uri: str):
 
 
 def _get_fmatches(uri: str, name2id: dict[str, int]):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
         """

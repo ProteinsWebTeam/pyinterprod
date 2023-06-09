@@ -1,8 +1,7 @@
 import gzip
 import re
-from typing import Optional
 
-import cx_Oracle
+import oracledb
 
 from pyinterprod import logger
 from .database import Database
@@ -25,7 +24,7 @@ CREATE TABLE INTERPRO.METHOD_HMM
 
 
 class _Mapper:
-    def __init__(self, database: str, mapfile: Optional[str]):
+    def __init__(self, database: str, mapfile: str | None):
         self.model2fam = {}
         if mapfile:
             with open(mapfile, "rt") as fh:
@@ -88,7 +87,7 @@ class _Mapper:
 
 
 def update(url: str, database: Database, hmmfile: str, mapfile: Optional[str]):
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
 
     logger.info(f"{database.name}: deleting HMMs")

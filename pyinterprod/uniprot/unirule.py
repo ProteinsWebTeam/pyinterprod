@@ -1,4 +1,4 @@
-import cx_Oracle
+import oracledb
 
 from pyinterprod import logger
 from pyinterprod.interpro import iprscan
@@ -13,7 +13,7 @@ def report_integration_changes(uri: str, emails: dict):
     :param uri: Oracle connection string
     :param emails: email info (SMTP server/port, sender, recipients, etc.)
     """
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -128,7 +128,7 @@ def _condense(matches: dict[str, list[tuple[int, int]]]):
 def build_aa_alignment(uri: str):
     logger.info("building AA_ALIGNMENT")
 
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     analyses = {}
@@ -216,7 +216,7 @@ def build_aa_alignment(uri: str):
 def build_aa_iprscan(uri: str):
     logger.info("building AA_IPRSCAN")
 
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     oracle.drop_table(cur, "IPRSCAN.AA_IPRSCAN", purge=True)
     cur.execute(
@@ -304,7 +304,7 @@ def build_aa_iprscan(uri: str):
 
 def build_xref_condensed(uri: str):
     logger.info("building XREF_CONDENSED")
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     oracle.drop_table(cur, "INTERPRO.XREF_CONDENSED", purge=True)
     cur.execute(
@@ -450,7 +450,7 @@ def build_xref_condensed(uri: str):
 
 def build_xref_summary(uri: str):
     logger.info("building XREF_SUMMARY")
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     oracle.drop_table(cur, "INTERPRO.XREF_SUMMARY", purge=True)
     cur.execute(
@@ -583,7 +583,7 @@ def build_xref_summary(uri: str):
 
 
 def ask_to_snapshot(uri: str, emails: dict):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     release, = cur.fetchone()
@@ -678,7 +678,7 @@ def update_signatures(filepath: str, uri: str):
                 # ignore InterPro entries
                 accessions.append(accession)
 
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     # Refresh data

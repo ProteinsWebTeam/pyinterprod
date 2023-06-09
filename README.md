@@ -6,7 +6,7 @@ A centralised Python implementation of InterPro production procedures.
 
 ### Requirements:
 
-- Python 3.9+, with packages `cx_Oracle`, `psycopg2`, and `mundone` ([link](https://github.com/matthiasblum/mundone))
+- Python 3.11+, with packages `oracledb`, `psycopg2`, and `mundone` ([link](https://github.com/matthiasblum/mundone))
 - `GCC` with the `sqlite3.h` header
 
 ### Installation
