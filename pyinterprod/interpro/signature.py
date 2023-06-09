@@ -693,7 +693,7 @@ def populate_method2pub_stg(cur: oracledb.Cursor, method2pub: dict[str, set]):
         )
 
 
-def update_citation(cur: oracledb.Cursor, pmid: int) -> Optional[str]:
+def update_citation(cur: oracledb.Cursor, pmid: int) -> str | None:
     cur.execute(
         """
             SELECT

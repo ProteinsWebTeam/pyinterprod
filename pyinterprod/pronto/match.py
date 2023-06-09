@@ -65,7 +65,7 @@ def export(url: str, output: str, cachesize: int = 10000000,
 
 
 def _export_matches(url: str, cachesize: int,
-                    tmpdir: Optional[str] = None) -> list[str]:
+                    tmpdir: str | None = None) -> list[str]:
     con = oracledb.connect(url)
     cur = con.cursor()
 

@@ -86,7 +86,7 @@ class _Mapper:
         return "SSF" + acc, name
 
 
-def update(url: str, database: Database, hmmfile: str, mapfile: Optional[str]):
+def update(url: str, database: Database, hmmfile: str, mapfile: str | None):
     con = oracledb.connect(url)
     cur = con.cursor()
 

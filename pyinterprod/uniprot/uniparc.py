@@ -1,5 +1,3 @@
-from typing import Optional
-
 import oracledb
 
 from pyinterprod import logger
@@ -205,7 +203,7 @@ def update_xrefs(ipr_uri: str, unp_uri: str):
     logger.info("complete")
 
 
-def iter_proteins(uri: str, greather_than: Optional[str] = None):
+def iter_proteins(uri: str, greather_than: str | None = None):
     con = oracledb.connect(uri)
     cur = con.cursor()
     cur.outputtypehandler = oracle.clob_as_str

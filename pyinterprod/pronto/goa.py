@@ -2,7 +2,6 @@
 
 import oracledb
 import psycopg
-from psycopg.extras import execute_values
 
 from pyinterprod import logger
 from pyinterprod.utils.pg import url2dict
@@ -74,8 +73,18 @@ def import_annotations(ora_url: str, pg_url: str):
             """
         )
 
-        sql = "INSERT INTO protein2go VALUES %s"
-        execute_values(pg_cur, sql, ora_cur, page_size=1000)
+        records = []
+        sql = "INSERT INTO protein2go VALUES %s, %s, %s, %s"
+        for rec in ora_cur:
+            records.append(rec)
+            if len(records) == 1000:
+                pg_cur.executemany(sql, records)
+                pg_con.commit()
+                records.clear()
+        if records:
+            pg_cur.executemany(sql, records)
+            pg_con.commit()
+            records.clear()
 
         logger.info("populating: publication")
         ora_cur.execute(
@@ -95,8 +104,19 @@ def import_annotations(ora_url: str, pg_url: str):
             )
             """
         )
-        sql = "INSERT INTO publication VALUES %s"
-        execute_values(pg_cur, sql, ora_cur, page_size=1000)
+
+        records = []
+        sql = "INSERT INTO publication VALUES %s, %s, %s"
+        for rec in ora_cur:
+            records.append(rec)
+            if len(records) == 1000:
+                pg_cur.executemany(sql, records)
+                pg_con.commit()
+                records.clear()
+        if records:
+            pg_cur.executemany(sql, records)
+            pg_con.commit()
+            records.clear()
 
         logger.info("populating: term")
         ora_cur.execute(
@@ -143,16 +163,26 @@ def import_annotations(ora_url: str, pg_url: str):
             """
         )
 
-        sql = "INSERT INTO term VALUES %s"
-        execute_values(pg_cur, sql, ((
-            row[0],
-            row[1],
-            row[2],
-            len(_get_constraints(row[0], ancestors, constraints)),
-            row[3] == 'Y',
-            row[4],
-            row[5]
-        ) for row in ora_cur), page_size=1000)
+        records = []
+        sql = "INSERT INTO term VALUES (:1, :2, :3, :4, :5, :6, :7)"
+        for row in ora_cur:
+            records.append((
+                row[0],
+                row[1],
+                row[2],
+                len(_get_constraints(row[0], ancestors, constraints)),
+                row[3] == 'Y',
+                row[4],
+                row[5]
+            ))
+            if len(records) == 1000:
+                pg_cur.executemany(sql, records)
+                pg_con.commit()
+                records.clear()
+        if records:
+            pg_cur.executemany(sql, records)
+            pg_con.commit()
+            records.clear()
 
         ora_cur.close()
         ora_con.close()

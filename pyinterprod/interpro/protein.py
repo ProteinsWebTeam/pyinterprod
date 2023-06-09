@@ -45,7 +45,7 @@ class Sequence:
                     taxid=self.taxon_id)
 
 
-def export_proteins(url: str, outdir: str, buffer_size: int = 1000000) -> List[str]:
+def export_proteins(url: str, outdir: str, buffer_size: int = 1000000) -> list[str]:
     con = oracledb.connect(url)
     cur = con.cursor()
     cur.execute(

@@ -4,7 +4,6 @@ from tempfile import mkstemp
 
 import oracledb
 import psycopg
-from psycopg.extras import execute_values
 
 from pyinterprod import logger
 from pyinterprod.utils.kvdb import KVdb
@@ -53,8 +52,18 @@ def import_similarity_comments(swp_url: str, ipr_url: str):
             """
         )
 
-        sql = "INSERT INTO protein_similarity VALUES %s"
-        execute_values(pg_cur, sql, ora_cur, page_size=1000)
+        records = []
+        sql = "INSERT INTO protein_similarity VALUES %s, %s, %s"
+        for rec in ora_cur:
+            records.append(rec)
+            if len(records) == 1000:
+                pg_cur.executemany(sql, records)
+                pg_con.commit()
+                records.clear()
+        if records:
+            pg_cur.executemany(sql, records)
+            pg_con.commit()
+            records.clear()
 
         ora_cur.close()
         ora_con.close()
@@ -141,6 +150,7 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
 
         names = {}
         values = []
+        records = []
         i = 0
         with KVdb(tmp_database, True) as namesdb:
             for protein_acc, text in ora_cur:
@@ -155,12 +165,21 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
 
                 if not i % 100000:
                     namesdb.sync()
-                    execute_values(
-                        cur=pg_cur,
-                        sql="INSERT INTO protein2name VALUES %s",
-                        argslist=values,
-                        page_size=1000
-                    )
+                    sql = "INSERT INTO protein2name VALUES %s, %s"
+                    if values:
+                        for rec in values:
+                            records.append(rec)
+
+                            if len(records) == 1000:
+                                pg_cur.executemany(sql, records)
+                                pg_con.commit()
+                                records.clear()
+
+                        if records:
+                            pg_cur.executemany(sql, records)
+                            pg_con.commit()
+                            records.clear()
+
                     values = []
 
                     if not i % 10000000:
@@ -170,21 +189,37 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
         ora_con.close()
         logger.info(f"{i:>12,}")
 
+        sql = "INSERT INTO protein2name VALUES %s, %s"
         if values:
-            execute_values(
-                cur=pg_cur,
-                sql="INSERT INTO protein2name VALUES %s",
-                argslist=values,
-                page_size=1000
-            )
+            for rec in values:
+                records.append(rec)
+
+                if len(records) == 1000:
+                    pg_cur.executemany(sql, records)
+                    pg_con.commit()
+                    records.clear()
+
+            if records:
+                pg_cur.executemany(sql, records)
+                pg_con.commit()
+                records.clear()
 
         logger.info("populating protein_name")
-        execute_values(
-            cur=pg_cur,
-            sql="INSERT INTO protein_name VALUES %s",
-            argslist=((name_id, text) for text, name_id in names.items()),
-            page_size=1000
-        )
+
+        sql = "INSERT INTO protein_name VALUES %s, %s"
+        if values:
+            for text, name_id in names.items():
+                records.append((name_id, text))
+
+                if len(records) == 1000:
+                    pg_cur.executemany(sql, records)
+                    pg_con.commit()
+                    records.clear()
+
+            if records:
+                pg_cur.executemany(sql, records)
+                pg_con.commit()
+                records.clear()
 
         logger.info("analyzing tables")
         pg_cur.execute("ANALYZE protein2name")

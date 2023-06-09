@@ -4,7 +4,6 @@ from multiprocessing import Process, Queue
 
 import oracledb
 import psycopg
-from psycopg.extras import execute_values
 
 from pyinterprod import logger
 from pyinterprod.utils.oracle import clob_as_str
@@ -259,9 +258,21 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
             )
             """
         )
-        execute_values(cur, "INSERT INTO signature VALUES %s", values,
-                       page_size=1000)
-        con.commit()
+
+        records = []
+        sql = "INSERT INTO signature VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11)"
+        for rec in values:
+            records.append(rec)
+
+            if len(records) == 1000:
+                cur.executemany(sql, records)
+                con.commit()
+                records.clear()
+
+        if records:
+            cur.executemany(sql, records)
+            con.commit()
+            records.clear()
 
         cur.execute(
             """

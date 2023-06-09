@@ -1,6 +1,5 @@
 import oracledb
 import psycopg
-from psycopg.extras import execute_values
 
 from pyinterprod import logger
 from pyinterprod.utils.pg import url2dict
@@ -66,13 +65,32 @@ def import_proteomes(ora_url: str, pg_url: str):
             """
         )
 
-        sql = "INSERT INTO proteome2protein VALUES %s"
+        records = []
         iterator = ProteomeIterator(ora_url)
-        execute_values(pg_cur, sql, iterator, page_size=1000)
 
-        sql = "INSERT INTO proteome VALUES %s"
-        execute_values(pg_cur, sql, list(iterator.proteomes.values()),
-                       page_size=1000)
+        sql = "INSERT INTO proteome2protein VALUES %s, %s"
+        for rec in iterator:
+            records.append(rec)
+            if len(records) == 1000:
+                pg_cur.executemany(sql, records)
+                pg_con.commit()
+                records.clear()
+        if records:
+            pg_cur.executemany(sql, records)
+            pg_con.commit()
+            records.clear()
+
+        sql = "INSERT INTO proteome VALUES %s, %s, %s, %s"
+        for rec in list(iterator.proteomes.values()):
+            records.append(rec)
+            if len(records) == 1000:
+                pg_cur.executemany(sql, records)
+                pg_con.commit()
+                records.clear()
+        if records:
+            pg_cur.executemany(sql, records)
+            pg_con.commit()
+            records.clear()
 
         logger.info("indexing")
         pg_cur.execute(
