@@ -22,7 +22,7 @@ _TYPES = {
 
 def connect_mysql(url: str) -> MySQLdb.Connection:
     obj = url2dict(url)
-    # MySQLdb and psycopg2 use different keyword params for password/database
+    # MySQLdb and psycopg use different keyword params for password/database
     obj.update({
         "passwd": obj.pop("password"),
         "db": obj.pop("dbname")

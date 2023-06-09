@@ -944,7 +944,7 @@ def track_entry_changes(cur: oracledb.Cursor, data_dir: str,
     return changes
 
 
-def _get_taxon2superkingdom(cur: oracledb.Cursor) -> dict[int, str]:
+def _get_taxon2superkingdom(cur: oracledb.Cursor) -> Dict[int, str]:
     # Load all taxa
     cur.execute(
         """
@@ -982,7 +982,7 @@ def _get_taxon2superkingdom(cur: oracledb.Cursor) -> dict[int, str]:
     return taxon2superkingdom
 
 
-def _get_entries_protein_counts(cur: oracledb.Cursor) -> dict[str, Dict[str, int]]:
+def _get_entries_protein_counts(cur: oracledb.Cursor) -> Dict[str, Dict[str, int]]:
     """
     Return the number of protein matched by each InterPro entry.
     Only complete sequences are considered.

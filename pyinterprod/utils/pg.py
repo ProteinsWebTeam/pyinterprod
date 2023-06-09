@@ -2,7 +2,7 @@ import re
 import time
 from typing import Any, Iterator
 
-from psycopg2.errors import DiskFull
+from psycopg.errors import DiskFull
 
 
 class CsvIO:

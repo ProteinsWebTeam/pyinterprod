@@ -631,7 +631,13 @@ def get_pmid2pubid(cur: oracledb.Cursor) -> dict[int, str]:
 
 
 def get_method2pub(cur: oracledb.Cursor) -> dict[str, set]:
-    cur.execute("SELECT METHOD_AC, PUB_ID FROM INTERPRO.METHOD2PUB")
+    cur.execute(
+        """
+        SELECT METHOD_AC, LISTAGG(PUB_ID, ';')
+        FROM INTERPRO.METHOD2PUB
+        GROUP BY METHOD_AC
+        """
+    )
 
     method2pub = {}
     for signature_acc, pub_id in cur:
@@ -687,7 +693,7 @@ def populate_method2pub_stg(cur: oracledb.Cursor, method2pub: dict[str, set]):
         )
 
 
-def update_citation(cur: oracledb.Cursor, pmid: int) -> str | None:
+def update_citation(cur: oracledb.Cursor, pmid: int) -> Optional[str]:
     cur.execute(
         """
             SELECT

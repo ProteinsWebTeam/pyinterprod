@@ -8,7 +8,7 @@ from pyinterprod.uniprot.uniparc import iter_proteins
 from pyinterprod.utils import oracle
 
 
-def get_analyses(obj: str | oracledb.Cursor) -> dict:
+def get_analyses(obj: Union[str, oracledb.Cursor]) -> dict:
     if isinstance(obj, str):
         con = oracledb.connect(obj)
         cur = con.cursor()
@@ -47,7 +47,7 @@ def get_analyses(obj: str | oracledb.Cursor) -> dict:
     return analyses
 
 
-def clean_tables(uri: str, analysis_ids: list[int] | None = None):
+def clean_tables(uri: str, analysis_ids: Optional[list[int]] = None):
     con = oracledb.connect(uri)
     cur = con.cursor()
 
@@ -339,7 +339,7 @@ def set_job_done(cur: oracledb.Cursor, analysis_id: int, upi_from: str,
     )
 
 
-def rebuild_indexes(uri: str, analysis_ids: list[int] | None = None):
+def rebuild_indexes(uri: str, analysis_ids: Optional[list[int]] = None):
     con = oracledb.connect(uri)
     cur = con.cursor()
 

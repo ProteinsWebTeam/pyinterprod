@@ -3,8 +3,8 @@
 import json
 
 import oracledb
-import psycopg2
-from psycopg2.extras import execute_values
+import psycopg
+from psycopg.extras import execute_values
 
 from pyinterprod import logger
 from pyinterprod.utils.pg import url2dict
@@ -74,7 +74,7 @@ def import_taxonomy(ora_url: str, pg_url: str):
     ora_cur.close()
     ora_con.close()
 
-    pg_con = psycopg2.connect(**url2dict(pg_url))
+    pg_con = psycopg.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("DROP TABLE IF EXISTS taxon")
         pg_cur.execute("DROP TABLE IF EXISTS lineage")

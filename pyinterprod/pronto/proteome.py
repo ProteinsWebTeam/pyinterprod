@@ -1,6 +1,6 @@
 import oracledb
-import psycopg2
-from psycopg2.extras import execute_values
+import psycopg
+from psycopg.extras import execute_values
 
 from pyinterprod import logger
 from pyinterprod.utils.pg import url2dict
@@ -41,7 +41,7 @@ class ProteomeIterator:
 def import_proteomes(ora_url: str, pg_url: str):
     logger.info("inserting reference proteomes info")
 
-    pg_con = psycopg2.connect(**url2dict(pg_url))
+    pg_con = psycopg.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("DROP TABLE IF EXISTS proteome")
         pg_cur.execute(
