@@ -944,7 +944,7 @@ def track_entry_changes(cur: oracledb.Cursor, data_dir: str,
     return changes
 
 
-def _get_taxon2superkingdom(cur: oracledb.Cursor) -> Dict[int, str]:
+def _get_taxon2superkingdom(cur: oracledb.Cursor) -> dict[int, str]:
     # Load all taxa
     cur.execute(
         """
@@ -982,7 +982,7 @@ def _get_taxon2superkingdom(cur: oracledb.Cursor) -> Dict[int, str]:
     return taxon2superkingdom
 
 
-def _get_entries_protein_counts(cur: oracledb.Cursor) -> Dict[str, Dict[str, int]]:
+def _get_entries_protein_counts(cur: oracledb.Cursor) -> dict[str, dict[str, int]]:
     """
     Return the number of protein matched by each InterPro entry.
     Only complete sequences are considered.
@@ -1017,7 +1017,7 @@ def _get_entries_protein_counts(cur: oracledb.Cursor) -> Dict[str, Dict[str, int
     return counts
 
 
-def get_sig_protein_counts(cur: oracledb.Cursor, dbid: str) -> Dict[str, Dict[str, int]]:
+def get_sig_protein_counts(cur: oracledb.Cursor, dbid: str) -> dict[str, dict[str, int]]:
     """
     Return the number of protein matches by each member database signature.
     Only complete sequences are considered
@@ -1054,7 +1054,7 @@ def get_sig_protein_counts(cur: oracledb.Cursor, dbid: str) -> Dict[str, Dict[st
     return counts
 
 
-# def _get_databases_matches_count(cur: oracledb.Cursor) -> Dict[str, int]:
+# def _get_databases_matches_count(cur: oracledb.Cursor) -> dict[str, int]:
 #     """
 #     Return the number of matches per member database
 #     :param cur: Oracle cursor object
