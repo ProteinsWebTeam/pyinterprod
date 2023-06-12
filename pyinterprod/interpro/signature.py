@@ -793,7 +793,7 @@ def update_citations(cur: cx_Oracle.Cursor):
 
         cur.execute(
             f"""
-            SELECT EXTERNAL_ID, VOLUME, ISSUE, YEAR, TITLE, RAWPAGES, MEDLINE_JOURNAL, ISO_JOURNAL, AUTHORS, DOI_URL
+            SELECT VOLUME, ISSUE, YEAR, TITLE, RAWPAGES, MEDLINE_JOURNAL, ISO_JOURNAL, AUTHORS, DOI_URL, EXTERNAL_ID
             FROM (
                 SELECT
                     C.EXTERNAL_ID AS EXTERNAL_ID, I.VOLUME AS VOLUME, I.ISSUE AS ISSUE,
@@ -828,16 +828,16 @@ def update_citations(cur: cx_Oracle.Cursor):
 
         for citation in citations:
             citation = list(citation)
-            citation[0] = int(citation[0])
-            if len(citation[4]) > 740:
-                citation[4] = citation[4][:737] + "..."
+            citation[9] = int(citation[9])
+            if len(citation[3]) > 740:
+                citation[3] = citation[3][:737] + "..."
 
         cur.executemany(
             """
             UPDATE INTERPRO.CITATION
-            SET VOLUME=:2, ISSUE=:3, YEAR=:4, TITLE=:5, RAWPAGES=:6, MEDLINE_JOURNAL=:7, ISO_JOURNAL=:8, AUTHORS=:9, DOI_URL=:10
-            WHERE PUBMED_ID = :1
-            """, (*citations,)
+            SET VOLUME= :1, ISSUE= :2, YEAR= :3, TITLE= :4, RAWPAGES= :5, MEDLINE_JOURNAL= :6, ISO_JOURNAL= :7, AUTHORS= :8, DOI_URL= :9
+            WHERE PUBMED_ID = :10
+            """, citations
         )
 
 
