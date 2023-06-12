@@ -715,7 +715,7 @@ def import_citation(cur: cx_Oracle.Cursor, pmid: int) -> Optional[str]:
                 C.EXTERNAL_ID AS EXTERNAL_ID, I.VOLUME AS VOLUME, I.ISSUE AS ISSUE,
                 I.PUBYEAR AS YEAR, C.TITLE AS TITLE, C.PAGE_INFO AS RAWPAGES,
                 J.MEDLINE_ABBREVIATION AS MEDLINE_JOURNAL, J.ISO_ABBREVIATION AS ISO_JOURNAL,
-                A.AUTHORS AS AUTHORS, LOWER(REGEXP_REPLACE(U.URL, '(^[[:space:]]*|[[:space:]]*$)')) AS DOI_URL,
+                A.AUTHORS AS AUTHORS, U.URL AS DOI_URL,
                 ROW_NUMBER() OVER (
                       PARTITION BY C.EXTERNAL_ID
                       ORDER BY U.DATE_UPDATED DESC
@@ -799,7 +799,7 @@ def update_citations(cur: cx_Oracle.Cursor):
                     C.EXTERNAL_ID AS EXTERNAL_ID, I.VOLUME AS VOLUME, I.ISSUE AS ISSUE,
                     I.PUBYEAR AS YEAR, C.TITLE AS TITLE, C.PAGE_INFO AS RAWPAGES,
                     J.MEDLINE_ABBREVIATION AS MEDLINE_JOURNAL, J.ISO_ABBREVIATION AS ISO_JOURNAL,
-                    A.AUTHORS AS AUTHORS, LOWER(REGEXP_REPLACE(U.URL, '(^[[:space:]]*|[[:space:]]*$)')) AS DOI_URL,
+                    A.AUTHORS AS AUTHORS, U.URL AS DOI_URL,
                     ROW_NUMBER() OVER (
                           PARTITION BY C.EXTERNAL_ID
                           ORDER BY U.DATE_UPDATED DESC
@@ -828,9 +828,9 @@ def update_citations(cur: cx_Oracle.Cursor):
 
         for citation in citations:
             citation = list(citation)
-            citation[9] = int(citation[9])
             if len(citation[3]) > 740:
                 citation[3] = citation[3][:737] + "..."
+            citation[9] = int(citation[9])
 
         cur.executemany(
             """
