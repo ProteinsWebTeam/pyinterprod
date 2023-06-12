@@ -109,8 +109,8 @@ def import_taxonomy(ora_url: str, pg_url: str):
               """
 
         for tax_id, (name, rank, left_num, right_num, parent_id) in taxa.items():
-            records.append(tax_id, name, rank, left_num, right_num, parent_id,
-             json.dumps(get_lineage(taxa, tax_id)))
+            json_lineage = json.dumps(get_lineage(taxa, tax_id))
+            records.append((tax_id, name, rank, left_num, right_num, parent_id, json_lineage))
 
             if len(records) == 1000:
                 pg_cur.executemany(sql, records)

@@ -156,6 +156,17 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
         values = []
         records = []
         i = 0
+
+        sql_protein2name = """
+                          INSERT INTO protein2name (protein_acc, name_id) 
+                          VALUES (%s, %s)
+                          """
+
+        sql_protein_name = """
+                          INSERT INTO protein_name (name_id, text) 
+                          VALUES (%s, %s)
+                          """
+
         with KVdb(tmp_database, True) as namesdb:
             for protein_acc, text in ora_cur:
                 try:
@@ -169,24 +180,16 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
 
                 if not i % 100000:
                     namesdb.sync()
-                    sql = """
-                          INSERT INTO protein2name (protein_acc, name_id) 
-                          VALUES (%s, %s)
-                          """
-
-                    if values:
-                        for rec in values:
-                            records.append(rec)
-
-                            if len(records) == 1000:
-                                pg_cur.executemany(sql, records)
-                                pg_con.commit()
-                                records.clear()
-
-                        if records:
-                            pg_cur.executemany(sql, records)
+                    for rec in values:
+                        records.append(rec)
+                        if len(records) == 1000:
+                            pg_cur.executemany(sql_protein2name, records)
                             pg_con.commit()
                             records.clear()
+                    if records:
+                        pg_cur.executemany(sql_protein2name, records)
+                        pg_con.commit()
+                        records.clear()
 
                     values = []
 
@@ -200,32 +203,27 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
         if values:
             for rec in values:
                 records.append(rec)
-
                 if len(records) == 1000:
-                    pg_cur.executemany(sql, records)
+                    pg_cur.executemany(sql_protein2name, records)
                     pg_con.commit()
                     records.clear()
-
             if records:
-                pg_cur.executemany(sql, records)
+                pg_cur.executemany(sql_protein2name, records)
                 pg_con.commit()
                 records.clear()
 
         logger.info("populating protein_name")
 
-        if values:
-            for text, name_id in names.items():
-                records.append((name_id, text))
-
-                if len(records) == 1000:
-                    pg_cur.executemany(sql, records)
-                    pg_con.commit()
-                    records.clear()
-
-            if records:
-                pg_cur.executemany(sql, records)
+        for text, name_id in names.items():
+            records.append((name_id, text))
+            if len(records) == 1000:
+                pg_cur.executemany(sql_protein_name, records)
                 pg_con.commit()
                 records.clear()
+        if records:
+            pg_cur.executemany(sql_protein_name, records)
+            pg_con.commit()
+            records.clear()
 
         logger.info("analyzing tables")
         pg_cur.execute("ANALYZE protein2name")
