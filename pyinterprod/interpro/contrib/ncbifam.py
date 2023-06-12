@@ -232,47 +232,7 @@ def replace_desc(new_desc: str):
 #     return xmlET.fromstring(response.read().decode("utf-8"))
 
 
-def _request_ncbi_info(accession: str) -> dict:
-    url = f"{NCBI_API}?collection=hmm_info&match=accession_._{accession}"
-    response = request.urlopen(url)
-    payload = json.loads(response.read().decode("utf-8"))
-    if payload["totalCount"] > 1:
-        raise Exception(f"{accession}: more than one entry")
-
-    entry = payload["data"][0]
-    go_terms = set()
-    for term in entry.get("go_terms", "").split(";"):
-        if term.strip():
-            go_terms.add(term.strip())
-
-    references = set()
-    for pmid in entry.get("pubmed", "").split(";"):
-        if pmid.strip():
-            references.add(int(pmid.strip()))
-
-    return {
-        "accession": entry["accession"],
-        "family_type": entry.get("family_type"),
-        "go_terms": list(go_terms),
-        "computed_hmm_name": entry.get("computed_hmm_name"),
-        "product_name": entry.get("product_name"),
-        "public_comment": entry.get("public_comment"),
-        "pubmed": list(references),
-        "short_name": entry.get("short_name"),
-    }
-
-
-def _fetch_url_xml(url: str, params: dict,
-                   post_request: bool = False) -> xmlET.Element:
-    data = parse.urlencode(params)
-    if post_request:
-        response = request.urlopen(url, data=data.encode("ascii"))
-    else:
-        response = request.urlopen(f"{url}?{data}")
-    return xmlET.fromstring(response.read().decode("utf-8"))
-
-
-def update_go_terms(uri: str, file_path: str):
+def update_go_terms(uri: str, tsvfile: str):
     con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute("SELECT METHOD_AC FROM INTERPRO.METHOD WHERE DBCODE = 'N'")
