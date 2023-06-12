@@ -709,31 +709,37 @@ def populate_method2pub_stg(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
 def import_citation(cur: cx_Oracle.Cursor, pmid: int) -> Optional[str]:
     cur.execute(
         """
-            SELECT
-              C.EXTERNAL_ID, I.VOLUME, I.ISSUE, I.PUBYEAR, C.TITLE,
-              C.PAGE_INFO, J.MEDLINE_ABBREVIATION, J.ISO_ABBREVIATION,
-              A.AUTHORS, U.URL
-            FROM CDB.CITATIONS@LITPUB C
-              LEFT OUTER JOIN CDB.JOURNAL_ISSUES@LITPUB I
-                ON C.JOURNAL_ISSUE_ID = I.ID
-              LEFT JOIN CDB.CV_JOURNALS@LITPUB J
-                ON I.JOURNAL_ID = J.ID
-              LEFT OUTER JOIN CDB.FULLTEXT_URL_MEDLINE@LITPUB U
-                ON (
-                    C.EXTERNAL_ID = U.EXTERNAL_ID AND
-                    UPPER(U.SITE) = 'DOI'
-                )
-              LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
-                ON (
-                  C.ID = A.CITATION_ID AND
-                  A.HAS_SPECIAL_CHARS = 'N'
-                )
-            WHERE C.EXTERNAL_ID = :1
+        SELECT * FROM (
+                SELECT
+                    C.EXTERNAL_ID AS EXTERNAL_ID, I.VOLUME AS VOLUME, I.ISSUE AS ISSUE,
+                    I.PUBYEAR AS YEAR, C.TITLE AS TITLE, C.PAGE_INFO AS RAWPAGES,
+                    J.MEDLINE_ABBREVIATION AS MEDLINE_JOURNAL, J.ISO_ABBREVIATION AS ISO_JOURNAL,
+                    A.AUTHORS AS AUTHORS, LOWER(REGEXP_REPLACE(U.URL, '(^[[:space:]]*|[[:space:]]*$)')) AS DOI_URL,
+                    ROW_NUMBER() OVER (
+                          PARTITION BY C.EXTERNAL_ID
+                          ORDER BY U.DATE_UPDATED DESC
+                      ) R
+                FROM CDB.CITATIONS@LITPUB C
+                LEFT OUTER JOIN CDB.JOURNAL_ISSUES@LITPUB I
+                    ON C.JOURNAL_ISSUE_ID = I.ID
+                LEFT JOIN CDB.CV_JOURNALS@LITPUB J
+                    ON I.JOURNAL_ID = J.ID
+                LEFT OUTER JOIN CDB.FULLTEXT_URL_MEDLINE@LITPUB U
+                    ON (
+                        C.EXTERNAL_ID = U.EXTERNAL_ID AND
+                        UPPER(U.SITE) = 'DOI'
+                    )
+                LEFT OUTER JOIN CDB.AUTHORS@LITPUB A
+                    ON (
+                        C.ID = A.CITATION_ID AND
+                        A.HAS_SPECIAL_CHARS = 'N'
+                    )
+            )  WHERE PUBMED_ID = :1 AND R = 1) L
             """,
         (str(pmid),),
     )
-
     citation = cur.fetchone()
+
     if citation:
         citation = list(citation)
         citation[0] = int(citation[0])
@@ -779,14 +785,13 @@ def update_citations(cur: cx_Oracle.Cursor):
     pmids = _get_used_citations_pmids(cur)
     step = 1000
     for i in range(0, len(pmids), step):
-        params = list(pmids)[i : i + step]
+        params = list(pmids)[i: i + step]
         args = ",".join([":" + str(i + 1) for i in range(len(params))])
+
         cur.execute(
             f"""
-            MERGE INTO INTERPRO.CITATION IC
-            USING (
-                SELECT *  FROM (
-                    SELECT DISTINCT
+            SELECT * FROM (
+                    SELECT
                         C.EXTERNAL_ID AS EXTERNAL_ID, I.VOLUME AS VOLUME, I.ISSUE AS ISSUE,
                         I.PUBYEAR AS YEAR, C.TITLE AS TITLE, C.PAGE_INFO AS RAWPAGES,
                         J.MEDLINE_ABBREVIATION AS MEDLINE_JOURNAL, J.ISO_ABBREVIATION AS ISO_JOURNAL,
@@ -810,22 +815,25 @@ def update_citations(cur: cx_Oracle.Cursor):
                             C.ID = A.CITATION_ID AND
                             A.HAS_SPECIAL_CHARS = 'N'
                         )
-                )  WHERE R = 1) L
-            ON (TO_CHAR(IC.PUBMED_ID) = L.EXTERNAL_ID)
-            WHEN MATCHED THEN
-                UPDATE SET IC.VOLUME = L.VOLUME,
-                IC.ISSUE = L.ISSUE,
-                IC.YEAR = L.YEAR,
-                IC.TITLE = L.TITLE,
-                IC.RAWPAGES = L.RAWPAGES,
-                IC.MEDLINE_JOURNAL = L.MEDLINE_JOURNAL,
-                IC.ISO_JOURNAL = L.ISO_JOURNAL,
-                IC.AUTHORS = L.AUTHORS,
-                IC.DOI_URL = L.DOI_URL
-                WHERE PUBMED_ID IN ({args})
+                )  WHERE PUBMED_ID IN ({args}) AND R = 1) L
                 """,
             params,
         )
+        citations = cur.fetchall()
+
+        for citation in citations:
+            citation = list(citation)
+            citation[0] = int(citation[0])
+            if len(citation[4]) > 740:
+                citation[4] = citation[4][:737] + "..."
+
+            cur.execute(
+                """
+                UPDATE INTERPRO.CITATION
+                SET VOLUME=:2, ISSUE=:3, YEAR=:4, TITLE=:5, RAWPAGES=:6, MEDLINE_JOURNAL=:7, ISO_JOURNAL=:8, AUTHORS=:9, DOI_URL=:10
+                WHERE PUBMED_ID = :1
+                """, (*citation,)
+            )
 
 
 def _get_used_citations_pmids(cur: cx_Oracle.Cursor) -> set[str]:
