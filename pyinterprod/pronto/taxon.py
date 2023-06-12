@@ -103,7 +103,11 @@ def import_taxonomy(ora_url: str, pg_url: str):
 
         logger.info("populating: taxon")
         records = []
-        sql = "INSERT INTO taxon VALUES (:1, :2, :3, :4, :5, :6, :7)"
+        sql = """
+              INSERT INTO taxon (id, name, rank, left_number, right_number, parent_id, lineage)
+              VALUES (%s, %s, %s, %s, %s, %s, %s)
+              """
+
         for tax_id, (name, rank, left_num, right_num, parent_id) in taxa.items():
             records.append(tax_id, name, rank, left_num, right_num, parent_id,
              json.dumps(get_lineage(taxa, tax_id)))
@@ -126,7 +130,11 @@ def import_taxonomy(ora_url: str, pg_url: str):
         )
 
         logger.info("populating: lineage")
-        sql = "INSERT INTO lineage VALUES %s, %s, %s"
+        sql = """
+              INSERT INTO lineage (child_id, parent_id, parent_rank) 
+              VALUES (%s, %s, %s)
+              """
+
         for rec in iter_lineage(taxa):
             records.append(rec)
 

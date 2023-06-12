@@ -68,7 +68,11 @@ def import_proteomes(ora_url: str, pg_url: str):
         records = []
         iterator = ProteomeIterator(ora_url)
 
-        sql = "INSERT INTO proteome2protein VALUES %s, %s"
+        sql = """
+              INSERT INTO proteome2protein (id, protein_acc) 
+              VALUES (%s, %s)
+              """
+
         for rec in iterator:
             records.append(rec)
             if len(records) == 1000:
@@ -80,7 +84,11 @@ def import_proteomes(ora_url: str, pg_url: str):
             pg_con.commit()
             records.clear()
 
-        sql = "INSERT INTO proteome VALUES %s, %s, %s, %s"
+        sql = """
+              INSERT INTO proteome (id, name, taxon_id, num_proteins) 
+              VALUES (%s, %s, %s, %s)
+              """
+
         for rec in list(iterator.proteomes.values()):
             records.append(rec)
             if len(records) == 1000:

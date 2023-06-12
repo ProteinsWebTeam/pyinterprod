@@ -53,7 +53,11 @@ def import_similarity_comments(swp_url: str, ipr_url: str):
         )
 
         records = []
-        sql = "INSERT INTO protein_similarity VALUES %s, %s, %s"
+        sql = """
+              INSERT INTO protein_similarity (comment_id, comment_text, protein_acc) 
+              VALUES (%s, %s, %s)
+              """
+
         for rec in ora_cur:
             records.append(rec)
             if len(records) == 1000:
@@ -165,7 +169,11 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
 
                 if not i % 100000:
                     namesdb.sync()
-                    sql = "INSERT INTO protein2name VALUES %s, %s"
+                    sql = """
+                          INSERT INTO protein2name (protein_acc, name_id) 
+                          VALUES (%s, %s)
+                          """
+
                     if values:
                         for rec in values:
                             records.append(rec)
@@ -189,7 +197,6 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
         ora_con.close()
         logger.info(f"{i:>12,}")
 
-        sql = "INSERT INTO protein2name VALUES %s, %s"
         if values:
             for rec in values:
                 records.append(rec)
@@ -206,7 +213,6 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
 
         logger.info("populating protein_name")
 
-        sql = "INSERT INTO protein_name VALUES %s, %s"
         if values:
             for text, name_id in names.items():
                 records.append((name_id, text))

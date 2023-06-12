@@ -74,7 +74,11 @@ def import_annotations(ora_url: str, pg_url: str):
         )
 
         records = []
-        sql = "INSERT INTO protein2go VALUES %s, %s, %s, %s"
+        sql = """
+              INSERT INTO protein2go (protein_acc, term_id, ref_db_code, ref_db_id) 
+              VALUES (%s, %s, %s, %s)
+              """
+
         for rec in ora_cur:
             records.append(rec)
             if len(records) == 1000:
@@ -106,7 +110,11 @@ def import_annotations(ora_url: str, pg_url: str):
         )
 
         records = []
-        sql = "INSERT INTO publication VALUES %s, %s, %s"
+        sql = """
+              INSERT INTO publication (id, title, published) 
+              VALUES (%s, %s, %s)
+              """
+
         for rec in ora_cur:
             records.append(rec)
             if len(records) == 1000:
@@ -164,17 +172,23 @@ def import_annotations(ora_url: str, pg_url: str):
         )
 
         records = []
-        sql = "INSERT INTO term VALUES (:1, :2, :3, :4, :5, :6, :7)"
+        sql = """
+              INSERT INTO term (id, name, category, num_constraints, is_obsolete, definition, replaced_id) 
+              VALUES (%s, %s, %s, %s, %s, %s, %s)
+              """
+
         for row in ora_cur:
-            records.append((
-                row[0],
-                row[1],
-                row[2],
-                len(_get_constraints(row[0], ancestors, constraints)),
-                row[3] == 'Y',
-                row[4],
-                row[5]
-            ))
+            records.append(
+                (
+                    row[0],
+                    row[1],
+                    row[2],
+                    len(_get_constraints(row[0], ancestors, constraints)),
+                    row[3] == "Y",
+                    row[4],
+                    row[5],
+                )
+            )
             if len(records) == 1000:
                 pg_cur.executemany(sql, records)
                 pg_con.commit()
