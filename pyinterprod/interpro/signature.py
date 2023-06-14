@@ -830,6 +830,8 @@ def update_citations(cur: cx_Oracle.Cursor):
             citation = list(citation)
             if len(citation[3]) > 740:
                 citation[3] = citation[3][:737] + "..."
+            if citation[8] is not None:
+                citation[8] = citation[8].lower().replace(" ", "")
             citation[9] = int(citation[9])
 
         cur.executemany(
