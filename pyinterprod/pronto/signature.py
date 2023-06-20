@@ -299,10 +299,18 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
             """
         )
 
-        cur.copy_from(file=CsvIO(_iter_comparisons(comparisons), sep='|'),
-                      table="comparison",
-                      sep='|')
-        con.commit()
+        records = []
+        with cur.copy("COPY comparison FROM STDIN") as copy:
+            for row in _iter_comparisons(comparisons):
+                records.append(row)
+                if len(records) == 1000:
+                    copy.write(records)
+                    con.commit()
+                    records.clear()
+            if records:
+                copy.write(records)
+                con.commit()
+                records.clear()
 
         cur.execute(
             """
@@ -329,11 +337,18 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
             """
         )
 
-        records = _iter_predictions(comparisons, signatures)
-        cur.copy_from(file=CsvIO(records, sep='|'),
-                      table="prediction",
-                      sep='|')
-        con.commit()
+        records = []
+        with cur.copy("COPY prediction FROM STDIN") as copy:
+            for row in _iter_predictions(comparisons, signatures):
+                records.append(row)
+                if len(records) == 1000:
+                    copy.write(records)
+                    con.commit()
+                    records.clear()
+            if records:
+                copy.write(records)
+                con.commit()
+                records.clear()
 
         cur.execute(
             """
