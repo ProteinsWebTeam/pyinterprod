@@ -267,24 +267,28 @@ def import_proteins(ora_url: str, pg_url: str):
             """
         )
 
-        gen = []
-        with pg_cur.copy("COPY protein FROM STDIN") as copy:
-            for row in ora_cur:
-                gen.append((row[0],
+        sql = """
+              INSERT INTO protein (signature_acc_1, signature_acc_2, num_collocations, num_protein_overlaps, num_residue_overlaps) 
+              VALUES (%s, %s, %s, %s, %s)
+              """
+
+        records = []
+        for row in ora_cur:
+            records.append((row[0],
                             row[1],
                             row[2],
                             row[3],
                             row[4] == 'Y',
                             row[5] == 'S'
                             ))
-                if len(gen) == 1000:
-                    copy.write(gen)
-                    pg_con.commit()
-                    gen.clear()
-            if gen:
-                copy.write(gen)
+            if len(records) == 1000:
+                pg_cur.executemany(sql, records)
                 pg_con.commit()
-                gen.clear()
+                records.clear()
+        if records:
+            pg_cur.executemany(sql, records)
+            pg_con.commit()
+            records.clear()
 
         ora_cur.close()
         ora_con.close()

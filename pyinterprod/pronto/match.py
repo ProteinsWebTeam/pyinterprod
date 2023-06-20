@@ -275,18 +275,24 @@ def _populate_signature2protein(url: str, names_db: str, matches_file: str,
     con = psycopg.connect(**pg.url2dict(url))
     with con.cursor() as cur:
         proteins = _iter_proteins(names_db, matches_file, src, dst)
+
+        sql = """
+              INSERT INTO signature2protein (signature_acc, model_acc, protein_acc, is_reviewed, taxon_left_num, name_id, md5) 
+              VALUES (%s, %s, %s, %s, %s, %s, %s)
+              """
+
         records = []
-        with cur.copy("COPY signature2protein FROM STDIN") as copy:
-            for row in proteins:
-                records.append(row)
-                if len(records) == 1000:
-                    copy.write(records)
-                    con.commit()
-                    records.clear()
-            if records:
-                copy.write(records)
+        for row in proteins:
+            records.append(row)
+            if len(records) == 1000:
+                cur.executemany(sql, records)
                 con.commit()
                 records.clear()
+        if records:
+            cur.executemany(sql, records)
+            con.commit()
+            records.clear()
+
     con.close()
 
 
@@ -477,18 +483,24 @@ def insert_fmatches(ora_uri: str, pg_uri: str):
     with con.cursor() as cur:
         cur.execute("SELECT name, id FROM database")
         name2id = dict(cur.fetchall())
+
+        sql = """
+              INSERT INTO match (protein_acc, signature_acc, database_id, fragments) 
+              VALUES (%s, %s, %s, %s)
+              """
+
         records = []
-        with cur.copy("COPY match FROM STDIN") as copy:
-            for row in _get_fmatches(ora_uri, name2id):
-                records.append(row)
-                if len(records) == 1000:
-                    copy.write(records)
-                    con.commit()
-                    records.clear()
-            if records:
-                copy.write(records)
+        for row in _get_fmatches(ora_uri, name2id):
+            records.append(row)
+            if len(records) == 1000:
+                cur.executemany(sql, records)
                 con.commit()
                 records.clear()
+        if records:
+            cur.executemany(sql, records)
+            con.commit()
+            records.clear()
+
     con.close()
     logger.info("done")
 
@@ -562,18 +574,24 @@ def _populate_matches(url: str, matches_file: str, src: Queue, dst: Queue):
         cur.execute("SELECT name, id FROM database")
         name2id = dict(cur.fetchall())
         matches = _iter_matches(matches_file, name2id, src, dst)
+
+        sql = """
+              INSERT INTO match (protein_acc, signature_acc, database_id, fragments) 
+              VALUES (%s, %s, %s, %s)
+              """
+
         records = []
-        with cur.copy("COPY match FROM STDIN") as copy:
-            for row in matches:
-                records.append(row)
-                if len(records) == 1000:
-                    copy.write(records)
-                    con.commit()
-                    records.clear()
-            if records:
-                copy.write(records)
+        for row in matches:
+            records.append(row)
+            if len(records) == 1000:
+                cur.executemany(sql, records)
                 con.commit()
                 records.clear()
+        if records:
+            cur.executemany(sql, records)
+            con.commit()
+            records.clear()
+
     con.close()
 
 

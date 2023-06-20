@@ -299,18 +299,22 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
             """
         )
 
+        sql = """
+              INSERT INTO comparison (signature_acc_1, signature_acc_2, num_collocations, num_overlaps) 
+              VALUES (%s, %s, %s, %s)
+              """
+
         records = []
-        with cur.copy("COPY comparison FROM STDIN") as copy:
-            for row in _iter_comparisons(comparisons):
-                records.append(row)
-                if len(records) == 1000:
-                    copy.write(records)
-                    con.commit()
-                    records.clear()
-            if records:
-                copy.write(records)
+        for row in _iter_comparisons(comparisons):
+            records.append(row)
+            if len(records) == 1000:
+                cur.executemany(sql, records)
                 con.commit()
                 records.clear()
+        if records:
+            cur.executemany(sql, records)
+            con.commit()
+            records.clear()
 
         cur.execute(
             """
@@ -337,18 +341,22 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
             """
         )
 
+        sql = """
+              INSERT INTO prediction (signature_acc_1, signature_acc_2, num_collocations, num_protein_overlaps, num_residue_overlaps) 
+              VALUES (%s, %s, %s, %s, %s)
+              """
+
         records = []
-        with cur.copy("COPY prediction FROM STDIN") as copy:
-            for row in _iter_predictions(comparisons, signatures):
-                records.append(row)
-                if len(records) == 1000:
-                    copy.write(records)
-                    con.commit()
-                    records.clear()
-            if records:
-                copy.write(records)
+        for row in _iter_predictions(comparisons, signatures):
+            records.append(row)
+            if len(records) == 1000:
+                cur.executemany(sql, records)
                 con.commit()
                 records.clear()
+        if records:
+            cur.executemany(sql, records)
+            con.commit()
+            records.clear()
 
         cur.execute(
             """
