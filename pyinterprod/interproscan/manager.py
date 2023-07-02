@@ -283,9 +283,14 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     n_tasks_analysis += 1
                     continue
 
-                pending_jobs.append(factory.make(upi_from, upi_to))
                 database.add_job(cur, analysis_id, upi_from, upi_to)
-                n_tasks_analysis += 1
+
+                if count_sequences(cur, upi_from, upi_to) > 0:
+                    pending_jobs.append(factory.make(upi_from, upi_to))
+                    n_tasks_analysis += 1
+                else:
+                    database.set_job_done(cur, analysis_id, upi_from, upi_to, 0)
+                    con.commit()
 
             logger.debug(f"{name} {version}: {n_tasks_analysis} tasks")
 
@@ -398,6 +403,19 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             logger.info("complete")
 
 
+def count_sequences(cur: cx_Oracle.Cursor, upi_from: str, upi_to: str) -> int:
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM UNIPARC.PROTEIN
+        WHERE UPI BETWEEN :1 AND :2
+        """,
+        [upi_from, upi_to]
+    )
+    cnt, = cur.fetchone()
+    return cnt
+
+
 def export_fasta(uri: str, fasta_file: str, upi_from: str, upi_to: str) -> int:
     num_sequences = 0
     with open(fasta_file, "wt") as fh:
@@ -410,7 +428,7 @@ def export_fasta(uri: str, fasta_file: str, upi_from: str, upi_to: str) -> int:
             FROM UNIPARC.PROTEIN
             WHERE UPI BETWEEN :1 AND :2
             """,
-            (upi_from, upi_to)
+            [upi_from, upi_to]
         )
 
         for upi, seq_short, seq_long in cur:
