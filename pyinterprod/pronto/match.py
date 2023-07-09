@@ -432,7 +432,7 @@ def finalize_signature2protein(uri: str):
             """
             ALTER TABLE signature2protein
             ADD CONSTRAINT signature2protein_pk
-            PRIMARY KEY (signature_acc, protein_acc) NONCLUSTERED            
+            PRIMARY KEY (signature_acc, protein_acc)
             """
         )
         con.commit()
