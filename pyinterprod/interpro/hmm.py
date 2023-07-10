@@ -33,7 +33,7 @@ class _Mapper:
                     model, fam, _ = line.rstrip().split('\t')
                     self.model2fam[model] = fam
 
-        if database.lower() in ("pirsf", "sfld"):
+        if database.lower() in ("antifam", "pirsf", "sfld"):
             self.map = self.basic
         elif database.lower() == "ncbifam":
             self.map = self.ncbifam
@@ -100,7 +100,8 @@ def update(url: str, database: Database, hmmfile: str, mapfile: Optional[str]):
             FROM INTERPRO.METHOD
             WHERE DBCODE = :1
         )
-        """, (database.identifier,)
+        """,
+        [database.identifier]
     )
 
     logger.info(f"{database.name}: inserting HMMs")
