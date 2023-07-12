@@ -106,7 +106,6 @@ def export_xrefs(url: str, outdir: str, emails: dict):
         'J': "CDD",
         'M': "PROSITE",
         'N': "NCBIfam",
-        # 'N': "TIGRFAMs",
         'P': "PROSITE",
         'Q': "HAMAP",
         'R': "SMART",
