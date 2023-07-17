@@ -293,6 +293,7 @@ def import_proteins(ora_url: str, pg_url: str):
                 pg_cur.executemany(sql, records)
                 pg_con.commit()
                 records.clear()
+
         if records:
             pg_cur.executemany(sql, records)
             pg_con.commit()
