@@ -239,7 +239,8 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
 
     logger.info("copying database")
     shutil.copyfile(tmp_database, database)
-    logger.info(f"disk usage: {os.path.getsize(tmp_database) / 1024 ** 2:.0f} MB")
+    logger.info(f"disk usage: "
+                f"{os.path.getsize(tmp_database) / 1024 ** 2:.0f} MB")
     os.remove(tmp_database)
     logger.info("complete")
 
