@@ -581,9 +581,10 @@ def _populate_matches(url: str, matches_file: str, src: Queue, dst: Queue):
         matches = _iter_matches(matches_file, name2id, src, dst)
 
         sql = """
-              INSERT INTO match (protein_acc, signature_acc, database_id, fragments) 
-              VALUES (%s, %s, %s, %s)
-              """
+            INSERT INTO match 
+                (protein_acc, signature_acc, database_id, fragments) 
+            VALUES (%s, %s, %s, %s)
+        """
 
         records = []
         for row in matches:
