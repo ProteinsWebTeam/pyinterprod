@@ -791,7 +791,7 @@ def update_citations(cur: cx_Oracle.Cursor):
     pmids = _get_used_citations_pmids(cur)
     step = 1000
     for i in range(0, len(pmids), step):
-        params = list(pmids)[i: i + step]
+        params = pmids[i:i+step]
         args = ",".join([":" + str(i + 1) for i in range(len(params))])
 
         cur.execute(
