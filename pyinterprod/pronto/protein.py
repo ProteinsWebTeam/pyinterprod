@@ -54,9 +54,10 @@ def import_similarity_comments(swp_url: str, ipr_url: str):
 
         records = []
         sql = """
-              INSERT INTO protein_similarity (comment_id, comment_text, protein_acc) 
-              VALUES (%s, %s, %s)
-              """
+            INSERT INTO protein_similarity 
+                (comment_id, comment_text, protein_acc) 
+            VALUES (%s, %s, %s)
+        """
 
         for rec in ora_cur:
             records.append(rec)
