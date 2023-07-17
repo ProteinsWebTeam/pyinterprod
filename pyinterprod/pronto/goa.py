@@ -189,6 +189,7 @@ def import_annotations(ora_url: str, pg_url: str):
                     row[5],
                 )
             )
+
             if len(records) == 1000:
                 pg_cur.executemany(sql, records)
                 pg_con.commit()
