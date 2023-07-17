@@ -176,9 +176,11 @@ def import_annotations(ora_url: str, pg_url: str):
 
         records = []
         sql = """
-              INSERT INTO term (id, name, category, num_constraints, is_obsolete, definition, replaced_id) 
-              VALUES (%s, %s, %s, %s, %s, %s, %s)
-              """
+            INSERT INTO term 
+                (id, name, category, num_constraints, is_obsolete, definition, 
+                replaced_id) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
 
         for row in ora_cur:
             records.append(
