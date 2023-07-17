@@ -277,9 +277,11 @@ def _populate_signature2protein(url: str, names_db: str, matches_file: str,
         proteins = _iter_proteins(names_db, matches_file, src, dst)
 
         sql = """
-              INSERT INTO signature2protein (signature_acc, model_acc, protein_acc, is_reviewed, taxon_left_num, name_id, md5) 
-              VALUES (%s, %s, %s, %s, %s, %s, %s)
-              """
+            INSERT INTO signature2protein 
+                (signature_acc, model_acc, protein_acc, is_reviewed, 
+                taxon_left_num, name_id, md5) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
 
         records = []
         for row in proteins:
