@@ -487,9 +487,10 @@ def insert_fmatches(ora_uri: str, pg_uri: str):
         name2id = dict(cur.fetchall())
 
         sql = """
-              INSERT INTO match (protein_acc, signature_acc, database_id, fragments) 
-              VALUES (%s, %s, %s, %s)
-              """
+            INSERT INTO match 
+                (protein_acc, signature_acc, database_id, fragments) 
+            VALUES (%s, %s, %s, %s)
+        """
 
         records = []
         for row in _get_fmatches(ora_uri, name2id):
