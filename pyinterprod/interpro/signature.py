@@ -837,9 +837,18 @@ def update_citations(cur: cx_Oracle.Cursor):
         cur.executemany(
             """
             UPDATE INTERPRO.CITATION
-            SET VOLUME= :1, ISSUE= :2, YEAR= :3, TITLE= :4, RAWPAGES= :5, MEDLINE_JOURNAL= :6, ISO_JOURNAL= :7, AUTHORS= :8, DOI_URL= :9
+                SET VOLUME= :1, 
+                    ISSUE= :2, 
+                    YEAR= :3, 
+                    TITLE= :4, 
+                    RAWPAGES= :5, 
+                    MEDLINE_JOURNAL= :6, 
+                    ISO_JOURNAL= :7, 
+                    AUTHORS= :8, 
+                    DOI_URL= :9
             WHERE PUBMED_ID = :10
-            """, citations
+            """, 
+            citations
         )
 
 
