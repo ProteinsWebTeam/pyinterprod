@@ -290,6 +290,7 @@ def _populate_signature2protein(url: str, names_db: str, matches_file: str,
                 cur.executemany(sql, records)
                 con.commit()
                 records.clear()
+
         if records:
             cur.executemany(sql, records)
             con.commit()
