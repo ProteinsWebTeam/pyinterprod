@@ -86,9 +86,9 @@ def import_proteomes(ora_url: str, pg_url: str):
             records.clear()
 
         sql = """
-              INSERT INTO proteome (id, name, taxon_id, num_proteins) 
-              VALUES (%s, %s, %s, %s)
-              """
+            INSERT INTO proteome (id, name, taxon_id, num_proteins) 
+            VALUES (%s, %s, %s, %s)
+        """
 
         for rec in list(iterator.proteomes.values()):
             records.append(rec)
