@@ -160,14 +160,14 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
         i = 0
 
         sql_protein2name = """
-                          INSERT INTO protein2name (protein_acc, name_id) 
-                          VALUES (%s, %s)
-                          """
+            INSERT INTO protein2name (protein_acc, name_id) 
+            VALUES (%s, %s)
+        """
 
         sql_protein_name = """
-                          INSERT INTO protein_name (name_id, text) 
-                          VALUES (%s, %s)
-                          """
+            INSERT INTO protein_name (name_id, text) 
+            VALUES (%s, %s)
+        """
 
         with KVdb(tmp_database, True) as namesdb:
             for protein_acc, text in ora_cur:
