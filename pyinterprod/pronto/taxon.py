@@ -133,9 +133,9 @@ def import_taxonomy(ora_url: str, pg_url: str):
 
         logger.info("populating: lineage")
         sql = """
-              INSERT INTO lineage (child_id, parent_id, parent_rank) 
-              VALUES (%s, %s, %s)
-              """
+            INSERT INTO lineage (child_id, parent_id, parent_rank) 
+            VALUES (%s, %s, %s)
+        """
 
         for rec in iter_lineage(taxa):
             records.append(rec)
