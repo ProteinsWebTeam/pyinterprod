@@ -273,9 +273,11 @@ def import_proteins(ora_url: str, pg_url: str):
         )
 
         sql = """
-              INSERT INTO protein (accession, identifier, length, taxon_id, is_fragment, is_reviewed) 
-              VALUES (%s, %s, %s, %s, %s, %s)
-              """
+            INSERT INTO protein 
+                (accession, identifier, length, taxon_id, is_fragment, 
+                is_reviewed) 
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """
 
         records = []
         for row in ora_cur:
