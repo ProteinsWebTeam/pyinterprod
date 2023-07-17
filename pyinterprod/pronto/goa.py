@@ -75,9 +75,10 @@ def import_annotations(ora_url: str, pg_url: str):
 
         records = []
         sql = """
-              INSERT INTO protein2go (protein_acc, term_id, ref_db_code, ref_db_id) 
-              VALUES (%s, %s, %s, %s)
-              """
+            INSERT INTO protein2go 
+                (protein_acc, term_id, ref_db_code, ref_db_id) 
+            VALUES (%s, %s, %s, %s)
+        """
 
         for rec in ora_cur:
             records.append(rec)
