@@ -300,9 +300,11 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
         )
 
         sql = """
-              INSERT INTO comparison (signature_acc_1, signature_acc_2, num_collocations, num_overlaps) 
-              VALUES (%s, %s, %s, %s)
-              """
+            INSERT INTO comparison 
+                (signature_acc_1, signature_acc_2, num_collocations, 
+                num_overlaps) 
+            VALUES (%s, %s, %s, %s)
+        """
 
         records = []
         for row in _iter_comparisons(comparisons):
