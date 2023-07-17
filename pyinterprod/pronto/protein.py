@@ -210,6 +210,7 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
                     pg_cur.executemany(sql_protein2name, records)
                     pg_con.commit()
                     records.clear()
+
             if records:
                 pg_cur.executemany(sql_protein2name, records)
                 pg_con.commit()
