@@ -500,6 +500,7 @@ def insert_fmatches(ora_uri: str, pg_uri: str):
                 cur.executemany(sql, records)
                 con.commit()
                 records.clear()
+
         if records:
             cur.executemany(sql, records)
             con.commit()
