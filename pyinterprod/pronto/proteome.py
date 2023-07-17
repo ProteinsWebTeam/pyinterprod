@@ -69,9 +69,9 @@ def import_proteomes(ora_url: str, pg_url: str):
         iterator = ProteomeIterator(ora_url)
 
         sql = """
-              INSERT INTO proteome2protein (id, protein_acc) 
-              VALUES (%s, %s)
-              """
+            INSERT INTO proteome2protein (id, protein_acc) 
+            VALUES (%s, %s)
+        """
 
         for rec in iterator:
             records.append(rec)
