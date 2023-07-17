@@ -286,6 +286,7 @@ def import_proteins(ora_url: str, pg_url: str):
                             row[4] == 'Y',
                             row[5] == 'S'
                             ))
+
             if len(records) == 1000:
                 pg_cur.executemany(sql, records)
                 pg_con.commit()
