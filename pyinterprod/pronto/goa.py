@@ -113,9 +113,9 @@ def import_annotations(ora_url: str, pg_url: str):
 
         records = []
         sql = """
-              INSERT INTO publication (id, title, published) 
-              VALUES (%s, %s, %s)
-              """
+            INSERT INTO publication (id, title, published) 
+            VALUES (%s, %s, %s)
+        """
 
         for rec in ora_cur:
             records.append(rec)
