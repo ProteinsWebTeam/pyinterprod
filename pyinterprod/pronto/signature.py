@@ -7,7 +7,7 @@ import psycopg
 
 from pyinterprod import logger
 from pyinterprod.utils.oracle import clob_as_str
-from pyinterprod.utils.pg import url2dict, CsvIO
+from pyinterprod.utils.pg import url2dict
 from .match import INDEX_SUFFIX, merge_overlapping
 
 

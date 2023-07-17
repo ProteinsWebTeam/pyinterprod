@@ -7,7 +7,7 @@ import psycopg
 
 from pyinterprod import logger
 from pyinterprod.utils.kvdb import KVdb
-from pyinterprod.utils.pg import CsvIO, url2dict
+from pyinterprod.utils.pg import url2dict
 
 
 def import_similarity_comments(swp_url: str, ipr_url: str):
