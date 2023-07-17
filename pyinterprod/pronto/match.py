@@ -593,6 +593,7 @@ def _populate_matches(url: str, matches_file: str, src: Queue, dst: Queue):
                 cur.executemany(sql, records)
                 con.commit()
                 records.clear()
+
         if records:
             cur.executemany(sql, records)
             con.commit()
