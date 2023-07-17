@@ -64,6 +64,7 @@ def import_similarity_comments(swp_url: str, ipr_url: str):
                 pg_cur.executemany(sql, records)
                 pg_con.commit()
                 records.clear()
+
         if records:
             pg_cur.executemany(sql, records)
             pg_con.commit()
