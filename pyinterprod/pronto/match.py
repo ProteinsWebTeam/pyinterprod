@@ -277,24 +277,15 @@ def _populate_signature2protein(url: str, names_db: str, matches_file: str,
         proteins = _iter_proteins(names_db, matches_file, src, dst)
 
         sql = """
-            INSERT INTO signature2protein 
+            COPY signature2protein 
                 (signature_acc, model_acc, protein_acc, is_reviewed, 
                 taxon_left_num, name_id, md5) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            FROM STDIN
         """
 
-        records = []
-        for row in proteins:
-            records.append(row)
-            if len(records) == 1000:
-                cur.executemany(sql, records)
-                con.commit()
-                records.clear()
-
-        if records:
-            cur.executemany(sql, records)
-            con.commit()
-            records.clear()
+        with cur.copy(sql) as copy:
+            for row in proteins:
+                copy.write_row(row)
 
     con.close()
 
@@ -488,23 +479,14 @@ def insert_fmatches(ora_uri: str, pg_uri: str):
         name2id = dict(cur.fetchall())
 
         sql = """
-            INSERT INTO match 
+            COPY match 
                 (protein_acc, signature_acc, database_id, fragments) 
-            VALUES (%s, %s, %s, %s)
+            FROM STDIN
         """
 
-        records = []
-        for row in _get_fmatches(ora_uri, name2id):
-            records.append(row)
-            if len(records) == 1000:
-                cur.executemany(sql, records)
-                con.commit()
-                records.clear()
-
-        if records:
-            cur.executemany(sql, records)
-            con.commit()
-            records.clear()
+        with cur.copy(sql) as copy:
+            for row in _get_fmatches(ora_uri, name2id):
+                copy.write_row(row)
 
     con.close()
     logger.info("done")
@@ -581,23 +563,14 @@ def _populate_matches(url: str, matches_file: str, src: Queue, dst: Queue):
         matches = _iter_matches(matches_file, name2id, src, dst)
 
         sql = """
-            INSERT INTO match 
+            COPY match 
                 (protein_acc, signature_acc, database_id, fragments) 
-            VALUES (%s, %s, %s, %s)
+            FROM STDIN
         """
 
-        records = []
-        for row in matches:
-            records.append(row)
-            if len(records) == 1000:
-                cur.executemany(sql, records)
-                con.commit()
-                records.clear()
-
-        if records:
-            cur.executemany(sql, records)
-            con.commit()
-            records.clear()
+        with cur.copy(sql) as copy:
+            for row in matches:
+                copy.write_row(row)
 
     con.close()
 

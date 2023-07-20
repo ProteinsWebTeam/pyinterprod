@@ -259,27 +259,17 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
             """
         )
 
-        records = []
         sql = """
-            INSERT INTO signature 
+            COPY signature 
                 (accession, database_id, name, description, type, abstract, 
                 num_sequences, num_reviewed_sequences, num_complete_sequences, 
                 num_complete_reviewed_sequences, num_residues) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            FROM SDTIN
         """
 
-        for rec in values:
-            records.append(rec)
-
-            if len(records) == 1000:
-                cur.executemany(sql, records)
-                con.commit()
-                records.clear()
-
-        if records:
-            cur.executemany(sql, records)
-            con.commit()
-            records.clear()
+        with cur.copy(sql) as copy:
+            for rec in values:
+                copy.write_row(rec)
 
         cur.execute(
             """
@@ -303,24 +293,15 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
         )
 
         sql = """
-            INSERT INTO comparison 
+            COPY comparison 
                 (signature_acc_1, signature_acc_2, num_collocations, 
                 num_overlaps) 
-            VALUES (%s, %s, %s, %s)
+            FROM STDIN
         """
 
-        records = []
-        for row in _iter_comparisons(comparisons):
-            records.append(row)
-            if len(records) == 1000:
-                cur.executemany(sql, records)
-                con.commit()
-                records.clear()
-
-        if records:
-            cur.executemany(sql, records)
-            con.commit()
-            records.clear()
+        with cur.copy(sql) as copy:
+            for row in _iter_comparisons(comparisons):
+                copy.write_row(row)
 
         cur.execute(
             """
@@ -348,24 +329,15 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
         )
 
         sql = """
-            INSERT INTO prediction 
+            COPY prediction 
                 (signature_acc_1, signature_acc_2, num_collocations, 
                 num_protein_overlaps, num_residue_overlaps) 
-            VALUES (%s, %s, %s, %s, %s)
+            FROM SDTIN
         """
 
-        records = []
-        for row in _iter_predictions(comparisons, signatures):
-            records.append(row)
-            if len(records) == 1000:
-                cur.executemany(sql, records)
-                con.commit()
-                records.clear()
-
-        if records:
-            cur.executemany(sql, records)
-            con.commit()
-            records.clear()
+        with cur.copy(sql) as copy:
+            for row in _iter_predictions(comparisons, signatures):
+                copy.write_row(row)
 
         cur.execute(
             """

@@ -156,17 +156,16 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
 
         names = {}
         values = []
-        records = []
         i = 0
 
         sql_protein2name = """
-            INSERT INTO protein2name (protein_acc, name_id) 
-            VALUES (%s, %s)
+            COPY protein2name (protein_acc, name_id) 
+            FROM STDIN
         """
 
         sql_protein_name = """
-            INSERT INTO protein_name (name_id, text) 
-            VALUES (%s, %s)
+            COPY protein_name (name_id, text) 
+            FROM STDIN
         """
 
         with KVdb(tmp_database, True) as namesdb:
@@ -182,18 +181,9 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
 
                 if not i % 100000:
                     namesdb.sync()
-                    for rec in values:
-                        records.append(rec)
-                        if len(records) == 1000:
-                            pg_cur.executemany(sql_protein2name, records)
-                            pg_con.commit()
-                            records.clear()
-
-                    if records:
-                        pg_cur.executemany(sql_protein2name, records)
-                        pg_con.commit()
-                        records.clear()
-
+                    with pg_cur.copy(sql_protein2name) as copy:
+                        for rec in values:
+                            copy.write_row(rec)
                     values = []
 
                     if not i % 10000000:
@@ -204,31 +194,15 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
         logger.info(f"{i:>12,}")
 
         if values:
-            for rec in values:
-                records.append(rec)
-                if len(records) == 1000:
-                    pg_cur.executemany(sql_protein2name, records)
-                    pg_con.commit()
-                    records.clear()
-
-            if records:
-                pg_cur.executemany(sql_protein2name, records)
-                pg_con.commit()
-                records.clear()
+            with pg_cur.copy(sql_protein2name) as copy:
+                for rec in values:
+                    copy.write_row(rec)
 
         logger.info("populating protein_name")
 
-        for text, name_id in names.items():
-            records.append((name_id, text))
-            if len(records) == 1000:
-                pg_cur.executemany(sql_protein_name, records)
-                pg_con.commit()
-                records.clear()
-
-        if records:
-            pg_cur.executemany(sql_protein_name, records)
-            pg_con.commit()
-            records.clear()
+        with pg_cur.copy(sql_protein_name) as copy:
+            for text, name_id in names.items():
+                copy.write_row((name_id, text))
 
         logger.info("analyzing tables")
         pg_cur.execute("ANALYZE protein2name")
@@ -274,31 +248,21 @@ def import_proteins(ora_url: str, pg_url: str):
         )
 
         sql = """
-            INSERT INTO protein 
+            COPY protein 
                 (accession, identifier, length, taxon_id, is_fragment, 
                 is_reviewed) 
-            VALUES (%s, %s, %s, %s, %s, %s)
+            FROM STDIN
         """
 
-        records = []
-        for row in ora_cur:
-            records.append((row[0],
-                            row[1],
-                            row[2],
-                            row[3],
-                            row[4] == 'Y',
-                            row[5] == 'S'
-                            ))
-
-            if len(records) == 1000:
-                pg_cur.executemany(sql, records)
-                pg_con.commit()
-                records.clear()
-
-        if records:
-            pg_cur.executemany(sql, records)
-            pg_con.commit()
-            records.clear()
+        with pg_cur.copy(sql) as copy:
+            for row in ora_cur:
+                copy.write_row((row[0],
+                                row[1],
+                                row[2],
+                                row[3],
+                                row[4] == 'Y',
+                                row[5] == 'S'
+                                ))
 
         ora_cur.close()
         ora_con.close()
