@@ -504,7 +504,7 @@ def run_member_db_update():
                 args=(ora_interpro_uri, pg_uri, member_dbs, data_dir,
                       pronto_url, emails),
                 name="send-report",
-                scheduler=dict(mem=4000, queue=lsf_queue),
+                scheduler=dict(mem=5000, queue=lsf_queue),
                 requires=after_pronto
             ),
         ]
