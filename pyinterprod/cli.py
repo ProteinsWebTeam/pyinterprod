@@ -63,7 +63,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             fn=pronto.protein.import_proteins,
             args=(ora_ipr_uri, pg_ipr_uri),
             name="proteins",
-            scheduler=dict(mem=100, queue=lsf_queue),
+            scheduler=dict(mem=500, queue=lsf_queue),
         ),
         Task(
             fn=pronto.match.export,
@@ -504,7 +504,7 @@ def run_member_db_update():
                 args=(ora_interpro_uri, pg_uri, member_dbs, data_dir,
                       pronto_url, emails),
                 name="send-report",
-                scheduler=dict(mem=5000, queue=lsf_queue),
+                scheduler=dict(mem=4000, queue=lsf_queue),
                 requires=after_pronto
             ),
         ]
