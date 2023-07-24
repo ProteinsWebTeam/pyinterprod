@@ -14,8 +14,8 @@ _TYPES = {
     "Domain": 'D',
     "Family": 'F',
     "Repeat": 'R',
-    "Coiled-coil": 'U',
-    "Disordered": 'U',
+    "Coiled-coil": 'I',
+    "Disordered": 'O',
     "Motif": 'C'
 }
 
