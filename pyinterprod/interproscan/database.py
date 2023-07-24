@@ -236,7 +236,7 @@ def get_incomplete_jobs(cur: cx_Oracle.Cursor) -> dict:
         """
         SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME
         FROM IPRSCAN.ANALYSIS_JOBS
-        WHERE END_TIME IS NULL
+        WHERE END_TIME IS NULL AND SUCCESS = 'N'
         UNION 
         SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME
         FROM (
