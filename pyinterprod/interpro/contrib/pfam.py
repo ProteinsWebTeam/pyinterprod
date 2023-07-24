@@ -64,7 +64,7 @@ def get_clans(url: str) -> list[Clan]:
     return list(clans.values())
 
 
-class AbstractFormater:
+class AbstractFormatter:
     def __init__(self, references, citations):
         self.refs = references
         self.cite = citations
@@ -130,14 +130,14 @@ def get_signatures(url: str) -> list[Method]:
     cur.close()
     con.close()
 
-    formater = AbstractFormater(references, citations)
+    formatter = AbstractFormatter(references, citations)
     signatures = []
     for acc in sorted(entries):
         name, description, long_type, abstract = entries[acc]
         short_type = _TYPES[long_type]
 
         if abstract:
-            abstract = formater.update(acc, abstract)
+            abstract = formatter.update(acc, abstract)
         else:
             abstract = ''
 
