@@ -63,7 +63,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             fn=pronto.protein.import_proteins,
             args=(ora_ipr_uri, pg_ipr_uri),
             name="proteins",
-            scheduler=dict(mem=500, queue=lsf_queue),
+            scheduler=dict(mem=600, queue=lsf_queue),
         ),
         Task(
             fn=pronto.match.export,
