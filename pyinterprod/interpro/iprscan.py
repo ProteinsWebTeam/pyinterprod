@@ -372,8 +372,6 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
         except KeyError:
             pending[analysis.table] = [analysis]
 
-    logger.info(pending)
-
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     max_upi, = cur.fetchone()
     cur.close()
