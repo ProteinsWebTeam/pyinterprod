@@ -267,6 +267,7 @@ class Analysis:
             WHERE ANALYSIS_ID = :1
               AND UPI_FROM <= :2
               AND END_TIME IS NULL
+              AND SUCCESS = 'N'
             """,
             [self.id, max_upi]
         )
@@ -370,6 +371,8 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
             pending[analysis.table].append(analysis)
         except KeyError:
             pending[analysis.table] = [analysis]
+
+    logger.info(pending)
 
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     max_upi, = cur.fetchone()
