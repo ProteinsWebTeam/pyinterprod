@@ -55,7 +55,7 @@ def get_clans(url: str) -> list[Clan]:
 
         clan.members.append({
             "accession": row[4],
-            "score": row[5] / row[3]
+            "score": row[5] / row[3] if row[3] > 0 else 0
         })
 
     cur.close()
