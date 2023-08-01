@@ -403,7 +403,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             logger.info("complete")
 
 
-def count_sequences(cur: cx_Oracle.Cursor, upi_from: str, upi_to: str) -> int:
+def count_sequences(cur: oracledb.Cursor, upi_from: str, upi_to: str) -> int:
     cur.execute(
         """
         SELECT COUNT(*)
