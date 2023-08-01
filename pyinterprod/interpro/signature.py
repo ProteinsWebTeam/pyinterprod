@@ -2,9 +2,8 @@ import os
 import pickle
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional
 
-import cx_Oracle
+import oracledb
 
 from pyinterprod import logger
 from pyinterprod.pronto.signature import get_swissprot_descriptions
@@ -31,7 +30,7 @@ def export_swissprot_descriptions(pg_uri, data_dir: str):
 
 
 def add_staging(uri: str, update: list[tuple[Database, dict[str, str]]]):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     pmid2pubid = get_pmid2pubid(cur)
@@ -187,7 +186,7 @@ def track_signature_changes(
     # First, get the SwissProt descriptions (before the update)
     all_sig2descs = get_swissprot_descriptions(pg_uri)
 
-    con = cx_Oracle.connect(ora_uri)
+    con = oracledb.connect(ora_uri)
     cur = con.cursor()
     results = {}
     for db in databases:
@@ -262,10 +261,9 @@ def track_signature_changes(
         pickle.dump(results, fh)
 
 
-def delete_from_table(
-    uri: str, table: str, partition: str |None, column: str, step: int, stop: int
-) -> int:
-    con = cx_Oracle.connect(uri)
+def delete_from_table(uri: str, table: str, partition: str | None,
+                      column: str, step: int, stop: int) -> int:
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     if partition:
@@ -315,7 +313,7 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
     threads = kwargs.get("threads", 8)
     truncate_match_tables = kwargs.get("truncate_match_tables", True)
 
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     # track signatures that need to be deleted
@@ -389,7 +387,7 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
 
         try:
             ora.toggle_constraint(cur, table, constraint, False)
-        except cx_Oracle.DatabaseError as exc:
+        except oracledb.DatabaseError as exc:
             logger.error(exc)
             num_errors += 1
 
@@ -452,7 +450,7 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
             raise RuntimeError(f"{num_errors} tables failed")
 
     logger.info("enabling referential constraints")
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     num_errors = 0
     constraints = set()
@@ -468,7 +466,7 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
         constraints.add(constraint)
         try:
             ora.toggle_constraint(cur, table, constraint, True)
-        except cx_Oracle.DatabaseError as exc:
+        except oracledb.DatabaseError as exc:
             logger.error(exc)
             num_errors += 1
 
@@ -489,7 +487,7 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
 
 
 def update_signatures(uri: str, go_sources: list[tuple[str, str]]):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     ora.truncate_table(cur, "INTERPRO.METHOD2PUB", reuse_storage=True)
 
@@ -553,7 +551,7 @@ def update_signatures(uri: str, go_sources: list[tuple[str, str]]):
 
 
 def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     for db, db_props in update:
@@ -635,7 +633,7 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
     con.close()
 
 
-def get_pmid2pubid(cur: cx_Oracle.Cursor) -> dict[int, str]:
+def get_pmid2pubid(cur: oracledb.Cursor) -> dict[int, str]:
     cur.execute(
         """
         SELECT DISTINCT PUBMED_ID, PUB_ID 
@@ -645,24 +643,21 @@ def get_pmid2pubid(cur: cx_Oracle.Cursor) -> dict[int, str]:
     return dict(cur.fetchall())
 
 
-def get_method2pub(cur: cx_Oracle.Cursor) -> dict[str, set]:
-    cur.execute(
-        """
-        SELECT METHOD_AC, LISTAGG(PUB_ID, ';')
-        FROM INTERPRO.METHOD2PUB
-        GROUP BY METHOD_AC
-        """
-    )
+def get_method2pub(cur: oracledb.Cursor) -> dict[str, set]:
+    cur.execute("SELECT METHOD_AC, PUB_ID FROM INTERPRO.METHOD2PUB")
 
-    current_method2pub = {}
-    for method_ac, pub_ids in cur:
-        current_method2pub[method_ac] = set(pub_ids.split(";"))
-    return current_method2pub
+    method2pub = {}
+    for signature_acc, pub_id in cur:
+        try:
+            method2pub[signature_acc].add(pub_id)
+        except KeyError:
+            method2pub[signature_acc] = {pub_id}
+
+    return method2pub
 
 
-def update_references(
-    cur: oracledb.Cursor, method: Method, pmid2pubid: dict[int, str]
-) -> set[str]:
+def update_references(cur: oracledb.Cursor, method: Method,
+                      pmid2pubid: dict[int, str]) -> set[str]:
     pub_ids = set()
     if method.abstract is not None:
         pmids = re.finditer(r"PMID:\s*([0-9]+)", method.abstract)
@@ -693,7 +688,7 @@ def update_references(
     return pub_ids
 
 
-def populate_method2pub_stg(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
+def populate_method2pub_stg(cur: oracledb.Cursor, method2pub: dict[str, set]):
     data = [(pmid, acc) for acc, pmids in method2pub.items() for pmid in pmids]
     step = 1000
     for i in range(0, len(data), step):
@@ -706,7 +701,7 @@ def populate_method2pub_stg(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
         )
 
 
-def import_citation(cur: oracledb.Cursor, pmid: int) -> Optional[str]:
+def update_citation(cur: oracledb.Cursor, pmid: int) -> str | None:
     cur.execute(
         """
         SELECT EXTERNAL_ID, VOLUME, ISSUE, YEAR, TITLE, RAWPAGES, 
@@ -752,7 +747,7 @@ def import_citation(cur: oracledb.Cursor, pmid: int) -> Optional[str]:
         if len(citation[4]) > 740:
             citation[4] = citation[4][:737] + "..."
 
-        pub_id = cur.var(cx_Oracle.STRING)
+        pub_id = cur.var(oracledb.STRING)
         cur.execute(
             """
             INSERT INTO INTERPRO.CITATION (

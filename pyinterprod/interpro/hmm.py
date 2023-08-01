@@ -1,8 +1,7 @@
 import gzip
 import re
-from typing import Optional
 
-import cx_Oracle
+import oracledb
 
 from pyinterprod import logger
 from .database import Database
@@ -25,7 +24,7 @@ CREATE TABLE INTERPRO.METHOD_HMM
 
 
 class _Mapper:
-    def __init__(self, database: str, mapfile: Optional[str]):
+    def __init__(self, database: str, mapfile: str | None):
         self.model2fam = {}
         if mapfile:
             with open(mapfile, "rt") as fh:
@@ -33,7 +32,7 @@ class _Mapper:
                     model, fam, _ = line.rstrip().split('\t')
                     self.model2fam[model] = fam
 
-        if database.lower() in ("pirsf", "sfld"):
+        if database.lower() in ("antifam", "pirsf", "sfld"):
             self.map = self.basic
         elif database.lower() == "ncbifam":
             self.map = self.ncbifam
@@ -87,8 +86,8 @@ class _Mapper:
         return "SSF" + acc, name
 
 
-def update(url: str, database: Database, hmmfile: str, mapfile: Optional[str]):
-    con = cx_Oracle.connect(url)
+def update(url: str, database: Database, hmmfile: str, mapfile: str | None):
+    con = oracledb.connect(url)
     cur = con.cursor()
 
     logger.info(f"{database.name}: deleting HMMs")
@@ -100,7 +99,8 @@ def update(url: str, database: Database, hmmfile: str, mapfile: Optional[str]):
             FROM INTERPRO.METHOD
             WHERE DBCODE = :1
         )
-        """, (database.identifier,)
+        """,
+        [database.identifier]
     )
 
     logger.info(f"{database.name}: inserting HMMs")

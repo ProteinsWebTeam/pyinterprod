@@ -1,8 +1,7 @@
 import os
 import pickle
-from typing import Dict, Sequence
 
-import cx_Oracle
+import oracledb
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
@@ -51,19 +50,19 @@ SITE_PARTITIONS = {
 }
 
 
-def export_entries_protein_counts(cur: cx_Oracle.Cursor, data_dir: str):
+def export_entries_protein_counts(cur: oracledb.Cursor, data_dir: str):
     with open(os.path.join(data_dir, FILE_ENTRY_PROT_COUNTS), "wb") as fh:
         pickle.dump(_get_entries_protein_counts(cur), fh)
 
 
-def update_database_matches(uri: str, databases: Sequence):
+def update_database_matches(uri: str, databases: list):
     """
 
     :param uri:
-    :param databases: Sequence of Database objects
+    :param databases: list of Database objects
     :return:
     """
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     for database in databases:
@@ -234,14 +233,14 @@ def update_database_matches(uri: str, databases: Sequence):
     logger.info("complete")
 
 
-def update_database_feature_matches(uri: str, databases: Sequence):
+def update_database_feature_matches(uri: str, databases: list):
     """
 
     :param uri:
-    :param databases: Sequence of Database objects
+    :param databases: list of Database objects
     :return:
     """
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     for database in databases:
@@ -377,14 +376,14 @@ def update_database_feature_matches(uri: str, databases: Sequence):
     logger.info("complete")
 
 
-def update_database_site_matches(uri: str, databases: Sequence):
+def update_database_site_matches(uri: str, databases: list):
     """
 
     :param uri:
-    :param databases: Sequence of Database objects
+    :param databases: list of Database objects
     :return:
     """
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     for database in databases:
@@ -511,7 +510,7 @@ def update_matches(uri: str):
 
     :param uri: Oracle connection string
     """
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     _prepare_matches(con)
     _check_matches(con)
     _insert_matches(con)
@@ -524,7 +523,7 @@ def update_feature_matches(uri: str):
 
     :param uri: Oracle connection string
     """
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     logger.info("updating FEATURE_MATCH")
     cur.execute(
@@ -571,7 +570,7 @@ def update_variant_matches(uri: str):
 
     :param uri: Oracle connection string
     """
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     logger.info("updating VARSPLIC_MASTER")
     oracle.truncate_table(cur, "INTERPRO.VARSPLIC_MASTER", reuse_storage=True)
@@ -630,7 +629,7 @@ def update_site_matches(uri: str):
 
     :param uri: Oracle connection string
     """
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     logger.info("populating SITE_MATCH_NEW")
@@ -729,7 +728,7 @@ def update_site_matches(uri: str):
     con.close()
 
 
-def _prepare_matches(con: cx_Oracle.Connection):
+def _prepare_matches(con: oracledb.Connection):
     """
     Import protein matches in a staging table
 
@@ -807,7 +806,7 @@ def _prepare_matches(con: cx_Oracle.Connection):
     cur.close()
 
 
-def _check_matches(con: cx_Oracle.Connection):
+def _check_matches(con: oracledb.Connection):
     """
     Check there are not errors in imported matches
 
@@ -858,7 +857,7 @@ def _check_matches(con: cx_Oracle.Connection):
     cur.close()
 
 
-def _insert_matches(con: cx_Oracle.Connection):
+def _insert_matches(con: oracledb.Connection):
     """
     Update the MATCH table with data from the staging table
 
@@ -892,7 +891,7 @@ def _insert_matches(con: cx_Oracle.Connection):
     cur.close()
 
 
-def track_entry_changes(cur: cx_Oracle.Cursor, data_dir: str,
+def track_entry_changes(cur: oracledb.Cursor, data_dir: str,
                         threshold: float) -> list:
     """
     Find entries with significant protein count changes
@@ -945,7 +944,7 @@ def track_entry_changes(cur: cx_Oracle.Cursor, data_dir: str,
     return changes
 
 
-def _get_taxon2superkingdom(cur: cx_Oracle.Cursor) -> Dict[int, str]:
+def _get_taxon2superkingdom(cur: oracledb.Cursor) -> dict[int, str]:
     # Load all taxa
     cur.execute(
         """
@@ -983,7 +982,7 @@ def _get_taxon2superkingdom(cur: cx_Oracle.Cursor) -> Dict[int, str]:
     return taxon2superkingdom
 
 
-def _get_entries_protein_counts(cur: cx_Oracle.Cursor) -> Dict[str, Dict[str, int]]:
+def _get_entries_protein_counts(cur: oracledb.Cursor) -> dict[str, dict[str, int]]:
     """
     Return the number of protein matched by each InterPro entry.
     Only complete sequences are considered.
@@ -1018,7 +1017,7 @@ def _get_entries_protein_counts(cur: cx_Oracle.Cursor) -> Dict[str, Dict[str, in
     return counts
 
 
-def get_sig_protein_counts(cur: cx_Oracle.Cursor, dbid: str) -> Dict[str, Dict[str, int]]:
+def get_sig_protein_counts(cur: oracledb.Cursor, dbid: str) -> dict[str, dict[str, int]]:
     """
     Return the number of protein matches by each member database signature.
     Only complete sequences are considered
@@ -1055,7 +1054,7 @@ def get_sig_protein_counts(cur: cx_Oracle.Cursor, dbid: str) -> Dict[str, Dict[s
     return counts
 
 
-# def _get_databases_matches_count(cur: cx_Oracle.Cursor) -> Dict[str, int]:
+# def _get_databases_matches_count(cur: oracledb.Cursor) -> dict[str, int]:
 #     """
 #     Return the number of matches per member database
 #     :param cur: Oracle cursor object
@@ -1077,7 +1076,7 @@ def get_sig_protein_counts(cur: cx_Oracle.Cursor, dbid: str) -> Dict[str, Dict[s
 #         raise ValueError(f"Invalid range stop: {stop}. "
 #                          f"Expected format: UPIxxxxx, with x being digits")
 #
-#     con = cx_Oracle.connect(uri)
+#     con = oracledb.connect(uri)
 #     cur = con.cursor()
 #
 #     subpartitions = set()

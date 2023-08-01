@@ -14,15 +14,15 @@ _TYPES = {
     "Domain": 'D',
     "Family": 'F',
     "Repeat": 'R',
-    "Coiled-coil": 'U',
-    "Disordered": 'U',
+    "Coiled-coil": 'I',
+    "Disordered": 'O',
     "Motif": 'C'
 }
 
 
 def connect_mysql(url: str) -> MySQLdb.Connection:
     obj = url2dict(url)
-    # MySQLdb and psycopg2 use different keyword params for password/database
+    # MySQLdb and psycopg use different keyword params for password/database
     obj.update({
         "passwd": obj.pop("password"),
         "db": obj.pop("dbname")
@@ -55,7 +55,7 @@ def get_clans(url: str) -> list[Clan]:
 
         clan.members.append({
             "accession": row[4],
-            "score": row[5] / row[3]
+            "score": row[5] / row[3] if row[3] > 0 else 0
         })
 
     cur.close()

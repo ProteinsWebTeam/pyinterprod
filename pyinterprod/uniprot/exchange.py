@@ -1,6 +1,6 @@
 import os
 
-import cx_Oracle
+import oracledb
 
 from pyinterprod import logger
 from pyinterprod.utils import email
@@ -8,7 +8,7 @@ from pyinterprod.utils import email
 
 def export_sib(url: str, emails: dict):
     logger.info("exporting data")
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
 
     """
@@ -77,7 +77,7 @@ def export_xrefs(url: str, outdir: str, emails: dict):
     logger.info("exporting dat files")
     os.makedirs(outdir, 0o775, exist_ok=True)
 
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     release = cur.fetchone()[0]
@@ -106,7 +106,6 @@ def export_xrefs(url: str, outdir: str, emails: dict):
         'J': "CDD",
         'M': "PROSITE",
         'N': "NCBIfam",
-        # 'N': "TIGRFAMs",
         'P': "PROSITE",
         'Q': "HAMAP",
         'R': "SMART",

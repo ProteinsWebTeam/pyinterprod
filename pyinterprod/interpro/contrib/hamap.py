@@ -2,14 +2,13 @@
 
 import re
 from datetime import datetime
-from typing import List
 
 from .common import Method
 
 _TYPE = 'F'
 
 
-def parse_signatures(filepath: str) -> List[Method]:
+def parse_signatures(filepath: str) -> list[Method]:
     """
     Parse the hamap.prf file distributed with HAMAP releases
 
