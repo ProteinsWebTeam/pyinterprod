@@ -90,7 +90,7 @@ def import_proteomes(ora_url: str, pg_url: str):
             VALUES (%s, %s, %s, %s)
         """
 
-        for rec in list(iterator.proteomes.values()):
+        for rec in iterator.proteomes.values():
             records.append(rec)
             if len(records) == 1000:
                 pg_cur.executemany(sql, records)
