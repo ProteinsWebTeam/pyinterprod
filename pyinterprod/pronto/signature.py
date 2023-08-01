@@ -348,11 +348,12 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
         )
 
         sql = """
-                    INSERT INTO prediction 
-                        (signature_acc_1, signature_acc_2, num_collocations, 
-                        num_protein_overlaps, num_residue_overlaps) 
-                    VALUES (%s, %s, %s, %s, %s)
-                """
+            INSERT INTO prediction (
+                signature_acc_1, signature_acc_2, num_collocations, 
+                num_protein_overlaps, num_residue_overlaps
+            ) 
+            VALUES (%s, %s, %s, %s, %s)
+        """
 
         records = []
         for row in _iter_predictions(comparisons, signatures):
