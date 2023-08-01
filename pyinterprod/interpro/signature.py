@@ -706,7 +706,7 @@ def populate_method2pub_stg(cur: cx_Oracle.Cursor, method2pub: dict[str, set]):
         )
 
 
-def import_citation(cur: cx_Oracle.Cursor, pmid: int) -> Optional[str]:
+def import_citation(cur: oracledb.Cursor, pmid: int) -> Optional[str]:
     cur.execute(
         """
         SELECT EXTERNAL_ID, VOLUME, ISSUE, YEAR, TITLE, RAWPAGES, 
