@@ -189,7 +189,7 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
         logger.info(f"{i:>12,}")
 
         if values:
-            with pg_cur.copy(sql_protein2name) as copy:
+            with pg_cur.copy(sql) as copy:
                 for rec in values:
                     copy.write_row(rec)
 
