@@ -773,7 +773,7 @@ def import_citation(cur: cx_Oracle.Cursor, pmid: int) -> Optional[str]:
         return None
 
 
-def update_citations(cur: cx_Oracle.Cursor):
+def update_citations(cur: oracledb.Cursor):
     cur.execute(
         """
         DELETE FROM INTERPRO.CITATION
