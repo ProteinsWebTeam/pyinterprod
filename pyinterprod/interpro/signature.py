@@ -666,7 +666,7 @@ def update_references(cur: oracledb.Cursor, method: Method,
             try:
                 pub_id = pmid2pubid[pmid]
             except KeyError:
-                pub_id = import_citation(cur, pmid)
+                pub_id = update_citation(cur, pmid)
                 pmid2pubid[pmid] = pub_id
 
             if pub_id:
@@ -679,7 +679,7 @@ def update_references(cur: oracledb.Cursor, method: Method,
         try:
             pub_id = pmid2pubid[pmid]
         except KeyError:
-            pub_id = import_citation(cur, pmid)
+            pub_id = update_citation(cur, pmid)
             pmid2pubid[pmid] = pub_id
 
         if pub_id:
