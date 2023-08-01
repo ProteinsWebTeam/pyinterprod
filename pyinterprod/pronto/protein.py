@@ -195,7 +195,12 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
 
         logger.info("populating protein_name")
 
-        with pg_cur.copy(sql_protein_name) as copy:
+        sql = """
+            COPY protein_name (name_id, text) 
+            FROM STDIN
+        """
+
+        with pg_cur.copy(sql) as copy:
             for text, name_id in names.items():
                 copy.write_row((name_id, text))
 
