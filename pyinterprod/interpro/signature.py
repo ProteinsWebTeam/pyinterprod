@@ -858,7 +858,7 @@ def update_citations(cur: cx_Oracle.Cursor):
         )
 
 
-def _get_used_citations_pmids(cur: cx_Oracle.Cursor) -> list[str]:
+def _get_used_citations_pmids(cur: oracledb.Cursor) -> list[str]:
     cur.execute(
         """
         SELECT PUBMED_ID
