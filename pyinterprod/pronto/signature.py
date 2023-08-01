@@ -260,12 +260,13 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
         )
 
         sql = """
-                    INSERT INTO signature 
-                        (accession, database_id, name, description, type, abstract, 
-                        num_sequences, num_reviewed_sequences, num_complete_sequences, 
-                        num_complete_reviewed_sequences, num_residues) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """
+            INSERT INTO signature (
+                accession, database_id, name, description, type, abstract, 
+                num_sequences, num_reviewed_sequences, num_complete_sequences, 
+                num_complete_reviewed_sequences, num_residues
+            ) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
 
         records = []
         for rec in values:
