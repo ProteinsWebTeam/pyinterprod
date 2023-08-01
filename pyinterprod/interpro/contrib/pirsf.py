@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 
 import re
-from typing import List
 
 from .common import Clan
 
 
-def get_clans(file: str) -> List[Clan]:
+def get_clans(file: str) -> list[Clan]:
     """
     Get the PIRSF clans and their members.
     The file is available on PIRSF's FTP:

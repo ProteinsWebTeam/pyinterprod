@@ -2,13 +2,12 @@ import math
 import pickle
 from multiprocessing import Process, Queue
 
-import cx_Oracle
-import psycopg2
-from psycopg2.extras import execute_values
+import oracledb
+import psycopg
 
 from pyinterprod import logger
 from pyinterprod.utils.oracle import clob_as_str
-from pyinterprod.utils.pg import url2dict, CsvIO
+from pyinterprod.utils.pg import url2dict
 from .match import INDEX_SUFFIX, merge_overlapping
 
 
@@ -198,7 +197,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
 
     # Load signatures from Oracle
     logger.info("loading signatures")
-    con = cx_Oracle.connect(ora_uri)
+    con = oracledb.connect(ora_uri)
     cur = con.cursor()
     cur.outputtypehandler = clob_as_str
     cur.execute(
@@ -216,7 +215,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
     cur.close()
     con.close()
 
-    con = psycopg2.connect(**url2dict(pg_uri))
+    con = psycopg.connect(**url2dict(pg_uri))
     with con.cursor() as cur:
         cur.execute("SELECT name, id FROM database")
         name2id = dict(cur.fetchall())
@@ -259,9 +258,29 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
             )
             """
         )
-        execute_values(cur, "INSERT INTO signature VALUES %s", values,
-                       page_size=1000)
-        con.commit()
+
+        sql = """
+            INSERT INTO signature (
+                accession, database_id, name, description, type, abstract, 
+                num_sequences, num_reviewed_sequences, num_complete_sequences, 
+                num_complete_reviewed_sequences, num_residues
+            ) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+
+        records = []
+        for rec in values:
+            records.append(rec)
+
+            if len(records) == 1000:
+                cur.executemany(sql, records)
+                con.commit()
+                records.clear()
+
+        if records:
+            cur.executemany(sql, records)
+            con.commit()
+            records.clear()
 
         cur.execute(
             """
@@ -284,10 +303,24 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
             """
         )
 
-        cur.copy_from(file=CsvIO(_iter_comparisons(comparisons), sep='|'),
-                      table="comparison",
-                      sep='|')
-        con.commit()
+        sql = """
+            INSERT INTO comparison (signature_acc_1, signature_acc_2, 
+                                    num_collocations, num_overlaps) 
+            VALUES (%s, %s, %s, %s)
+        """
+
+        records = []
+        for row in _iter_comparisons(comparisons):
+            records.append(row)
+            if len(records) == 1000:
+                cur.executemany(sql, records)
+                con.commit()
+                records.clear()
+
+        if records:
+            cur.executemany(sql, records)
+            con.commit()
+            records.clear()
 
         cur.execute(
             """
@@ -314,11 +347,26 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
             """
         )
 
-        records = _iter_predictions(comparisons, signatures)
-        cur.copy_from(file=CsvIO(records, sep='|'),
-                      table="prediction",
-                      sep='|')
-        con.commit()
+        sql = """
+            INSERT INTO prediction (
+                signature_acc_1, signature_acc_2, num_collocations, 
+                num_protein_overlaps, num_residue_overlaps
+            ) 
+            VALUES (%s, %s, %s, %s, %s)
+        """
+
+        records = []
+        for row in _iter_predictions(comparisons, signatures):
+            records.append(row)
+            if len(records) == 1000:
+                cur.executemany(sql, records)
+                con.commit()
+                records.clear()
+
+        if records:
+            cur.executemany(sql, records)
+            con.commit()
+            records.clear()
 
         cur.execute(
             """
@@ -356,7 +404,7 @@ def _iter_predictions(comps: dict[str, dict[str, list[int, int, int]]],
 
 
 def get_swissprot_descriptions(pg_url: str) -> dict:
-    con = psycopg2.connect(**url2dict(pg_url))
+    con = psycopg.connect(**url2dict(pg_url))
     with con.cursor() as cur:
         cur.execute(
             """

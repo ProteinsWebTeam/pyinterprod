@@ -1,6 +1,3 @@
-from typing import Union
-
-
 class Table:
     def __init__(self, con, query: str, autocommit: bool = False,
                  buffer_size: int = 100000, depends_on=None):
@@ -22,20 +19,20 @@ class Table:
     def __del__(self):
         self.close()
 
-    def _execute(self, record: Union[dict, list, tuple]):
+    def _execute(self, record: dict | list | tuple):
         self.rows.append(record)
         self.count += 1
 
         if len(self.rows) == self.buffer_size:
             self.flush()
 
-    def insert(self, record: Union[dict, list, tuple]):
+    def insert(self, record: dict | list | tuple):
         self._execute(record)
 
-    def update(self, record: Union[dict, list, tuple]):
+    def update(self, record: dict | list | tuple):
         self._execute(record)
 
-    def delete(self, record: Union[dict, list, tuple]):
+    def delete(self, record: dict | list | tuple):
         self._execute(record)
 
     def flush(self):

@@ -1,7 +1,7 @@
 import re
 import sys
 
-import cx_Oracle
+import oracledb
 
 from pyinterprod.utils.oracle import drop_table
 from .common import Method, parse_hmm
@@ -233,7 +233,7 @@ def replace_desc(new_desc: str):
 
 
 def update_go_terms(uri: str, tsvfile: str):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute("SELECT METHOD_AC FROM INTERPRO.METHOD WHERE DBCODE = 'N'")
     signatures = {acc for acc, in cur.fetchall()}

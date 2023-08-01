@@ -8,7 +8,7 @@ import sys
 from concurrent import futures
 from tempfile import mkdtemp, mkstemp
 
-import cx_Oracle
+import oracledb
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
@@ -31,7 +31,7 @@ def calc_dir_size(dirpath: str) -> int:
 
 
 def create_tables(url: str):
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
 
     for table in ("CLAN_MATCH", "CLAN_MEMBER", "CLAN"):
@@ -469,7 +469,7 @@ def update_cdd_clans(url: str, database: Database, cddmasters: str,
         os.makedirs(tmpdir, exist_ok=True)
 
     logger.info("deleting old clans")
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
     cur.execute("DELETE FROM INTERPRO.CLAN WHERE DBCODE = :1",
                 (database.identifier,))
@@ -527,11 +527,11 @@ def update_cdd_clans(url: str, database: Database, cddmasters: str,
             f = executor.submit(run_compass, seqfile, profile_db, outfile)
             fs[f] = (model_acc, prefix)
 
-        con = cx_Oracle.connect(url)
+        con = oracledb.connect(url)
         cur = con.cursor()
         cur2 = con.cursor()
-        cur2.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE,
-                           cx_Oracle.DB_TYPE_CLOB)
+        cur2.setinputsizes(25, 25, oracledb.DB_TYPE_BINARY_DOUBLE,
+                           oracledb.DB_TYPE_CLOB)
 
         clan_sql = "INSERT INTO INTERPRO.CLAN VALUES (:1, :2, :3, :4)"
         memb_sql = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"
@@ -601,7 +601,7 @@ def update_hmm_clans(url: str, database: Database, hmmdb: str, **kwargs):
         os.makedirs(tmpdir, exist_ok=True)
 
     logger.info("deleting old clans")
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
     cur.execute("DELETE FROM INTERPRO.CLAN WHERE DBCODE = :1",
                 (database.identifier,))
@@ -681,11 +681,11 @@ def update_hmm_clans(url: str, database: Database, hmmdb: str, **kwargs):
             f = executor.submit(run_hmmscan, hmmdb, seqfile, domfile, outfile)
             fs[f] = model_acc
 
-        con = cx_Oracle.connect(url)
+        con = oracledb.connect(url)
         cur = con.cursor()
         cur2 = con.cursor()
-        cur2.setinputsizes(25, 25, cx_Oracle.DB_TYPE_BINARY_DOUBLE,
-                           cx_Oracle.DB_TYPE_CLOB)
+        cur2.setinputsizes(25, 25, oracledb.DB_TYPE_BINARY_DOUBLE,
+                           oracledb.DB_TYPE_CLOB)
 
         clan_sql = "INSERT INTO INTERPRO.CLAN VALUES (:1, :2, :3, :4)"
         memb_sql = "INSERT INTO INTERPRO.CLAN_MEMBER VALUES (:1, :2, :3, :4)"

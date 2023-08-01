@@ -1,20 +1,18 @@
 import os
 import shutil
 from tempfile import mkstemp
-from typing import Optional
 
-import cx_Oracle
-import psycopg2
-from psycopg2.extras import execute_values
+import oracledb
+import psycopg
 
 from pyinterprod import logger
 from pyinterprod.utils.kvdb import KVdb
-from pyinterprod.utils.pg import CsvIO, url2dict
+from pyinterprod.utils.pg import url2dict
 
 
 def import_similarity_comments(swp_url: str, ipr_url: str):
     logger.info("populating")
-    pg_con = psycopg2.connect(**url2dict(ipr_url))
+    pg_con = psycopg.connect(**url2dict(ipr_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("DROP TABLE IF EXISTS protein_similarity")
         pg_cur.execute(
@@ -27,7 +25,7 @@ def import_similarity_comments(swp_url: str, ipr_url: str):
             """
         )
 
-        ora_con = cx_Oracle.connect(swp_url)
+        ora_con = oracledb.connect(swp_url)
         ora_cur = ora_con.cursor()
         ora_cur.execute(
             """
@@ -54,8 +52,24 @@ def import_similarity_comments(swp_url: str, ipr_url: str):
             """
         )
 
-        sql = "INSERT INTO protein_similarity VALUES %s"
-        execute_values(pg_cur, sql, ora_cur, page_size=1000)
+        records = []
+        sql = """
+            INSERT INTO protein_similarity 
+                (comment_id, comment_text, protein_acc) 
+            VALUES (%s, %s, %s)
+        """
+
+        for rec in ora_cur:
+            records.append(rec)
+            if len(records) == 1000:
+                pg_cur.executemany(sql, records)
+                pg_con.commit()
+                records.clear()
+
+        if records:
+            pg_cur.executemany(sql, records)
+            pg_con.commit()
+            records.clear()
 
         ora_cur.close()
         ora_con.close()
@@ -79,7 +93,7 @@ def import_similarity_comments(swp_url: str, ipr_url: str):
 
 
 def import_protein_names(swp_url: str, ipr_url: str, database: str,
-                         tmpdir: Optional[str] = None):
+                         tmpdir: str | None = None):
     os.makedirs(os.path.dirname(database), exist_ok=True)
 
     logger.info("populating protein2name")
@@ -87,7 +101,7 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
     os.close(fd)
     os.remove(tmp_database)
 
-    pg_con = psycopg2.connect(**url2dict(ipr_url))
+    pg_con = psycopg.connect(**url2dict(ipr_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("DROP TABLE IF EXISTS protein_name")
         pg_cur.execute("DROP TABLE IF EXISTS protein2name")
@@ -110,7 +124,7 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
             """
         )
 
-        ora_con = cx_Oracle.connect(swp_url)
+        ora_con = oracledb.connect(swp_url)
         ora_cur = ora_con.cursor()
         ora_cur.execute(
             """
@@ -143,6 +157,12 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
         names = {}
         values = []
         i = 0
+
+        sql = """
+            COPY protein2name (protein_acc, name_id) 
+            FROM STDIN
+        """
+
         with KVdb(tmp_database, True) as namesdb:
             for protein_acc, text in ora_cur:
                 try:
@@ -156,12 +176,9 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
 
                 if not i % 100000:
                     namesdb.sync()
-                    execute_values(
-                        cur=pg_cur,
-                        sql="INSERT INTO protein2name VALUES %s",
-                        argslist=values,
-                        page_size=1000
-                    )
+                    with pg_cur.copy(sql) as copy:
+                        for rec in values:
+                            copy.write_row(rec)
                     values = []
 
                     if not i % 10000000:
@@ -172,20 +189,20 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
         logger.info(f"{i:>12,}")
 
         if values:
-            execute_values(
-                cur=pg_cur,
-                sql="INSERT INTO protein2name VALUES %s",
-                argslist=values,
-                page_size=1000
-            )
+            with pg_cur.copy(sql) as copy:
+                for rec in values:
+                    copy.write_row(rec)
 
         logger.info("populating protein_name")
-        execute_values(
-            cur=pg_cur,
-            sql="INSERT INTO protein_name VALUES %s",
-            argslist=((name_id, text) for text, name_id in names.items()),
-            page_size=1000
-        )
+
+        sql = """
+            COPY protein_name (name_id, text) 
+            FROM STDIN
+        """
+
+        with pg_cur.copy(sql) as copy:
+            for text, name_id in names.items():
+                copy.write_row((name_id, text))
 
         logger.info("analyzing tables")
         pg_cur.execute("ANALYZE protein2name")
@@ -196,14 +213,15 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
 
     logger.info("copying database")
     shutil.copyfile(tmp_database, database)
-    logger.info(f"disk usage: {os.path.getsize(tmp_database)/1024**2:.0f} MB")
+    logger.info(f"disk usage: "
+                f"{os.path.getsize(tmp_database) / 1024 ** 2:.0f} MB")
     os.remove(tmp_database)
     logger.info("complete")
 
 
 def import_proteins(ora_url: str, pg_url: str):
     logger.info("populating")
-    pg_con = psycopg2.connect(**url2dict(pg_url))
+    pg_con = psycopg.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("DROP TABLE IF EXISTS protein")
         pg_cur.execute(
@@ -220,7 +238,7 @@ def import_proteins(ora_url: str, pg_url: str):
             """
         )
 
-        ora_con = cx_Oracle.connect(ora_url)
+        ora_con = oracledb.connect(ora_url)
         ora_cur = ora_con.cursor()
         ora_cur.execute(
             """
@@ -228,17 +246,24 @@ def import_proteins(ora_url: str, pg_url: str):
             FROM INTERPRO.PROTEIN
             """
         )
-        gen = ((row[0],
-                row[1],
-                row[2],
-                row[3],
-                row[4] == 'Y',
-                row[5] == 'S'
-                ) for row in ora_cur)
 
-        pg_cur.copy_from(file=CsvIO(gen, sep='|'),
-                         table="protein",
-                         sep='|')
+        sql = """
+            COPY protein 
+                (accession, identifier, length, taxon_id, is_fragment, 
+                is_reviewed) 
+            FROM STDIN
+        """
+
+        with pg_cur.copy(sql) as copy:
+            for row in ora_cur:
+                copy.write_row((row[0],
+                                row[1],
+                                row[2],
+                                row[3],
+                                row[4] == 'Y',
+                                row[5] == 'S'
+                                ))
+
         ora_cur.close()
         ora_con.close()
 

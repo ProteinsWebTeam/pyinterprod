@@ -7,10 +7,9 @@ import pickle
 import shutil
 from multiprocessing import Process, Queue
 from tempfile import mkstemp
-from typing import Optional
 
-import cx_Oracle
-import psycopg2
+import oracledb
+import psycopg
 
 from pyinterprod import logger
 from pyinterprod.utils import pg
@@ -24,7 +23,7 @@ INDEX_SUFFIX = ".i"
 
 
 def export(url: str, output: str, cachesize: int = 10000000,
-           tmpdir: Optional[str] = None):
+           tmpdir: str | None = None):
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
@@ -66,8 +65,8 @@ def export(url: str, output: str, cachesize: int = 10000000,
 
 
 def _export_matches(url: str, cachesize: int,
-                    tmpdir: Optional[str] = None) -> list[str]:
-    con = cx_Oracle.connect(url)
+                    tmpdir: str | None = None) -> list[str]:
+    con = oracledb.connect(url)
     cur = con.cursor()
 
     # Loading databases
@@ -143,7 +142,7 @@ def _export_matches(url: str, cachesize: int,
     return files
 
 
-def _dump(data: dict, tmpdir: Optional[str] = None) -> str:
+def _dump(data: dict, tmpdir: str | None = None) -> str:
     fd, file = mkstemp(dir=tmpdir)
     os.close(fd)
     with gzip.open(file, "wb", compresslevel=6) as fh:
@@ -199,7 +198,7 @@ def iter_util_eof(file: str, compressed: bool):
 
 
 def insert_signature2protein(url: str, names_db: str, matches_file: str,
-                             processes: int = 1, tmpdir: Optional[str] = None):
+                             processes: int = 1, tmpdir: str | None = None):
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
@@ -209,7 +208,7 @@ def insert_signature2protein(url: str, names_db: str, matches_file: str,
     shutil.copyfile(names_db, tmp_db)
 
     logger.info("creating signature2protein")
-    con = psycopg2.connect(**pg.url2dict(url))
+    con = psycopg.connect(**pg.url2dict(url))
     with con.cursor() as cur:
         cur.execute("DROP TABLE IF EXISTS signature2protein")
         cur.execute(
@@ -273,13 +272,20 @@ def insert_signature2protein(url: str, names_db: str, matches_file: str,
 
 def _populate_signature2protein(url: str, names_db: str, matches_file: str,
                                 src: Queue, dst: Queue):
-    con = psycopg2.connect(**pg.url2dict(url))
+    con = psycopg.connect(**pg.url2dict(url))
     with con.cursor() as cur:
         proteins = _iter_proteins(names_db, matches_file, src, dst)
-        cur.copy_from(file=pg.CsvIO(proteins, sep='|'),
-                      table="signature2protein",
-                      sep='|')
-        con.commit()
+
+        sql = """
+            COPY signature2protein 
+                (signature_acc, model_acc, protein_acc, is_reviewed, 
+                taxon_left_num, name_id, md5) 
+            FROM STDIN
+        """
+
+        with cur.copy(sql) as copy:
+            for row in proteins:
+                copy.write_row(row)
 
     con.close()
 
@@ -413,7 +419,7 @@ def _flatten_hits(hits: list[str]) -> list[tuple[int, int]]:
 
 
 def finalize_signature2protein(uri: str):
-    con = psycopg2.connect(**pg.url2dict(uri))
+    con = psycopg.connect(**pg.url2dict(uri))
     with con.cursor() as cur:
         logger.info("adding primary key")
 
@@ -467,7 +473,7 @@ def finalize_signature2protein(uri: str):
 
 
 def create_match_table(uri: str):
-    con = psycopg2.connect(**pg.url2dict(uri))
+    con = psycopg.connect(**pg.url2dict(uri))
     with con.cursor() as cur:
         cur.execute("DROP TABLE IF EXISTS match")
         cur.execute(
@@ -489,22 +495,27 @@ def create_match_table(uri: str):
 def insert_fmatches(ora_uri: str, pg_uri: str):
     logger.info("populating")
 
-    con = psycopg2.connect(**pg.url2dict(pg_uri))
+    con = psycopg.connect(**pg.url2dict(pg_uri))
     with con.cursor() as cur:
         cur.execute("SELECT name, id FROM database")
         name2id = dict(cur.fetchall())
 
-        cur.copy_from(file=pg.CsvIO(_get_fmatches(ora_uri, name2id), sep="|"),
-                      table="match",
-                      sep="|")
-        con.commit()
+        sql = """
+            COPY match 
+                (protein_acc, signature_acc, database_id, fragments) 
+            FROM STDIN
+        """
+
+        with cur.copy(sql) as copy:
+            for row in _get_fmatches(ora_uri, name2id):
+                copy.write_row(row)
 
     con.close()
     logger.info("done")
 
 
 def _get_fmatches(uri: str, name2id: dict[str, int]):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -567,16 +578,21 @@ def insert_matches(uri: str, matches_file: str, processes: int = 1):
 
 
 def _populate_matches(url: str, matches_file: str, src: Queue, dst: Queue):
-    con = psycopg2.connect(**pg.url2dict(url))
+    con = psycopg.connect(**pg.url2dict(url))
     with con.cursor() as cur:
         cur.execute("SELECT name, id FROM database")
         name2id = dict(cur.fetchall())
-
         matches = _iter_matches(matches_file, name2id, src, dst)
-        cur.copy_from(file=pg.CsvIO(matches, sep="|"),
-                      table="match",
-                      sep="|")
-        con.commit()
+
+        sql = """
+            COPY match 
+                (protein_acc, signature_acc, database_id, fragments) 
+            FROM STDIN
+        """
+
+        with cur.copy(sql) as copy:
+            for row in matches:
+                copy.write_row(row)
 
     con.close()
 
@@ -601,7 +617,7 @@ def _iter_matches(matches_file: str, name2id: dict[str, int],
 
 
 def finalize_match_table(uri: str):
-    con = psycopg2.connect(**pg.url2dict(uri))
+    con = psycopg.connect(**pg.url2dict(uri))
     with con.cursor() as cur:
 
         logger.info("indexing")

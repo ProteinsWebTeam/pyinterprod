@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from cx_Oracle import Cursor, DB_TYPE_BINARY_DOUBLE
+from oracledb import Cursor, DB_TYPE_BINARY_DOUBLE
 
 _COMMIT_SIZE = 10000
 
