@@ -263,7 +263,7 @@ def track_signature_changes(
 
 
 def delete_from_table(
-    uri: str, table: str, partition: Optional[str], column: str, step: int, stop: int
+    uri: str, table: str, partition: str |None, column: str, step: int, stop: int
 ) -> int:
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
