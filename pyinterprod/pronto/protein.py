@@ -158,13 +158,8 @@ def import_protein_names(swp_url: str, ipr_url: str, database: str,
         values = []
         i = 0
 
-        sql_protein2name = """
+        sql = """
             COPY protein2name (protein_acc, name_id) 
-            FROM STDIN
-        """
-
-        sql_protein_name = """
-            COPY protein_name (name_id, text) 
             FROM STDIN
         """
 
