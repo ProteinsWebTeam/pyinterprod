@@ -1,6 +1,5 @@
-import cx_Oracle
-import psycopg2
-from psycopg2.extras import execute_values
+import oracledb
+import psycopg
 
 from pyinterprod import logger
 from pyinterprod.utils.pg import url2dict
@@ -12,7 +11,7 @@ class ProteomeIterator:
         self.proteomes = {}
 
     def __iter__(self):
-        con = cx_Oracle.connect(self.url)
+        con = oracledb.connect(self.url)
         cur = con.cursor()
         cur.execute(
             """
@@ -41,7 +40,7 @@ class ProteomeIterator:
 def import_proteomes(ora_url: str, pg_url: str):
     logger.info("inserting reference proteomes info")
 
-    pg_con = psycopg2.connect(**url2dict(pg_url))
+    pg_con = psycopg.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("DROP TABLE IF EXISTS proteome")
         pg_cur.execute(
@@ -66,13 +65,42 @@ def import_proteomes(ora_url: str, pg_url: str):
             """
         )
 
-        sql = "INSERT INTO proteome2protein VALUES %s"
+        records = []
         iterator = ProteomeIterator(ora_url)
-        execute_values(pg_cur, sql, iterator, page_size=1000)
 
-        sql = "INSERT INTO proteome VALUES %s"
-        execute_values(pg_cur, sql, list(iterator.proteomes.values()),
-                       page_size=1000)
+        sql = """
+            INSERT INTO proteome2protein (id, protein_acc) 
+            VALUES (%s, %s)
+        """
+
+        for rec in iterator:
+            records.append(rec)
+            if len(records) == 1000:
+                pg_cur.executemany(sql, records)
+                pg_con.commit()
+                records.clear()
+
+        if records:
+            pg_cur.executemany(sql, records)
+            pg_con.commit()
+            records.clear()
+
+        sql = """
+            INSERT INTO proteome (id, name, taxon_id, num_proteins) 
+            VALUES (%s, %s, %s, %s)
+        """
+
+        for rec in iterator.proteomes.values():
+            records.append(rec)
+            if len(records) == 1000:
+                pg_cur.executemany(sql, records)
+                pg_con.commit()
+                records.clear()
+
+        if records:
+            pg_cur.executemany(sql, records)
+            pg_con.commit()
+            records.clear()
 
         logger.info("indexing")
         pg_cur.execute(

@@ -1,13 +1,12 @@
 import gzip
 import re
-from typing import List
 
 from .common import Clan, Method, parse_xml
 
 _TYPE = 'D'
 
 
-def parse_signatures(filepath: str) -> List[Method]:
+def parse_signatures(filepath: str) -> list[Method]:
     """
     Parse the cdd_interpro.xml file provided by CDD
     As of CDD 3.20, the file is available here:
@@ -25,7 +24,7 @@ def parse_signatures(filepath: str) -> List[Method]:
     return signatures
 
 
-def get_clans(cddid: str, fam2supfam: str) -> List[Clan]:
+def get_clans(cddid: str, fam2supfam: str) -> list[Clan]:
     """
     Return CDD superfamilies (clans)
     :param cddid: path to file containing summary information about

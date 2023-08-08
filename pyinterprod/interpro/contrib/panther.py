@@ -2,7 +2,7 @@ import json
 import os
 import re
 
-import cx_Oracle
+import oracledb
 
 from pyinterprod.utils.oracle import drop_table
 from .common import Clan, Method
@@ -11,7 +11,7 @@ _TYPE = 'F'
 
 
 def get_clans(uri: str) -> list[Clan]:
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -78,7 +78,7 @@ def parse_signatures(filepath: str) -> list[Method]:
 
 
 def update_go_terms(uri: str, root: str):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     drop_table(cur, "INTERPRO.PANTHER2GO", purge=True)
     cur.execute(

@@ -2,8 +2,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
-import cx_Oracle
-from cx_Oracle import Cursor
+import oracledb
+from oracledb import Cursor
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
@@ -267,6 +267,7 @@ class Analysis:
             WHERE ANALYSIS_ID = :1
               AND UPI_FROM <= :2
               AND END_TIME IS NULL
+              AND SUCCESS = 'N'
             """,
             [self.id, max_upi]
         )
@@ -358,7 +359,7 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
             # Databases not in ISPRO (e.g. Pfam-N): nothing to import
             return
 
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     pending = {}
@@ -387,7 +388,7 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
         failed = 0
 
         while True:
-            con = cx_Oracle.connect(uri)
+            con = oracledb.connect(uri)
             cur = con.cursor()
 
             tmp = []
@@ -442,7 +443,7 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
 
 def _import_table(uri: str, remote_table: str, analyses: list[Analysis],
                   force: bool = True):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     local_table = PREFIX + remote_table
@@ -547,7 +548,7 @@ def update_partitions(uri: str, data_type: str = "matches", **kwargs):
 
     logger.info("starting")
 
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     tables = {}
@@ -612,7 +613,7 @@ def update_partitions(uri: str, data_type: str = "matches", **kwargs):
     if failed:
         raise RuntimeError(f"{failed} errors")
 
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     for index in oracle.get_indexes(cur, "IPRSCAN", partitioned_table):
@@ -642,7 +643,7 @@ def _update_partition(uri: str, table: str, partitioned_table: str,
                      in `partitioned_table`, columns to select from `table`)
     :param force: If True, update partition even if up-to-date
     """
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     if not force:
@@ -779,7 +780,7 @@ def _update_partition(uri: str, table: str, partitioned_table: str,
 
 def check_ispro(url: str, match_type: str = "matches",
                 status: str = "production"):
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
 
     analyses = {}
