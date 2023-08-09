@@ -56,7 +56,7 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                             0,  # number of reviewed proteins
                             0,  # number of complete proteins
                             0,  # number of complete reviewed proteins
-                            0,  # number of single-domain complete proteins
+                            0,  # number of complete single-domain proteins
                             0,  # number of residues in complete proteins
                         ]
                         comparisons[signature_acc] = {}
