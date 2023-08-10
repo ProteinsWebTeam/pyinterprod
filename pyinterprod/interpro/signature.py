@@ -697,6 +697,7 @@ def update_references(cur: oracledb.Cursor, method: Method,
 
         method.abstract = text
 
+    # Required for PMIDs not in the abstract
     for pmid in method.references:
         try:
             pub_id = pmid2pubid[pmid]
