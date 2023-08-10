@@ -125,34 +125,41 @@ def get_signatures(uri: str) -> list[Method]:
         """
     )
     references = {}
+    pfam2pmid = {}
     for acc, ref_id, ref_pos in cur:
+        pmid = citations[ref_id]
+
         if acc in references:
             references[acc][ref_pos] = ref_id
+            pfam2pmid[acc].add(pmid)
         else:
             references[acc] = {ref_pos: ref_id}
+            pfam2pmid[acc] = {pmid}
 
     cur.execute(
         """
-        SELECT pfamA_acc, pfamA_id, description, type, comment
+        SELECT pfamA_acc, pfamA_id, description, type, comment, updated
         FROM pfamA
         """
     )
-    entries = {row[0]: row[1:] for row in cur}
+    entries = {row[0]: row[1:] for row in cur.fetchall()}
     cur.close()
     con.close()
 
     formatter = AbstractFormatter(references, citations)
     signatures = []
-    for acc in sorted(entries):
-        name, description, long_type, abstract = entries[acc]
+    for acc, obj in entries.items():
+        name, description, long_type, abstract, updated = obj
         short_type = _TYPES[long_type]
 
         if abstract:
             abstract = formatter.update(acc, abstract)
         else:
-            abstract = ''
+            abstract = None
 
-        m = Method(acc, short_type, name, description, abstract)
+        m = Method(acc, short_type, name, description, abstract,
+                   date=updated,
+                   references=list(pfam2pmid.get(acc, [])))
         signatures.append(m)
 
     return signatures
