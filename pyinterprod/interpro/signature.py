@@ -673,7 +673,12 @@ def update_references(cur: oracledb.Cursor, method: Method,
                       pmid2pubid: dict[int, str]) -> set[str]:
     pub_ids = set()
     if method.abstract is not None:
-        pmids = re.finditer(r"PMID:\s*([0-9]+)", method.abstract)
+        text = method.abstract
+
+        # Case found in PR01452
+        text = re.sub(r"\s*\[PMID:\s*NOT FOUND]", r"", text, flags=re.I)
+
+        pmids = re.finditer(r"PMID:\s*\.?([0-9]+)", text, flags=re.I)
         for match in pmids:
             pmid = int(match.group(1))
             try:
@@ -683,13 +688,13 @@ def update_references(cur: oracledb.Cursor, method: Method,
                 pmid2pubid[pmid] = pub_id
 
             if pub_id:
-                method.abstract = method.abstract.replace(
-                    match.group(0), f"[cite:{pub_id}]"
-                )
+                text = text.replace(match.group(0), f"[cite:{pub_id}]")
                 pub_ids.add(pub_id)
             else:
                 logger.warning(f"No citation found with PubMed ID {pmid}")
-                method.abstract = method.abstract.replace(match.group(0), "")
+                # text = text.replace(match.group(0), "")
+
+        method.abstract = text
 
     for pmid in method.references:
         try:
