@@ -691,7 +691,8 @@ def update_references(cur: oracledb.Cursor, method: Method,
                 text = text.replace(match.group(0), f"[cite:{pub_id}]")
                 pub_ids.add(pub_id)
             else:
-                logger.warning(f"No citation found with PubMed ID {pmid}")
+                logger.warning(f"{method.accession}: "
+                               f"no citation found with PubMed ID {pmid}")
                 # text = text.replace(match.group(0), "")
 
         method.abstract = text
@@ -785,7 +786,6 @@ def update_citation(cur: oracledb.Cursor, pmid: int) -> str | None:
         )
         return pub_id.getvalue()[0]
     else:
-        logger.warning(f"Citation related to PMID {pmid} not found.")
         return None
 
 
