@@ -20,8 +20,8 @@ _TYPES = {
 }
 
 
-def connect_mysql(url: str) -> MySQLdb.Connection:
-    obj = url2dict(url)
+def connect_mysql(uri: str) -> MySQLdb.Connection:
+    obj = url2dict(uri)
     # MySQLdb and psycopg use different keyword params for password/database
     obj.update({
         "passwd": obj.pop("password"),
@@ -30,8 +30,8 @@ def connect_mysql(url: str) -> MySQLdb.Connection:
     return MySQLdb.connect(**obj)
 
 
-def get_clans(url: str) -> list[Clan]:
-    con = connect_mysql(url)
+def get_clans(uri: str) -> list[Clan]:
+    con = connect_mysql(uri)
     cur = MySQLdb.cursors.SSCursor(con)
     cur.execute(
         """
@@ -65,39 +65,50 @@ def get_clans(url: str) -> list[Clan]:
 
 
 class AbstractFormatter:
-    def __init__(self, references, citations):
+    def __init__(self,
+                 references: dict[str, dict[int, int]],
+                 citations: dict[int, int]):
         self.refs = references
         self.cite = citations
         self.acc = None
 
-    def update(self, acc, abstract):
+    def update(self, acc: str, abstract: str) -> str:
         self.acc = acc
-        return '<p>' + re.sub(r"\[([\d\s,]+)\]", self.sub, abstract) + '</p>'
+        # abstract = re.sub(r"\[(\d+-\d+)]", self.split_refs, abstract)
+        abstract = re.sub(r"\[([\d\s,]+)]", self.repl_refs, abstract)
+        return f"<p>{abstract}</p>"
 
-    def sub(self, match):
+    @staticmethod
+    def split_refs(match: re.Match) -> str:
+        start, end = map(int, match.group(1).split("-"))
         refs = []
-        for ref_pos in map(int, map(str.lower, match.group(1).split(','))):
+        for ref_pos in range(start, end + 1):
+            refs.append(str(ref_pos))
+
+        return f"[{', '.join(refs)}]"
+
+    def repl_refs(self, match: re.Match) -> str:
+        refs = []
+        for ref_pos in map(int, map(str.strip, match.group(1).split(','))):
             try:
                 ref_id = self.refs[self.acc][ref_pos]
             except KeyError:
                 logger.error(f"{self.acc}: no reference for {ref_pos}")
-                refs.append("PMID:")
                 continue
 
             try:
                 pmid = self.cite[ref_id]
             except KeyError:
                 logger.error(f"{ref_id}: no PMID")
-                refs.append("PMID:")
                 continue
-            else:
-                refs.append(f"PMID:{pmid}")
 
-        return f"[{', '.join(refs)}]"
+            refs.append(f"PMID:{pmid}")
+
+        return f"[{','.join(refs)}]" if refs else ""
 
 
-def get_signatures(url: str) -> list[Method]:
-    con = connect_mysql(url)
+def get_signatures(uri: str) -> list[Method]:
+    con = connect_mysql(uri)
     cur = con.cursor()
     cur.execute(
         """
