@@ -76,7 +76,7 @@ class AbstractFormatter:
         self.acc = acc
         # abstract = re.sub(r"\[(\d+-\d+)]", self.split_refs, abstract)
         abstract = re.sub(r"\[([\d\s,]+)]", self.repl_refs, abstract)
-        return f"<p>{abstract}</p>"
+        return abstract
 
     @staticmethod
     def split_refs(match: re.Match) -> str:

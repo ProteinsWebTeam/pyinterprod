@@ -149,8 +149,8 @@ def add_staging(uri: str, update: list[tuple[Database, dict[str, str]]]):
                         db.identifier,
                         descr,
                         m.sig_type,
-                        abstract,
-                        abstract_long,
+                        enclose_paragraph(abstract),
+                        enclose_paragraph(abstract_long),
                     )
                 )
 
@@ -176,6 +176,19 @@ def add_staging(uri: str, update: list[tuple[Database, dict[str, str]]]):
 
     cur.close()
     con.close()
+
+
+def enclose_paragraph(abstract: str | None) -> str | None:
+    if abstract is None:
+        return None
+
+    if not abstract.lower().startswith("<p>"):
+        abstract = f"<p>{abstract}"
+
+    if not abstract.lower().endswith("</p>"):
+        abstract += "</p>"
+
+    return abstract
 
 
 def track_signature_changes(
