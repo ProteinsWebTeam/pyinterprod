@@ -697,7 +697,7 @@ def populate_method2pub_stg(cur: oracledb.Cursor, method2pub: dict[str, set]):
             INSERT INTO INTERPRO.METHOD2PUB_STG (PUB_ID, METHOD_AC)
             VALUES (:1, :2)
             """,
-            data[i : i + step],
+            data[i:i+step],
         )
 
 
