@@ -12,6 +12,7 @@ import oracledb
 import psycopg
 
 from pyinterprod import logger
+from pyinterprod.pdbe import get_sifts_mapping
 from pyinterprod.utils import pg
 from pyinterprod.utils.kvdb import KVdb
 
@@ -635,3 +636,77 @@ def finalize_match_table(uri: str):
 
     con.close()
     logger.info("done")
+
+
+def iter_pdb_matches(pdbe_uri: str, ipr_uri: str):
+    logger.info("loading SIFTS mapping")
+    pdbe2uniprot = get_sifts_mapping(pdbe_uri)
+
+    logger.info("loading structural matches")
+    con = oracledb.connect(ipr_uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT DISTINCT X.AC, M.METHOD_AC
+        FROM UNIPARC.XREF X
+        INNER JOIN IPRSCAN.MV_IPRSCAN M ON X.UPI = M.UPI
+        WHERE X.DBID = 21 AND X.DELETED = 'N'
+        """
+    )
+
+    for pdb_chain, signature_acc in cur:
+        pdb_id, _ = pdb_chain.split("_")
+
+        for uniprot_acc in pdbe2uniprot.get(pdb_chain, []):
+            yield signature_acc, uniprot_acc, pdb_id
+
+    cur.close()
+    con.close()
+
+
+def import_pdb_matches(pdbe_ora_uri: str, ipr_ora_uri: str, ipr_pg_uri: str):
+    con = psycopg.connect(**pg.url2dict(ipr_pg_uri))
+    with con.cursor() as cur:
+        cur.execute("DROP TABLE IF EXISTS signature2structure")
+        cur.execute(
+            """
+            CREATE TABLE signature2structure (
+                signature_acc VARCHAR(25) NOT NULL,
+                protein_acc VARCHAR(15) NOT NULL,
+                structure_id VARCHAR(4) NOT NULL
+            )
+            """
+        )
+
+        con.commit()
+
+        sql = """
+            INSERT INTO signature2structure 
+            VALUES (%s, %s, %s)
+        """
+
+        rows = []
+        for row in iter_pdb_matches(pdbe_ora_uri, ipr_ora_uri):
+            rows.append(row)
+
+            if len(rows) == 1000:
+                cur.executemany(sql, rows)
+                con.commit()
+                rows.clear()
+
+        if rows:
+            cur.executemany(sql, rows)
+            con.commit()
+            rows.clear()
+
+        logger.info("indexing")
+        cur.execute(
+            """
+            CREATE INDEX IF NOT EXISTS signature2structure_idx
+            ON signature2structure_idx (signature_acc, protein_acc)
+            """
+        )
+        con.commit()
+
+    con.commit()
+    logger.info("complete")

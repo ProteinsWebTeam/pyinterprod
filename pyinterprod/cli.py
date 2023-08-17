@@ -11,8 +11,8 @@ from pyinterprod.interpro.clan import update_cdd_clans, update_hmm_clans
 
 
 def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
-                     pg_ipr_uri: str, data_dir: str, temp_dir: str,
-                     lsf_queue: str) -> list[Task]:
+                     ora_pdbe_uri: str, pg_ipr_uri: str, data_dir: str,
+                     temp_dir: str, lsf_queue: str) -> list[Task]:
     names_db = os.path.join(data_dir, "names.sqlite")
     matches_file = os.path.join(data_dir, "matches")
     return [
@@ -30,6 +30,13 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             name="annotations",
             scheduler=dict(mem=500, queue=lsf_queue)
         ),
+
+        # Data from PDBE
+        Task(fn=pronto.match.import_pdb_matches,
+             args=(ora_pdbe_uri, ora_ipr_uri, pg_ipr_uri),
+             name="import-structures",
+             scheduler=dict(mem=1000, queue=lsf_queue)
+         ),
 
         # Data from SWPREAD
         Task(
@@ -303,6 +310,7 @@ def run_member_db_update():
     ora_iprscan_uri = config["oracle"]["ipro-iprscan"]
     ora_goa_uri = config["oracle"]["unpr-goapro"]
     ora_swpread_uri = config["oracle"]["unpr-swpread"]
+    ora_pdbe_uri = config["oracle"]["pdbe"]
     pg_uri = config["postgresql"]["pronto"]
 
     uniprot_version = config["uniprot"]["version"]
@@ -484,8 +492,8 @@ def run_member_db_update():
         # Adding Pronto tasks
         after_pronto = []
         for t in get_pronto_tasks(ora_interpro_uri, ora_swpread_uri,
-                                  ora_goa_uri, pg_uri, data_dir, temp_dir,
-                                  lsf_queue):
+                                  ora_goa_uri, ora_pdbe_uri, pg_uri,
+                                  data_dir, temp_dir, lsf_queue):
             # Adding 'pronto-' prefix
             t.name = f"pronto-{t.name}"
             if t.requires:
@@ -554,6 +562,7 @@ def run_pronto_update():
     ora_interpro_uri = config["oracle"]["ipro-interpro"]
     ora_goa_uri = config["oracle"]["unpr-goapro"]
     ora_swpread_uri = config["oracle"]["unpr-swpread"]
+    ora_pdbe_uri = config["oracle"]["pdbe"]
     pg_uri = config["postgresql"]["pronto"]
     uniprot_version = config["uniprot"]["version"]
     data_dir = config["misc"]["data_dir"]
@@ -562,7 +571,8 @@ def run_pronto_update():
     wflow_dir = config["misc"]["workflows_dir"]
 
     tasks = get_pronto_tasks(ora_interpro_uri, ora_swpread_uri, ora_goa_uri,
-                             pg_uri, data_dir, temp_dir, lsf_queue)
+                             ora_pdbe_uri, pg_uri, data_dir, temp_dir,
+                             lsf_queue)
 
     database = os.path.join(wflow_dir, f"{uniprot_version}_pronto.sqlite")
     with Workflow(tasks, dir=wflow_dir, database=database) as wf:
@@ -606,6 +616,7 @@ def run_uniprot_update():
     ora_goa_uri = config["oracle"]["unpr-goapro"]
     ora_swpread_uri = config["oracle"]["unpr-swpread"]
     ora_uaread_uri = config["oracle"]["unpr-uaread"]
+    ora_pdbe_uri = config["oracle"]["pdbe"]
     pg_uri = config["postgresql"]["pronto"]
 
     uniprot_version = config["uniprot"]["version"]
@@ -806,7 +817,8 @@ def run_uniprot_update():
     # Adding Pronto tasks
     after_pronto = []
     for t in get_pronto_tasks(ora_interpro_uri, ora_swpread_uri, ora_goa_uri,
-                              pg_uri, data_dir, temp_dir, lsf_queue):
+                              ora_pdbe_uri, pg_uri, data_dir, temp_dir,
+                              lsf_queue):
         # Adding 'pronto-' prefix
         t.name = f"pronto-{t.name}"
         if t.requires:
