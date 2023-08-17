@@ -705,8 +705,8 @@ def import_pdb_matches(pdbe_ora_uri: str, ipr_ora_uri: str, ipr_pg_uri: str):
         logger.info("indexing")
         cur.execute(
             """
-            CREATE INDEX IF NOT EXISTS signature2structure_idx
-            ON signature2structure_idx (signature_acc, protein_acc)
+            CREATE INDEX IF NOT EXISTS signature2structure_idx1
+            ON signature2structure (signature_acc, protein_acc)
             """
         )
         con.commit()
