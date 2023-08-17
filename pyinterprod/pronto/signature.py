@@ -56,6 +56,7 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                             0,  # number of reviewed proteins
                             0,  # number of complete proteins
                             0,  # number of complete reviewed proteins
+                            0,  # number of complete single-domain proteins
                             0,  # number of residues in complete proteins
                         ]
                         comparisons[signature_acc] = {}
@@ -76,7 +77,11 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
 
                     # Number of residues covered by the signature's matches
                     residues_1 = sum(end - start + 1 for start, end in locs_1)
-                    sig[4] += residues_1
+                    sig[5] += residues_1
+
+                    if len(matches) == 1:
+                        sig[4] += 1
+                        continue
 
                     for other_acc in matches:
                         if other_acc <= signature_acc:
@@ -236,7 +241,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 row[3],             # description
                 row[4],             # type
                 row[5] or row[6],   # abstract
-                *signatures.get(signature_acc, [0] * 5)
+                *signatures.get(signature_acc, [0] * 6)
             ))
 
         cur.execute("DROP TABLE IF EXISTS signature")
@@ -254,18 +259,15 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 num_reviewed_sequences INTEGER NOT NULL,
                 num_complete_sequences INTEGER NOT NULL,
                 num_complete_reviewed_sequences INTEGER NOT NULL,
+                num_complete_single_domain_sequences INTEGER NOT NULL,
                 num_residues BIGINT NOT NULL
             )
             """
         )
 
         sql = """
-            INSERT INTO signature (
-                accession, database_id, name, description, type, abstract, 
-                num_sequences, num_reviewed_sequences, num_complete_sequences, 
-                num_complete_reviewed_sequences, num_residues
-            ) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO signature
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         records = []
@@ -394,8 +396,8 @@ def _iter_predictions(comps: dict[str, dict[str, list[int, int, int]]],
                       sigs: dict[str, list[int, int, int, int, int]]):
     for acc1, others in comps.items():
         for acc2, (collocts, prot_overlaps, res_overlaps) in others.items():
-            _, _, num_proteins1, num_reviewed1, num_residues1 = sigs[acc1]
-            _, _, num_proteins2, num_reviewed2, num_residues2 = sigs[acc2]
+            _, _, num_proteins1, num_reviewed1, _, num_residues1 = sigs[acc1]
+            _, _, num_proteins2, num_reviewed2, _, num_residues2 = sigs[acc2]
 
             num_proteins = min(num_proteins1, num_proteins2)
             if collocts / num_proteins >= _MIN_COLLOCATION:
