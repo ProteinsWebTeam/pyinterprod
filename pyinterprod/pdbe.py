@@ -13,7 +13,8 @@ def get_sifts_mapping(uri: str) -> dict[str, set[str]]:
         FROM PDBE.ENTRY E
         INNER JOIN SIFTS_ADMIN.SIFTS_XREF_SEGMENT U ON (
           E.ID = U.ENTRY_ID AND
-          E.METHOD_CLASS IN ('nmr', 'x-ray', 'em')
+          E.METHOD_CLASS IN ('nmr', 'x-ray', 'em') AND
+          U.ACCESSION IS NOT NULL
         )
         """
     )
