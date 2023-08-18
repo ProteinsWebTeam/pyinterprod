@@ -647,21 +647,30 @@ def iter_pdb_matches(pdbe_uri: str, ipr_uri: str):
     cur = con.cursor()
     cur.execute(
         """
-        SELECT DISTINCT X.AC, MA.METHOD_AC
+        SELECT DISTINCT MA.METHOD_AC, X.AC
         FROM UNIPARC.XREF X
         INNER JOIN IPRSCAN.MV_IPRSCAN MA ON X.UPI = MA.UPI
         INNER JOIN INTERPRO.METHOD ME ON MA.METHOD_AC = ME.METHOD_AC
         WHERE X.DBID = 21 
           AND X.DELETED = 'N'
           AND NOT REGEXP_LIKE(ME.METHOD_AC, '^PTHR\d+:SF\d+$')
+        ORDER BY MA.METHOD_AC
         """
     )
 
-    for pdb_chain, signature_acc in cur:
+    prev = None
+    seen = set()
+    for signature_acc, pdb_chain in cur:
+        if signature_acc != prev:
+            prev = signature_acc
+            seen.clear()
+
         pdb_id, _ = pdb_chain.split("_")
 
         for uniprot_acc in pdbe2uniprot.get(pdb_chain, []):
-            yield signature_acc, uniprot_acc, pdb_id
+            if (uniprot_acc, pdb_id) not in seen:
+                yield signature_acc, uniprot_acc, pdb_id
+                seen.add((uniprot_acc, pdb_id))
 
     cur.close()
     con.close()
