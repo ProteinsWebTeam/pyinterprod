@@ -8,7 +8,7 @@ from typing import Callable
 
 import oracledb
 from mundone import Pool, Task
-from mundone.statuses import PENDING, RUNNING
+from mundone.states import PENDING, RUNNING
 
 from pyinterprod import logger
 from pyinterprod.uniprot.uniparc import int_to_upi, upi_to_int, range_upi
@@ -103,7 +103,8 @@ class TaskFactory:
                         keep_files=self.keep_files,
                         timeout=self.config["job_timeout"]),
             name=self.make_name(upi_from, upi_to),
-            scheduler=dict(cpu=self.config["job_cpu"],
+            scheduler=dict(type="lsf",
+                           cpu=self.config["job_cpu"],
                            mem=self.config["job_mem"],
                            queue=self.lsf_queue),
             random_suffix=False
@@ -238,13 +239,13 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     # Checks if the associated job is running
                     if task.name in name2id:
                         # It is!
-                        task.jobid = name2id.pop(task.name)
+                        task.executor.id = name2id.pop(task.name)
                         running_jobs.append(task)
                         n_tasks_analysis += 1
                         continue
 
                     task.poll()  # Checks if output exists
-                    if task.done():
+                    if task.is_done():
                         """
                         Completed or failed. Will be submitted to the pool
                         which will send it back without restarting it.
@@ -358,7 +359,9 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
                     # Did the job reached the memory usage limit?
                     maxmem = task.maxmem
-                    if maxmem is not None and maxmem >= task.scheduler["mem"]:
+                    if (maxmem is not None and
+                            task.executor.memory is not None and
+                            maxmem >= task.executor.memory):
                         mem_err = True
                     else:
                         mem_err = False
@@ -368,8 +371,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
                         try:
                             # Increase memory requirement if needed
-                            while task.scheduler["mem"] < maxmem:
-                                task.scheduler["mem"] *= 1.5
+                            while task.executor.memory < maxmem:
+                                task.executor.memory *= 1.5
                         except TypeError:
                             pass
 
