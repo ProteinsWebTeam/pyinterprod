@@ -99,20 +99,21 @@ def export_xrefs(url: str, outdir: str, emails: dict):
     )
 
     dbcodes = {
-        'B': "SFLD",
-        'F': "PRINTS",
-        'f': "FunFam",
-        'H': "Pfam",
-        'J': "CDD",
-        'M': "PROSITE",
-        'N': "NCBIfam",
-        'P': "PROSITE",
-        'Q': "HAMAP",
-        'R': "SMART",
-        'U': "PIRSF",
-        'V': "PANTHER",
-        'X': "Gene3D",
-        'Y': "SUPFAM",
+        "a": "AntiFam",
+        "B": "SFLD",
+        "F": "PRINTS",
+        "f": "FunFam",
+        "H": "Pfam",
+        "J": "CDD",
+        "M": "PROSITE",
+        "N": "NCBIfam",
+        "P": "PROSITE",
+        "Q": "HAMAP",
+        "R": "SMART",
+        "U": "PIRSF",
+        "V": "PANTHER",
+        "X": "Gene3D",
+        "Y": "SUPFAM",
     }
 
     files = []
