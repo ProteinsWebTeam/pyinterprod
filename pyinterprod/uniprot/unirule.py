@@ -482,6 +482,7 @@ def build_xref_summary(uri: str):
             FRAGMENTS VARCHAR2(400)
         )
         PARTITION BY LIST (DBCODE) (
+          PARTITION PART_A VALUES ('a'),
           PARTITION PART_B VALUES ('B'),
           PARTITION PART_F1 VALUES ('F'),
           PARTITION PART_F2 VALUES ('f'),
@@ -554,7 +555,7 @@ def build_xref_summary(uri: str):
         WHERE MA.MODEL_AC IS NOT NULL 
           AND REGEXP_LIKE(MA.MODEL_AC, '^PTHR\d+:SF\d+$')
         UNION ALL
-        -- FunFams
+        -- AntiFam, FunFam
         SELECT
             FM.DBCODE,
             FM.PROTEIN_AC,
@@ -568,9 +569,10 @@ def build_xref_summary(uri: str):
             'T',
             NULL,
             NULL
-        FROM INTERPRO.FEATURE_MATCH PARTITION (FUNFAM) FM
+        FROM INTERPRO.FEATURE_MATCH FM
         INNER JOIN INTERPRO.FEATURE_METHOD ME
             ON FM.METHOD_AC = ME.METHOD_AC
+        WHERE FM.DBCODE IN ('a', 'f')
         """
     )
 
