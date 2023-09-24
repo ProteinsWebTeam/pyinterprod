@@ -35,7 +35,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
         Task(
             fn=pronto.match.import_pdb_matches,
             args=(ora_pdbe_uri, ora_ipr_uri, pg_ipr_uri),
-            name="import-structures",
+            name="structures",
             scheduler=dict(type="lsf", mem=1000, queue=lsf_queue)
         ),
 
@@ -138,7 +138,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             scheduler=dict(type="lsf", queue=lsf_queue),
             requires=["taxonomy", "index-signature2proteins", "index-matches",
                       "proteins", "proteins-similarities", "proteomes",
-                      "annotations", "signatures"]
+                      "annotations", "signatures", "structures"]
         ),
     ]
 
