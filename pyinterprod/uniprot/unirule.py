@@ -631,11 +631,11 @@ Subject
 -------
 Protein update {release} completed: please refresh IPREADU
 
-Body (change text between square brackets)
-------------------------------------------
+Body (replace [DATE-TIME] by snapshot date/time)
+------------------------------------------------
 Dear UniProt team,
 
-You may refresh IPREADU with the snapshot of IPPRO from [date/time].
+You may refresh IPREADU with the snapshot of IPPRO from [DATE-TIME]
 
 The max UPI we processed up to in this update is {max_upi}.
 """
