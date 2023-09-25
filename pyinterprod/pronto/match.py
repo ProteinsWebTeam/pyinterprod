@@ -288,6 +288,7 @@ def _populate_signature2protein(url: str, names_db: str, matches_file: str,
             for row in proteins:
                 copy.write_row(row)
 
+    con.commit()
     con.close()
 
 
@@ -511,6 +512,7 @@ def insert_fmatches(ora_uri: str, pg_uri: str):
             for row in _get_fmatches(ora_uri, name2id):
                 copy.write_row(row)
 
+    con.commit()
     con.close()
     logger.info("done")
 
@@ -595,6 +597,7 @@ def _populate_matches(url: str, matches_file: str, src: Queue, dst: Queue):
             for row in matches:
                 copy.write_row(row)
 
+    con.commit()
     con.close()
 
 
