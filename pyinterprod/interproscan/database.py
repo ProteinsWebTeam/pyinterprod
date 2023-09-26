@@ -300,7 +300,7 @@ def update_job(cur: oracledb.Cursor, analysis_id: int, upi_from: str,
             AND END_TIME IS NULL
         """,
         [task.submit_time, task.start_time, task.end_time, task.maxmem,
-         int(task.scheduler["mem"]), task.cputime, analysis_id, upi_from,
+         task.executor.memory, task.cputime, analysis_id, upi_from,
          upi_to]
     )
     cur.connection.commit()

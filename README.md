@@ -365,7 +365,7 @@ The optional arguments are:
 </tr>
 <tr>
     <td><a href="#ipr-pronto-tasks">Pronto</a></td>
-    <td>Update the Pronto PostgreSQL table</td>
+    <td>Update the Pronto PostgreSQL tables</td>
     <td>update-matches</td>
 </tr>
 <tr>
@@ -468,6 +468,11 @@ The optional arguments are:
     <tr>
         <td>taxonomy</td>
         <td>Import UniProt taxonomy</td>
+        <td></td>
+    </tr>
+    <tr>
+        <td>structures</td>
+        <td>Import structural matches</td>
         <td></td>
     </tr>
 </tbody>
