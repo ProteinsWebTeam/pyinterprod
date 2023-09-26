@@ -93,8 +93,8 @@ def create_custom_hmm(cur: oracledb.Cursor, tsvfile: str, txtfile: str,
             if line[:2] == "//":
                 model_acc = reg_acc.search(buffer).group(1)
                 if model_acc in models:
-                    # desc = models[model_acc].description
-                    # buffer = reg_desc.sub(replace_desc(desc), buffer)
+                    desc = models[model_acc].description
+                    buffer = reg_desc.sub(replace_desc(desc), buffer)
                     print(buffer, end="")
 
                 buffer = ""
@@ -102,8 +102,8 @@ def create_custom_hmm(cur: oracledb.Cursor, tsvfile: str, txtfile: str,
         if buffer:
             model_acc = reg_acc.search(buffer).group(1)
             if model_acc in models:
-                # desc = models[model_acc].description
-                # buffer = reg_desc.sub(replace_desc(desc), buffer)
+                desc = models[model_acc].description
+                buffer = reg_desc.sub(replace_desc(desc), buffer)
                 print(buffer, end="")
 
 
