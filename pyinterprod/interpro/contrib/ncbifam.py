@@ -1,5 +1,6 @@
+from argparse import ArgumentParser
+from configparser import ConfigParser
 import re
-import sys
 
 import oracledb
 
@@ -14,14 +15,20 @@ def parse_tsv(tsvfile: str):
                 yield line.split("\t")
 
 
-def get_signatures(tsvfile: str, txtfile: str) -> list[Method]:
+def get_signatures(cur: oracledb.Cursor, tsvfile: str,
+                   txtfile: str, keep_integrated: bool = True) -> list[Method]:
     """Parse NCBIfam TSV file
     https://ftp.ncbi.nlm.nih.gov/hmm/current/hmm_PGAP.tsv
-
+    :param cur: Oracle cursor
     :param tsvfile: Path to TSV file
     :param txtfile: Path to TXT file of families to import
+    :param keep_integrated: If True, keep integrated signatures
+           even if they are not in the list of models to import
     :return:
     """
+    cur.execute("SELECT METHOD_AC FROM INTERPRO.ENTRY2METHOD")
+    integrated = {signature_acc for signature_acc, in cur.fetchall()}
+
     to_import = set()
     with open(txtfile, "rt") as fh:
         for model_acc in map(str.rstrip, fh):
@@ -30,10 +37,11 @@ def get_signatures(tsvfile: str, txtfile: str) -> list[Method]:
     methods = []
     for values in parse_tsv(tsvfile):
         model_acc = values[0]
-        if model_acc not in to_import:
-            continue
+        signature_acc, model_version = model_acc.split(".")
 
-        signature_acc = model_acc.split(".")[0]
+        if model_acc not in to_import:
+            if signature_acc not in integrated or not keep_integrated:
+                continue
 
         name = values[2]
         _type = values[6]
@@ -70,8 +78,9 @@ def get_signatures(tsvfile: str, txtfile: str) -> list[Method]:
     return methods
 
 
-def create_custom_hmm(tsvfile: str, txtfile: str, hmmfile: str):
-    models = {m.model: m for m in get_signatures(tsvfile, txtfile)}
+def create_custom_hmm(cur: oracledb.Cursor, tsvfile: str, txtfile: str,
+                      hmmfile: str):
+    models = {m.model: m for m in get_signatures(cur, tsvfile, txtfile)}
 
     reg_acc = re.compile(r"^ACC\s+(\w+\.\d+)$", flags=re.M)
     reg_desc = re.compile(r"^(DESC\s+)(.+)$", flags=re.M)
@@ -144,10 +153,29 @@ def update_go_terms(uri: str, tsvfile: str):
 
 
 def main():
-    tsvfile = sys.argv[1]
-    txtfile = sys.argv[2]
-    hmmfile = sys.argv[3]
-    create_custom_hmm(tsvfile, txtfile, hmmfile)
+    parser = ArgumentParser(description="create a custom NCBIfam "
+                                        "HMM file for InterProScan")
+    parser.add_argument("config", help="configuration file")
+    args = parser.parse_args()
+
+    config = ConfigParser()
+    config.read(args.config)
+    uri = config["oracle"]["ipro-interpro"]
+
+    options = ConfigParser()
+    options.read(config["misc"]["members"])
+
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+
+    try:
+        create_custom_hmm(cur,
+                          options["ncbifam"]["signatures"],
+                          options["ncbifam"]["triage"],
+                          options["ncbifam"]["hmm"])
+    finally:
+        cur.close()
+        con.close()
 
 
 if __name__ == "__main__":
