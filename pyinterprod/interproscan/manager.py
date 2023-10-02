@@ -4,9 +4,9 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable
 
-import cx_Oracle
+import oracledb
 from mundone import Pool, Task
 from mundone.states import PENDING, RUNNING
 
@@ -78,11 +78,11 @@ class TaskFactory:
     config: dict
     match_table: str
     persist_matches: Callable
-    site_table: Optional[str] = None
-    persist_sites: Optional[Callable] = None
-    keep_files: Optional[str] = None
-    scheduler: Optional[str] = None
-    queue: Optional[str] = None
+    site_table: str | None = None
+    persist_sites: Callable | None = None
+    keep_files: str | None = None
+    scheduler: str | None = None
+    queue: str | None = None
 
     def make(self, upi_from: str, upi_to: str) -> Task:
         return Task(
@@ -104,10 +104,10 @@ class TaskFactory:
                         keep_files=self.keep_files,
                         timeout=self.config["job_timeout"]),
             name=self.make_name(upi_from, upi_to),
-            scheduler=dict(cpu=self.config["job_cpu"],
-                           mem=self.config["job_mem"],
-                           type=self.scheduler,
+            scheduler=dict(type=self.scheduler,
                            queue=self.queue,
+                           cpu=self.config["job_cpu"],
+                           mem=self.config["job_mem"],
                            hours=self.config["job_timeout"]),
             random_suffix=False
         )
@@ -136,7 +136,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     to_run = kwargs.get("analyses", [])
     to_exclude = kwargs.get("exclude", [])
 
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     # Find analyses to run
@@ -248,13 +248,13 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     # Checks if the associated job is running
                     if task.name in name2id:
                         # It is!
-                        task.jobid = name2id.pop(task.name)
+                        task.executor.id = name2id.pop(task.name)
                         running_jobs.append(task)
                         n_tasks_analysis += 1
                         continue
 
                     task.poll()  # Checks if output exists
-                    if task.done():
+                    if task.is_done():
                         """
                         Completed or failed. Will be submitted to the pool
                         which will send it back without restarting it.
@@ -293,9 +293,14 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     n_tasks_analysis += 1
                     continue
 
-                pending_jobs.append(factory.make(upi_from, upi_to))
                 database.add_job(cur, analysis_id, upi_from, upi_to)
-                n_tasks_analysis += 1
+
+                if count_sequences(cur, upi_from, upi_to) > 0:
+                    pending_jobs.append(factory.make(upi_from, upi_to))
+                    n_tasks_analysis += 1
+                else:
+                    database.set_job_done(cur, analysis_id, upi_from, upi_to, 0)
+                    con.commit()
 
             logger.debug(f"{name} {version}: {n_tasks_analysis} tasks")
 
@@ -363,7 +368,9 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
                     # Did the job reached the memory usage limit?
                     maxmem = task.maxmem
-                    if maxmem is not None and maxmem >= task.scheduler["mem"]:
+                    if (maxmem is not None and
+                            task.executor.memory is not None and
+                            maxmem >= task.executor.memory):
                         mem_err = True
                     else:
                         mem_err = False
@@ -373,8 +380,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
                         try:
                             # Increase memory requirement if needed
-                            while task.scheduler["mem"] < maxmem:
-                                task.scheduler["mem"] *= 1.5
+                            while task.executor.memory < maxmem:
+                                task.executor.memory *= 1.5
                         except TypeError:
                             pass
 
@@ -408,6 +415,19 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             logger.info("complete")
 
 
+def count_sequences(cur: oracledb.Cursor, upi_from: str, upi_to: str) -> int:
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM UNIPARC.PROTEIN
+        WHERE UPI BETWEEN :1 AND :2
+        """,
+        [upi_from, upi_to]
+    )
+    cnt, = cur.fetchone()
+    return cnt
+
+
 def export_fasta(uri: str, fasta_file: str, upi_from: str, upi_to: str) -> int:
     num_sequences = 0
     with open(fasta_file, "wt") as fh:
@@ -420,7 +440,7 @@ def export_fasta(uri: str, fasta_file: str, upi_from: str, upi_to: str) -> int:
             FROM UNIPARC.PROTEIN
             WHERE UPI BETWEEN :1 AND :2
             """,
-            (upi_from, upi_to)
+            [upi_from, upi_to]
         )
 
         for upi, seq_short, seq_long in cur:
@@ -439,8 +459,8 @@ def export_fasta(uri: str, fasta_file: str, upi_from: str, upi_to: str) -> int:
 
 
 def run_i5(i5_dir: str, fasta_file: str, analysis_name: str, output: str,
-           cpu: Optional[int] = None, temp_dir: Optional[str] = None,
-           timeout: Optional[int] = None) -> tuple[bool, str, str]:
+           cpu: int | None = None, temp_dir: str | None = None,
+           timeout: int | None = None) -> tuple[bool, str, str]:
     args = [
         os.path.join(i5_dir, "interproscan.sh"),
         "-i", fasta_file,
@@ -472,9 +492,9 @@ def run_i5(i5_dir: str, fasta_file: str, analysis_name: str, output: str,
 
 def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             outdir: str, analysis_id: int, match_table: str,
-            persist_matches: Callable, site_table: Optional[str],
-            persist_sites: Optional[Callable], cpu: Optional[int] = None,
-            keep_files: Optional[str] = None, timeout: Optional[int] = None):
+            persist_matches: Callable, site_table: str | None,
+            persist_sites: Callable | None, cpu: int | None = None,
+            keep_files: str | None = None, timeout: int | None = None):
     try:
         shutil.rmtree(outdir)
     except FileNotFoundError:

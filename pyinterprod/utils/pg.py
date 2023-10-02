@@ -1,52 +1,7 @@
 import re
 import time
-from typing import Any, Iterator
 
-from psycopg2.errors import DiskFull
-
-
-class CsvIO:
-    def __init__(self, records: Iterator, sep: str="\t", null="\\N"):
-        self.records = records
-        self.buffer = ''
-        self.sep = sep
-        self.null = null
-
-    def readline(self):
-        try:
-            record = next(self.records)
-        except StopIteration:
-            return ''
-        else:
-            return self.sep.join(map(self.format, record)) + '\n'
-
-    def read(self, size: int=-1):
-        output = ""
-        if size is None or size < 0:
-            while True:
-                line = self.readline()
-                if line:
-                    output += line
-                else:
-                    break
-        else:
-            output = self.buffer
-            while len(output) < size:
-                line = self.readline()
-                if line:
-                    output += line
-                else:
-                    break
-
-            self.buffer = output[size:]
-            output = output[:size]
-        return output
-
-    def format(self, value: Any):
-        if value is None:
-            return self.null
-        else:
-            return str(value).replace('\n', '\\n')
+from psycopg.errors import DiskFull
 
 
 def url2dict(url: str) -> dict:
@@ -86,3 +41,16 @@ def cluster(con, table: str, index: str, **kwargs):
             else:
                 con.commit()
                 break
+
+
+def get_primary_key(cur, table: str):
+    cur.execute(
+        """
+        SELECT constraint_name
+        FROM information_schema.table_constraints
+        WHERE lower(table_name) = %s AND constraint_type = 'PRIMARY KEY'        
+        """,
+        [table.lower()]
+    )
+    row = cur.fetchone()
+    return row[0] if row else None

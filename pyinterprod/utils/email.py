@@ -2,10 +2,9 @@ import mimetypes
 import os
 from email.message import EmailMessage
 from smtplib import SMTP
-from typing import Sequence
 
 
-def send(info: dict, to: Sequence[str], subject: str, content: str, **kwargs):
+def send(info: dict, to: list[str], subject: str, content: str, **kwargs):
     cc = kwargs.get("cc", [])
     bcc = kwargs.get("bcc", [])
     attachments = kwargs.get("attachments", [])

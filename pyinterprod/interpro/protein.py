@@ -4,9 +4,8 @@ import sqlite3
 from concurrent import futures
 from dataclasses import dataclass
 from tempfile import mkdtemp, mkstemp
-from typing import List, Optional
 
-import cx_Oracle
+import oracledb
 
 from pyinterprod import logger
 from pyinterprod.utils import Table, oracle as ora
@@ -46,8 +45,8 @@ class Sequence:
                     taxid=self.taxon_id)
 
 
-def export_proteins(url: str, outdir: str, buffer_size: int = 1000000) -> List[str]:
-    con = cx_Oracle.connect(url)
+def export_proteins(url: str, outdir: str, buffer_size: int = 1000000) -> list[str]:
+    con = oracledb.connect(url)
     cur = con.cursor()
     cur.execute(
         """
@@ -85,11 +84,11 @@ def export_proteins(url: str, outdir: str, buffer_size: int = 1000000) -> List[s
 
 
 def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
-                  data_dir: str, tmpdir: Optional[str] = None):
+                  data_dir: str, tmpdir: str | None = None):
     os.makedirs(data_dir, exist_ok=True)
     workdir = mkdtemp(dir=tmpdir)
 
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     old_version, = cur.fetchone()
@@ -129,7 +128,7 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
     size = os.path.getsize(database) + sum(map(os.path.getsize, files))
 
     logger.info("tracking changes")
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
     ora.truncate_table(cur, "INTERPRO.PROTEIN_CHANGES")
     ora.truncate_table(cur, "INTERPRO.PROTEIN_TO_DELETE")
@@ -305,7 +304,7 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
 
 def delete_obsoletes(url: str, truncate: bool = False, threads: int = 8,
                      step: int = 10000):
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
 
     # Count the protein to delete
@@ -340,7 +339,7 @@ def delete_obsoletes(url: str, truncate: bool = False, threads: int = 8,
 
         try:
             ora.toggle_constraint(cur, table, constraint, False)
-        except cx_Oracle.DatabaseError as exc:
+        except oracledb.DatabaseError as exc:
             logger.error(exc)
             num_errors += 1
 
@@ -390,7 +389,7 @@ def delete_obsoletes(url: str, truncate: bool = False, threads: int = 8,
             raise RuntimeError(f"{num_errors} tables failed")
 
     logger.info("enabling referential constraints")
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
     num_errors = 0
     constraints = set()
@@ -406,7 +405,7 @@ def delete_obsoletes(url: str, truncate: bool = False, threads: int = 8,
 
         try:
             ora.toggle_constraint(cur, table, constraint, True)
-        except cx_Oracle.DatabaseError as exc:
+        except oracledb.DatabaseError as exc:
             logger.error(exc)
             num_errors += 1
 
@@ -426,9 +425,9 @@ def delete_obsoletes(url: str, truncate: bool = False, threads: int = 8,
     logger.info("complete")
 
 
-def iterative_delete(url: str, table: str, partition: Optional[str],
+def iterative_delete(url: str, table: str, partition: str | None,
                      column: str, step: int, stop: int) -> int:
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
 
     if partition:
@@ -472,7 +471,7 @@ def iterative_delete(url: str, table: str, partition: Optional[str],
     return num_rows
 
 
-def check_proteins(cur: cx_Oracle.Cursor) -> int:
+def check_proteins(cur: oracledb.Cursor) -> int:
     num_errors = 0
     cur.execute(
         """
@@ -512,7 +511,7 @@ def check_proteins(cur: cx_Oracle.Cursor) -> int:
 
 
 def check_proteins_to_scan(url: str):
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
 
     logger.info("checking for errors")

@@ -5,10 +5,9 @@ import pickle
 import shutil
 from datetime import datetime
 from tempfile import mkdtemp
-from typing import Sequence
 from zipfile import ZipFile, ZIP_DEFLATED
 
-import cx_Oracle
+import oracledb
 
 from pyinterprod.utils import email
 from pyinterprod.pronto.signature import get_swissprot_descriptions
@@ -20,7 +19,7 @@ MIN_ENTRY_CHANGE = 0.5
 MIN_SIGNATURE_CHANGE = 0.1
 
 
-def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
+def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                           data_dir: str, pronto_link: str, emails: dict):
     # Get Swiss-Prot descriptions (after the update)
     all_sig2descs = get_swissprot_descriptions(pg_url)
@@ -34,7 +33,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: Sequence[Database],
         id2dst[db.identifier] = os.path.join(tmpdir, name)
         os.mkdir(id2dst[db.identifier])
 
-    con = cx_Oracle.connect(ora_url)
+    con = oracledb.connect(ora_url)
     cur = con.cursor()
     cur.execute(
         """
@@ -299,7 +298,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                             pronto_link: str, emails: dict):
     pronto_link = pronto_link.rstrip('/')
 
-    con = cx_Oracle.connect(ora_url)
+    con = oracledb.connect(ora_url)
     cur = con.cursor()
     cur.execute("SELECT METHOD_AC, ENTRY_AC FROM INTERPRO.ENTRY2METHOD")
     integrated = dict(cur.fetchall())

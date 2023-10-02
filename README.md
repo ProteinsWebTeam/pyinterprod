@@ -6,7 +6,8 @@ A centralised Python implementation of InterPro production procedures.
 
 ### Requirements:
 
-- Python 3.9+, with packages `cx_Oracle`, `psycopg2`, and `mundone` ([link](https://github.com/matthiasblum/mundone))
+- Python 3.11+, with packages `oracledb`, `mysqlclient`, `psycopg3`, 
+  and `mundone` ([link](https://github.com/matthiasblum/mundone))
 - `GCC` with the `sqlite3.h` header
 
 ### Installation
@@ -364,7 +365,7 @@ The optional arguments are:
 </tr>
 <tr>
     <td><a href="#ipr-pronto-tasks">Pronto</a></td>
-    <td>Update the Pronto PostgreSQL table</td>
+    <td>Update the Pronto PostgreSQL tables</td>
     <td>update-matches</td>
 </tr>
 <tr>
@@ -467,6 +468,11 @@ The optional arguments are:
     <tr>
         <td>taxonomy</td>
         <td>Import UniProt taxonomy</td>
+        <td></td>
+    </tr>
+    <tr>
+        <td>structures</td>
+        <td>Import structural matches</td>
         <td></td>
     </tr>
 </tbody>

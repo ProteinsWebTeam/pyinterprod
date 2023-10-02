@@ -1,5 +1,5 @@
-import cx_Oracle
-import psycopg2
+import oracledb
+import psycopg
 
 from pyinterprod import logger
 from pyinterprod.utils.pg import url2dict
@@ -24,13 +24,14 @@ DATABASES = [
     'd',    # Pfam-N
     'f',    # FunFam
     'g',    # MobiDB
+    'l',    # ELM
     'u',    # UniProtKB
 ]
 
 
 def import_databases(ora_url: str, pg_url: str):
     logger.info("populating")
-    pg_con = psycopg2.connect(**url2dict(pg_url))
+    pg_con = psycopg.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("DROP TABLE IF EXISTS database")
         pg_cur.execute(
@@ -47,7 +48,7 @@ def import_databases(ora_url: str, pg_url: str):
             """
         )
 
-        ora_con = cx_Oracle.connect(ora_url)
+        ora_con = oracledb.connect(ora_url)
         ora_cur = ora_con.cursor()
         ora_cur.execute(
             f"""
@@ -84,13 +85,13 @@ def import_databases(ora_url: str, pg_url: str):
 
 def set_ready(pg_url: str):
     logger.info("updating status")
-    pg_con = psycopg2.connect(**url2dict(pg_url))
+    pg_con = psycopg.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute(
             f"""
                 UPDATE database 
-                SET ready='true'
-                WHERE NAME='interpro'
+                SET ready = 'true'
+                WHERE NAME = 'interpro'
             """
         )
         pg_con.commit()

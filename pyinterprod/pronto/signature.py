@@ -2,20 +2,17 @@ import math
 import pickle
 from multiprocessing import Process, Queue
 
-import cx_Oracle
-import psycopg2
-from psycopg2.extras import execute_values
+import oracledb
+import psycopg
 
 from pyinterprod import logger
 from pyinterprod.utils.oracle import clob_as_str
-from pyinterprod.utils.pg import url2dict, CsvIO
+from pyinterprod.utils.pg import url2dict
 from .match import INDEX_SUFFIX, merge_overlapping
 
 
 """
-At least 50% of the residues of the shortest signature
-  must overlap the other signature
-(shorted signature = signature with the least residues in the protein)
+At least 50% of the shortest match must overlap with the other match
 """
 _MIN_OVERLAP = 0.5
 
@@ -41,12 +38,11 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                 prot_acc, is_rev, is_comp, left_num, matches = pickle.load(fh)
 
                 # Merge overlapping hits
-                for signature_acc, (_, hits) in matches.items():
-                    matches[signature_acc] = sorted(merge_overlapping(hits))
-                if not is_comp:
-                    # Ignore fragmented proteins
-                    continue
-
+                for signature_acc, models in matches.items():
+                    for model_acc, (_, hits) in models.items():
+                        hits = sorted(merge_overlapping(hits))
+                        matches[signature_acc] = hits
+                            
                 for signature_acc in matches:
                     """
                     Count the number of proteins,
@@ -60,6 +56,7 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                             0,  # number of reviewed proteins
                             0,  # number of complete proteins
                             0,  # number of complete reviewed proteins
+                            0,  # number of complete single-domain proteins
                             0,  # number of residues in complete proteins
                         ]
                         comparisons[signature_acc] = {}
@@ -80,7 +77,11 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
 
                     # Number of residues covered by the signature's matches
                     residues_1 = sum(end - start + 1 for start, end in locs_1)
-                    sig[4] += residues_1
+                    sig[5] += residues_1
+
+                    if len(matches) == 1:
+                        sig[4] += 1
+                        continue
 
                     for other_acc in matches:
                         if other_acc <= signature_acc:
@@ -201,7 +202,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
 
     # Load signatures from Oracle
     logger.info("loading signatures")
-    con = cx_Oracle.connect(ora_uri)
+    con = oracledb.connect(ora_uri)
     cur = con.cursor()
     cur.outputtypehandler = clob_as_str
     cur.execute(
@@ -219,7 +220,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
     cur.close()
     con.close()
 
-    con = psycopg2.connect(**url2dict(pg_uri))
+    con = psycopg.connect(**url2dict(pg_uri))
     with con.cursor() as cur:
         cur.execute("SELECT name, id FROM database")
         name2id = dict(cur.fetchall())
@@ -240,7 +241,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 row[3],             # description
                 row[4],             # type
                 row[5] or row[6],   # abstract
-                *signatures.get(signature_acc, [0] * 5)
+                *signatures.get(signature_acc, [0] * 6)
             ))
 
         cur.execute("DROP TABLE IF EXISTS signature")
@@ -258,13 +259,30 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 num_reviewed_sequences INTEGER NOT NULL,
                 num_complete_sequences INTEGER NOT NULL,
                 num_complete_reviewed_sequences INTEGER NOT NULL,
+                num_complete_single_domain_sequences INTEGER NOT NULL,
                 num_residues BIGINT NOT NULL
             )
             """
         )
-        execute_values(cur, "INSERT INTO signature VALUES %s", values,
-                       page_size=1000)
-        con.commit()
+
+        sql = """
+            INSERT INTO signature
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+
+        records = []
+        for rec in values:
+            records.append(rec)
+
+            if len(records) == 1000:
+                cur.executemany(sql, records)
+                con.commit()
+                records.clear()
+
+        if records:
+            cur.executemany(sql, records)
+            con.commit()
+            records.clear()
 
         cur.execute(
             """
@@ -287,10 +305,24 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
             """
         )
 
-        cur.copy_from(file=CsvIO(_iter_comparisons(comparisons), sep='|'),
-                      table="comparison",
-                      sep='|')
-        con.commit()
+        sql = """
+            INSERT INTO comparison (signature_acc_1, signature_acc_2, 
+                                    num_collocations, num_overlaps) 
+            VALUES (%s, %s, %s, %s)
+        """
+
+        records = []
+        for row in _iter_comparisons(comparisons):
+            records.append(row)
+            if len(records) == 1000:
+                cur.executemany(sql, records)
+                con.commit()
+                records.clear()
+
+        if records:
+            cur.executemany(sql, records)
+            con.commit()
+            records.clear()
 
         cur.execute(
             """
@@ -317,11 +349,26 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
             """
         )
 
-        records = _iter_predictions(comparisons, signatures)
-        cur.copy_from(file=CsvIO(records, sep='|'),
-                      table="prediction",
-                      sep='|')
-        con.commit()
+        sql = """
+            INSERT INTO prediction (
+                signature_acc_1, signature_acc_2, num_collocations, 
+                num_protein_overlaps, num_residue_overlaps
+            ) 
+            VALUES (%s, %s, %s, %s, %s)
+        """
+
+        records = []
+        for row in _iter_predictions(comparisons, signatures):
+            records.append(row)
+            if len(records) == 1000:
+                cur.executemany(sql, records)
+                con.commit()
+                records.clear()
+
+        if records:
+            cur.executemany(sql, records)
+            con.commit()
+            records.clear()
 
         cur.execute(
             """
@@ -349,8 +396,8 @@ def _iter_predictions(comps: dict[str, dict[str, list[int, int, int]]],
                       sigs: dict[str, list[int, int, int, int, int]]):
     for acc1, others in comps.items():
         for acc2, (collocts, prot_overlaps, res_overlaps) in others.items():
-            _, _, num_proteins1, num_reviewed1, num_residues1 = sigs[acc1]
-            _, _, num_proteins2, num_reviewed2, num_residues2 = sigs[acc2]
+            _, _, num_proteins1, num_reviewed1, _, num_residues1 = sigs[acc1]
+            _, _, num_proteins2, num_reviewed2, _, num_residues2 = sigs[acc2]
 
             num_proteins = min(num_proteins1, num_proteins2)
             if collocts / num_proteins >= _MIN_COLLOCATION:
@@ -359,7 +406,7 @@ def _iter_predictions(comps: dict[str, dict[str, list[int, int, int]]],
 
 
 def get_swissprot_descriptions(pg_url: str) -> dict:
-    con = psycopg2.connect(**url2dict(pg_url))
+    con = psycopg.connect(**url2dict(pg_url))
     with con.cursor() as cur:
         cur.execute(
             """

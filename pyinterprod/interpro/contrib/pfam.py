@@ -14,15 +14,15 @@ _TYPES = {
     "Domain": 'D',
     "Family": 'F',
     "Repeat": 'R',
-    "Coiled-coil": 'U',
-    "Disordered": 'U',
+    "Coiled-coil": 'I',
+    "Disordered": 'O',
     "Motif": 'C'
 }
 
 
-def connect_mysql(url: str) -> MySQLdb.Connection:
-    obj = url2dict(url)
-    # MySQLdb and psycopg2 use different keyword params for password/database
+def connect_mysql(uri: str) -> MySQLdb.Connection:
+    obj = url2dict(uri)
+    # MySQLdb and psycopg use different keyword params for password/database
     obj.update({
         "passwd": obj.pop("password"),
         "db": obj.pop("dbname")
@@ -30,8 +30,8 @@ def connect_mysql(url: str) -> MySQLdb.Connection:
     return MySQLdb.connect(**obj)
 
 
-def get_clans(url: str) -> list[Clan]:
-    con = connect_mysql(url)
+def get_clans(uri: str) -> list[Clan]:
+    con = connect_mysql(uri)
     cur = MySQLdb.cursors.SSCursor(con)
     cur.execute(
         """
@@ -55,7 +55,7 @@ def get_clans(url: str) -> list[Clan]:
 
         clan.members.append({
             "accession": row[4],
-            "score": row[5] / row[3]
+            "score": row[5] / row[3] if row[3] > 0 else 0
         })
 
     cur.close()
@@ -64,40 +64,51 @@ def get_clans(url: str) -> list[Clan]:
     return list(clans.values())
 
 
-class AbstractFormater:
-    def __init__(self, references, citations):
+class AbstractFormatter:
+    def __init__(self,
+                 references: dict[str, dict[int, int]],
+                 citations: dict[int, int]):
         self.refs = references
         self.cite = citations
         self.acc = None
 
-    def update(self, acc, abstract):
+    def update(self, acc: str, abstract: str) -> str:
         self.acc = acc
-        return '<p>' + re.sub(r"\[([\d\s,]+)\]", self.sub, abstract) + '</p>'
+        # abstract = re.sub(r"\[(\d+-\d+)]", self.split_refs, abstract)
+        abstract = re.sub(r"\[([\d\s,]+)]", self.repl_refs, abstract)
+        return abstract
 
-    def sub(self, match):
+    @staticmethod
+    def split_refs(match: re.Match) -> str:
+        start, end = map(int, match.group(1).split("-"))
         refs = []
-        for ref_pos in map(int, map(str.lower, match.group(1).split(','))):
+        for ref_pos in range(start, end + 1):
+            refs.append(str(ref_pos))
+
+        return f"[{', '.join(refs)}]"
+
+    def repl_refs(self, match: re.Match) -> str:
+        refs = []
+        for ref_pos in map(int, map(str.strip, match.group(1).split(','))):
             try:
                 ref_id = self.refs[self.acc][ref_pos]
             except KeyError:
                 logger.error(f"{self.acc}: no reference for {ref_pos}")
-                refs.append("PMID:")
                 continue
 
             try:
                 pmid = self.cite[ref_id]
             except KeyError:
                 logger.error(f"{ref_id}: no PMID")
-                refs.append("PMID:")
                 continue
-            else:
-                refs.append(f"PMID:{pmid}")
 
-        return f"[{', '.join(refs)}]"
+            refs.append(f"PMID:{pmid}")
+
+        return f"[{','.join(refs)}]" if refs else ""
 
 
-def get_signatures(url: str) -> list[Method]:
-    con = connect_mysql(url)
+def get_signatures(uri: str) -> list[Method]:
+    con = connect_mysql(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -114,34 +125,41 @@ def get_signatures(url: str) -> list[Method]:
         """
     )
     references = {}
+    pfam2pmid = {}
     for acc, ref_id, ref_pos in cur:
+        pmid = citations[ref_id]
+
         if acc in references:
             references[acc][ref_pos] = ref_id
+            pfam2pmid[acc].add(pmid)
         else:
             references[acc] = {ref_pos: ref_id}
+            pfam2pmid[acc] = {pmid}
 
     cur.execute(
         """
-        SELECT pfamA_acc, pfamA_id, description, type, comment
+        SELECT pfamA_acc, pfamA_id, description, type, comment, updated
         FROM pfamA
         """
     )
-    entries = {row[0]: row[1:] for row in cur}
+    entries = {row[0]: row[1:] for row in cur.fetchall()}
     cur.close()
     con.close()
 
-    formater = AbstractFormater(references, citations)
+    formatter = AbstractFormatter(references, citations)
     signatures = []
-    for acc in sorted(entries):
-        name, description, long_type, abstract = entries[acc]
+    for acc, obj in entries.items():
+        name, description, long_type, abstract, updated = obj
         short_type = _TYPES[long_type]
 
         if abstract:
-            abstract = formater.update(acc, abstract)
+            abstract = formatter.update(acc, abstract)
         else:
-            abstract = ''
+            abstract = None
 
-        m = Method(acc, short_type, name, description, abstract)
+        m = Method(acc, short_type, name, description, abstract,
+                   date=updated,
+                   references=list(pfam2pmid.get(acc, [])))
         signatures.append(m)
 
     return signatures

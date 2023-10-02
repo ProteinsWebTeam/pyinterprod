@@ -1,4 +1,4 @@
-cx_Oracle>=8.0
-mundone>=0.5.0
-mysqlclient>=1.4.0
-psycopg2>=2.8.4
+mundone~=0.6
+mysqlclient==2.2.0
+oracledb==1.4.1
+psycopg[binary]==3.1.9

@@ -1,9 +1,9 @@
 import random
 import time
-from typing import Callable, Optional, Sequence
+from typing import Callable
 
-from cx_Oracle import connect
-from cx_Oracle import Cursor, DatabaseError, DB_TYPE_CLOB, DB_TYPE_LONG
+from oracledb import connect
+from oracledb import Cursor, DatabaseError, DB_TYPE_CLOB, DB_TYPE_LONG
 
 from pyinterprod import logger
 
@@ -78,7 +78,7 @@ def drop_table(cur: Cursor, name: str, purge: bool = False):
 
 
 def gather_stats(cur: Cursor, schema: str, table: str,
-                 partition: Optional[str] = None):
+                 partition: str | None = None):
     if partition:
         args = (schema, table, partition)
     else:
@@ -238,7 +238,7 @@ def get_subpartitions(cur: Cursor, schema: str, table: str, partition: str) -> l
     return sorted(subpartitions.values(), key=lambda x: x["position"])
 
 
-def rebuild_index(cur: Cursor, name: str, partition: Optional[str] = None,
+def rebuild_index(cur: Cursor, name: str, partition: str | None = None,
                   parallel: bool = False):
     if partition:
         cur.execute(f"ALTER INDEX {name} REBUILD PARTITION {partition}")
@@ -273,7 +273,7 @@ def truncate_partition(cur: Cursor, table: str, partition: str):
     cur.execute(f"ALTER TABLE {table} TRUNCATE PARTITION {partition}")
 
 
-def catch_temp_error(fn: Callable, args: Sequence, max_attempts: int = 3):
+def catch_temp_error(fn: Callable, args: list, max_attempts: int = 3):
     num_attempts = 0
     while True:
         try:

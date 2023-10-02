@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
 
-import cx_Oracle
-import psycopg2
-from psycopg2.extras import execute_values
+import oracledb
+import psycopg
 
 from pyinterprod import logger
 from pyinterprod.utils.pg import url2dict
 
 
 def import_annotations(ora_url: str, pg_url: str):
-    pg_con = psycopg2.connect(**url2dict(pg_url))
+    pg_con = psycopg.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         for name in ("protein2go", "publication", "term"):
             pg_cur.execute(f"DROP TABLE IF EXISTS {name}")
@@ -49,7 +48,7 @@ def import_annotations(ora_url: str, pg_url: str):
             """
         )
 
-        ora_con = cx_Oracle.connect(ora_url)
+        ora_con = oracledb.connect(ora_url)
         ora_cur = ora_con.cursor()
 
         logger.info("populating: protein2go")
@@ -74,8 +73,24 @@ def import_annotations(ora_url: str, pg_url: str):
             """
         )
 
-        sql = "INSERT INTO protein2go VALUES %s"
-        execute_values(pg_cur, sql, ora_cur, page_size=1000)
+        records = []
+        sql = """
+            INSERT INTO protein2go 
+                (protein_acc, term_id, ref_db_code, ref_db_id) 
+            VALUES (%s, %s, %s, %s)
+        """
+
+        for rec in ora_cur:
+            records.append(rec)
+            if len(records) == 1000:
+                pg_cur.executemany(sql, records)
+                pg_con.commit()
+                records.clear()
+
+        if records:
+            pg_cur.executemany(sql, records)
+            pg_con.commit()
+            records.clear()
 
         logger.info("populating: publication")
         ora_cur.execute(
@@ -95,8 +110,24 @@ def import_annotations(ora_url: str, pg_url: str):
             )
             """
         )
-        sql = "INSERT INTO publication VALUES %s"
-        execute_values(pg_cur, sql, ora_cur, page_size=1000)
+
+        records = []
+        sql = """
+            INSERT INTO publication (id, title, published) 
+            VALUES (%s, %s, %s)
+        """
+
+        for rec in ora_cur:
+            records.append(rec)
+            if len(records) == 1000:
+                pg_cur.executemany(sql, records)
+                pg_con.commit()
+                records.clear()
+
+        if records:
+            pg_cur.executemany(sql, records)
+            pg_con.commit()
+            records.clear()
 
         logger.info("populating: term")
         ora_cur.execute(
@@ -143,16 +174,35 @@ def import_annotations(ora_url: str, pg_url: str):
             """
         )
 
-        sql = "INSERT INTO term VALUES %s"
-        execute_values(pg_cur, sql, ((
-            row[0],
-            row[1],
-            row[2],
-            len(_get_constraints(row[0], ancestors, constraints)),
-            row[3] == 'Y',
-            row[4],
-            row[5]
-        ) for row in ora_cur), page_size=1000)
+        records = []
+        sql = """
+            INSERT INTO term 
+                (id, name, category, num_constraints, is_obsolete, definition, 
+                replaced_id) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+
+        for row in ora_cur:
+            records.append(
+                (
+                    row[0],
+                    row[1],
+                    row[2],
+                    len(_get_constraints(row[0], ancestors, constraints)),
+                    row[3] == "Y",
+                    row[4],
+                    row[5],
+                )
+            )
+
+            if len(records) == 1000:
+                pg_cur.executemany(sql, records)
+                pg_con.commit()
+                records.clear()
+        if records:
+            pg_cur.executemany(sql, records)
+            pg_con.commit()
+            records.clear()
 
         ora_cur.close()
         ora_con.close()

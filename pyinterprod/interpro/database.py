@@ -1,12 +1,12 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-import cx_Oracle
+import oracledb
 
 from .match import MATCH_PARTITIONS, FEATURE_MATCH_PARTITIONS
 
 
-_NOT_IN_ISPRO = ["Pfam-N"]
+_NOT_IN_ISPRO = ["ELM", "Pfam-N"]
 
 
 @dataclass
@@ -25,7 +25,7 @@ def get_databases(uri: str, names: list[str],
                   expects_new: bool = False) -> dict[str, Database]:
     names = {name.lower(): name for name in names}
 
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     cur.execute(
@@ -115,7 +115,7 @@ def get_databases(uri: str, names: list[str],
 
 def update_database(uri: str, name: str, version: str, date: str,
                     by_name: bool = False, confirm: bool = True):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -196,7 +196,7 @@ def update_database(uri: str, name: str, version: str, date: str,
         print("Abort.")
         return
 
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     if (current_version, current_date) != (version, date):

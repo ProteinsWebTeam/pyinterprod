@@ -2,18 +2,18 @@ import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 
 @dataclass
 class Method:
     accession: str
-    sig_type: Optional[str]
-    name: Optional[str] = None
-    description: Optional[str] = None
-    abstract: Optional[str] = None
-    date: Optional[datetime] = None
+    sig_type: str | None
+    name: str | None = None
+    description: str | None = None
+    abstract: str | None = None
+    date: datetime | None = None
     references: list[int] = field(default_factory=list)
+    model: str | None = None
 
 
 @dataclass

@@ -2,9 +2,8 @@
 
 import json
 
-import cx_Oracle
-import psycopg2
-from psycopg2.extras import execute_values
+import oracledb
+import psycopg
 
 from pyinterprod import logger
 from pyinterprod.utils.pg import url2dict
@@ -46,7 +45,7 @@ def get_lineage(taxa: dict, tax_id: int):
 
 def import_taxonomy(ora_url: str, pg_url: str):
     logger.info("loading taxonomy info")
-    ora_con = cx_Oracle.connect(ora_url)
+    ora_con = oracledb.connect(ora_url)
     ora_cur = ora_con.cursor()
     ora_cur.execute(
         """
@@ -74,7 +73,7 @@ def import_taxonomy(ora_url: str, pg_url: str):
     ora_cur.close()
     ora_con.close()
 
-    pg_con = psycopg2.connect(**url2dict(pg_url))
+    pg_con = psycopg.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
         pg_cur.execute("DROP TABLE IF EXISTS taxon")
         pg_cur.execute("DROP TABLE IF EXISTS lineage")
@@ -103,12 +102,28 @@ def import_taxonomy(ora_url: str, pg_url: str):
         )
 
         logger.info("populating: taxon")
-        execute_values(pg_cur, "INSERT INTO taxon VALUES %s", (
-            (tax_id, name, rank, left_num, right_num, parent_id,
-             json.dumps(get_lineage(taxa, tax_id)))
-            for tax_id, (name, rank, left_num, right_num, parent_id)
-            in taxa.items()
-        ), page_size=1000)
+        records = []
+        sql = """
+            INSERT INTO taxon 
+                (id, name, rank, left_number, right_number, parent_id, lineage)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+
+        for tax_id, value in taxa.items():
+            (name, rank, left_num, right_num, parent_id) = value
+            json_lineage = json.dumps(get_lineage(taxa, tax_id))
+            records.append((tax_id, name, rank, left_num,
+                            right_num, parent_id, json_lineage))
+
+            if len(records) == 1000:
+                pg_cur.executemany(sql, records)
+                pg_con.commit()
+                records.clear()
+
+        if records:
+            pg_cur.executemany(sql, records)
+            pg_con.commit()
+            records.clear()
 
         pg_cur.execute(
             """
@@ -118,9 +133,23 @@ def import_taxonomy(ora_url: str, pg_url: str):
         )
 
         logger.info("populating: lineage")
-        execute_values(pg_cur, "INSERT INTO lineage VALUES %s",
-                       iter_lineage(taxa),
-                       page_size=1000)
+        sql = """
+            INSERT INTO lineage (child_id, parent_id, parent_rank) 
+            VALUES (%s, %s, %s)
+        """
+
+        for rec in iter_lineage(taxa):
+            records.append(rec)
+
+            if len(records) == 1000:
+                pg_cur.executemany(sql, records)
+                pg_con.commit()
+                records.clear()
+
+        if records:
+            pg_cur.executemany(sql, records)
+            pg_con.commit()
+            records.clear()
 
         pg_cur.execute(
             """

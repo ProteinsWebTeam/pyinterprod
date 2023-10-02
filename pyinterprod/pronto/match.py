@@ -7,12 +7,12 @@ import pickle
 import shutil
 from multiprocessing import Process, Queue
 from tempfile import mkstemp
-from typing import Optional
 
-import cx_Oracle
-import psycopg2
+import oracledb
+import psycopg
 
 from pyinterprod import logger
+from pyinterprod.pdbe import get_sifts_mapping
 from pyinterprod.utils import pg
 from pyinterprod.utils.kvdb import KVdb
 
@@ -24,7 +24,7 @@ INDEX_SUFFIX = ".i"
 
 
 def export(url: str, output: str, cachesize: int = 10000000,
-           tmpdir: Optional[str] = None):
+           tmpdir: str | None = None):
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
@@ -66,8 +66,8 @@ def export(url: str, output: str, cachesize: int = 10000000,
 
 
 def _export_matches(url: str, cachesize: int,
-                    tmpdir: Optional[str] = None) -> list[str]:
-    con = cx_Oracle.connect(url)
+                    tmpdir: str | None = None) -> list[str]:
+    con = oracledb.connect(url)
     cur = con.cursor()
 
     # Loading databases
@@ -90,8 +90,8 @@ def _export_matches(url: str, cachesize: int,
 
     cur.execute(
         """
-        SELECT P.PROTEIN_AC, P.DBCODE, P.FRAGMENT, P.TAX_ID, 
-               M.METHOD_AC, M.DBCODE, M.FRAGMENTS, M.POS_FROM, M.POS_TO
+        SELECT P.PROTEIN_AC, P.DBCODE, P.FRAGMENT, P.TAX_ID, M.METHOD_AC, 
+            M.DBCODE, M.FRAGMENTS, M.POS_FROM, M.POS_TO, M.MODEL_AC
         FROM INTERPRO.MATCH M
         INNER JOIN INTERPRO.PROTEIN P 
             ON P.PROTEIN_AC = M.PROTEIN_AC
@@ -123,7 +123,8 @@ def _export_matches(url: str, cachesize: int,
         obj[3].append((
             row[4],  # match accession
             databases[row[5]],  # match DB
-            fragments
+            fragments,
+            row[9] if row[5] == 'V' else row[4]  # used for PANTHER subfamilies
         ))
 
         i += 1
@@ -142,7 +143,7 @@ def _export_matches(url: str, cachesize: int,
     return files
 
 
-def _dump(data: dict, tmpdir: Optional[str] = None) -> str:
+def _dump(data: dict, tmpdir: str | None = None) -> str:
     fd, file = mkstemp(dir=tmpdir)
     os.close(fd)
     with gzip.open(file, "wb", compresslevel=6) as fh:
@@ -167,11 +168,16 @@ def _merge_matches(files: list[str]):
             is_reviewed, is_complete, left_number, _ = value
             matches = {}
 
-        for signature_acc, signature_db, fragments in value[3]:
-            if signature_acc in matches:
-                matches[signature_acc][1].append(fragments)
-            else:
-                matches[signature_acc] = (signature_db, [fragments])
+        for signature_acc, signature_db, fragments, model_acc in value[3]:
+            try:
+                models = matches[signature_acc]
+            except KeyError:
+                models = matches[signature_acc] = {}
+
+            try:
+                models[model_acc][1].append(fragments)
+            except KeyError:
+                models[model_acc] = (signature_db, [fragments])
 
     yield protein_acc, is_reviewed, is_complete, left_number, matches
 
@@ -193,7 +199,7 @@ def iter_util_eof(file: str, compressed: bool):
 
 
 def insert_signature2protein(url: str, names_db: str, matches_file: str,
-                             processes: int = 1, tmpdir: Optional[str] = None):
+                             processes: int = 1, tmpdir: str | None = None):
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
@@ -203,13 +209,14 @@ def insert_signature2protein(url: str, names_db: str, matches_file: str,
     shutil.copyfile(names_db, tmp_db)
 
     logger.info("creating signature2protein")
-    con = psycopg2.connect(**pg.url2dict(url))
+    con = psycopg.connect(**pg.url2dict(url))
     with con.cursor() as cur:
         cur.execute("DROP TABLE IF EXISTS signature2protein")
         cur.execute(
             """
             CREATE TABLE signature2protein (
                 signature_acc VARCHAR(25) NOT NULL,
+                model_acc VARCHAR(25),
                 protein_acc VARCHAR(15) NOT NULL,
                 is_reviewed BOOLEAN NOT NULL,
                 taxon_left_num INTEGER NOT NULL,
@@ -266,14 +273,22 @@ def insert_signature2protein(url: str, names_db: str, matches_file: str,
 
 def _populate_signature2protein(url: str, names_db: str, matches_file: str,
                                 src: Queue, dst: Queue):
-    con = psycopg2.connect(**pg.url2dict(url))
+    con = psycopg.connect(**pg.url2dict(url))
     with con.cursor() as cur:
         proteins = _iter_proteins(names_db, matches_file, src, dst)
-        cur.copy_from(file=pg.CsvIO(proteins, sep='|'),
-                      table="signature2protein",
-                      sep='|')
-        con.commit()
 
+        sql = """
+            COPY signature2protein 
+                (signature_acc, model_acc, protein_acc, is_reviewed, 
+                taxon_left_num, name_id, md5) 
+            FROM STDIN
+        """
+
+        with cur.copy(sql) as copy:
+            for row in proteins:
+                copy.write_row(row)
+
+    con.commit()
     con.close()
 
 
@@ -292,7 +307,13 @@ def _iter_proteins(names_db: str, matches_file: str, src: Queue, dst: Queue):
                 md5 = _hash_matches(matches)
 
                 for sig_acc in matches:
-                    yield sig_acc, prot_acc, is_rev, left_num, name_id, md5
+                    for model_acc in matches[sig_acc]:
+                        if matches[sig_acc][model_acc][0] == 'panther':
+                            yield (sig_acc, model_acc, prot_acc, is_rev, 
+                                   left_num, name_id, md5)
+                        else:
+                            yield (sig_acc, None, prot_acc, is_rev, 
+                                   left_num, name_id, md5)
 
             dst.put(count)
 
@@ -301,10 +322,11 @@ def _hash_matches(matches: dict[str, tuple[str, list[str]]]) -> str:
     # Flatten all matches
     locations = []
 
-    for signature_acc, (_, hits) in matches.items():
-        for start, end in merge_overlapping(hits):
-            locations.append((start, signature_acc))
-            locations.append((end, signature_acc))
+    for signature_acc in matches:
+        for model_acc, (_, hits) in matches[signature_acc].items():
+            for start, end in merge_overlapping(hits):
+                locations.append((start, signature_acc))
+                locations.append((end, signature_acc))
 
     """
     Evaluate the protein's match structure,
@@ -399,8 +421,30 @@ def _flatten_hits(hits: list[str]) -> list[tuple[int, int]]:
 
 
 def finalize_signature2protein(uri: str):
-    con = psycopg2.connect(**pg.url2dict(uri))
+    con = psycopg.connect(**pg.url2dict(uri))
     with con.cursor() as cur:
+        logger.info("adding primary key")
+
+        pkey = pg.get_primary_key(cur, "signature2protein")
+        if pkey:
+            # Drop existing PK first
+            cur.execute(
+                f"""
+                ALTER TABLE signature2protein
+                DROP CONSTRAINT {pkey}
+                """
+            )
+            con.commit()
+
+        cur.execute(
+            """
+            ALTER TABLE signature2protein
+            ADD CONSTRAINT signature2protein_pk
+            PRIMARY KEY (signature_acc, protein_acc)
+            """
+        )
+        con.commit()
+
         logger.info("indexing")
 
         logger.info("\tprotein_acc")
@@ -431,7 +475,7 @@ def finalize_signature2protein(uri: str):
 
 
 def create_match_table(uri: str):
-    con = psycopg2.connect(**pg.url2dict(uri))
+    con = psycopg.connect(**pg.url2dict(uri))
     with con.cursor() as cur:
         cur.execute("DROP TABLE IF EXISTS match")
         cur.execute(
@@ -453,22 +497,28 @@ def create_match_table(uri: str):
 def insert_fmatches(ora_uri: str, pg_uri: str):
     logger.info("populating")
 
-    con = psycopg2.connect(**pg.url2dict(pg_uri))
+    con = psycopg.connect(**pg.url2dict(pg_uri))
     with con.cursor() as cur:
         cur.execute("SELECT name, id FROM database")
         name2id = dict(cur.fetchall())
 
-        cur.copy_from(file=pg.CsvIO(_get_fmatches(ora_uri, name2id), sep="|"),
-                      table="match",
-                      sep="|")
-        con.commit()
+        sql = """
+            COPY match 
+                (protein_acc, signature_acc, database_id, fragments) 
+            FROM STDIN
+        """
 
+        with cur.copy(sql) as copy:
+            for row in _get_fmatches(ora_uri, name2id):
+                copy.write_row(row)
+
+    con.commit()
     con.close()
     logger.info("done")
 
 
 def _get_fmatches(uri: str, name2id: dict[str, int]):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -531,17 +581,23 @@ def insert_matches(uri: str, matches_file: str, processes: int = 1):
 
 
 def _populate_matches(url: str, matches_file: str, src: Queue, dst: Queue):
-    con = psycopg2.connect(**pg.url2dict(url))
+    con = psycopg.connect(**pg.url2dict(url))
     with con.cursor() as cur:
         cur.execute("SELECT name, id FROM database")
         name2id = dict(cur.fetchall())
-
         matches = _iter_matches(matches_file, name2id, src, dst)
-        cur.copy_from(file=pg.CsvIO(matches, sep="|"),
-                      table="match",
-                      sep="|")
-        con.commit()
 
+        sql = """
+            COPY match 
+                (protein_acc, signature_acc, database_id, fragments) 
+            FROM STDIN
+        """
+
+        with cur.copy(sql) as copy:
+            for row in matches:
+                copy.write_row(row)
+
+    con.commit()
     con.close()
 
 
@@ -554,17 +610,18 @@ def _iter_matches(matches_file: str, name2id: dict[str, int],
             for _ in range(count):
                 prot_acc, is_rev, is_comp, left_num, matches = pickle.load(fh)
 
-                for sig_acc, (sig_db, hits) in matches.items():
-                    sig_db_id = name2id[sig_db]
+                for sig_acc in matches:
+                    for model_acc, (sig_db, hits) in matches[sig_acc].items():
+                        sig_db_id = name2id[sig_db]
 
-                    for fragments in hits:
-                        yield prot_acc, sig_acc, sig_db_id, fragments
+                        for fragments in hits:
+                            yield prot_acc, sig_acc, sig_db_id, fragments
 
             dst.put(count)
 
 
 def finalize_match_table(uri: str):
-    con = psycopg2.connect(**pg.url2dict(uri))
+    con = psycopg.connect(**pg.url2dict(uri))
     with con.cursor() as cur:
 
         logger.info("indexing")
@@ -582,3 +639,89 @@ def finalize_match_table(uri: str):
 
     con.close()
     logger.info("done")
+
+
+def iter_pdb_matches(pdbe_uri: str, ipr_uri: str):
+    logger.info("loading SIFTS mapping")
+    pdbe2uniprot = get_sifts_mapping(pdbe_uri)
+
+    logger.info("loading structural matches")
+    con = oracledb.connect(ipr_uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT DISTINCT MA.METHOD_AC, X.AC
+        FROM UNIPARC.XREF X
+        INNER JOIN IPRSCAN.MV_IPRSCAN MA ON X.UPI = MA.UPI
+        INNER JOIN INTERPRO.METHOD ME ON MA.METHOD_AC = ME.METHOD_AC
+        WHERE X.DBID = 21 
+          AND X.DELETED = 'N'
+          AND NOT REGEXP_LIKE(ME.METHOD_AC, '^PTHR\d+:SF\d+$')
+        ORDER BY MA.METHOD_AC
+        """
+    )
+
+    prev = None
+    seen = set()
+    for signature_acc, pdb_chain in cur:
+        if signature_acc != prev:
+            prev = signature_acc
+            seen.clear()
+
+        pdb_id, _ = pdb_chain.split("_")
+
+        for uniprot_acc in pdbe2uniprot.get(pdb_chain, []):
+            if (uniprot_acc, pdb_id) not in seen:
+                yield signature_acc, uniprot_acc, pdb_id
+                seen.add((uniprot_acc, pdb_id))
+
+    cur.close()
+    con.close()
+
+
+def import_pdb_matches(pdbe_ora_uri: str, ipr_ora_uri: str, ipr_pg_uri: str):
+    con = psycopg.connect(**pg.url2dict(ipr_pg_uri))
+    with con.cursor() as cur:
+        cur.execute("DROP TABLE IF EXISTS signature2structure")
+        cur.execute(
+            """
+            CREATE TABLE signature2structure (
+                signature_acc VARCHAR(25) NOT NULL,
+                protein_acc VARCHAR(15) NOT NULL,
+                structure_id VARCHAR(4) NOT NULL
+            )
+            """
+        )
+
+        con.commit()
+
+        sql = """
+            INSERT INTO signature2structure 
+            VALUES (%s, %s, %s)
+        """
+
+        rows = []
+        for row in iter_pdb_matches(pdbe_ora_uri, ipr_ora_uri):
+            rows.append(row)
+
+            if len(rows) == 1000:
+                cur.executemany(sql, rows)
+                con.commit()
+                rows.clear()
+
+        if rows:
+            cur.executemany(sql, rows)
+            con.commit()
+            rows.clear()
+
+        logger.info("indexing")
+        cur.execute(
+            """
+            CREATE INDEX IF NOT EXISTS signature2structure_idx1
+            ON signature2structure (signature_acc, protein_acc)
+            """
+        )
+        con.commit()
+
+    con.commit()
+    logger.info("complete")
