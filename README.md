@@ -63,7 +63,7 @@ All files can be renamed. `main.conf` is passed as an command line argument, and
 - **misc**:
     - **analyses**: path to the `analyses.conf` config file
     - **members**: path to the `members.conf` config file
-    - **scheduler_queue**: scheduler and queue (format: `scheduler:queue`, e.g. `lsf:production`)
+    - **scheduler**: scheduler and queue (format: `scheduler:queue`, e.g. `lsf:production`)
     - **pronto_url**: URL of the Pronto curation application
     - **data_dir**: directory where to store staging files
     - **match_calc_dir**: directory where to run InterProScan match calculation
