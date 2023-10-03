@@ -54,7 +54,10 @@ def get_signatures(cur: oracledb.Cursor, tsvfile: str,
 
         source = values[19]
         hmm_name = values[21]
-        comment = values[22].strip() or None
+        comment = values[22].strip()
+
+        if not comment or comment.lower() == "null":
+            comment = None
 
         if _type == "repeat":
             _type = "R"
