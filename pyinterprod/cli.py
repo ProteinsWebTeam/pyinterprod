@@ -321,7 +321,7 @@ def run_member_db_update():
     emails = dict(config["emails"])
     pronto_url = config["misc"]["pronto_url"]
     data_dir = config["misc"]["data_dir"]
-    scheduler, queue = config["misc"]["scheduler"].split(":")
+    scheduler, queue = parse_scheduler(config["misc"]["scheduler"])
     temp_dir = config["misc"]["temporary_dir"]
     wflow_dir = config["misc"]["workflows_dir"]
 
@@ -570,7 +570,7 @@ def run_pronto_update():
     pg_uri = config["postgresql"]["pronto"]
     uniprot_version = config["uniprot"]["version"]
     data_dir = config["misc"]["data_dir"]
-    scheduler, queue = config["misc"]["scheduler"].split(":")
+    scheduler, queue = parse_scheduler(config["misc"]["scheduler"])
     temp_dir = config["misc"]["temporary_dir"]
     wflow_dir = config["misc"]["workflows_dir"]
 
@@ -630,7 +630,7 @@ def run_uniprot_update():
 
     pronto_url = config["misc"]["pronto_url"]
     data_dir = config["misc"]["data_dir"]
-    scheduler, queue = config["misc"]["scheduler"].split(":")
+    scheduler, queue = parse_scheduler(config["misc"]["scheduler"])
     temp_dir = config["misc"]["temporary_dir"]
     wflow_dir = config["misc"]["workflows_dir"]
 
@@ -1004,7 +1004,7 @@ def run_interproscan_manager():
         job_mem = int(analyses_config["DEFAULT"]["job_mem"])
         job_size = int(analyses_config["DEFAULT"]["job_size"])
         job_timeout = int(analyses_config["DEFAULT"]["job_timeout"])
-        scheduler, queue = config["misc"]["scheduler"].split(":")
+        scheduler, queue = parse_scheduler(config["misc"]["scheduler"])
 
         interproscan.manager.run(uri=iscn_iprscan_uri,
                                  work_dir=config["misc"]["match_calc_dir"],
@@ -1037,3 +1037,12 @@ def run_interproscan_manager():
                                  exclude=args.exclude,
                                  # Debug options
                                  keep_files=args.keep)
+
+
+def parse_scheduler(value: str) -> tuple[str, str | None]:
+    values = value.split(":")
+    if len(values) == 2:
+        return values[0], values[1]
+    elif len(values) == 1:
+        return values[0], None
+    raise ValueError(value)
