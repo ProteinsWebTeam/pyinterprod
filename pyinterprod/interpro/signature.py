@@ -340,23 +340,35 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
         """
     )
 
+    i = 0
+
     for db in databases:
         cur.execute(
             """
-            INSERT INTO INTERPRO.METHOD_TO_DELETE (ID, METHOD_AC)
-            SELECT ROWNUM, METHOD_AC
-            FROM (
-                SELECT METHOD_AC
-                FROM INTERPRO.METHOD
-                WHERE DBCODE = :dbcode
-                MINUS
-                SELECT METHOD_AC
-                FROM INTERPRO.METHOD_STG
-                WHERE DBCODE = :dbcode
-            )
+            SELECT METHOD_AC
+            FROM INTERPRO.METHOD
+            WHERE DBCODE = :dbcode
+            MINUS
+            SELECT METHOD_AC
+            FROM INTERPRO.METHOD_STG
+            WHERE DBCODE = :dbcode
             """,
             dbcode=db.identifier,
         )
+
+        params = []
+        for accession, in cur.fetchall():
+            i += 1
+            params.append((i, accession))
+
+        for j in range(0, len(params), 1000):
+            cur.executemany(
+                """
+                INSERT INTO INTERPRO.METHOD_TO_DELETE (ID, METHOD_AC)
+                VALUES (:1, :2)
+                """,
+                params[j:j+1000]
+            )
 
     con.commit()
     cur.execute(
