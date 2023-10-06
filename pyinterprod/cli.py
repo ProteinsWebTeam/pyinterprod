@@ -387,7 +387,7 @@ def run_member_db_update():
                             force=True,
                             threads=8),
                 name="update-ipm-matches",
-                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12),
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=13),
                 requires=["import-ipm-matches"]
             ),
         ]
