@@ -333,14 +333,17 @@ def run_member_db_update():
     go_sources = []
     for dbname, db in databases.items():
         if db.is_member_db or db.is_feature_db:
-            # We need a source for signatures
-            try:
-                props = options[dbname]
-            except KeyError:
+            props = {}
+
+            # We usually need a source for signatures
+            if dbname in options:
+                model_sources[db.identifier] = options[dbname]
+            elif dbname == "coils":
+                # Exception for feature databases without data files
+                pass
+            else:
                 parser.error(f"{config['misc']['members']}: "
                              f"missing database '{dbname}'")
-
-            model_sources[db.identifier] = props
 
             if db.analysis_id is None:
                 # No analysis ID in ISPRO
