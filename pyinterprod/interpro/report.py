@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import os
 import pickle
 import re
@@ -262,10 +260,9 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
         # New signatures
         with open(os.path.join(dst, "new.tsv"), "wt") as fh:
             fh.write("Signature\tName\tDescription\n")
-            reg_subfam = re.compile(r"(PTHR\d+):SF\d+")
             for acc, name, descr, _type in data["new"]:
-                is_panther = reg_subfam.match(acc)
-                if not is_panther:
+                # Ignore PANTHER subfamilies (won't be integrated)
+                if not re.fullmatch(r"PTHR\d+:SF\d+", acc):
                     fh.write(f"{acc}\t{name or 'N/A'}\t{descr or 'N/A'}\n")
 
     cur.close()
