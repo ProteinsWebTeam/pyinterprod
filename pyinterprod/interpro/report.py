@@ -150,14 +150,17 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             except KeyError:
                 filepath = os.path.join(dst, filename)
                 fh = files[filename] = open(filepath, "wt")
-                fh.write(f"Signature\tLink\tEntry\tType\tName\t# Lost"
+                fh.write(f"Signature\tLink\tEntry\tType\t# Swiss-Prot\tName\t# Lost"
                          f"\t# Gained\tLost\tGained\n")
 
             link = f"{pronto_link}/signatures/{acc}/descriptions/?reviewed"
+            lost_descriptions = ' | '.join([f"{desc} (Sample: {desc2prot[desc][0]})" for desc in sorted(lost)])
+            gained_descriptions = ' | '.join([f"{desc} (Sample: {desc2prot[desc][0]})" for desc in sorted(gained)])
             fh.write(f"{acc}\t{link}\t{entry_acc}\t{types[entry_type]}"
+                     f"{len(entries2prot[entry_acc])}\t"
                      f"\t{entry_name}\t{len(lost)}\t{len(gained)}"
-                     f"\t{' | '.join(sorted(lost))}"
-                     f"\t{' | '.join(sorted(gained))}\n")
+                     f"\t{lost_descriptions}"
+                     f"\t{gained_descriptions}\n")
 
         for fh in files.values():
             fh.close()
@@ -340,16 +343,22 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
     # Load entry -> descriptions AFTER UniProt update
     signatures_now = get_swissprot_descriptions(pg_url)
     entries_now = {}
-    for signature_acc, descriptions in signatures_now.items():
+    desc2prot = {}
+    entries2prot = {}
+    for signature_acc, sp_info in signatures_now.items():
         try:
             entry_acc = integrated[signature_acc]
         except KeyError:
             continue
 
-        try:
-            entries_now[entry_acc] |= descriptions
-        except KeyError:
-            entries_now[entry_acc] = set(descriptions)
+        for description, proteins in sp_info:
+            desc2prot[description] = proteins
+            try:
+                entries_now[entry_acc] |= descriptions
+                entries2prot[entry_acc] |= proteins
+            except KeyError:
+                entries_now[entry_acc] = set(descriptions)
+                entries2prot[entry_acc] = set(proteins)
 
     changes = {}  # key: entry accession, value: (gained, lost)
     for entry_acc, descs_now in entries_now.items():
@@ -368,8 +377,8 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
     # Write entries with changes (by entry type: families, domains, others)
     tmpdir = mkdtemp()
     files = {}
-    header = ("Accession\tLink\tName\tChecked\t# Lost\t# Gained"
-              "\tLost\tGained\n")
+    header = ("Accession\tLink\tName\tChecked\t# Swiss-Prot"
+              "\t# Lost\t# Gained\tLost\tGained\n")
     for entry_acc in sorted(changes):
         gained, lost = changes[entry_acc]
         try:
@@ -392,11 +401,14 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             fh = files[filename] = open(filepath, "wt")
             fh.write(header)
         finally:
+            lost_descriptions = ' | '.join([f"{desc} (Sample: {desc2prot[desc][0]})" for desc in sorted(lost)])
+            gained_descriptions = ' | '.join([f"{desc} (Sample: {desc2prot[desc][0]})" for desc in sorted(gained)])
             fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
                      f"{name}\t{'Yes' if checked_flag == 'Y' else 'No'}\t"
+                     f"{len(entries2prot[entry_acc])}\t"
                      f"{len(lost)}\t{len(gained)}\t"
-                     f"{' | '.join(sorted(lost))}\t"
-                     f"{' | '.join(sorted(gained))}\n")
+                     f"{lost_descriptions}\t"
+                     f"{gained_descriptions}\n")
 
     for fh in files.values():
         fh.close()

@@ -42,7 +42,7 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                     for model_acc, (_, hits) in models.items():
                         hits = sorted(merge_overlapping(hits))
                         matches[signature_acc] = hits
-                            
+
                 for signature_acc in matches:
                     """
                     Count the number of proteins,
@@ -410,19 +410,24 @@ def get_swissprot_descriptions(pg_url: str) -> dict:
     with con.cursor() as cur:
         cur.execute(
             """
-            SELECT DISTINCT s2p.signature_acc, pn.text
+            SELECT
+                signature_acc,
+                text,
+                ARRAY_AGG(DISTINCT protein_acc) AS protein_ids
             FROM interpro.signature2protein s2p
             INNER JOIN interpro.protein_name pn ON s2p.name_id = pn.name_id
-            WHERE s2p.is_reviewed            
+            WHERE s2p.is_reviewed
+            GROUP BY
+                signature_acc, text            
             """
         )
 
         signatures = {}
-        for signature_acc, text in cur:
+        for signature_acc, text, proteins_acc in cur:
             try:
-                signatures[signature_acc].add(text)
+                signatures[signature_acc].add((text, proteins_acc))
             except KeyError:
-                signatures[signature_acc] = {text}
+                signatures[signature_acc] = {(text, proteins_acc)}
 
     con.close()
 
