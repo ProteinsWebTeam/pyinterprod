@@ -425,9 +425,9 @@ def get_swissprot_descriptions(pg_url: str) -> dict:
         signatures = {}
         for signature_acc, text, proteins_acc in cur:
             try:
-                signatures[signature_acc].add((text, proteins_acc))
+                signatures[signature_acc].update({text: proteins_acc})
             except KeyError:
-                signatures[signature_acc] = {(text, proteins_acc)}
+                signatures[signature_acc] = {text: proteins_acc}
 
     con.close()
 

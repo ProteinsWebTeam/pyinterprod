@@ -21,7 +21,7 @@ MIN_SIGNATURE_CHANGE = 0.1
 def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                           data_dir: str, pronto_link: str, emails: dict):
     # Get Swiss-Prot descriptions (after the update)
-    all_sig2infos = get_swissprot_descriptions(pg_url)
+    all_sig2info = get_swissprot_descriptions(pg_url)
 
     pronto_link = pronto_link.rstrip('/')
 
@@ -113,21 +113,14 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
         # Swiss-Prot descriptions
         old_sigs = data["descriptions"]
         new_sigs = {
-            acc: all_sig2infos[acc]
-            for acc in all_sig2infos
+            acc: all_sig2info[acc]
+            for acc in all_sig2info
             if acc in integrated and integrated[acc][3] == db_id
         }
-        # new_sigs = {acc: [(desc1, [proteins1]), (desc2, [proteins2]), ...], acc2: [(descx, [proteinsx]), (descy, [proteinsy]), ...], ...}
+
         changes = {}
-        new_descrs = set()
-        entries2prot = {}
         for acc, old_descrs in old_sigs.items():
-            for acc, desc_proteins_list in new_sigs.items():
-                new_descrs = [desc for desc, _ in desc_proteins_list]
-                try:
-                    entries2prot[acc].append([proteins for _, proteins in desc_proteins_list])
-                except KeyError:
-                    entries2prot[acc] = [proteins for _, proteins in desc_proteins_list]
+            new_descrs = set(new_sigs.get(acc, {}).keys())
             try:
                 entry_acc, entry_type, entry_name, _ = integrated[acc]
             except KeyError:
@@ -138,12 +131,12 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                                 old_descrs - new_descrs,
                                 new_descrs - old_descrs)
 
-        desc2prot = {}
+        acc2prots = {}
         for acc, new_info in new_sigs.items():
-            for new_descrs, proteins in new_info:
-                desc2prot[new_descrs] = proteins
-                entry_acc, entry_type, entry_name, _ = integrated[acc]
-                changes[acc] = (entry_acc, entry_name, entry_type, [], new_descrs)
+            entry_acc, entry_type, entry_name, _ = integrated[acc]
+            acc2prots[acc] = list(new_info.values())
+            new_descrs = list(new_info.keys())
+            changes[acc] = (entry_acc, entry_name, entry_type, [], new_descrs)
 
         files = {}  # file objects
         for acc in sorted(changes):
@@ -164,10 +157,10 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                          f"\t# Gained\tLost\tGained\n")
 
             link = f"{pronto_link}/signatures/{acc}/descriptions/?reviewed"
-            lost_descriptions = ' | '.join([f"{desc} (Sample: {desc2prot[desc][0]})" for desc in sorted(lost)])
-            gained_descriptions = ' | '.join([f"{desc} (Sample: {desc2prot[desc][0]})" for desc in sorted(gained)])
+            lost_descriptions = ' | '.join([f"{desc} ({new_sigs[acc][desc][0]})" for desc in sorted(lost)])
+            gained_descriptions = ' | '.join([f"{desc} ({new_sigs[acc][desc][0]})" for desc in sorted(gained)])
             fh.write(f"{acc}\t{link}\t{entry_acc}\t{types[entry_type]}"
-                     f"{len(entries2prot[entry_acc])}\t"
+                     f"{len(acc2prots[acc])}\t"
                      f"\t{entry_name}\t{len(lost)}\t{len(gained)}"
                      f"\t{lost_descriptions}"
                      f"\t{gained_descriptions}\n")
@@ -353,7 +346,6 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
     # Load entry -> descriptions AFTER UniProt update
     signatures_now = get_swissprot_descriptions(pg_url)
     entries_now = {}
-    desc2prot = {}
     entries2prot = {}
     for signature_acc, sp_info in signatures_now.items():
         try:
@@ -361,13 +353,12 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
         except KeyError:
             continue
 
-        for descriptions, proteins in sp_info:
-            desc2prot[descriptions] = proteins
+        for description, proteins in sp_info.items():
             try:
-                entries_now[entry_acc] |= descriptions
+                entries_now[entry_acc] |= description
                 entries2prot[entry_acc] |= proteins
             except KeyError:
-                entries_now[entry_acc] = set(descriptions)
+                entries_now[entry_acc] = {description}
                 entries2prot[entry_acc] = set(proteins)
 
     changes = {}  # key: entry accession, value: (gained, lost)
@@ -411,8 +402,8 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             fh = files[filename] = open(filepath, "wt")
             fh.write(header)
         finally:
-            lost_descriptions = ' | '.join([f"{desc} (Sample: {desc2prot[desc][0]})" for desc in sorted(lost)])
-            gained_descriptions = ' | '.join([f"{desc} (Sample: {desc2prot[desc][0]})" for desc in sorted(gained)])
+            lost_descriptions = ' | '.join([f"{desc} ({signatures_now[entry_acc][desc][0]})" for desc in sorted(lost)])
+            gained_descriptions = ' | '.join([f"{desc} ({signatures_now[entry_acc][desc][0]})" for desc in sorted(gained)])
             fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
                      f"{name}\t{'Yes' if checked_flag == 'Y' else 'No'}\t"
                      f"{len(entries2prot[entry_acc])}\t"
