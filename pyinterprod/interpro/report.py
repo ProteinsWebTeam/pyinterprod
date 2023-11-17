@@ -134,7 +134,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
         acc2prots = {}
         for acc, new_info in new_sigs.items():
             entry_acc, entry_type, entry_name, _ = integrated[acc]
-            acc2prots[acc] = list(new_info.values())
+            acc2prots[acc] = list(set(proteins for description in new_info.values() for proteins in description))
             new_descrs = list(new_info.keys())
             changes[acc] = (entry_acc, entry_name, entry_type, [], new_descrs)
 
@@ -157,13 +157,17 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                          f"\t# Gained\tLost\tGained\n")
 
             link = f"{pronto_link}/signatures/{acc}/descriptions/?reviewed"
-            lost_descriptions = ' | '.join([f"{desc} ({new_sigs[acc][desc][0]})" for desc in sorted(lost)])
-            gained_descriptions = ' | '.join([f"{desc} ({new_sigs[acc][desc][0]})" for desc in sorted(gained)])
+            lost_descs = [
+                f"{desc} ({new_sigs[acc][desc][0]})" for desc in sorted(lost)
+            ]
+            gained_descs = [
+                f"{desc} ({new_sigs[acc][desc][0]})" for desc in sorted(gained)
+            ]
             fh.write(f"{acc}\t{link}\t{entry_acc}\t{types[entry_type]}"
                      f"{len(acc2prots[acc])}\t"
                      f"\t{entry_name}\t{len(lost)}\t{len(gained)}"
-                     f"\t{lost_descriptions}"
-                     f"\t{gained_descriptions}\n")
+                     f"\t{' | '.join(lost_descs)}"
+                     f"\t{' | '.join(gained_descs)}\n")
 
         for fh in files.values():
             fh.close()
@@ -355,8 +359,8 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
         for description, proteins in sp_info.items():
             try:
-                entries_now[entry_acc] |= description
-                entries2prot[entry_acc] |= proteins
+                entries_now[entry_acc].add(description)
+                entries2prot[entry_acc] |= set(proteins)
             except KeyError:
                 entries_now[entry_acc] = {description}
                 entries2prot[entry_acc] = set(proteins)
@@ -402,14 +406,18 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             fh = files[filename] = open(filepath, "wt")
             fh.write(header)
         finally:
-            lost_descriptions = ' | '.join([f"{desc} ({signatures_now[entry_acc][desc][0]})" for desc in sorted(lost)])
-            gained_descriptions = ' | '.join([f"{desc} ({signatures_now[entry_acc][desc][0]})" for desc in sorted(gained)])
+            lost_descs = [
+                f"{desc} ({signatures_now[entry_acc][desc][0]})" for desc in sorted(lost)
+            ]
+            gained_descs = [
+                f"{desc} ({signatures_now[entry_acc][desc][0]})" for desc in sorted(gained)
+            ]
             fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
                      f"{name}\t{'Yes' if checked_flag == 'Y' else 'No'}\t"
                      f"{len(entries2prot[entry_acc])}\t"
                      f"{len(lost)}\t{len(gained)}\t"
-                     f"{lost_descriptions}\t"
-                     f"{gained_descriptions}\n")
+                     f"{' | '.join(lost_descs)}\t"
+                     f"{' | '.join(gained_descs)}\n")
 
     for fh in files.values():
         fh.close()

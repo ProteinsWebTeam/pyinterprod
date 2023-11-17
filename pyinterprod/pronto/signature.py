@@ -414,8 +414,8 @@ def get_swissprot_descriptions(pg_url: str) -> dict:
                 signature_acc,
                 text,
                 ARRAY_AGG(DISTINCT protein_acc) AS protein_ids
-            FROM interpro.signature2protein s2p
-            INNER JOIN interpro.protein_name pn ON s2p.name_id = pn.name_id
+            FROM INTERPRO.signature2protein s2p
+            INNER JOIN INTERPRO.protein_name pn ON s2p.name_id = pn.name_id
             WHERE s2p.is_reviewed
             GROUP BY
                 signature_acc, text            
@@ -423,12 +423,11 @@ def get_swissprot_descriptions(pg_url: str) -> dict:
         )
 
         signatures = {}
-        for signature_acc, text, proteins_acc in cur:
+        for signature_acc, text, proteins in cur:
             try:
-                signatures[signature_acc].update({text: proteins_acc})
+                signatures[signature_acc][text] = proteins
             except KeyError:
-                signatures[signature_acc] = {text: proteins_acc}
+                signatures[signature_acc] = {text: proteins}
 
     con.close()
-
     return signatures
