@@ -78,7 +78,14 @@ def update_xrefs(ipr_uri: str, unp_uri: str):
     unp_cur = unp_con.cursor()
 
     logger.info("creating table CV_DATABASE")
-    unp_cur.execute("SELECT * FROM UNIPARC.CV_DATABASE")
+    unp_cur.execute(
+        """
+        SELECT ID, TIMESTAMP, USERSTAMP, DESCR, CURRENT_RELEASE, FULL_DESCR,
+               ALIVE, FOR_RELEASE, DISPLAY_NAME, UNIREF_UNLOAD, UNIPROT, 
+               MULTIPLE_TAXID, STOP_LOAD
+        FROM UNIPARC.CV_DATABASE
+        """
+    )
     records = unp_cur.fetchall()
 
     oracle.drop_table(ipr_cur, "UNIPARC.CV_DATABASE", purge=True)
