@@ -351,6 +351,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
     signatures_now = get_swissprot_descriptions(pg_url)
     entries_now = {}
     entries2prot = {}
+    desc2prot = {}
     for signature_acc, sp_info in signatures_now.items():
         try:
             entry_acc = integrated[signature_acc]
@@ -358,6 +359,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             continue
 
         for description, proteins in sp_info.items():
+            desc2prot[description] = proteins
             try:
                 entries_now[entry_acc].add(description)
                 entries2prot[entry_acc] |= set(proteins)
@@ -407,10 +409,10 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             fh.write(header)
         finally:
             lost_descs = [
-                f"{desc} ({signatures_now[entry_acc][desc][0]})" for desc in sorted(lost)
+                f"{desc} ({desc2prot[desc][0]})" for desc in sorted(lost)
             ]
             gained_descs = [
-                f"{desc} ({signatures_now[entry_acc][desc][0]})" for desc in sorted(gained)
+                f"{desc} ({desc2prot[desc][0]})" for desc in sorted(gained)
             ]
             fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
                      f"{name}\t{'Yes' if checked_flag == 'Y' else 'No'}\t"
