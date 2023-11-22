@@ -122,7 +122,11 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
         desc2prot = {}
         for acc, old_info in old_sigs.items():
             for old_descrs, proteins in old_info.items():
-                desc2prot[acc] = old_descrs[proteins]
+                try:
+                    desc2prot[old_descrs] |= set(proteins)
+                except KeyError:
+                    desc2prot[old_descrs] = set(proteins)
+
                 new_descrs = set(new_sigs.pop(acc, {}).keys())
                 try:
                     entry_acc, entry_type, entry_name, _ = integrated[acc]
@@ -140,7 +144,10 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             all_proteins = set()
             for descr, proteins in new_info.values():
                 all_proteins |= set(proteins)
-                desc2prot[acc] = descr[proteins]
+                try:
+                    desc2prot[descr] |= set(proteins)
+                except KeyError:
+                    desc2prot[descr] = set(proteins)
             new_descrs = list(new_info.keys())
             changes[acc] = (entry_acc, entry_name, entry_type, [], new_descrs)
 

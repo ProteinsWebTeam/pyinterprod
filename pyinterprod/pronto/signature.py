@@ -42,6 +42,7 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                     for model_acc, (_, hits) in models.items():
                         hits = sorted(merge_overlapping(hits))
                         matches[signature_acc] = hits
+
                 for signature_acc in matches:
                     """
                     Count the number of proteins,
