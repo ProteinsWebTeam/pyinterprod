@@ -42,7 +42,6 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                     for model_acc, (_, hits) in models.items():
                         hits = sorted(merge_overlapping(hits))
                         matches[signature_acc] = hits
-
                 for signature_acc in matches:
                     """
                     Count the number of proteins,
@@ -430,4 +429,5 @@ def get_swissprot_descriptions(pg_url: str) -> dict:
                 signatures[signature_acc] = {text: proteins}
 
     con.close()
+
     return signatures

@@ -339,11 +339,11 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     release, = cur.fetchone()
 
-    # Load entry -> descriptions BEFORE UniProt update
     desc2prot = {}
+    # Load entry -> descriptions BEFORE UniProt update
     entries_then = {}
     with open(os.path.join(data_dir, FILE_SIG_DESCR), "rb") as fh:
-        for signature_acc, info in pickle.load(fh).items():
+        for signature_acc, old_info in pickle.load(fh).items():
             try:
                 entry_acc = integrated[signature_acc]
             except KeyError:
@@ -354,12 +354,12 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             except KeyError:
                 entry_descrs = entries_then[entry_acc] = set()
 
-            for description, proteins in info.items():
-                entry_descrs.add(description)
+            for old_descrs, proteins in old_info.items():
+                entry_descrs.add(old_descrs)
                 try:
-                    desc2prot[description] |= set(proteins)
+                    desc2prot[old_descrs] |= set(proteins)
                 except KeyError:
-                    desc2prot[description] = set(proteins)
+                    desc2prot[old_descrs] = set(proteins)
 
     # Load entry -> descriptions AFTER UniProt update
     signatures_now = get_swissprot_descriptions(pg_url)
