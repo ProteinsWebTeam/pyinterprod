@@ -121,13 +121,10 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
         changes = {}
         desc2prot = {}
         for acc, old_info in old_sigs.items():
-            for old_descrs, proteins in old_info.items():
-                try:
-                    desc2prot[old_descrs] |= set(proteins)
-                except KeyError:
-                    desc2prot[old_descrs] = set(proteins)
-
-                new_descrs = set(new_sigs.pop(acc, {}).keys())
+            old_descrs = set(old_info.keys())
+            new_descrs = set(new_sigs.pop(acc, {}).keys())
+            for descrs, proteins in old_info.items():
+                desc2prot[acc][descrs] = proteins
                 try:
                     entry_acc, entry_type, entry_name, _ = integrated[acc]
                 except KeyError:
@@ -144,10 +141,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             all_proteins = set()
             for descr, proteins in new_info.values():
                 all_proteins |= set(proteins)
-                try:
-                    desc2prot[descr] |= set(proteins)
-                except KeyError:
-                    desc2prot[descr] = set(proteins)
+                desc2prot[acc][descr] = all_proteins
             new_descrs = list(new_info.keys())
             changes[acc] = (entry_acc, entry_name, entry_type, [], new_descrs)
 
@@ -171,10 +165,10 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
 
             link = f"{pronto_link}/signatures/{acc}/descriptions/?reviewed"
             lost_descs = [
-                f"{desc} ({desc2prot[acc][desc][0]})" for desc in sorted(lost)
+                f"{desc} ({list(desc2prot[acc][desc])[0]})" for desc in sorted(lost)
             ]
             gained_descs = [
-                f"{desc} ({desc2prot[acc][desc][0]})" for desc in sorted(gained)
+                f"{desc} ({list(desc2prot[acc][desc])[0]})" for desc in sorted(gained)
             ]
             fh.write(f"{acc}\t{link}\t{entry_acc}\t{types[entry_type]}"
                      f"{len(acc2prots[acc])}\t"
