@@ -350,31 +350,40 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                 continue
 
             try:
-                entries_then[entry_acc] |= info.keys()
+                entry_descrs = entries_then[entry_acc]
             except KeyError:
-                entries_then[entry_acc] = set(info.keys())
+                entry_descrs = entries_then[entry_acc] = set()
 
             for description, proteins in info.items():
-                desc2prot[description] = proteins
+                entry_descrs.add(description)
+                try:
+                    desc2prot[description] |= set(proteins)
+                except KeyError:
+                    desc2prot[description] = set(proteins)
 
     # Load entry -> descriptions AFTER UniProt update
     signatures_now = get_swissprot_descriptions(pg_url)
     entries_now = {}
-    entries2prot = {}
-    for signature_acc, sp_info in signatures_now.items():
+    entry2prots = {}
+    for signature_acc, info in signatures_now.items():
         try:
             entry_acc = integrated[signature_acc]
         except KeyError:
             continue
 
-        for description, proteins in sp_info.items():
-            desc2prot[description] = proteins
+        for description, proteins in info.items():
+            try:
+                desc2prot[description] |= set(proteins)
+            except KeyError:
+                desc2prot[description] = set(proteins)
+
             try:
                 entries_now[entry_acc].add(description)
-                entries2prot[entry_acc] |= set(proteins)
             except KeyError:
                 entries_now[entry_acc] = {description}
-                entries2prot[entry_acc] = set(proteins)
+                entry2prots[entry_acc] = set(proteins)
+            else:
+                entry2prots[entry_acc] |= set(proteins)
 
     changes = {}  # key: entry accession, value: (gained, lost)
     for entry_acc, descs_now in entries_now.items():
@@ -418,14 +427,14 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             fh.write(header)
         finally:
             lost_descs = [
-                f"{desc} ({desc2prot[desc][0]})" for desc in sorted(lost)
+                f"{desc} ({list(desc2prot[desc])[0]})" for desc in sorted(lost)
             ]
             gained_descs = [
-                f"{desc} ({desc2prot[desc][0]})" for desc in sorted(gained)
+                f"{desc} ({list(desc2prot[desc])[0]})" for desc in sorted(gained)
             ]
             fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
                      f"{name}\t{'Yes' if checked_flag == 'Y' else 'No'}\t"
-                     f"{len(entries2prot[entry_acc])}\t"
+                     f"{len(entry2prots[entry_acc])}\t"
                      f"{len(lost)}\t{len(gained)}\t"
                      f"{' | '.join(lost_descs)}\t"
                      f"{' | '.join(gained_descs)}\n")
