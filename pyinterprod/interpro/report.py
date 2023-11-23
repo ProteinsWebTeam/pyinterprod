@@ -124,12 +124,10 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             old_descrs = set(old_info.keys())
             new_descrs = set(new_sigs.pop(acc, {}).keys())
             for descr, proteins in old_info.items():
-                if acc not in desc2prot:
-                    desc2prot[acc] = {}
                 try:
-                    desc2prot[acc][descr] |= set(proteins)
+                    desc2prot[descr] |= set(proteins)
                 except KeyError:
-                    desc2prot[acc][descr] = set(proteins)
+                    desc2prot[descr] = set(proteins)
 
                 try:
                     entry_acc, entry_type, entry_name, _ = integrated[acc]
@@ -144,13 +142,11 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
         acc2prots = {}
         for acc, new_info in new_sigs.items():
             entry_acc, entry_type, entry_name, _ = integrated[acc]
-            for descr, proteins in new_info.values():
-                if acc not in desc2prot:
-                    desc2prot[acc] = {}
+            for descr, proteins in new_info.items():
                 try:
-                    desc2prot[acc][descr] |= set(proteins)
+                    desc2prot[descr] |= set(proteins)
                 except KeyError:
-                    desc2prot[acc][descr] = set(proteins)
+                    desc2prot[descr] = set(proteins)
 
             new_descrs = list(new_info.keys())
             changes[acc] = (entry_acc, entry_name, entry_type, [], new_descrs)
@@ -174,11 +170,12 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                          f"\t# Gained\tLost\tGained\n")
 
             link = f"{pronto_link}/signatures/{acc}/descriptions/?reviewed"
+
             lost_descs = [
-                f"{desc} ({list(desc2prot[acc][desc])[0]})" for desc in sorted(lost)
+                f"{desc} ({list(desc2prot[desc])[0]})" for desc in sorted(lost)
             ]
             gained_descs = [
-                f"{desc} ({list(desc2prot[acc][desc])[0]})" for desc in sorted(gained)
+                f"{desc} ({list(desc2prot[desc])[0]})" for desc in sorted(gained)
             ]
             fh.write(f"{acc}\t{link}\t{entry_acc}\t{types[entry_type]}"
                      f"{len(acc2prots[acc])}\t"
