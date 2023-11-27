@@ -417,8 +417,7 @@ def get_swissprot_descriptions(pg_url: str) -> dict:
             FROM INTERPRO.signature2protein s2p
             INNER JOIN INTERPRO.protein_name pn ON s2p.name_id = pn.name_id
             WHERE s2p.is_reviewed
-            GROUP BY
-                signature_acc, text            
+            GROUP BY signature_acc, text
             """
         )
 
