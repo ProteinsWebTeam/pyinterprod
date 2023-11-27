@@ -255,7 +255,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 row[4],             # type
                 row[5] or row[6],   # abstract
                 row[7],             # llm summary
-                *signatures.get(signature_acc, [0] * 7)
+                *signatures.get(signature_acc, [0] * 6)
             ))
 
         cur.execute("DROP TABLE IF EXISTS signature")
