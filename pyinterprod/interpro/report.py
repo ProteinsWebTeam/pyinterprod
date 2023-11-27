@@ -362,12 +362,12 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             except KeyError:
                 entry_descrs = entries_then[entry_acc] = set()
 
-            for old_descrs, proteins in old_info.items():
-                entry_descrs.add(old_descrs)
+            for description, proteins in old_info.items():
+                entry_descrs.add(description)
                 try:
-                    desc2prot[old_descrs] |= set(proteins)
+                    desc2prot[description] |= set(proteins)
                 except KeyError:
-                    desc2prot[old_descrs] = set(proteins)
+                    desc2prot[description] = set(proteins)
 
     # Load entry -> descriptions AFTER UniProt update
     signatures_now = get_swissprot_descriptions(pg_url)
