@@ -413,7 +413,7 @@ def get_swissprot_descriptions(pg_url: str) -> dict:
             SELECT
                 signature_acc,
                 text,
-                ARRAY_AGG(DISTINCT protein_acc) AS protein_ids
+                ARRAY_AGG(DISTINCT protein_acc)
             FROM INTERPRO.signature2protein s2p
             INNER JOIN INTERPRO.protein_name pn ON s2p.name_id = pn.name_id
             WHERE s2p.is_reviewed
