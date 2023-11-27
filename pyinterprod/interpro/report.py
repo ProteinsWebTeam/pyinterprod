@@ -129,10 +129,10 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 except KeyError:
                     desc2prot[descr] = set(proteins)
 
-                try:
-                    entry_acc, entry_type, entry_name, _ = integrated[acc]
-                except KeyError:
-                    continue
+            try:
+                entry_acc, entry_type, entry_name, _ = integrated[acc]
+            except KeyError:
+                continue
 
                 if old_descrs != new_descrs:
                     changes[acc] = (entry_acc, entry_name, entry_type,
