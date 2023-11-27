@@ -2,6 +2,7 @@ import os
 import pickle
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 
 import oracledb
 
@@ -340,23 +341,35 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
         """
     )
 
+    i = 0
+
     for db in databases:
         cur.execute(
             """
-            INSERT INTO INTERPRO.METHOD_TO_DELETE (ID, METHOD_AC)
-            SELECT ROWNUM, METHOD_AC
-            FROM (
-                SELECT METHOD_AC
-                FROM INTERPRO.METHOD
-                WHERE DBCODE = :dbcode
-                MINUS
-                SELECT METHOD_AC
-                FROM INTERPRO.METHOD_STG
-                WHERE DBCODE = :dbcode
-            )
+            SELECT METHOD_AC
+            FROM INTERPRO.METHOD
+            WHERE DBCODE = :dbcode
+            MINUS
+            SELECT METHOD_AC
+            FROM INTERPRO.METHOD_STG
+            WHERE DBCODE = :dbcode
             """,
             dbcode=db.identifier,
         )
+
+        params = []
+        for accession, in cur.fetchall():
+            i += 1
+            params.append((i, accession))
+
+        for j in range(0, len(params), 1000):
+            cur.executemany(
+                """
+                INSERT INTO INTERPRO.METHOD_TO_DELETE (ID, METHOD_AC)
+                VALUES (:1, :2)
+                """,
+                params[j:j+1000]
+            )
 
     con.commit()
     cur.execute(
@@ -578,15 +591,6 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
         # Remove matches
         ora.truncate_partition(cur, "INTERPRO.FEATURE_MATCH", partition)
 
-        # Remove features
-        cur.execute(
-            """
-            DELETE FROM INTERPRO.FEATURE_METHOD
-            WHERE DBCODE = :1
-            """,
-            (db.identifier,),
-        )
-
         if db.identifier == "a":
             # AntiFam
             features = contrib.antifam.parse_models(db_props["signatures"])
@@ -604,19 +608,48 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
                                                 db_props["classes"],
                                                 db_props["instances"],
                                                 db_props["sequences"])
+        elif db.identifier == 'x':
+            # COILS
+            features = []
+            cur.execute(
+                """
+                SELECT METHOD_AC, NAME, METHOD_DATE, DESCRIPTION, ABSTRACT
+                FROM INTERPRO.FEATURE_METHOD
+                WHERE DBCODE = :1
+                """,
+                [db.identifier]
+            )
+
+            for row in cur.fetchall():
+                features.append(Method(accession=row[0],
+                                       sig_type=None,
+                                       name=row[1],
+                                       description=row[3],
+                                       abstract=row[4],
+                                       date=row[2]))
         else:
             cur.close()
             con.close()
             raise ValueError(f"{db.name}: unsupported member database")
 
-        # Add features
+        # Remove existing features
+        cur.execute(
+            """
+            DELETE FROM INTERPRO.FEATURE_METHOD
+            WHERE DBCODE = :1
+            """,
+            [db.identifier]
+        )
+
+        # Add new features
         params = []
         for f in features:
             params.append(
                 (
                     f.accession,
-                    f.name if f.name else None,
+                    f.name or None,
                     db.identifier,
+                    f.date or datetime.now(),
                     f.description,
                     f.abstract[:4000] if f.abstract else None,
                 )
@@ -624,12 +657,12 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
 
         cur.executemany(
             """
-            INSERT INTO INTERPRO.FEATURE_METHOD 
-                (METHOD_AC, NAME, DBCODE, METHOD_DATE, TIMESTAMP, USERSTAMP, 
-                DESCRIPTION, ABSTRACT) 
-            VALUES (:1, :2, :3, SYSDATE, SYSDATE, USER, :4, :5)
+            INSERT INTO INTERPRO.FEATURE_METHOD (
+                METHOD_AC, NAME, DBCODE, METHOD_DATE, TIMESTAMP, USERSTAMP, 
+                DESCRIPTION, ABSTRACT
+            ) VALUES (:1, :2, :3, :4, SYSDATE, USER, :5, :6)
             """,
-            params,
+            params
         )
 
         cur.execute(
@@ -638,7 +671,7 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
             SET ENTRY_COUNT = :1
             WHERE DBCODE = :2
             """,
-            (len(params), db.identifier),
+            [len(params), db.identifier]
         )
 
     con.commit()

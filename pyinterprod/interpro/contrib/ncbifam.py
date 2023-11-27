@@ -15,13 +15,16 @@ def parse_tsv(tsvfile: str):
                 yield line.split("\t")
 
 
-def get_signatures(cur: oracledb.Cursor, tsvfile: str,
-                   txtfile: str, keep_integrated: bool = True) -> list[Method]:
+def get_signatures(cur: oracledb.Cursor,
+                   tsvfile: str,
+                   triagefile: str,
+                   keep_integrated: bool = True) -> list[Method]:
     """Parse NCBIfam TSV file
     https://ftp.ncbi.nlm.nih.gov/hmm/current/hmm_PGAP.tsv
+    and returns signatures to be imported in InterPro
     :param cur: Oracle cursor
     :param tsvfile: Path to TSV file
-    :param txtfile: Path to TXT file of families to import
+    :param triagefile: Path to TXT file of families to import
     :param keep_integrated: If True, keep integrated signatures
            even if they are not in the list of models to import
     :return:
@@ -30,7 +33,7 @@ def get_signatures(cur: oracledb.Cursor, tsvfile: str,
     integrated = {signature_acc for signature_acc, in cur.fetchall()}
 
     to_import = set()
-    with open(txtfile, "rt") as fh:
+    with open(triagefile, "rt") as fh:
         for model_acc in map(str.rstrip, fh):
             to_import.add(model_acc)
 
@@ -54,7 +57,10 @@ def get_signatures(cur: oracledb.Cursor, tsvfile: str,
 
         source = values[19]
         hmm_name = values[21]
-        comment = values[22].strip() or None
+        comment = values[22].strip()
+
+        if not comment or comment.lower() == "null":
+            comment = None
 
         if _type == "repeat":
             _type = "R"
@@ -78,9 +84,9 @@ def get_signatures(cur: oracledb.Cursor, tsvfile: str,
     return methods
 
 
-def create_custom_hmm(cur: oracledb.Cursor, tsvfile: str, txtfile: str,
+def create_custom_hmm(cur: oracledb.Cursor, tsvfile: str, triagefile: str,
                       hmmfile: str):
-    models = {m.model: m for m in get_signatures(cur, tsvfile, txtfile)}
+    models = {m.model: m for m in get_signatures(cur, tsvfile, triagefile)}
 
     reg_acc = re.compile(r"^ACC\s+(\w+\.\d+)$", flags=re.M)
     reg_desc = re.compile(r"^(DESC\s+)(.+)$", flags=re.M)
@@ -155,24 +161,25 @@ def update_go_terms(uri: str, tsvfile: str):
 def main():
     parser = ArgumentParser(description="create a custom NCBIfam "
                                         "HMM file for InterProScan")
-    parser.add_argument("config", help="configuration file")
+    parser.add_argument("config", metavar="pyinterprod.conf",
+                        help="configuration file")
+    parser.add_argument("tsv", metavar="hmm_PGAP.tsv",
+                        help="signatures information, in TSV format")
+    parser.add_argument("triage", metavar="for-interpro.tsv",
+                        help="triage file of models to import")
+    parser.add_argument("hmm", metavar="hmm_PGAP.LIB",
+                        help="file of concatenated HMM profiles")
     args = parser.parse_args()
 
     config = ConfigParser()
     config.read(args.config)
     uri = config["oracle"]["ipro-interpro"]
 
-    options = ConfigParser()
-    options.read(config["misc"]["members"])
-
     con = oracledb.connect(uri)
     cur = con.cursor()
 
     try:
-        create_custom_hmm(cur,
-                          options["ncbifam"]["signatures"],
-                          options["ncbifam"]["triage"],
-                          options["ncbifam"]["hmm"])
+        create_custom_hmm(cur, args.tsv, args.triage, args.hmm)
     finally:
         cur.close()
         con.close()

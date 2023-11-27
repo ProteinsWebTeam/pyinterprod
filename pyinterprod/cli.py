@@ -336,10 +336,15 @@ def run_member_db_update():
     go_sources = []
     for dbname, db in databases.items():
         if db.is_member_db or db.is_feature_db:
-            # We need a source for signatures
-            try:
+            props = {}
+
+            # We usually need a source for signatures
+            if dbname in options:
                 props = options[dbname]
-            except KeyError:
+            elif dbname == "coils":
+                # Exception for feature databases without data files
+                pass
+            else:
                 parser.error(f"{config['misc']['members']}: "
                              f"missing database '{dbname}'")
 
