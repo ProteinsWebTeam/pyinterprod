@@ -134,10 +134,10 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             except KeyError:
                 continue
 
-                if old_descrs != new_descrs:
-                    changes[acc] = (entry_acc, entry_name, entry_type,
-                                    old_descrs - new_descrs,
-                                    new_descrs - old_descrs)
+            if old_descrs != new_descrs:
+                changes[acc] = (entry_acc, entry_name, entry_type,
+                                old_descrs - new_descrs,
+                                new_descrs - old_descrs)
 
         acc2prots = {}
         for acc, new_info in new_sigs.items():
