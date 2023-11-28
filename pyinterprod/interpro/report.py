@@ -139,14 +139,16 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                                 old_descrs - new_descrs,
                                 new_descrs - old_descrs)
 
-        acc2prots = {}
+        sig2prots = {}
         for acc, new_info in new_sigs.items():
             entry_acc, entry_type, entry_name, _ = integrated[acc]
             for descr, proteins in new_info.items():
                 try:
                     desc2prot[descr] |= set(proteins)
+                    sig2prots[acc] |= set(proteins)
                 except KeyError:
                     desc2prot[descr] = set(proteins)
+                    sig2prots[acc] = set(proteins)
 
             new_descrs = list(new_info.keys())
             changes[acc] = (entry_acc, entry_name, entry_type, [], new_descrs)
@@ -178,7 +180,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 f"{desc} ({list(desc2prot[desc])[0]})" for desc in sorted(gained)
             ]
             fh.write(f"{acc}\t{link}\t{entry_acc}\t{types[entry_type]}"
-                     f"{len(acc2prots[acc])}\t"
+                     f"{len(sig2prots[acc])}\t"
                      f"\t{entry_name}\t{len(lost)}\t{len(gained)}"
                      f"\t{' | '.join(lost_descs)}"
                      f"\t{' | '.join(gained_descs)}\n")
