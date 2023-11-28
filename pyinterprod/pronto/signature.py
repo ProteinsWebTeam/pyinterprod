@@ -42,7 +42,7 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                     for model_acc, (_, hits) in models.items():
                         hits = sorted(merge_overlapping(hits))
                         matches[signature_acc] = hits
-                            
+
                 for signature_acc in matches:
                     """
                     Count the number of proteins,
@@ -208,11 +208,24 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
     cur.execute(
         """
         SELECT
-            M.METHOD_AC, LOWER(D.DBSHORT), M.NAME, M.DESCRIPTION, T.ABBREV, 
-            M.ABSTRACT, M.ABSTRACT_LONG
+            M.METHOD_AC, LOWER(D.DBSHORT), M.NAME, M.DESCRIPTION,
+            T.ABBREV, M.ABSTRACT, M.ABSTRACT_LONG, LLM.SUMMARY
         FROM INTERPRO.METHOD M
         INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
         INNER JOIN INTERPRO.CV_ENTRY_TYPE T ON M.SIG_TYPE = T.CODE
+        LEFT OUTER JOIN (
+            SELECT METHOD_AC, SUMMARY
+            FROM (
+                SELECT METHOD_AC, SUMMARY,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY METHOD_AC
+                     ORDER BY TIMESTAMP DESC
+                   ) RN
+                FROM INTERPRO.METHOD_LLM
+                WHERE SUMMARY IS NOT NULL
+            ) M
+            WHERE M.RN = 1
+        ) LLM ON M.METHOD_AC = LLM.METHOD_AC
         WHERE NOT REGEXP_LIKE(M.METHOD_AC, '^PTHR\d+:SF\d+$')
         """
     )
@@ -241,6 +254,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 row[3],             # description
                 row[4],             # type
                 row[5] or row[6],   # abstract
+                row[7],             # llm summary
                 *signatures.get(signature_acc, [0] * 6)
             ))
 
@@ -255,6 +269,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 description VARCHAR(400),
                 type VARCHAR(25) NOT NULL,
                 abstract TEXT,
+                llm_abstract TEXT,
                 num_sequences INTEGER NOT NULL,
                 num_reviewed_sequences INTEGER NOT NULL,
                 num_complete_sequences INTEGER NOT NULL,
@@ -267,7 +282,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
 
         sql = """
             INSERT INTO signature
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         records = []
