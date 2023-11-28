@@ -119,15 +119,22 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
         }
 
         changes = {}
-        desc2prot = {}
+        descr2prots = {}
         for acc, old_info in old_sigs.items():
+            new_info = new_sigs.pop(acc, {})
             old_descrs = set(old_info.keys())
-            new_descrs = set(new_sigs.pop(acc, {}).keys())
+            new_descrs = set(new_info.keys())
             for descr, proteins in old_info.items():
                 try:
-                    desc2prot[descr] |= set(proteins)
+                    descr2prots[descr] |= proteins
                 except KeyError:
-                    desc2prot[descr] = set(proteins)
+                    descr2prots[descr] = proteins
+
+            for descr, proteins in new_info.items():
+                try:
+                    descr2prots[descr] |= proteins
+                except KeyError:
+                    descr2prots[descr] = proteins
 
             try:
                 entry_acc, entry_type, entry_name, _ = integrated[acc]
@@ -144,12 +151,13 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             entry_acc, entry_type, entry_name, _ = integrated[acc]
             for descr, proteins in new_info.items():
                 try:
-                    desc2prot[descr] |= set(proteins)
-                    sig2prots[acc] |= set(proteins)
+                    descr2prots[descr] |= proteins
+                    sig2prots[acc] |= proteins
                 except KeyError:
-                    desc2prot[descr] = set(proteins)
-                    sig2prots[acc] = set(proteins)
+                    descr2prots[descr] = proteins
+                    sig2prots[acc] = proteins
 
+            descr2prots = list(descr2prots)
             new_descrs = list(new_info.keys())
             changes[acc] = (entry_acc, entry_name, entry_type, [], new_descrs)
 
@@ -174,10 +182,10 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             link = f"{pronto_link}/signatures/{acc}/descriptions/?reviewed"
 
             lost_descs = [
-                f"{desc} ({list(desc2prot[desc])[0]})" for desc in sorted(lost)
+                f"{desc} ({descr2prots[desc][0]})" for desc in sorted(lost)
             ]
             gained_descs = [
-                f"{desc} ({list(desc2prot[desc])[0]})" for desc in sorted(gained)
+                f"{desc} ({descr2prots[desc][0]})" for desc in sorted(gained)
             ]
             fh.write(f"{acc}\t{link}\t{entry_acc}\t{types[entry_type]}"
                      f"{len(sig2prots[acc])}\t"
@@ -349,7 +357,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     release, = cur.fetchone()
 
-    desc2prot = {}
+    descr2prots = {}
     # Load entry -> descriptions BEFORE UniProt update
     entries_then = {}
     with open(os.path.join(data_dir, FILE_SIG_DESCR), "rb") as fh:
@@ -367,9 +375,9 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             for description, proteins in old_info.items():
                 entry_descrs.add(description)
                 try:
-                    desc2prot[description] |= set(proteins)
+                    descr2prots[description] |= proteins
                 except KeyError:
-                    desc2prot[description] = set(proteins)
+                    descr2prots[description] = proteins
 
     # Load entry -> descriptions AFTER UniProt update
     signatures_now = get_swissprot_descriptions(pg_url)
@@ -383,17 +391,19 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
         for description, proteins in info.items():
             try:
-                desc2prot[description] |= set(proteins)
+                descr2prots[description] |= proteins
             except KeyError:
-                desc2prot[description] = set(proteins)
+                descr2prots[description] = proteins
 
             try:
                 entries_now[entry_acc].add(description)
             except KeyError:
                 entries_now[entry_acc] = {description}
-                entry2prots[entry_acc] = set(proteins)
+                entry2prots[entry_acc] = proteins
             else:
-                entry2prots[entry_acc] |= set(proteins)
+                entry2prots[entry_acc] |= proteins
+
+        descr2prots = list(descr2prots)
 
     changes = {}  # key: entry accession, value: (gained, lost)
     for entry_acc, descs_now in entries_now.items():
@@ -437,10 +447,10 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             fh.write(header)
         finally:
             lost_descs = [
-                f"{desc} ({list(desc2prot[desc])[0]})" for desc in sorted(lost)
+                f"{desc} ({descr2prots[desc][0]})" for desc in sorted(lost)
             ]
             gained_descs = [
-                f"{desc} ({list(desc2prot[desc])[0]})" for desc in sorted(gained)
+                f"{desc} ({descr2prots[desc][0]})" for desc in sorted(gained)
             ]
             fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
                      f"{name}\t{'Yes' if checked_flag == 'Y' else 'No'}\t"

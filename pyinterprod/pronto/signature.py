@@ -405,7 +405,7 @@ def _iter_predictions(comps: dict[str, dict[str, list[int, int, int]]],
                 yield acc2, acc1, collocts, prot_overlaps, res_overlaps
 
 
-def get_swissprot_descriptions(pg_url: str) -> dict:
+def get_swissprot_descriptions(pg_url: str) -> dict[str, dict[str, set[str]]]:
     con = psycopg.connect(**url2dict(pg_url))
     with con.cursor() as cur:
         cur.execute(
@@ -424,9 +424,9 @@ def get_swissprot_descriptions(pg_url: str) -> dict:
         signatures = {}
         for signature_acc, text, proteins in cur:
             try:
-                signatures[signature_acc][text] = proteins
+                signatures[signature_acc][text] = set(proteins)
             except KeyError:
-                signatures[signature_acc] = {text: proteins}
+                signatures[signature_acc] = {text: set(proteins)}
 
     con.close()
 
