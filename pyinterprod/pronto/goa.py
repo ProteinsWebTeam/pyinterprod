@@ -300,9 +300,10 @@ def import_go_constraints(go_url: str, pg_url: str):
                 """
 
         records = []
-        for go_id, const in go2constraints.items():
-            contr_json = json.dumps({k: list(v) for k, v in const.items()})
-            records.append((go_id, contr_json))
+        for go_id, relat2const in go2constraints.items():
+            for relation, constraints in relat2const.items():
+                for constr_id in constraints:
+                    records.append((go_id, relation, constr_id))
             if len(records) == 1000:
                 pg_cur.executemany(sql, records)
                 pg_con.commit()
@@ -312,3 +313,4 @@ def import_go_constraints(go_url: str, pg_url: str):
             pg_cur.executemany(sql, records)
             pg_con.commit()
             records.clear()
+
