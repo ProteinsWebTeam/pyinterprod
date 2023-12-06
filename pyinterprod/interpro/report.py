@@ -112,30 +112,27 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
 
         # Swiss-Prot descriptions
         old_sigs = data["descriptions"]
-        new_sigs = {
-            acc: all_sig2info[acc]
-            for acc in all_sig2info
-            if acc in integrated and integrated[acc][3] == db_id
-        }
+        new_sigs = {}
+        descr2prots = {}
+        for acc in all_sig2info:
+            if acc in integrated and integrated[acc][3] == db_id:
+                new_sigs[acc] = all_sig2info[acc]
+            for descr, proteins in all_sig2info[acc].items():
+                try:
+                    descr2prots[descr] |= proteins
+                except KeyError:
+                    descr2prots[descr] = proteins
 
         changes = {}
-        descr2prots = {}
         for acc, old_info in old_sigs.items():
             new_info = new_sigs.pop(acc, {})
             old_descrs = set(old_info.keys())
             new_descrs = set(new_info.keys())
             for descr, proteins in old_info.items():
                 try:
-                    descr2prots[descr] |= proteins
+                    descr2prots[descr] |= set(proteins)
                 except KeyError:
-                    descr2prots[descr] = proteins
-
-            for descr, proteins in new_info.items():
-                try:
-                    descr2prots[descr] |= proteins
-                except KeyError:
-                    descr2prots[descr] = proteins
-
+                    descr2prots[descr] = set(proteins)
             try:
                 entry_acc, entry_type, entry_name, _ = integrated[acc]
             except KeyError:
@@ -145,19 +142,17 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 changes[acc] = (entry_acc, entry_name, entry_type,
                                 old_descrs - new_descrs,
                                 new_descrs - old_descrs)
+        descr2prots = list(descr2prots)
 
         sig2prots = {}
         for acc, new_info in new_sigs.items():
             entry_acc, entry_type, entry_name, _ = integrated[acc]
             for descr, proteins in new_info.items():
                 try:
-                    descr2prots[descr] |= proteins
                     sig2prots[acc] |= proteins
                 except KeyError:
-                    descr2prots[descr] = proteins
                     sig2prots[acc] = proteins
 
-            descr2prots = list(descr2prots)
             new_descrs = list(new_info.keys())
             changes[acc] = (entry_acc, entry_name, entry_type, [], new_descrs)
 
