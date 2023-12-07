@@ -254,7 +254,7 @@ def import_go_constraints(go_url: str, pg_url: str):
 
     ora_cur.execute(
         """
-        SELECT T.GO_ID, AT.GO_ID, TC.RELATIONSHIP, TC.TAX_ID_TYPE, TC.TAX_ID
+        SELECT T.GO_ID, TC.RELATIONSHIP, TC.TAX_ID_TYPE, TC.TAX_ID
         FROM GO.TERMS T
         INNER JOIN GO.ANCESTORS A ON T.GO_ID = A.CHILD_ID
         INNER JOIN GO.TERMS AT ON A.PARENT_ID = AT.GO_ID
