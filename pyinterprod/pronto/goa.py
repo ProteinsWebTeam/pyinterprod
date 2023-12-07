@@ -264,7 +264,7 @@ def import_go_constraints(go_url: str, pg_url: str):
     )
 
     go2constraints = {}
-    for go_id, _, relationship, tax_id_type, tax_id in ora_cur:
+    for go_id, relationship, tax_id_type, tax_id in ora_cur:
         if go_id not in go2constraints:
             go2constraints[go_id] = {}
 
