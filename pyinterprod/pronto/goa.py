@@ -301,13 +301,11 @@ def import_go_constraints(go_url: str, pg_url: str):
             for relation, constraints in relat2const.items():
                 for taxon_id in constraints:
                     records.append((go_id, relation, taxon_id))
-            if len(records) == 1000:
-                pg_cur.executemany(sql, records)
-                pg_con.commit()
-                records.clear()
-
+                    if len(records) == 1000:
+                        pg_cur.executemany(sql, records)
+                        pg_con.commit()
+                        records.clear()
         if records:
             pg_cur.executemany(sql, records)
             pg_con.commit()
             records.clear()
-
