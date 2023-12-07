@@ -248,9 +248,9 @@ def import_go_constraints(go_url: str, pg_url: str):
         GROUP BY UNION_ID
         """
     )
-    union2taxon = {}
+    union2taxa = {}
     for union_id, taxon_ids in ora_cur:
-        union2taxon[union_id] = set(taxon_ids.split(","))
+        union2taxa[union_id] = set(taxon_ids.split(","))
 
     ora_cur.execute(
         """
@@ -272,13 +272,11 @@ def import_go_constraints(go_url: str, pg_url: str):
             go2constraints[go_id][relationship] = set()
 
         if tax_id_type == "NCBITaxon_Union":
-            current_tax_id = set(union2taxon[tax_id])
+            go2constraints[go_id][relationship] |= set(union2taxa[tax_id])
         elif tax_id_type == "NCBITaxon":
-            current_tax_id = {tax_id}
+            go2constraints[go_id][relationship] = {tax_id}
         else:
             raise ValueError(f"Unknown TAX_ID_TYPE: {tax_id_type}")
-
-        go2constraints[go_id][relationship] |= current_tax_id
 
     with pg_con.cursor() as pg_cur:
         pg_cur.execute(f"DROP TABLE IF EXISTS GO2CONSTRAINTS")
@@ -301,8 +299,8 @@ def import_go_constraints(go_url: str, pg_url: str):
         records = []
         for go_id, relat2const in go2constraints.items():
             for relation, constraints in relat2const.items():
-                for constr_id in constraints:
-                    records.append((go_id, relation, constr_id))
+                for taxon_id in constraints:
+                    records.append((go_id, relation, taxon_id))
             if len(records) == 1000:
                 pg_cur.executemany(sql, records)
                 pg_con.commit()
