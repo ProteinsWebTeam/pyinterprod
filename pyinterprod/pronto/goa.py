@@ -294,9 +294,9 @@ def import_go_constraints(go_url: str, pg_url: str):
         )
 
         sql = """
-                INSERT INTO GO2CONSTRAINTS (go_id, relationship, taxon)
-                VALUES (%s, %s, %s)
-                """
+            INSERT INTO GO2CONSTRAINTS (go_id, relationship, taxon)
+            VALUES (%s, %s, %s)
+        """
 
         records = []
         for go_id, relat2const in go2constraints.items():
