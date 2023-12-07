@@ -114,14 +114,17 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
         old_sigs = data["descriptions"]
         new_sigs = {}
         descr2prots = {}
+        sig2prots = {}
         for acc in all_sig2info:
             if acc in integrated and integrated[acc][3] == db_id:
                 new_sigs[acc] = all_sig2info[acc]
             for descr, proteins in all_sig2info[acc].items():
                 try:
                     descr2prots[descr] |= proteins
+                    sig2prots[acc] |= proteins
                 except KeyError:
                     descr2prots[descr] = proteins
+                    sig2prots[acc] = proteins
 
         changes = {}
         for acc, old_info in old_sigs.items():
@@ -133,6 +136,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                     descr2prots[descr] |= set(proteins)
                 except KeyError:
                     descr2prots[descr] = set(proteins)
+
             try:
                 entry_acc, entry_type, entry_name, _ = integrated[acc]
             except KeyError:
@@ -143,16 +147,8 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                                 old_descrs - new_descrs,
                                 new_descrs - old_descrs)
 
-        sig2prots = {}
-        for acc, new_info in new_sigs.items():
+        for acc, new_descrs in new_sigs.items():
             entry_acc, entry_type, entry_name, _ = integrated[acc]
-            for descr, proteins in new_info.items():
-                try:
-                    sig2prots[acc] |= proteins
-                except KeyError:
-                    sig2prots[acc] = proteins
-
-            new_descrs = list(new_info.keys())
             changes[acc] = (entry_acc, entry_name, entry_type, [], new_descrs)
 
         files = {}  # file objects
