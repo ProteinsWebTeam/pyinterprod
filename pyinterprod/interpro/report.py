@@ -142,7 +142,6 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 changes[acc] = (entry_acc, entry_name, entry_type,
                                 old_descrs - new_descrs,
                                 new_descrs - old_descrs)
-        descr2prots = list(descr2prots)
 
         sig2prots = {}
         for acc, new_info in new_sigs.items():
@@ -177,10 +176,10 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             link = f"{pronto_link}/signatures/{acc}/descriptions/?reviewed"
 
             lost_descs = [
-                f"{desc} ({descr2prots[desc][0]})" for desc in sorted(lost)
+                f"{desc} ({list(descr2prots[desc])[0]})" for desc in sorted(lost)
             ]
             gained_descs = [
-                f"{desc} ({descr2prots[desc][0]})" for desc in sorted(gained)
+                f"{desc} ({list(descr2prots[desc])[0]})" for desc in sorted(gained)
             ]
             fh.write(f"{acc}\t{link}\t{entry_acc}\t{types[entry_type]}"
                      f"{len(sig2prots[acc])}\t"
@@ -398,8 +397,6 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             else:
                 entry2prots[entry_acc] |= proteins
 
-        descr2prots = list(descr2prots)
-
     changes = {}  # key: entry accession, value: (gained, lost)
     for entry_acc, descs_now in entries_now.items():
         descs_then = entries_then.pop(entry_acc, set())
@@ -442,10 +439,10 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             fh.write(header)
         finally:
             lost_descs = [
-                f"{desc} ({descr2prots[desc][0]})" for desc in sorted(lost)
+                f"{desc} ({list(descr2prots[desc])[0]})" for desc in sorted(lost)
             ]
             gained_descs = [
-                f"{desc} ({descr2prots[desc][0]})" for desc in sorted(gained)
+                f"{desc} ({list(descr2prots[desc])[0]})" for desc in sorted(gained)
             ]
             fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
                      f"{name}\t{'Yes' if checked_flag == 'Y' else 'No'}\t"
