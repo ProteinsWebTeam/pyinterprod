@@ -276,7 +276,7 @@ def import_go_constraints(go_url: str, pg_url: str):
         elif tax_id_type == "NCBITaxon":
             current_tax_id = {tax_id}
         else:
-            raise f"Unknown TAX_ID_TYPE: {tax_id_type}"
+            raise ValueError(f"Unknown TAX_ID_TYPE: {tax_id_type}")
 
         go2constraints[go_id][relationship] |= current_tax_id
 
