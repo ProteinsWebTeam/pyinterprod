@@ -250,7 +250,7 @@ def import_go_constraints(go_url: str, pg_url: str):
     )
     union2taxon = {}
     for union_id, taxon_ids in ora_cur:
-        union2taxon[union_id] = taxon_ids.split(",")
+        union2taxon[union_id] = set(taxon_ids.split(","))
 
     ora_cur.execute(
         """
