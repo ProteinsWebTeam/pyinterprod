@@ -237,7 +237,6 @@ def _get_constraints(term_id: str, ancestors: dict, constraints: dict) -> set:
 
 
 def import_go_constraints(go_url: str, pg_url: str):
-    pg_con = psycopg.connect(**url2dict(pg_url))
     ora_con = oracledb.connect(go_url)
     ora_cur = ora_con.cursor()
 
@@ -278,12 +277,16 @@ def import_go_constraints(go_url: str, pg_url: str):
         else:
             raise ValueError(f"Unknown TAX_ID_TYPE: {tax_id_type}")
 
+    ora_cur.close()
+    ora_con.close()
+
+    pg_con = psycopg.connect(**url2dict(pg_url))
     with pg_con.cursor() as pg_cur:
-        pg_cur.execute(f"DROP TABLE IF EXISTS GO2CONSTRAINTS")
+        pg_cur.execute(f"DROP TABLE IF EXISTS go2constraints")
 
         pg_cur.execute(
             """
-            CREATE TABLE GO2CONSTRAINTS (
+            CREATE TABLE go2constraints (
                 go_id VARCHAR(15) NOT NULL,
                 relationship VARCHAR(50) NOT NULL,
                 taxon INTEGER NOT NULL
@@ -309,3 +312,13 @@ def import_go_constraints(go_url: str, pg_url: str):
             pg_cur.executemany(sql, records)
             pg_con.commit()
             records.clear()
+
+        pg_cur.execute(
+            """
+            CREATE INDEX go2constraints_go_idx
+            ON go2constraints (go_id)
+            """
+        )
+        pg_con.commit()
+
+    pg_con.close()
