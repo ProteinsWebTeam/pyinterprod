@@ -119,14 +119,12 @@ def add_staging(uri: str, update: list[tuple[Database, dict[str, str]]]):
 
             for m in signatures:
                 method2pub[m.accession] = update_references(cur, m, pmid2pubid)
-                if m.abstract is None:
-                    abstract = abstract_long = None
-                elif len(m.abstract) <= 4000:
-                    abstract = m.abstract
-                    abstract_long = None
-                else:
-                    abstract = None
-                    abstract_long = m.abstract
+                abstract = abstract_long = None
+                if m.abstract is not None:
+                    abstract = enclose_paragraph(m.abstract)
+                    if len(abstract) > 4000:
+                        abstract_long = abstract
+                        abstract = None
 
                 if m.name:
                     # Sanitize name (strip + remove multi-spaces)
@@ -150,8 +148,8 @@ def add_staging(uri: str, update: list[tuple[Database, dict[str, str]]]):
                         db.identifier,
                         descr,
                         m.sig_type,
-                        enclose_paragraph(abstract),
-                        enclose_paragraph(abstract_long),
+                        abstract,
+                        abstract_long,
                     )
                 )
 
@@ -179,10 +177,7 @@ def add_staging(uri: str, update: list[tuple[Database, dict[str, str]]]):
     con.close()
 
 
-def enclose_paragraph(abstract: str | None) -> str | None:
-    if abstract is None:
-        return None
-
+def enclose_paragraph(abstract: str) -> str:
     if not abstract.lower().startswith("<p>"):
         abstract = f"<p>{abstract}"
 
