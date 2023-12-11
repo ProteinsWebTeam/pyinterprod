@@ -401,8 +401,13 @@ The optional arguments are:
 </thead>
 <tbody>
     <tr>
-        <td>annotations</td>
+        <td>go-terms</td>
         <td>Import publications associated to protein annotations</td>
+        <td></td>
+    </tr>
+    <tr>
+        <td>go-constraints</td>
+        <td>Import GO taxonomic constraints</td>
         <td></td>
     </tr>
     <tr>

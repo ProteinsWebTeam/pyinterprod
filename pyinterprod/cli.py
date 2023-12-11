@@ -27,7 +27,13 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
         Task(
             fn=pronto.goa.import_annotations,
             args=(ora_goa_uri, pg_ipr_uri),
-            name="annotations",
+            name="go-terms",
+            scheduler=dict(type="lsf", mem=500, queue=lsf_queue)
+        ),
+        Task(
+            fn=pronto.goa.import_go_constraints,
+            args=(ora_goa_uri, pg_ipr_uri),
+            name="go-constraints",
             scheduler=dict(type="lsf", mem=500, queue=lsf_queue)
         ),
 

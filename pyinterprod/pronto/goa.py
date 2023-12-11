@@ -234,3 +234,91 @@ def _get_constraints(term_id: str, ancestors: dict, constraints: dict) -> set:
         result |= _get_constraints(parent_id, ancestors, constraints)
 
     return result
+
+
+def import_go_constraints(go_url: str, pg_url: str):
+    ora_con = oracledb.connect(go_url)
+    ora_cur = ora_con.cursor()
+
+    ora_cur.execute(
+        """
+        SELECT UNION_ID, LISTAGG(TAXON_ID, ',')
+        FROM GO.NCBI_TAXON_UNIONS
+        GROUP BY UNION_ID
+        """
+    )
+    union2taxa = {}
+    for union_id, taxon_ids in ora_cur:
+        union2taxa[union_id] = set(taxon_ids.split(","))
+
+    ora_cur.execute(
+        """
+        SELECT T.GO_ID, TC.RELATIONSHIP, TC.TAX_ID_TYPE, TC.TAX_ID
+        FROM GO.TERMS T
+        INNER JOIN GO.ANCESTORS A ON T.GO_ID = A.CHILD_ID
+        INNER JOIN GO.TERMS AT ON A.PARENT_ID = AT.GO_ID
+        INNER JOIN GO.TERM_TAXON_CONSTRAINTS TTC ON AT.GO_ID = TTC.GO_ID
+        INNER JOIN GO.TAXON_CONSTRAINTS TC ON TTC.CONSTRAINT_ID = TC.CONSTRAINT_ID
+        """
+    )
+
+    go2constraints = {}
+    for go_id, relationship, tax_id_type, tax_id in ora_cur:
+        if go_id not in go2constraints:
+            go2constraints[go_id] = {}
+
+        if relationship not in go2constraints[go_id]:
+            go2constraints[go_id][relationship] = set()
+
+        if tax_id_type == "NCBITaxon_Union":
+            go2constraints[go_id][relationship] |= set(union2taxa[tax_id])
+        elif tax_id_type == "NCBITaxon":
+            go2constraints[go_id][relationship] = {tax_id}
+        else:
+            raise ValueError(f"Unknown TAX_ID_TYPE: {tax_id_type}")
+
+    ora_cur.close()
+    ora_con.close()
+
+    pg_con = psycopg.connect(**url2dict(pg_url))
+    with pg_con.cursor() as pg_cur:
+        pg_cur.execute(f"DROP TABLE IF EXISTS go2constraints")
+
+        pg_cur.execute(
+            """
+            CREATE TABLE go2constraints (
+                go_id VARCHAR(15) NOT NULL,
+                relationship VARCHAR(50) NOT NULL,
+                taxon INTEGER NOT NULL
+            )
+            """
+        )
+
+        sql = """
+            INSERT INTO GO2CONSTRAINTS (go_id, relationship, taxon)
+            VALUES (%s, %s, %s)
+        """
+
+        records = []
+        for go_id, relat2const in go2constraints.items():
+            for relation, constraints in relat2const.items():
+                for taxon_id in constraints:
+                    records.append((go_id, relation, taxon_id))
+                    if len(records) == 1000:
+                        pg_cur.executemany(sql, records)
+                        pg_con.commit()
+                        records.clear()
+        if records:
+            pg_cur.executemany(sql, records)
+            pg_con.commit()
+            records.clear()
+
+        pg_cur.execute(
+            """
+            CREATE INDEX go2constraints_go_idx
+            ON go2constraints (go_id)
+            """
+        )
+        pg_con.commit()
+
+    pg_con.close()
