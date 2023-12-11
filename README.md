@@ -407,7 +407,7 @@ The optional arguments are:
     </tr>
     <tr>
         <td>go-constraints</td>
-        <td>Import publications associated to protein constraints</td>
+        <td>Import GO taxonomic constraints</td>
         <td></td>
     </tr>
     <tr>
