@@ -144,7 +144,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             scheduler=dict(type="lsf", queue=lsf_queue),
             requires=["taxonomy", "index-signature2proteins", "index-matches",
                       "proteins", "proteins-similarities", "proteomes",
-                      "annotations", "signatures", "structures"]
+                      "go-terms", "go-constraints", "signatures", "structures"]
         ),
     ]
 
