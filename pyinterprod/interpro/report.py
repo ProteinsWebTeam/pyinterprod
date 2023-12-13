@@ -170,8 +170,8 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             except KeyError:
                 filepath = os.path.join(dst, filename)
                 fh = files[filename] = open(filepath, "wt")
-                fh.write(f"Signature\tLink\tEntry\tType\t# Swiss-Prot\tName\t# Lost"
-                         f"\t# Gained\tLost\tGained\n")
+                fh.write(f"Signature\tLink\tEntry\tType\t# Swiss-Prot\tName\t"
+                         f"# Lost\t# Gained\tLost\tGained\n")
 
             link = f"{pronto_link}/signatures/{acc}/descriptions/?reviewed"
 
