@@ -137,9 +137,9 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             new_descrs = set(new_info.keys())
             for descr, proteins in old_info.items():
                 try:
-                    descr2prots[descr] |= set(proteins)
+                    descr2prots[descr] |= proteins
                 except KeyError:
-                    descr2prots[descr] = set(proteins)
+                    descr2prots[descr] = proteins
 
             try:
                 entry_acc, entry_type, entry_name, _ = integrated[acc]
