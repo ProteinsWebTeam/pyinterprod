@@ -228,6 +228,6 @@ def get_protenn_entries(cur, file: str) -> list[Method]:
         cur.connection.commit()
         drop_table(cur, "INTERPRO.PFAMN_MATCH_TMP", purge=True)
     else:
-        cur.execute("RENAME INTERPRO.PFAMN_MATCH_TMP TO INTERPRO.PFAMN_MATCH")
+        cur.execute("RENAME PFAMN_MATCH_TMP TO PFAMN_MATCH")
 
     return [Method(pfam_acc, sig_type=None) for pfam_acc in accessions]
