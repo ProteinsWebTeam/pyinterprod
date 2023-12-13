@@ -118,13 +118,17 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
         for acc in all_sig2info:
             if acc in integrated and integrated[acc][3] == db_id:
                 new_sigs[acc] = all_sig2info[acc]
-            for descr, proteins in all_sig2info[acc].items():
-                try:
-                    descr2prots[descr] |= proteins
-                    sig2prots[acc] |= proteins
-                except KeyError:
-                    descr2prots[descr] = proteins
-                    sig2prots[acc] = proteins
+
+                for descr, proteins in all_sig2info[acc].items():
+                    try:
+                        descr2prots[descr] |= proteins
+                    except KeyError:
+                        descr2prots[descr] = proteins
+
+                    try:
+                        sig2prots[acc] |= proteins
+                    except KeyError:
+                        sig2prots[acc] = proteins
 
         changes = {}
         for acc, old_info in old_sigs.items():
