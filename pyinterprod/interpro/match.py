@@ -258,8 +258,13 @@ def update_database_feature_matches(uri: str, databases: list):
             cur.execute(
                 """
                 INSERT /*+ APPEND */ INTO INTERPRO.FEATURE_MATCH_NEW
-                SELECT PROTEIN_ID, METHOD_AC, NULL, POS_FROM, POS_TO, :1
-                FROM INTERPRO.PFAMN_MATCH
+                SELECT M.PROTEIN_ID, M.METHOD_AC, NULL, M.POS_FROM, M.POS_TO, :1
+                FROM INTERPRO.PFAMN_MATCH M
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM INTERPRO.PROTEIN P
+                    WHERE M.PROTEIN_ID = P.PROTEIN_AC
+                )
                 """,
                 [database.identifier]
             )
@@ -269,8 +274,13 @@ def update_database_feature_matches(uri: str, databases: list):
             cur.execute(
                 """
                 INSERT /*+ APPEND */ INTO INTERPRO.FEATURE_MATCH_NEW
-                SELECT PROTEIN_ID, METHOD_AC, NULL, POS_FROM, POS_TO, :1
-                FROM INTERPRO.ELM_MATCH
+                SELECT M.PROTEIN_ID, M.METHOD_AC, NULL, M.POS_FROM, M.POS_TO, :1
+                FROM INTERPRO.ELM_MATCH M
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM INTERPRO.PROTEIN P
+                    WHERE M.PROTEIN_ID = P.PROTEIN_AC
+                )                
                 """,
                 [database.identifier]
             )

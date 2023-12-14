@@ -27,7 +27,13 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
         Task(
             fn=pronto.goa.import_annotations,
             args=(ora_goa_uri, pg_ipr_uri),
-            name="annotations",
+            name="go-terms",
+            scheduler=dict(type=scheduler, queue=queue, mem=500, hours=1)
+        ),
+        Task(
+            fn=pronto.goa.import_go_constraints,
+            args=(ora_goa_uri, pg_ipr_uri),
+            name="go-constraints",
             scheduler=dict(type=scheduler, queue=queue, mem=500, hours=1)
         ),
 
@@ -141,7 +147,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1),
             requires=["taxonomy", "index-signature2proteins", "index-matches",
                       "proteins", "proteins-similarities", "proteomes",
-                      "annotations", "signatures", "structures"]
+                      "go-terms", "go-constraints", "signatures", "structures"]
         ),
     ]
 
