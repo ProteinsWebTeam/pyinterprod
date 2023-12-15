@@ -413,7 +413,7 @@ def run_member_db_update():
                 args=(ora_interpro_uri, [(db, model_sources[db.identifier])
                                          for db in member_dbs]),
                 name="load-signatures",
-                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1),
+                scheduler=dict(type=scheduler, queue=queue, mem=500, hours=1),
             ),
             Task(
                 fn=interpro.signature.track_signature_changes,
