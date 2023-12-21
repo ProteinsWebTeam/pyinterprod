@@ -84,7 +84,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             args=(ora_ipr_uri, matches_file),
             kwargs=dict(tmpdir=temp_dir),
             name="export-matches",
-            scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=8)
+            scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=10)
         ),
         Task(
             fn=pronto.match.insert_fmatches,
