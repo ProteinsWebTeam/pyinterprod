@@ -15,8 +15,6 @@ from pyinterprod.uniprot.uniparc import int_to_upi, upi_to_int, range_upi
 from pyinterprod.utils import oracle
 from . import database, persistence
 
-import time
-
 
 """
 Key   -> analysis name in the database
@@ -393,13 +391,13 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         # Increase hours if time limit reached
                         if time_err and (task.executor.limit * 1.25 < max_timeout):
                             task.executor.limit *= 1.25
-
-                        try:
-                            # Increase memory requirement if needed
-                            while task.executor.memory < maxmem:
-                                task.executor.memory *= 1.5
-                        except TypeError:
-                            pass
+                        else:
+                            try:
+                                # Increase memory requirement if needed
+                                while task.executor.memory < maxmem:
+                                    task.executor.memory *= 1.5
+                            except TypeError:
+                                pass
 
                         # Resubmit task
                         task.status = PENDING
@@ -506,11 +504,7 @@ def run_i5(i5_dir: str, fasta_file: str, analysis_name: str, output: str,
     )
 
 
-def run_job(*args):
-    time.sleep(0.005)
-
-
-def _run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
+def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             outdir: str, analysis_id: int, match_table: str,
             persist_matches: Callable, site_table: str | None,
             persist_sites: Callable | None, cpu: int | None = None,
