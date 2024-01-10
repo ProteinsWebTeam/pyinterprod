@@ -15,6 +15,8 @@ from pyinterprod.uniprot.uniparc import int_to_upi, upi_to_int, range_upi
 from pyinterprod.utils import oracle
 from . import database, persistence
 
+import time
+
 
 """
 Key   -> analysis name in the database
@@ -128,6 +130,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     infinite_mem = kwargs.get("infinite_mem", False)
     keep_files = kwargs.get("keep_files", None)
     max_retries = kwargs.get("max_retries", 0)
+    max_timeout = kwargs.get("max_timeout", 0.016)  # 120
     max_running_jobs = kwargs.get("max_running_jobs", 1000)
     max_jobs_per_analysis = kwargs.get("max_jobs_per_analysis", -1)
     pool_threads = kwargs.get("pool_threads", 4)
@@ -143,6 +146,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     analyses = {}
     configs = {}
     name2id = {}
+
     for analysis_id, analysis in database.get_analyses(cur).items():
         name = sanitize_name(analysis["name"])
         try:
@@ -375,8 +379,20 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     else:
                         mem_err = False
 
-                    if num_retries < max_retries or (mem_err and infinite_mem):
+                    # Did the job reached the timeout limit?
+                    start_time, end_time = task.executor.get_times()
+                    runtime = (end_time - start_time).total_seconds() / 3600
+                    if runtime >= task.executor.limit:
+                        time_err = True
+                    else:
+                        time_err = False
+
+                    if num_retries < max_retries or time_err or (mem_err and infinite_mem):
                         # Task allowed to be re-submitted
+
+                        # Increase hours if time limit reached
+                        if time_err and (task.executor.limit * 1.25 < max_timeout):
+                            task.executor.limit *= 1.25
 
                         try:
                             # Increase memory requirement if needed
@@ -490,7 +506,11 @@ def run_i5(i5_dir: str, fasta_file: str, analysis_name: str, output: str,
     )
 
 
-def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
+def run_job(*args):
+    time.sleep(0.005)
+
+
+def _run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             outdir: str, analysis_id: int, match_table: str,
             persist_matches: Callable, site_table: str | None,
             persist_sites: Callable | None, cpu: int | None = None,
@@ -528,7 +548,7 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             con = oracle.try_connect(uri)
 
             """
-            Use a different cursor for persist functions 
+            Use a different cursor for persist functions
             as they call cursor.setinputsizes()
             """
             cur = con.cursor()
