@@ -128,7 +128,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     infinite_mem = kwargs.get("infinite_mem", False)
     keep_files = kwargs.get("keep_files", None)
     max_retries = kwargs.get("max_retries", 0)
-    max_timeout = kwargs.get("max_timeout", 0.016)  # 120
+    max_timeout = kwargs.get("max_timeout", 120)
     max_running_jobs = kwargs.get("max_running_jobs", 1000)
     max_jobs_per_analysis = kwargs.get("max_jobs_per_analysis", -1)
     pool_threads = kwargs.get("pool_threads", 4)
@@ -380,7 +380,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     # Did the job reached the timeout limit?
                     start_time, end_time = task.executor.get_times()
                     runtime = (end_time - start_time).total_seconds() / 3600
-                    if runtime >= task.executor.limit:
+                    task_limit = task.executor.limit.total_seconds() / 3600
+                    if runtime >= task_limit:
                         time_err = True
                     else:
                         time_err = False
@@ -389,7 +390,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         # Task allowed to be re-submitted
 
                         # Increase hours if time limit reached
-                        if time_err and (task.executor.limit * 1.25 < max_timeout):
+                        if time_err and (task_limit * 1.25 < max_timeout):
                             task.executor.limit *= 1.25
                         else:
                             try:
