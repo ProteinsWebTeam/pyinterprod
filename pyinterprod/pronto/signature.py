@@ -256,7 +256,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 row[9],             # llm description
                 row[4],             # type
                 row[5] or row[6],   # abstract
-                row[7],             # llm summary
+                row[7],             # llm abstract
                 *signatures.get(signature_acc, [0] * 6)
             ))
 
