@@ -486,42 +486,43 @@ The optional arguments are:
 ### InterProScan match calculation
 
 ```bash
-$ ipr-calc [OPTIONS] main.conf
+$ ipr-calc main.conf [COMMAND] [OPTIONS]
 ```
 
-The optional arguments are:
+The available commands (and their optional arguments) are:
 
-- `--import-sequences`: import sequences from the UniParc database
-- `--top-up`: only import new sequences
-- `--clean`: delete obsolete data (for retired analyses)
-- `--dry-run`: show the number of jobs to run and exit
-- `-l, --list`: list active analyses and exit
-- `-a, --analyses`: IDs of analyses to run. If not provided, all analyses are run
-- `-e, --exclude`: IDs of analyses to exclude
-- `-t, --threads`: number of monitoring threads
-- `--concurrent-jobs`: maximum number of concurrent running InterProScan jobs
-- `--max-jobs`: maximum number of jobs per analysis
-- `--max-retries`: number of times a failed job is resubmitted
-- `--keep none|all|failed`: keep input/ouput files
+- `import`: import sequences from the UniParc Oracle database
+  - `--top-up`: import new sequences only
+- `clean`: delete obsolete data
+  - `-a, --analyses`: IDs of analyses to clean (default: all)
+- `search`: scan sequences using InterProScan
+  - `--dry-run`: show the number of jobs to run and exit
+  - `-l, --list`: list active analyses and exit
+  - `-a, --analyses`: IDs of analyses to run (default: all)
+  - `-t, --threads`: number of monitoring threads (default: 8)
+  - `--concurrent-jobs`: maximum number of concurrently running InterProScan jobs (default: 1000)
+  - `--max-jobs`: maximum number of jobs to run per analysis before exiting (default: disabled)
+  - `--max-retries`: number of times a failed job is resubmitted (default: disabled)
+  - `--keep none|all|failed`: keep input/output files (default: none)
 
 #### Examples
 
-Import new UniParc sequences, then quit (do not process jobs):
+Import new UniParc sequences:
 
 ```bash
-ipr-calc main.conf --import-sequences --top-up --max-jobs 0
+ipr-calc main.conf import --top-up
 ```
 
 Process jobs for analysis `42` only, allow each job to run three times (i.e. restart twice), but keep all temporary files, regardless of the job success/failure:
 
 ```bash
-ipr-calc main.conf -a 42 --max-retries 2 --keep all
+ipr-calc main.conf search -a 42 --max-retries 2 --keep all
 ``` 
 
 Run 10 jobs per analysis, and keep failed jobs to investigate:
 
 ```bash
-ipr-calc main.conf --max-retries 10 --keep failed
+ipr-calc main.conf search --max-retries 10 --keep failed
 ```
 
 ### Clans update
