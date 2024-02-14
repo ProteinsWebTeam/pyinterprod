@@ -556,7 +556,7 @@ def update_feature_matches(uri: str):
             SELECT P.PROTEIN_AC, M.METHOD_AC, M.SEQ_FEATURE, M.SEQ_START, 
                    M.SEQ_END, D.DBCODE
             FROM INTERPRO.PROTEIN_TO_SCAN P
-            INNER JOIN IPRSCAN.MV_IPRSCAN PARTITION M
+            INNER JOIN IPRSCAN.MV_IPRSCAN M
               ON P.UPI = M.UPI
             INNER JOIN INTERPRO.IPRSCAN2DBCODE D
               ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
