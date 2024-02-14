@@ -548,19 +548,21 @@ def update_feature_matches(uri: str):
     con.commit()
     logger.info(f"  {cur.rowcount} rows deleted")
 
-    for partition in FEATURE_MATCH_PARTITIONS.values():
+    for dbcode, partition in FEATURE_MATCH_PARTITIONS.items():
         logger.info(f"inserting matches ({partition})")
         cur.execute(
-            f"""
+            """
             INSERT INTO INTERPRO.FEATURE_MATCH
             SELECT P.PROTEIN_AC, M.METHOD_AC, M.SEQ_FEATURE, M.SEQ_START, 
                    M.SEQ_END, D.DBCODE
             FROM INTERPRO.PROTEIN_TO_SCAN P
-            INNER JOIN IPRSCAN.MV_IPRSCAN PARTITION ({partition}) M
+            INNER JOIN IPRSCAN.MV_IPRSCAN PARTITION M
               ON P.UPI = M.UPI
             INNER JOIN INTERPRO.IPRSCAN2DBCODE D
               ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
-            """
+            WHERE D.DBCODE = :1
+            """,
+            [dbcode]
         )
         logger.info(f"  {cur.rowcount} rows inserted")
 
