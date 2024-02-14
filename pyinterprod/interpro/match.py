@@ -535,7 +535,7 @@ def update_feature_matches(uri: str):
     """
     con = oracledb.connect(uri)
     cur = con.cursor()
-    logger.info("updating FEATURE_MATCH")
+    logger.info("deleting matches")
     cur.execute(
         """
         DELETE FROM INTERPRO.FEATURE_MATCH
@@ -546,30 +546,28 @@ def update_feature_matches(uri: str):
         """
     )
     con.commit()
-    logger.info(f"{cur.rowcount} rows deleted")
+    logger.info(f"  {cur.rowcount} rows deleted")
 
-    params = ",".join([":" + str(i+1)
-                       for i in range(len(FEATURE_MATCH_PARTITIONS))])
-    cur.execute(
-        f"""
-        INSERT INTO INTERPRO.FEATURE_MATCH
-        SELECT
-          P.PROTEIN_AC, M.METHOD_AC, M.SEQ_FEATURE, M.SEQ_START, M.SEQ_END,
-          D.DBCODE
-        FROM INTERPRO.PROTEIN_TO_SCAN P
-        INNER JOIN IPRSCAN.MV_IPRSCAN M
-          ON P.UPI = M.UPI
-        INNER JOIN INTERPRO.IPRSCAN2DBCODE D
-          ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
-        WHERE D.DBCODE IN ({params})
-        """,
-        list(FEATURE_MATCH_PARTITIONS.keys())
-    )
+    for partition in FEATURE_MATCH_PARTITIONS.values():
+        logger.info(f"inserting matches ({partition})")
+        cur.execute(
+            f"""
+            INSERT INTO INTERPRO.FEATURE_MATCH
+            SELECT P.PROTEIN_AC, M.METHOD_AC, M.SEQ_FEATURE, M.SEQ_START, 
+                   M.SEQ_END, D.DBCODE
+            FROM INTERPRO.PROTEIN_TO_SCAN P
+            INNER JOIN IPRSCAN.MV_IPRSCAN PARTITION ({partition}) M
+              ON P.UPI = M.UPI
+            INNER JOIN INTERPRO.IPRSCAN2DBCODE D
+              ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
+            """
+        )
+        logger.info(f"  {cur.rowcount} rows inserted")
+
     con.commit()
-    logger.info(f"{cur.rowcount} rows inserted")
-
     cur.close()
     con.close()
+    logger.info("complete")
 
 
 def update_variant_matches(uri: str):
