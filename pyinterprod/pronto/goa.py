@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import oracledb
 import psycopg
 
@@ -249,16 +247,20 @@ def import_go_constraints(go_url: str, pg_url: str):
     )
     union2taxa = {}
     for union_id, taxon_ids in ora_cur:
-        union2taxa[union_id] = set(taxon_ids.split(","))
+        union2taxa[union_id] = set(map(int, taxon_ids.split(",")))
 
     ora_cur.execute(
         """
         SELECT T.GO_ID, TC.RELATIONSHIP, TC.TAX_ID_TYPE, TC.TAX_ID
         FROM GO.TERMS T
-        INNER JOIN GO.ANCESTORS A ON T.GO_ID = A.CHILD_ID
-        INNER JOIN GO.TERMS AT ON A.PARENT_ID = AT.GO_ID
-        INNER JOIN GO.TERM_TAXON_CONSTRAINTS TTC ON AT.GO_ID = TTC.GO_ID
-        INNER JOIN GO.TAXON_CONSTRAINTS TC ON TTC.CONSTRAINT_ID = TC.CONSTRAINT_ID
+        INNER JOIN GO.ANCESTORS A 
+                ON T.GO_ID = A.CHILD_ID
+        INNER JOIN GO.TERMS AT 
+                ON A.PARENT_ID = AT.GO_ID
+        INNER JOIN GO.TERM_TAXON_CONSTRAINTS TTC 
+                ON AT.GO_ID = TTC.GO_ID
+        INNER JOIN GO.TAXON_CONSTRAINTS TC 
+                ON TTC.CONSTRAINT_ID = TC.CONSTRAINT_ID
         """
     )
 
@@ -273,7 +275,7 @@ def import_go_constraints(go_url: str, pg_url: str):
         if tax_id_type == "NCBITaxon_Union":
             go2constraints[go_id][relationship] |= set(union2taxa[tax_id])
         elif tax_id_type == "NCBITaxon":
-            go2constraints[go_id][relationship] = {tax_id}
+            go2constraints[go_id][relationship].add(tax_id)
         else:
             raise ValueError(f"Unknown TAX_ID_TYPE: {tax_id_type}")
 

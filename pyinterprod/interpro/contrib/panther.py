@@ -69,7 +69,8 @@ def parse_signatures(filepath: str) -> list[Method]:
             if name is None or name.upper().endswith("NOT NAMED"):
                 descr = None
             else:
-                descr = name
+                # PTHR24221:SF655 had '(MDR\_TAP)' in its name
+                descr = name.replace("\\_", "_")
 
             m = Method(accession, _TYPE, description=descr)
             signatures.append(m)
