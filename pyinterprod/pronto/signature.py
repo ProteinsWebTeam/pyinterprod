@@ -208,21 +208,22 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
     cur.execute(
         """
         SELECT
-            M.METHOD_AC, LOWER(D.DBSHORT), M.NAME, M.DESCRIPTION,
-            T.ABBREV, M.ABSTRACT, M.ABSTRACT_LONG, LLM.SUMMARY
+            M.METHOD_AC, LOWER(D.DBSHORT),
+            M.NAME, LLM.NAME, M.DESCRIPTION, LLM.DESCRIPTION,
+            T.ABBREV, M.ABSTRACT, M.ABSTRACT_LONG, LLM.ABSTRACT
         FROM INTERPRO.METHOD M
         INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
         INNER JOIN INTERPRO.CV_ENTRY_TYPE T ON M.SIG_TYPE = T.CODE
         LEFT OUTER JOIN (
-            SELECT METHOD_AC, SUMMARY
+            SELECT METHOD_AC, NAME, DESCRIPTION, ABSTRACT
             FROM (
-                SELECT METHOD_AC, SUMMARY,
+                SELECT METHOD_AC, NAME, DESCRIPTION, ABSTRACT,
                    ROW_NUMBER() OVER (
                      PARTITION BY METHOD_AC
-                     ORDER BY TIMESTAMP DESC
+                     ORDER BY CREATED DESC
                    ) RN
                 FROM INTERPRO.METHOD_LLM
-                WHERE SUMMARY IS NOT NULL
+                WHERE ABSTRACT IS NOT NULL
             ) M
             WHERE M.RN = 1
         ) LLM ON M.METHOD_AC = LLM.METHOD_AC
@@ -242,7 +243,6 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
         values = []
         while rows:
             row = rows.pop()
-
             # Will raise a KeyError if the DB key is not in the database table
             signature_db_id = name2id[row[1]]
 
@@ -250,11 +250,13 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
             values.append((
                 signature_acc,
                 signature_db_id,
-                row[2],             # name
-                row[3],             # description
-                row[4],             # type
-                row[5] or row[6],   # abstract
-                row[7],             # llm summary
+                row[2],  # name
+                row[3],  # llm name
+                row[4],  # description
+                row[5],  # llm description
+                row[6],  # type
+                row[7] or row[8],  # abstract
+                row[9],  # llm abstract
                 *signatures.get(signature_acc, [0] * 6)
             ))
 
@@ -266,7 +268,9 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                     CONSTRAINT signature_pkey PRIMARY KEY,
                 database_id INTEGER NOT NULL,
                 name VARCHAR(100),
+                llm_name VARCHAR(30),
                 description VARCHAR(400),
+                llm_description VARCHAR(100),
                 type VARCHAR(25) NOT NULL,
                 abstract TEXT,
                 llm_abstract TEXT,
@@ -282,7 +286,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
 
         sql = """
             INSERT INTO signature
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         records = []
