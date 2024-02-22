@@ -129,6 +129,9 @@ def add_staging(uri: str, update: list[tuple[Database, dict[str, str]]]):
                 if m.name:
                     # Sanitize name (strip + remove multi-spaces)
                     name = re.sub(r"\s{2,}", " ", m.name.strip())
+                    # Replace commas by underscore
+                    name = name.replace(",", "_")
+
                     if name.lower() == m.accession.lower():
                         name = None
                 else:
