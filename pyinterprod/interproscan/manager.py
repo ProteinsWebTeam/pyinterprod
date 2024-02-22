@@ -81,7 +81,8 @@ class TaskFactory:
     site_table: str | None = None
     persist_sites: Callable | None = None
     keep_files: str | None = None
-    lsf_queue: str | None = None
+    scheduler: str | None = None
+    queue: str | None = None
 
     def make(self, upi_from: str, upi_to: str) -> Task:
         return Task(
@@ -103,10 +104,11 @@ class TaskFactory:
                         keep_files=self.keep_files,
                         timeout=self.config["job_timeout"]),
             name=self.make_name(upi_from, upi_to),
-            scheduler=dict(type="lsf",
+            scheduler=dict(type=self.scheduler,
+                           queue=self.queue,
                            cpu=self.config["job_cpu"],
                            mem=self.config["job_mem"],
-                           queue=self.lsf_queue),
+                           hours=self.config["job_timeout"]),
             random_suffix=False
         )
 
@@ -125,11 +127,13 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     dry_run = kwargs.get("dry_run", False)
     infinite_mem = kwargs.get("infinite_mem", False)
     keep_files = kwargs.get("keep_files", None)
-    lsf_queue = kwargs.get("lsf_queue")
     max_retries = kwargs.get("max_retries", 0)
+    max_timeout = kwargs.get("max_timeout", 120)
     max_running_jobs = kwargs.get("max_running_jobs", 1000)
     max_jobs_per_analysis = kwargs.get("max_jobs_per_analysis", -1)
     pool_threads = kwargs.get("pool_threads", 4)
+    scheduler = kwargs.get("scheduler")
+    queue = kwargs.get("queue")
     to_run = kwargs.get("analyses", [])
     to_exclude = kwargs.get("exclude", [])
 
@@ -140,6 +144,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     analyses = {}
     configs = {}
     name2id = {}
+
     for analysis_id, analysis in database.get_analyses(cur).items():
         name = sanitize_name(analysis["name"])
         try:
@@ -183,7 +188,12 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     max_upi, = cur.fetchone()
 
-    name2id = get_lsf_unfinished_jobs()
+    if scheduler.lower() == "lsf":
+        name2id = get_unfinished_lsf_jobs()
+    elif scheduler.lower() == "slurm":
+        name2id = get_unfinished_slurm_jobs()
+    else:
+        raise ValueError(scheduler)
 
     with Pool(temp_dir, max_running_jobs,
               kill_on_exit=False,
@@ -210,7 +220,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                                   site_table=analysis["tables"]["sites"],
                                   persist_sites=persist_sites,
                                   keep_files=keep_files,
-                                  lsf_queue=lsf_queue)
+                                  scheduler=scheduler,
+                                  queue=queue)
 
             n_tasks_analysis = 0
             jobs = incomplete_jobs.pop(analysis_id, [])
@@ -366,15 +377,28 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     else:
                         mem_err = False
 
-                    if num_retries < max_retries or (mem_err and infinite_mem):
+                    # Did the job reached the timeout limit?
+                    start_time, end_time = task.executor.get_times()
+                    runtime = (end_time - start_time).total_seconds() / 3600
+                    task_limit = task.executor.limit.total_seconds() / 3600
+                    if runtime >= task_limit:
+                        time_err = True
+                    else:
+                        time_err = False
+
+                    if num_retries < max_retries or time_err or (mem_err and infinite_mem):
                         # Task allowed to be re-submitted
 
-                        try:
-                            # Increase memory requirement if needed
-                            while task.executor.memory < maxmem:
-                                task.executor.memory *= 1.5
-                        except TypeError:
-                            pass
+                        # Increase hours if time limit reached
+                        if time_err and (task_limit * 1.25 < max_timeout):
+                            task.executor.limit *= 1.25
+                        else:
+                            try:
+                                # Increase memory requirement if needed
+                                while task.executor.memory < maxmem:
+                                    task.executor.memory *= 1.5
+                            except TypeError:
+                                pass
 
                         # Resubmit task
                         task.status = PENDING
@@ -519,7 +543,7 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             con = oracle.try_connect(uri)
 
             """
-            Use a different cursor for persist functions 
+            Use a different cursor for persist functions
             as they call cursor.setinputsizes()
             """
             cur = con.cursor()
@@ -552,7 +576,7 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
             shutil.rmtree(outdir)
 
 
-def get_lsf_unfinished_jobs() -> dict[str, int]:
+def get_unfinished_lsf_jobs() -> dict[str, int]:
     stdout = subprocess.run(["bjobs", "-o", "jobid name"],
                             capture_output=True,
                             encoding="utf-8").stdout
@@ -568,8 +592,16 @@ def get_lsf_unfinished_jobs() -> dict[str, int]:
     return jobs
 
 
-# def kill_lsf_job(name: str) -> bool:
-#     process = subprocess.run(["bkill", "-r", "-J", name],
-#                              stdout=subprocess.DEVNULL,
-#                              stderr=subprocess.DEVNULL)
-#     return process.returncode == 0
+def get_unfinished_slurm_jobs() -> dict[str, int]:
+    stdout = subprocess.run(["squeue", "-h" "-O", "JobId,Name",
+                             "-t", "pending,running"],
+                            capture_output=True,
+                            encoding="utf-8").stdout
+
+    jobs = {}
+    for line in stdout.split("\n")[1:]:
+        if line:
+            job_id, name = line.split(maxsplit=1)
+            jobs[name] = int(job_id)
+
+    return jobs
