@@ -925,6 +925,9 @@ def run_interproscan_manager():
 
     parser_import = subparsers.add_parser("import",
                                           help="import sequences from UniParc")
+    parser_import.add_argument("--max-upi", metavar="UPI",
+                               help="import sequences with a UniParc ID lesser "
+                                    "or equal to UPI (default: off)")
     parser_import.add_argument("--top-up", action="store_true", default=False,
                                help="import new sequences instead of importing"
                                     " all sequences (default: off)")
@@ -981,7 +984,8 @@ def run_interproscan_manager():
     if args.mode == "import":
         interproscan.database.import_uniparc(ispro_uri=iscn_uniparc_uri,
                                              uniparc_uri=unpr_uniparc_uri,
-                                             top_up=args.top_up)
+                                             top_up=args.top_up,
+                                             max_upi=args.max_upi)
     elif args.mode == "clean":
         interproscan.database.clean_tables(iscn_iprscan_uri, args.analyses)
 

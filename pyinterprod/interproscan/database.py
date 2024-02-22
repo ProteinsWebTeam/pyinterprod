@@ -164,16 +164,17 @@ def clean_tables(uri: str, analysis_ids: list[int] | None = None):
     con.close()
 
 
-def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
+def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False,
+                   max_upi: str | None = None):
     logger.info("importing sequences from UniParc")
     con = oracledb.connect(ispro_uri)
     cur = con.cursor()
 
     if top_up:
         cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
-        max_upi, = cur.fetchone()
+        current_max_upi, = cur.fetchone()
     else:
-        max_upi = None
+        current_max_upi = None
         oracle.drop_table(cur, "UNIPARC.PROTEIN", purge=True)
         cur.execute(
             """
@@ -192,7 +193,7 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
             """
         )
 
-    logger.info(f"\thighest UPI: {max_upi or 'N/A'}")
+    logger.info(f"\thighest UPI: {current_max_upi or 'N/A'}")
 
     cnt = 0
     records = []
@@ -202,7 +203,7 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
         VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9)
     """
 
-    for rec in iter_proteins(uniparc_uri, greather_than=max_upi):
+    for rec in iter_proteins(uniparc_uri, gt=current_max_upi, le=max_upi):
         records.append(rec)
         cnt += 1
 
@@ -221,8 +222,8 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False):
         cur.execute("CREATE UNIQUE INDEX PK_PROTEIN ON UNIPARC.PROTEIN (UPI)")
 
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
-    max_upi, = cur.fetchone()
-    logger.info(f"\tnew highest UPI: {max_upi or 'N/A'}")
+    current_max_upi, = cur.fetchone()
+    logger.info(f"\tnew highest UPI: {current_max_upi or 'N/A'}")
 
     cur.close()
     con.close()
