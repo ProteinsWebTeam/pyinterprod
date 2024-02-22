@@ -125,7 +125,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     }
     custom_configs = kwargs.get("config", {})
     dry_run = kwargs.get("dry_run", False)
-    infinite_mem = kwargs.get("infinite_mem", False)
+    auto_retry = kwargs.get("auto_retry", False)
     keep_files = kwargs.get("keep_files", None)
     max_retries = kwargs.get("max_retries", 0)
     max_timeout = kwargs.get("max_timeout", 120)
@@ -386,7 +386,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     else:
                         time_err = False
 
-                    if num_retries < max_retries or time_err or (mem_err and infinite_mem):
+                    if ((auto_retry and (mem_err or time_err)) or
+                            num_retries < max_retries):
                         # Task allowed to be re-submitted
 
                         # Increase hours if time limit reached

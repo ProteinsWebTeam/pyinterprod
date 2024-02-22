@@ -1032,9 +1032,9 @@ def run_interproscan_manager():
                                  # Job scheduler/queue
                                  scheduler=scheduler,
                                  queue=queue,
-                                 # Resubmit a job if it fails due to memory
-                                 infinite_mem=True,
-                                 # Attempts to re-run a failed job (non-memory)
+                                 # Re-run jobs that failed due to memory/time
+                                 auto_retry=True,
+                                 # Attempts to re-run failed jobs
                                  max_retries=args.max_retries,
                                  # Concurrent jobs
                                  max_running_jobs=args.concurrent_jobs,
