@@ -226,6 +226,14 @@ def run_clan_update():
                              cddid=params["summary"],
                              fam2supfam=params["members"],
                              **kwargs)
+        elif dbname == "pfam":
+            update_hmm_clans(ora_interpro_uri, database,
+                             hmmdb=params["hmm"],
+                             source=params["members"],
+                             pfam_clan_path=["clan"],
+                             pfam_fasta_path=["fasta"],
+                             pfam_full_path=["full"],
+                             **kwargs)
         else:
             update_hmm_clans(ora_interpro_uri, database,
                              hmmdb=params["hmm"],
