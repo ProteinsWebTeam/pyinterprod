@@ -158,11 +158,6 @@ def get_signatures(pfam_path: str) -> list[Method]:
                 elif line.startswith("#=GF RM"):
                     references[current_ref_pos] = int(line[7:].strip())  # = pmid
 
-                i += 1
-                if limit is not None:
-                    if i > limit:
-                        break
-
     except UnicodeDecodeError:
         pass
 
@@ -178,38 +173,195 @@ def get_signatures(pfam_path: str) -> list[Method]:
     return signatures
 
 
+def get_fam_seq_counts(
+    pfam_fasta_path: str
+) -> dict[str: int] | None:
+    """Parse PfamA-FASTA and get the number of seqs per PFAM family.
+
+    :param pfam_fasta_path: path to Pfam-A.fasta.gz
+
+    Return {fam accession [str] : number of seqs in fam [int]}
+    """
+    fams = {}
+
+    try:
+        with gzip.open(PFAM_FASTA, 'rt') as fh:
+            for line in fh:
+                if line.startswith(">"):
+                    pfamA_acc = line.strip().split(" ")[-1].split(";")[0].split(".")[0]
+                    try:
+                        fams[pfamA_acc] += 1
+                    except KeyError:
+                        fams[pfamA_acc] = 1
+    except UnicodeDecodeError:
+        pass
+
+    except FileNotFoundError:
+        return
+
+    return fams
 
 
-def get_clans(uri: str) -> list[Clan]:
-    con = connect_mysql(uri)
-    cur = MySQLdb.cursors.SSCursor(con)
-    cur.execute(
-        """
-        SELECT
-          c.clan_acc, c.clan_id, c.clan_description,
-          c.number_sequences, m.pfamA_acc, f.num_full
-        FROM clan c
-        INNER JOIN clan_membership m ON c.clan_acc = m.clan_acc
-        INNER JOIN pfamA f ON m.pfamA_acc = f.pfamA_acc
-        """
-    )
+def get_num_full(
+    pfam_full_path: str,
+) -> dict[str: int] | None:
+    """Calculate num_full values by parsing Pfam-A.full.gz alignment file
+    
+    :param pfam_full_path: path to pfam-a-full alignemnt file
+    """
+    try:
+        with gzip.open(pfam_full_path, 'rt') as fh:
+            num_fulls = {}  # {acc [str]: num_full [int]}
+            num_full_count = 0
 
-    clans = {}
-    for row in cur:
-        clan_acc = row[0]
+            for line in fh:
 
-        try:
-            clan = clans[clan_acc]
-        except KeyError:
-            clan = clans[clan_acc] = Clan(clan_acc, row[1], row[2])
+                if line.strip() == RECORD_BREAK:
+                    # store the previous record
+                    num_fulls[accession] = num_full_count
+                    
+                    # start afresh for the next record
+                    num_full_count = 0
 
-        clan.members.append({
-            "accession": row[4],
-            "score": row[5] / row[3] if row[3] > 0 else 0
-        })
+                elif line.startswith("#=GF AC"):
+                    accession = line.split(" ")[-1].split(".")[0].strip()
+                    version = accession.split(".")[-1]
+                
+                elif re.search(r"^#=GS\s+\S+\s+AC\s+", line.strip()):
+                    num_full_count += 1
+                    
+    except UnicodeDecodeError:
+        pass
+    
+    except FileNotFoundError:
+        return
 
-    cur.close()
-    con.close()
+    return num_fulls
+
+
+def get_clans(
+    pfam_clan_path: str,
+    pfam_fasta_path: str,
+    pfam_full_path: str,
+) -> list[Clan]:
+    """Retrieve clans and clan members from the Pfam file Pfam-C
+    
+    :param pfam_clan_path: path to Pfam-C.tsv.gz file
+    :param pfam_fasta_path: path to Pfam-A.fasta.gz file
+    :param pfam_full_path: path to Pfam-A-full.gz alignment file
+    """
+    clans =[]
+
+    logger.info("Getting num_full values")
+    num_fulls = get_num_full(pfam_full_path)
+    if num_fulls is None:
+        logger.error(
+            (
+                "Could not find Pfam-A-full (full alignment file) at %s\n"
+                "Not retrieving clan data"
+            ), pfam_full_path
+        )
+        return clans
+    logger.info("Completed")
+
+    logger.info("Getting Pfam family seq counts")
+    fam_seq_counts = get_fam_seq_counts(pfam_fasta_path)
+    if fam_seq_counts is None:
+        logger.error(
+            (
+                "Could not find Pfam FASTA file at %s\n"
+                "Not retrieving clan data"
+            ), pfam_fasta_path
+        )
+        return clans
+    logger.info("Completed")
+
+   logger.info("Getting Clans")
+    try:
+        with gzip.open(pfam_clan_path, 'rt') as fh:
+            (
+                accession,
+                clan_id,
+                description,
+                members,
+            ) = get_default_values(clans=True)
+
+            for line in fh:
+
+                if line.strip() == RECORD_BREAK:
+                    # store the previous record
+                    clan = Clan(
+                            accession,
+                            clan_id,
+                            description,
+                        )
+                    
+                    # totalSeq = totalSeq + pfam.pfama_acc.num_full; --> Pfam/PfamWeb/root/rest/clan/entry_xml.tt
+                    clan_seq = 0
+                    for pfamA_acc in fam_seq_counts:
+                        try:
+                            clan_seq += fam_seq_counts[pfamA_acc]
+                        except KeyError:
+                            logger.error(
+                                (
+                                    "Could not retrieve the number of sequences for Pfam family %s in clan %s -"
+                                    "Setting number as 0"
+                                ), pfamA_acc, accession
+                            )
+                            pass
+                    
+                    for pfamA_acc in members:
+                        try:
+                            num_full = num_fulls[pfamA_acc]  # num of seq accessions listed in full alignment (pfam-a.full)
+                        except KeyError:
+                            if pfamA_acc in dead_fams:
+                                continue
+                                
+                            num_full = 0
+                            logger.warning("Could not find num_full for %s in clan %s -> Setting score as '0'", pfamA_acc, accession)
+
+                        clan.members.append(
+                            {
+                                "accession": pfamA_acc,
+                                "score": num_full / clan_seq if clan_seq > 0 else 0
+                            }
+                        )
+
+                    clans.append(clan)
+                    
+                    # start afresh for the next record
+                    (
+                        accession,
+                        clan_id,
+                        description,
+                        members
+                    ) = get_default_values(clans=True)
+                
+                elif line.startswith("#=GF AC"):
+                    accession = line.split(" ")[-1].split(".")[0].strip()
+                    version = accession.split(".")[-1]
+                
+                elif line.startswith("#=GF ID"):
+                    clan_id = line[7:].strip()
+
+                elif line.startswith("#=GF DE"):
+                    description = line[7:].strip()
+
+                elif line.startswith("#=GF MB"):
+                    members.append(line[7:].strip().replace(";",""))
+
+    except UnicodeDecodeError:
+        pass
+    
+    except FileNotFoundError:
+        logger.error(
+            (
+                "Could not find Pfam-C (clan) file at %s\n"
+                "Not retrieving clan data"
+            ), pfam_clan_path
+        )
+    
+    logger.info("Completed")
 
     return list(clans.values())
 
