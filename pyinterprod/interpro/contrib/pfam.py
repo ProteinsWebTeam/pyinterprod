@@ -20,14 +20,164 @@ _TYPES = {
 }
 
 
-def connect_mysql(uri: str) -> MySQLdb.Connection:
-    obj = url2dict(uri)
-    # MySQLdb and psycopg use different keyword params for password/database
-    obj.update({
-        "passwd": obj.pop("password"),
-        "db": obj.pop("dbname")
-    })
-    return MySQLdb.connect(**obj)
+class AbstractFormatter:
+    def __init__(self,
+        references: dict[int, int],
+    ):
+        self.refs = references
+        self.acc = None
+
+    def update(self, acc: str, abstract: str) -> str:
+        self.acc = acc
+        # abstract = re.sub(r"\[(\d+-\d+)]", self.split_refs, abstract)
+        abstract = re.sub(r"\[([\d\s,]+)]", self.repl_refs, abstract)
+        return abstract
+
+    @staticmethod
+    def split_refs(match: re.Match) -> str:
+        start, end = map(int, match.group(1).split("-"))
+        refs = []
+        for ref_pos in range(start, end + 1):
+            refs.append(str(ref_pos))
+
+        return f"[{', '.join(refs)}]"
+
+    def repl_refs(self, match: re.Match) -> str:
+        refs = []
+        for ref_pos in map(int, map(str.strip, match.group(1).split(','))):
+            try:
+                pmid = self.refs[ref_pos]
+            except KeyError:
+                logger.error(
+                    "%s: no PMID for %s -- %s",
+                    self.acc,
+                    ref_pos,
+                    self.refs,
+                )
+                continue
+
+            refs.append(f"PMID:{pmid}")
+
+        return f"[{','.join(refs)}]" if refs else ""
+
+
+def get_default_values(
+    signatures=False,
+    clans=False
+) -> tuple:
+    """Return default values for Pfam variables
+
+    :param signatures: bool - get default values for a signature
+    :param clans: bool - get default values for a clan
+    
+    In order, for signatures return:
+    Accession [str]
+    name [int]
+    Description [str]
+    Long type (e.g. Family, Domain, etc.) [str]
+    Abstract [empty str that is added]
+    References {order added/pos ref [int]: pmid [int]}
+
+    For clans return:
+    Clan accessio number, excluding version num [int]
+    Clan id [int]
+    Description [str]
+    List of member accessions [List[str]]
+    """
+    if signatures:
+        return None, None, None, None, "", {}
+    if clans:
+        return None, None, None, []
+
+
+def get_signatures(pfam_path: str) -> list[Method]:
+    """Parse Pfam-A.seed.gz file and extract signatures.
+
+    :param pfam_path: str, path to Pfam-A.seed.gz file
+    
+    Return list of Method objs
+    """
+    signatures =[]
+
+    try:
+        with gzip.open(pfam_path, 'rt') as fh:
+            (
+                accession,
+                name,
+                description,
+                long_type,
+                abstract,
+                references,  # {order added/pos ref [int]: pmid [int]}
+            ) = get_default_values(signatures=True)
+
+            for line in fh:
+                if line.strip() == RECORD_BREAK:
+                    # create signature record from previous Pfam record
+                    formatter = AbstractFormatter(references)
+
+                    signatures.append(
+                        Method(
+                            accession,
+                            _TYPES[long_type],  # convert to single letter
+                            name,
+                            description,
+                            abstract=formatter.update(accession, abstract) if abstract else None,
+                            references=list(references.values())
+                        )
+                    )
+
+                    # start afresh for the next record/signature
+                    (
+                        accession,
+                        name,
+                        description,
+                        long_type,
+                        abstract,
+                        references,  # {order added/pos ref [int]: pmid [int]}
+                    ) = get_default_values(signatures=True)
+                
+                elif line.startswith("#=GF AC"):
+                    accession = line.split(" ")[-1].strip()
+                    version = accession.split(".")[-1]
+                
+                elif line.startswith("#=GF ID"):
+                    name = line[7:].strip()   # pfam id
+
+                elif line.startswith("#=GF DE"):
+                    description = line[7:].strip()
+
+                elif line.startswith("#=GF TP"):
+                    long_type = line[7:].strip()
+
+                elif line.startswith("#=GF CC"):
+                    abstract += line[7:].strip()
+
+                elif line.startswith("#=GF RN"):
+                    current_ref_pos = int(line.split("[")[-1][:-2])
+                
+                elif line.startswith("#=GF RM"):
+                    references[current_ref_pos] = int(line[7:].strip())  # = pmid
+
+                i += 1
+                if limit is not None:
+                    if i > limit:
+                        break
+
+    except UnicodeDecodeError:
+        pass
+
+    except FileNotFoundError:
+        logger.error(
+            (
+                "Could not find Pfam-A-seed (seed alignment) file at %s\n"
+                "Not retrieving signature data"
+            ), pfam_path
+        )
+        return signatures
+
+    return signatures
+
+
 
 
 def get_clans(uri: str) -> list[Clan]:
@@ -62,107 +212,6 @@ def get_clans(uri: str) -> list[Clan]:
     con.close()
 
     return list(clans.values())
-
-
-class AbstractFormatter:
-    def __init__(self,
-                 references: dict[str, dict[int, int]],
-                 citations: dict[int, int]):
-        self.refs = references
-        self.cite = citations
-        self.acc = None
-
-    def update(self, acc: str, abstract: str) -> str:
-        self.acc = acc
-        # abstract = re.sub(r"\[(\d+-\d+)]", self.split_refs, abstract)
-        abstract = re.sub(r"\[([\d\s,]+)]", self.repl_refs, abstract)
-        return abstract
-
-    @staticmethod
-    def split_refs(match: re.Match) -> str:
-        start, end = map(int, match.group(1).split("-"))
-        refs = []
-        for ref_pos in range(start, end + 1):
-            refs.append(str(ref_pos))
-
-        return f"[{', '.join(refs)}]"
-
-    def repl_refs(self, match: re.Match) -> str:
-        refs = []
-        for ref_pos in map(int, map(str.strip, match.group(1).split(','))):
-            try:
-                ref_id = self.refs[self.acc][ref_pos]
-            except KeyError:
-                logger.error(f"{self.acc}: no reference for {ref_pos}")
-                continue
-
-            try:
-                pmid = self.cite[ref_id]
-            except KeyError:
-                logger.error(f"{ref_id}: no PMID")
-                continue
-
-            refs.append(f"PMID:{pmid}")
-
-        return f"[{','.join(refs)}]" if refs else ""
-
-
-def get_signatures(uri: str) -> list[Method]:
-    con = connect_mysql(uri)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT auto_lit, pmid
-        FROM literature_reference
-        """
-    )
-    citations = dict(cur.fetchall())
-
-    cur.execute(
-        """
-        SELECT pfamA_acc, auto_lit, order_added
-        FROM pfamA_literature_reference
-        """
-    )
-    references = {}
-    pfam2pmid = {}
-    for acc, ref_id, ref_pos in cur:
-        pmid = citations[ref_id]
-
-        if acc in references:
-            references[acc][ref_pos] = ref_id
-            pfam2pmid[acc].add(pmid)
-        else:
-            references[acc] = {ref_pos: ref_id}
-            pfam2pmid[acc] = {pmid}
-
-    cur.execute(
-        """
-        SELECT pfamA_acc, pfamA_id, description, type, comment, updated
-        FROM pfamA
-        """
-    )
-    entries = {row[0]: row[1:] for row in cur.fetchall()}
-    cur.close()
-    con.close()
-
-    formatter = AbstractFormatter(references, citations)
-    signatures = []
-    for acc, obj in entries.items():
-        name, description, long_type, abstract, updated = obj
-        short_type = _TYPES[long_type]
-
-        if abstract:
-            abstract = formatter.update(acc, abstract)
-        else:
-            abstract = None
-
-        m = Method(acc, short_type, name, description, abstract,
-                   date=updated,
-                   references=list(pfam2pmid.get(acc, [])))
-        signatures.append(m)
-
-    return signatures
 
 
 def iter_protenn_matches(file: str):
