@@ -183,7 +183,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             gained_descrs = [f"{descr} ({descr2prot[descr]})"
                              for descr in sorted(gained)]
             fh.write(f"{acc}\t{link}\t{entry_acc}\t{types[entry_type]}\t"
-                     f"{len(sig2prots[acc])}\t{entry_name}\t"
+                     f"{len(sig2prots.get(acc, []))}\t{entry_name}\t"
                      f"{len(lost)}\t{len(gained)}\t"
                      f"{' | '.join(lost_descrs)}\t"
                      f"{' | '.join(gained_descrs)}\n")
