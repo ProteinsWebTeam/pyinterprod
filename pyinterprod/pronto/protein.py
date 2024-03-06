@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 from tempfile import mkstemp
 
@@ -289,3 +290,96 @@ def import_proteins(ora_url: str, pg_url: str):
 
     pg_con.close()
     logger.info("complete")
+
+
+def import_swprotein_pmid(ip_url: str, swp_url: str, pg_url: str):
+    logger.info("populating protein2publication")
+
+    pg_con = psycopg.connect(**url2dict(pg_url))
+
+    with pg_con.cursor() as cur:
+        cur.execute("DROP TABLE IF EXISTS protein2publication")
+        cur.execute(
+            """
+            CREATE TABLE protein2publication (
+                ACCESSION VARCHAR(15) NOT NULL,
+                PUBMED_ID VARCHAR(15) NOT NULL
+            )
+            """
+        )
+
+    ora_con = oracledb.connect(ip_url)
+    ora_cur = ora_con.cursor()
+    ora_cur.execute(
+        """
+        SELECT DISTINCT PROTEIN_AC
+        FROM INTERPRO.PROTEIN
+        WHERE DBCODE = 'S'
+        """
+    )
+    swp_acc = [acc for acc, in ora_cur.fetchall()]
+    ora_cur.close()
+    ora_con.close()
+
+    ora_con = oracledb.connect(swp_url)
+    ora_cur = ora_con.cursor()
+
+    for i in range(0, len(swp_acc), 1000):
+        swp_acc_chunk = swp_acc[i:i+1000]
+        args = [':' + str(c+1) for c in range(len(swp_acc_chunk))]
+        ora_cur.execute(
+            f"""
+                SELECT E.ACCESSION, NVL(B.TEXT, SS.TEXT) AS TEXT
+                FROM SPTR.DBENTRY E
+                INNER JOIN SPTR.COMMENT_BLOCK B ON E.DBENTRY_ID = B.DBENTRY_ID
+                    AND B.COMMENT_TOPICS_ID = 2
+                INNER JOIN SPTR.CV_COMMENT_TOPICS CT 
+                    ON B.COMMENT_TOPICS_ID = CT.COMMENT_TOPICS_ID
+                LEFT OUTER JOIN SPTR.COMMENT_STRUCTURE S
+                    ON B.COMMENT_BLOCK_ID = S.COMMENT_BLOCK_ID
+                    AND S.CC_STRUCTURE_TYPE_ID = 1
+                LEFT OUTER JOIN SPTR.COMMENT_SUBSTRUCTURE SS
+                    ON S.COMMENT_STRUCTURE_ID = SS.COMMENT_STRUCTURE_ID
+                WHERE E.ACCESSION IN ({','.join(args)})
+                  AND E.ENTRY_TYPE IN (0, 1)     
+                  AND E.MERGE_STATUS != 'R'           
+                  AND E.DELETED = 'N'
+            """, swp_acc_chunk
+        )
+        protein_text = {acc: text for acc, text in ora_cur.fetchall()}
+
+        sql = """
+            INSERT INTO protein2publication
+                (accession, pubmed_id)
+            VALUES (%s, %s)
+        """
+        reg_pubmed = re.compile(r"(PubMed:(\d+))")
+
+        pg_cur = pg_con.cursor()
+        swp2pmid = set()
+        for acc, text in protein_text.items():
+            pmids = reg_pubmed.findall(text)
+            if pmids:
+                for pmid in pmids:
+                    swp2pmid.add((acc, pmid[1]))
+                    if len(swp2pmid) == 1000:
+                        pg_cur.executemany(sql, swp2pmid)
+                        pg_con.commit()
+                        swp2pmid.clear()
+        if swp2pmid:
+            pg_cur.executemany(sql, swp2pmid)
+            pg_con.commit()
+            swp2pmid.clear()
+
+    with pg_con.cursor() as cur:
+        cur.execute(
+            """
+            CREATE INDEX protein2publication_idx
+            ON protein2publication (accession)
+            """
+        )
+
+    pg_con.commit()
+    pg_con.close()
+    ora_con.close()
+    logger.info("done")
