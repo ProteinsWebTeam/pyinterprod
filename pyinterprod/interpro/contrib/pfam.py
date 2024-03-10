@@ -141,6 +141,34 @@ def get_signatures(pfam_path: str) -> list[Method], dict:
                         )
                     )
 
+                    entries[accession] = {
+                        "curation": {
+                            "sequence_ontology": sequence_ontology,
+                            "authors": author_info,
+                        },
+                        "hmm": {
+                            "commands": {
+                                "build": build_method,
+                                "search": search_method,
+                            },
+                            "cutoffs": {
+                                "gathering": {
+                                    "sequence": sequence_ga,
+                                    "domain": domain_ga
+                                }
+                            },
+                            "version": version,
+                        },
+                        "wiki": wiki,
+                        "pyinterprod": {
+                            "pfam_id": name,
+                            "description": description,
+                            "long_type": long_type,
+                            "abstract": abstract,
+                            "references": references,
+                        }
+                    }
+
                     # start afresh for the next record/signature
                     (
                         accession,
@@ -177,6 +205,31 @@ def get_signatures(pfam_path: str) -> list[Method], dict:
                 elif line.startswith("#=GF RM"):
                     references[current_ref_pos] = int(line[7:].strip())  # = pmid
 
+
+                elif bool(re.match(r'^#=GF\s+DR', line)):
+                    sequence_ontology = line.split(";")[1].strip()
+
+                elif line.startswith("#=GF AU"):
+                    author_info.append(
+                        (
+                            line[7:].split(";")[0].strip(),  # author
+                            line.split(";")[1].strip(),  # orcidID
+                        )
+                    )
+
+                elif line.startswith("#=GF BM"):
+                    build_method = line[7:].strip()
+
+                elif line.startswith("#=GF SM"):
+                    search_method = line[7:].strip()
+
+                elif line.startswith("#=GF GA"):  # GA = gathering threshold
+                    sequence_ga = line[7:].strip().split(" ")[0].strip()
+                    domain_ga = line[7:].strip().split(" ")[1].replace(";","").strip()
+
+                elif line.startswith("#=GF WK"):
+                    wiki = line[7:].strip().replace(" ", "_")   # wikipedia article
+
     except UnicodeDecodeError:
         pass
 
@@ -187,9 +240,9 @@ def get_signatures(pfam_path: str) -> list[Method], dict:
                 "Not retrieving signature data"
             ), pfam_path
         )
-        return signatures
+        return signatures, entries
 
-    return signatures
+    return signatures, entries
 
 
 def get_fam_seq_counts(
