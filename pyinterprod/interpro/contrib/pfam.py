@@ -77,6 +77,14 @@ def get_default_values(
     Long type (e.g. Family, Domain, etc.) [str]
     Abstract [empty str that is added]
     References {order added/pos ref [int]: pmid [int]}
+    sequence ontology: None
+    Author info [(author, orcid)]
+    Build method: None
+    Search method: None
+    Sequence gathering threshold: None
+    Domain gather threshold: None
+    Wikipedia article: None
+    Version: None
 
     For clans return:
     Clan accessio number, excluding version num [int]
@@ -85,19 +93,22 @@ def get_default_values(
     List of member accessions [List[str]]
     """
     if signatures:
-        return None, None, None, None, "", {}
+        return None, None, None, None, "", {}, None, [], None, None, None, None, None, None
     if clans:
         return None, None, None, []
 
 
-def get_signatures(pfam_path: str) -> list[Method]:
+def get_signatures(pfam_path: str) -> list[Method], dict:
     """Parse Pfam-A.seed.gz file and extract signatures.
 
     :param pfam_path: str, path to Pfam-A.seed.gz file
     
-    Return list of Method objs
+    Return 
+    * list of Method objs
+    * dict of entries
     """
-    signatures =[]
+    signatures = []
+    entries = {}
 
     try:
         with gzip.open(pfam_path, 'rt') as fh:
@@ -108,6 +119,10 @@ def get_signatures(pfam_path: str) -> list[Method]:
                 long_type,
                 abstract,
                 references,  # {order added/pos ref [int]: pmid [int]}
+                sequence_ontology, author_info,
+                build_method, search_method,
+                sequence_ga, domain_ga,
+                wiki, version,
             ) = get_default_values(signatures=True)
 
             for line in fh:
@@ -134,6 +149,10 @@ def get_signatures(pfam_path: str) -> list[Method]:
                         long_type,
                         abstract,
                         references,  # {order added/pos ref [int]: pmid [int]}
+                        sequence_ontology, author_info,
+                        build_method, search_method,
+                        sequence_ga, domain_ga,
+                        wiki, version,
                     ) = get_default_values(signatures=True)
                 
                 elif line.startswith("#=GF AC"):
