@@ -250,13 +250,13 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
             values.append((
                 signature_acc,
                 signature_db_id,
-                row[2],  # name
-                row[3],  # llm name
-                row[4],  # description
-                row[5],  # llm description
-                row[6],  # type
-                row[7] or row[8],  # abstract
-                row[9],  # llm abstract
+                row[2],             # name
+                row[3],             # llm name
+                row[4],             # description
+                row[5],             # llm description
+                row[6],             # type
+                row[7] or row[8],   # abstract
+                row[9],             # llm abstract
                 *signatures.get(signature_acc, [0] * 6)
             ))
 

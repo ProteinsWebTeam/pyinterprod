@@ -627,7 +627,7 @@ Please, take a snapshot of IPPRO, and inform UniProt they can refresh IPREADU.
 Recipients
 ----------
 To:  {emails['uniprot_db']}
-Cc:  {emails['aa']}, {emails['uniprot_prod']}
+Cc:  {emails['aa']}, {emails['uniprot_prod']}, {emails['interpro']}
 
 Subject
 -------

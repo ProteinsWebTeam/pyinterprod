@@ -39,7 +39,7 @@ def update_proteins(ipr_uri: str, unp_uri: str, top_up: bool = False):
         VALUES (:1, :2, :3, :4, :5, :6, :7, :8)
     """
 
-    for rec in iter_proteins(unp_uri, greather_than=max_upi):
+    for rec in iter_proteins(unp_uri, gt=max_upi):
         # First element of record is ID, which we do not need
         records.append(rec[1:])
         cnt += 1
@@ -210,7 +210,7 @@ def update_xrefs(ipr_uri: str, unp_uri: str):
     logger.info("complete")
 
 
-def iter_proteins(uri: str, greather_than: str | None = None):
+def iter_proteins(uri: str, gt: str | None = None, le: str | None = None):
     con = oracledb.connect(uri)
     cur = con.cursor()
     cur.outputtypehandler = oracle.clob_as_str
@@ -221,11 +221,18 @@ def iter_proteins(uri: str, greather_than: str | None = None):
         FROM UNIPARC.PROTEIN      
     """
 
-    if greather_than is not None:
-        sql += "WHERE UPI > :1"
-        params = [greather_than]
-    else:
-        params = []
+    filters = []
+    params = []
+    if gt:
+        filters.append("UPI > :gt")
+        params.append(gt)
+
+    if le:
+        filters.append("UPI <= :le")
+        params.append(le)
+
+    if filters:
+        sql += f" WHERE {' AND '.join(filters)}"
 
     cur.execute(sql, params)
     yield from cur
