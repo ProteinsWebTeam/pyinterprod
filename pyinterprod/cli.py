@@ -63,19 +63,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             fn=pronto.protein.import_protein_pubmed,
             args=(ora_swp_uri, pg_ipr_uri),
             name="proteins-pubmed",
-            scheduler=dict(type="lsf", mem=100, queue=lsf_queue)
-        ),
-        Task(
-            fn=pronto.protein.import_protein_pubmed,
-            args=(ora_swp_uri, pg_ipr_uri),
-            name="proteins-pubmed",
-            scheduler=dict(type="lsf", mem=100, queue=lsf_queue)
-        ),
-        Task(
-            fn=pronto.protein.import_protein_pubmed,
-            args=(ora_swp_uri, pg_ipr_uri),
-            name="proteins-pubmed",
-            scheduler=dict(type="lsf", mem=100, queue=lsf_queue)
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1)
         ),
         Task(
             fn=pronto.proteome.import_proteomes,
