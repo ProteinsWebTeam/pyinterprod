@@ -730,9 +730,8 @@ def get_repr_domains(ora_url: str):
         FROM INTERPRO.MATCH H
         INNER JOIN INTERPRO.METHOD D
         ON H.METHOD_AC = D.METHOD_AC
-        WHERE H.PROTEIN_AC IN ('A0A011TAH1', 'A0A009I3Q0')
-        AND H.DBCODE in ('H', 'J', 'M', 'R', 'N')
-        AND D.SIG_TYPE = 'D' or D.SIG_TYPE = 'R'
+        WHERE H.DBCODE in ('H', 'J', 'M', 'R', 'N')
+        AND (D.SIG_TYPE = 'D' OR D.SIG_TYPE = 'R')
         """
     )
 
@@ -754,7 +753,11 @@ def get_repr_domains(ora_url: str):
         for protein_acc, domains in proteins_domains.items():
             repr_domains = select_repr_domains(domains)
             for domain in repr_domains:
-                f.write(f"{protein_acc}\t{domain['signature']}\t{domain['model']}\t{domain['fragments']}\t{domain['representative']}\n")
+                try:
+                    f.write(
+                        f"{protein_acc}\t{domain['signature']}\t{domain['model']}\t{domain['fragments']}\t{domain['representative']}\n")
+                except KeyError:
+                    pass
 
     cur.close()
     con.close()
@@ -911,14 +914,3 @@ def get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
         }]
 
     return result
-
-
-if __name__ == '__main__':
-    import configparser
-
-    config = configparser.ConfigParser()
-    config.read("/Users/lcf/PycharmProjects/pyinterprod/test_data/pyinterprod.config")
-
-    get_repr_domains(
-        config["oracle"]["ipro-interpro"],
-    )
