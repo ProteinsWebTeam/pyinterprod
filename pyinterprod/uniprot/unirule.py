@@ -707,3 +707,218 @@ def update_signatures(filepath: str, uri: str):
     con.commit()
     cur.close()
     con.close()
+
+
+MAX_DOM_BY_GROUP = 20
+DOM_OVERLAP_THRESHOLD = 0.3
+REPR_DOM_DATABASES = ["H", "J", "M", "R", "N"]
+DC_STATUSES = {
+    "S": "CONTINUOUS",
+    "N": "N_TERMINAL_DISC",
+    "C": "C_TERMINAL_DISC",
+    "NC": "NC_TERMINAL_DISC"
+}
+
+
+def get_repr_domains(ora_url: str):
+    con = oracledb.connect(ora_url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT PROTEIN_AC, H.METHOD_AC, MODEL_AC, H.DBCODE, 
+            POS_FROM, POS_TO, FRAGMENTS
+        FROM INTERPRO.MATCH H
+        INNER JOIN INTERPRO.METHOD D
+        ON H.METHOD_AC = D.METHOD_AC
+        WHERE H.PROTEIN_AC IN ('A0A011TAH1', 'A0A009I3Q0')
+        AND H.DBCODE in ('H', 'J', 'M', 'R', 'N')
+        AND D.SIG_TYPE = 'D' or D.SIG_TYPE = 'R'
+        """
+    )
+
+    proteins_domains = {}
+    for protein_acc, signature_acc, model_acc, dbcode, pos_start, pos_end, frags in cur.fetchall():
+        fragments = get_fragments(pos_start, pos_end, frags)
+        match = {
+            "signature": signature_acc,
+            "model": model_acc or signature_acc,
+            "fragments": fragments
+        }
+        match["rank"] = REPR_DOM_DATABASES.index(dbcode)
+        try:
+            proteins_domains[protein_acc].append(match)
+        except KeyError:
+            proteins_domains[protein_acc] = [match]
+
+    with open("repr_domains.tsv", "w") as f:
+        for protein_acc, domains in proteins_domains.items():
+            repr_domains = select_repr_domains(domains)
+            for domain in repr_domains:
+                f.write(f"{protein_acc}\t{domain['signature']}\t{domain['model']}\t{domain['fragments']}\t{domain['representative']}\n")
+
+    cur.close()
+    con.close()
+
+
+def select_repr_domains(domains: list[dict]):
+    # Sort by boundaries
+    domains.sort(key=lambda d: (d["fragments"][0]["start"],
+                                d["fragments"][-1]["end"]))
+
+    # Group overlapping domains together
+    domain = domains[0]
+    domain["residues"] = calc_coverage(domain)
+    stop = domain["fragments"][-1]["end"]
+    group = [domain]
+    groups = []
+
+    for domain in domains[1:]:
+        domain["residues"] = calc_coverage(domain)
+        start = domain["fragments"][0]["start"]
+
+        if start <= stop:
+            group.append(domain)
+            stop = max(stop, domain["fragments"][-1]["end"])
+        else:
+            groups.append(group)
+            group = [domain]
+            stop = domain["fragments"][-1]["end"]
+
+    groups.append(group)
+
+    # Select representative domain in each group
+    for group in groups:
+        """
+        Only consider the "best" N domains of the group, 
+        otherwise the number of possible combinations/sets is too high 
+        (if M domains, max number of combinations is `2 ^ M`)
+        """
+        group = sorted(group,
+                       key=lambda d: (-len(d["residues"]), d["rank"])
+                       )[:MAX_DOM_BY_GROUP]
+
+        nodes = set(range(len(group)))
+        graph = {i: nodes - {i} for i in nodes}
+
+        for i, dom_a in enumerate(group):
+            for j in range(i + 1, len(group)):
+                dom_b = group[j]
+                if eval_overlap(dom_a, dom_b, DOM_OVERLAP_THRESHOLD):
+                    graph[i].remove(j)
+                    graph[j].remove(i)
+
+        # Find possible domains combinations
+        subgroups = resolve_domains(graph)
+
+        # Find the best combination
+        max_coverage = 0
+        max_pfams = 0
+        best_subgroup = None
+        for subgroup in subgroups:
+            coverage = set()
+            pfams = 0
+            _subgroup = []
+
+            for i in subgroup:
+                domain = group[i]
+                coverage |= domain["residues"]
+                if domain["rank"] == 0:
+                    pfams += 1
+
+                _subgroup.append(domain)
+
+            coverage = len(coverage)
+            if coverage < max_coverage:
+                continue
+            elif coverage > max_coverage or pfams > max_pfams:
+                max_coverage = coverage
+                max_pfams = pfams
+                best_subgroup = _subgroup
+
+        # Flag selected representative domains
+        for domain in best_subgroup:
+            domain["representative"] = True
+    return domains
+
+
+def resolve_domains(graph: dict[int, set[int]]) -> list[set[int]]:
+    def is_valid(candidate: list[int]) -> bool:
+        for node_a in candidate:
+            for node_b in candidate:
+                if node_a != node_b and node_a not in graph[node_b]:
+                    return False
+
+        return True
+
+    def make_sets(current_set: list[int], remaining_nodes: list[int]):
+        if is_valid(current_set):
+            if not remaining_nodes:
+                all_sets.append(set(current_set))
+                return True
+        else:
+            return False
+
+        current_node = remaining_nodes[0]
+        remaining_nodes = remaining_nodes[1:]
+
+        # Explore two possibilities at each step of the recursion
+        # 1) current node is added to the set under consideration
+        make_sets(current_set + [current_node], remaining_nodes)
+        # 2) current node is not added to the set
+        make_sets(current_set, remaining_nodes)
+
+    all_sets = []
+    make_sets([], list(graph.keys()))
+    return all_sets
+
+
+def calc_coverage(domain: dict) -> set[int]:
+    residues = set()
+    for f in domain["fragments"]:
+        residues |= set(range(f["start"], f["end"] + 1))
+
+    return residues
+
+
+def eval_overlap(dom_a: dict, dom_b: dict, threshold: float) -> bool:
+    overlap = dom_a["residues"] & dom_b["residues"]
+    if overlap:
+        len_a = len(dom_a["residues"])
+        len_b = len(dom_b["residues"])
+        return len(overlap) / min(len_a, len_b) >= threshold
+
+    return False
+
+
+def get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
+    if fragments:
+        result = []
+        for frag in fragments.split(','):
+            # Format: START-END-STATUS
+            s, e, t = frag.split('-')
+            result.append({
+                "start": int(s),
+                "end": int(e),
+                "dc-status": DC_STATUSES[t]
+            })
+
+        result.sort(key=lambda x: (x["start"], x["end"]))
+    else:
+        result = [{
+            "start": pos_start,
+            "end": pos_end,
+            "dc-status": DC_STATUSES['S']  # Continuous
+        }]
+
+    return result
+
+
+if __name__ == '__main__':
+    import configparser
+
+    config = configparser.ConfigParser()
+    config.read("/Users/lcf/PycharmProjects/pyinterprod/test_data/pyinterprod.config")
+
+    get_repr_domains(
+        config["oracle"]["ipro-interpro"],
+    )
