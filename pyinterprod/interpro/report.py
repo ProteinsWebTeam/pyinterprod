@@ -123,7 +123,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                     try:
                         descr2prots[descr] |= proteins
                     except KeyError:
-                        descr2prots[descr] = proteins
+                        descr2prots[descr] = set(proteins)
 
                     try:
                         sig2prots[acc] |= proteins
@@ -139,7 +139,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 try:
                     descr2prots[descr] |= proteins
                 except KeyError:
-                    descr2prots[descr] = proteins
+                    descr2prots[descr] = set(proteins)
 
             try:
                 entry_acc, entry_type, entry_name, _ = integrated[acc]
@@ -372,7 +372,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                 try:
                     descr2prots[description] |= proteins
                 except KeyError:
-                    descr2prots[description] = proteins
+                    descr2prots[description] = set(proteins)
 
     # Load entry -> descriptions AFTER UniProt update
     signatures_now = get_swissprot_descriptions(pg_url)
@@ -388,13 +388,13 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             try:
                 descr2prots[description] |= proteins
             except KeyError:
-                descr2prots[description] = proteins
+                descr2prots[description] = set(proteins)
 
             try:
                 entries_now[entry_acc].add(description)
             except KeyError:
                 entries_now[entry_acc] = {description}
-                entry2prots[entry_acc] = proteins
+                entry2prots[entry_acc] = set(proteins)
             else:
                 entry2prots[entry_acc] |= proteins
 
