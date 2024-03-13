@@ -378,13 +378,12 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         mem_err = False
 
                     # Did the job reached the timeout limit?
+                    time_err = False
                     start_time, end_time = task.executor.get_times(task.stdout)
                     runtime = (end_time - start_time).total_seconds() / 3600
-                    task_limit = task.executor.limit.total_seconds() / 3600
-                    if runtime >= task_limit:
-                        time_err = True
-                    else:
-                        time_err = False
+                    if task.executor.limit is not None:
+                        task_limit = task.executor.limit.total_seconds() / 3600
+                        time_err = runtime >= task_limit
 
                     if ((auto_retry and (mem_err or time_err)) or
                             num_retries < max_retries):
