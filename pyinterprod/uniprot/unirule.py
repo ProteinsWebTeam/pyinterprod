@@ -916,15 +916,3 @@ def _get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
         }]
 
     return result
-
-
-if __name__ == '__main__':
-    import configparser
-
-    config = configparser.ConfigParser()
-    config.read("/homes/lcf/test_config_files/pyinterprodDEV.conf")
-
-    get_repr_domains(
-        config["oracle"]["ipro-interpro"],
-        '/homes/lcf/repr_domains.tsv'
-    )
