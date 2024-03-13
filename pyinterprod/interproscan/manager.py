@@ -378,7 +378,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         mem_err = False
 
                     # Did the job reached the timeout limit?
-                    start_time, end_time = task.executor.get_times()
+                    start_time, end_time = task.executor.get_times(task.stdout)
                     runtime = (end_time - start_time).total_seconds() / 3600
                     task_limit = task.executor.limit.total_seconds() / 3600
                     if runtime >= task_limit:
