@@ -749,6 +749,7 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
         except KeyError:
             proteins_domains[protein_acc] = [match]
 
+    logger.info(f"Writing {output}")
     with open(output, "w") as f:
         for protein_acc, domains in proteins_domains.items():
             repr_domains = _select_repr_domains(domains)
@@ -759,6 +760,7 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
                 except KeyError:
                     pass
 
+    logger.info("Done")
     cur.close()
     con.close()
 
@@ -914,3 +916,15 @@ def _get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
         }]
 
     return result
+
+
+if __name__ == '__main__':
+    import configparser
+
+    config = configparser.ConfigParser()
+    config.read("/homes/lcf/test_config_files/pyinterprodDEV.conf")
+
+    get_repr_domains(
+        config["oracle"]["ipro-interpro"],
+        '/homes/lcf/repr_domains.tsv'
+    )
