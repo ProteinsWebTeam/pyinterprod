@@ -720,7 +720,7 @@ DC_STATUSES = {
 }
 
 
-def get_repr_domains(ora_url: str):
+def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
     con = oracledb.connect(ora_url)
     cur = con.cursor()
     cur.execute(
@@ -737,7 +737,7 @@ def get_repr_domains(ora_url: str):
 
     proteins_domains = {}
     for protein_acc, signature_acc, model_acc, dbcode, pos_start, pos_end, frags in cur.fetchall():
-        fragments = get_fragments(pos_start, pos_end, frags)
+        fragments = _get_fragments(pos_start, pos_end, frags)
         match = {
             "signature": signature_acc,
             "model": model_acc or signature_acc,
@@ -749,9 +749,9 @@ def get_repr_domains(ora_url: str):
         except KeyError:
             proteins_domains[protein_acc] = [match]
 
-    with open("repr_domains.tsv", "w") as f:
+    with open(output, "w") as f:
         for protein_acc, domains in proteins_domains.items():
-            repr_domains = select_repr_domains(domains)
+            repr_domains = _select_repr_domains(domains)
             for domain in repr_domains:
                 try:
                     f.write(
@@ -763,20 +763,20 @@ def get_repr_domains(ora_url: str):
     con.close()
 
 
-def select_repr_domains(domains: list[dict]):
+def _select_repr_domains(domains: list[dict]):
     # Sort by boundaries
     domains.sort(key=lambda d: (d["fragments"][0]["start"],
                                 d["fragments"][-1]["end"]))
 
     # Group overlapping domains together
     domain = domains[0]
-    domain["residues"] = calc_coverage(domain)
+    domain["residues"] = _calc_coverage(domain)
     stop = domain["fragments"][-1]["end"]
     group = [domain]
     groups = []
 
     for domain in domains[1:]:
-        domain["residues"] = calc_coverage(domain)
+        domain["residues"] = _calc_coverage(domain)
         start = domain["fragments"][0]["start"]
 
         if start <= stop:
@@ -806,12 +806,12 @@ def select_repr_domains(domains: list[dict]):
         for i, dom_a in enumerate(group):
             for j in range(i + 1, len(group)):
                 dom_b = group[j]
-                if eval_overlap(dom_a, dom_b, DOM_OVERLAP_THRESHOLD):
+                if _eval_overlap(dom_a, dom_b, DOM_OVERLAP_THRESHOLD):
                     graph[i].remove(j)
                     graph[j].remove(i)
 
         # Find possible domains combinations
-        subgroups = resolve_domains(graph)
+        subgroups = _resolve_domains(graph)
 
         # Find the best combination
         max_coverage = 0
@@ -844,7 +844,7 @@ def select_repr_domains(domains: list[dict]):
     return domains
 
 
-def resolve_domains(graph: dict[int, set[int]]) -> list[set[int]]:
+def _resolve_domains(graph: dict[int, set[int]]) -> list[set[int]]:
     def is_valid(candidate: list[int]) -> bool:
         for node_a in candidate:
             for node_b in candidate:
@@ -875,7 +875,7 @@ def resolve_domains(graph: dict[int, set[int]]) -> list[set[int]]:
     return all_sets
 
 
-def calc_coverage(domain: dict) -> set[int]:
+def _calc_coverage(domain: dict) -> set[int]:
     residues = set()
     for f in domain["fragments"]:
         residues |= set(range(f["start"], f["end"] + 1))
@@ -883,7 +883,7 @@ def calc_coverage(domain: dict) -> set[int]:
     return residues
 
 
-def eval_overlap(dom_a: dict, dom_b: dict, threshold: float) -> bool:
+def _eval_overlap(dom_a: dict, dom_b: dict, threshold: float) -> bool:
     overlap = dom_a["residues"] & dom_b["residues"]
     if overlap:
         len_a = len(dom_a["residues"])
@@ -893,7 +893,7 @@ def eval_overlap(dom_a: dict, dom_b: dict, threshold: float) -> bool:
     return False
 
 
-def get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
+def _get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
     if fragments:
         result = []
         for frag in fragments.split(','):
