@@ -345,7 +345,7 @@ def import_protein_pubmed(ip_url: str, swp_url: str, pg_url: str):
                     LEFT OUTER JOIN SPTR.COMMENT_SUBSTRUCTURE SS
                         ON S.COMMENT_STRUCTURE_ID = SS.COMMENT_STRUCTURE_ID
                     WHERE E.ACCESSION IN ({','.join(args)})
-                      AND E.ENTRY_TYPE IN (0, 1)     
+                      AND E.ENTRY_TYPE IN = 0
                       AND E.MERGE_STATUS != 'R'           
                       AND E.DELETED = 'N'
                 """, swp_acc_chunk
