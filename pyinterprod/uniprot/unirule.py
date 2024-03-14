@@ -732,33 +732,34 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
         ON H.METHOD_AC = D.METHOD_AC
         WHERE H.DBCODE in ('H', 'J', 'M', 'R', 'N')
         AND (D.SIG_TYPE = 'D' OR D.SIG_TYPE = 'R')
+        ORDER BY PROTEIN_AC
         """
     )
 
-    proteins_domains = {}
-    for protein_acc, signature_acc, model_acc, dbcode, pos_start, pos_end, frags in cur.fetchall():
-        fragments = _get_fragments(pos_start, pos_end, frags)
-        match = {
-            "signature": signature_acc,
-            "model": model_acc or signature_acc,
-            "fragments": fragments
-        }
-        match["rank"] = REPR_DOM_DATABASES.index(dbcode)
-        try:
-            proteins_domains[protein_acc].append(match)
-        except KeyError:
-            proteins_domains[protein_acc] = [match]
-
     logger.info(f"Writing {output}")
     with open(output, "w") as f:
-        for protein_acc, domains in proteins_domains.items():
-            repr_domains = _select_repr_domains(domains)
-            for domain in repr_domains:
-                try:
-                    f.write(
-                        f"{protein_acc}\t{domain['signature']}\t{domain['model']}\t{domain['fragments']}\t{domain['representative']}\n")
-                except KeyError:
-                    pass
+        proteins_domains = {}
+        for protein_acc, signature_acc, model_acc, dbcode, pos_start, pos_end, frags in cur:
+            fragments = _get_fragments(pos_start, pos_end, frags)
+            match = {
+                "signature": signature_acc,
+                "model": model_acc or signature_acc,
+                "fragments": fragments
+            }
+            match["rank"] = REPR_DOM_DATABASES.index(dbcode)
+            try:
+                proteins_domains[protein_acc].append(match)
+            except KeyError:
+                if proteins_domains:
+                    repr_domains = _select_repr_domains(list(proteins_domains.values())[0])
+                    for domain in repr_domains:
+                        try:
+                            f.write(
+                                f"{protein_acc}\t{domain['signature']}\t{domain['model']}\t{domain['fragments']}\t{domain['representative']}\n")
+                        except KeyError:
+                            pass
+                proteins_domains.clear()
+                proteins_domains[protein_acc] = [match]
 
     logger.info("Done")
     cur.close()
