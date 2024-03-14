@@ -300,7 +300,7 @@ def import_protein_pubmed(ip_url: str, swp_url: str, pg_url: str):
         pg_cur.execute(
             """
             CREATE TABLE protein2publication (
-                ACCESSION VARCHAR(15) NOT NULL,
+                PROTEIN_ACC VARCHAR(15) NOT NULL,
                 PUBMED_ID INTEGER NOT NULL
             )
             """
