@@ -720,7 +720,7 @@ DC_STATUSES = {
 }
 
 
-def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
+def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv", buffer_size: int = 1000000):
     con = oracledb.connect(ora_url)
     cur = con.cursor()
     cur.execute(
@@ -737,29 +737,41 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
     )
 
     logger.info(f"Writing {output}")
+    proteins_domains = {}
+    repr_domains = {}
+    current_protein = None
     with open(output, "w") as f:
-        proteins_domains = {}
         for protein_acc, signature_acc, model_acc, dbcode, pos_start, pos_end, frags in cur:
             fragments = _get_fragments(pos_start, pos_end, frags)
             match = {
                 "signature": signature_acc,
                 "model": model_acc or signature_acc,
-                "fragments": fragments
+                "fragments": fragments,
+                "rank": REPR_DOM_DATABASES.index(dbcode)
             }
-            match["rank"] = REPR_DOM_DATABASES.index(dbcode)
             try:
                 proteins_domains[protein_acc].append(match)
             except KeyError:
+                # select representative domains for the previous protein
                 if proteins_domains:
-                    repr_domains = _select_repr_domains(list(proteins_domains.values())[0])
-                    for domain in repr_domains:
-                        try:
-                            f.write(
-                                f"{protein_acc}\t{domain['signature']}\t{domain['model']}\t{domain['fragments']}\t{domain['representative']}\n")
-                        except KeyError:
-                            pass
-                proteins_domains.clear()
+                    repr_domains[current_protein] = _select_repr_domains(list(proteins_domains[current_protein]))
+                    proteins_domains.clear()
+                    if len(repr_domains) >= buffer_size:
+                        for protein, domains in repr_domains.items():
+                            for domain in domains:
+                                if domain.get('representative', None):
+                                    f.write(
+                                        f"{protein}\t{domain['signature']}\t{domain['model']}\t{domain['fragments']}\t{domain.get('representative', '')}\n")
+                        repr_domains.clear()
+                current_protein = protein_acc
                 proteins_domains[protein_acc] = [match]
+        if proteins_domains:
+            repr_domains[current_protein] = _select_repr_domains(list(proteins_domains[current_protein]))
+            for protein, domains in repr_domains.items():
+                for domain in domains:
+                    if domain.get('representative', None):
+                        f.write(
+                            f"{protein}\t{domain['signature']}\t{domain['model']}\t{domain['fragments']}\t{domain.get('representative', '')}\n")
 
     logger.info("Done")
     cur.close()
