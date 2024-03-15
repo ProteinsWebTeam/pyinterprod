@@ -732,7 +732,6 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
         ON H.METHOD_AC = D.METHOD_AC
         WHERE H.DBCODE in ('H', 'J', 'M', 'R', 'N')
         AND (D.SIG_TYPE = 'D' OR D.SIG_TYPE = 'R')
-        AND PROTEIN_AC IN ('A0A009I3Q0', 'A0A011TAH1', 'A0A085P1L3', 'A0A093F7A4', 'A0A093P588', 'A0A0B4FAT8', 'A0A0D9SF28')
         ORDER BY PROTEIN_AC
         """
     )
