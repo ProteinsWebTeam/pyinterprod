@@ -98,10 +98,12 @@ def get_default_values(
         return None, None, None, []
 
 
-def get_signatures(pfam_path: str) -> list[Method], dict:
+def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method], dict:
     """Parse Pfam-A.seed.gz file and extract signatures.
 
     :param pfam_path: str, path to Pfam-A.seed.gz file
+    :param update_sigs: bool, parser called during member database
+        update to persist the Pfam data in the oracle db
     
     Return 
     * list of Method objs
@@ -130,44 +132,44 @@ def get_signatures(pfam_path: str) -> list[Method], dict:
                     # create signature record from previous Pfam record
                     formatter = AbstractFormatter(references)
 
-                    signatures.append(
-                        Method(
-                            accession,
-                            _TYPES[long_type],  # convert to single letter
-                            name,
-                            description,
-                            abstract=formatter.update(accession, abstract) if abstract else None,
-                            references=list(references.values())
-                        )
-                    )
-
-                    entries[accession] = {
-                        "curation": {
-                            "sequence_ontology": sequence_ontology,
-                            "authors": author_info,
-                        },
-                        "hmm": {
-                            "commands": {
-                                "build": build_method,
-                                "search": search_method,
-                            },
-                            "cutoffs": {
-                                "gathering": {
-                                    "sequence": sequence_ga,
-                                    "domain": domain_ga
-                                }
-                            },
-                            "version": version,
-                        },
-                        "wiki": wiki,
-                        "pyinterprod": {
-                            "pfam_id": name,
+                    if persist_pfam:
+                        entries[accession] = {
+                            "type": _TYPES[long_type],
+                            "name": name,
                             "description": description,
-                            "long_type": long_type,
-                            "abstract": abstract,
-                            "references": references,
+                            "abstract": formatter.update(accession, abstract) if abstract else None,
+                            "references": list(references.values()),
+                            "curation": {
+                                "sequence_ontology": sequence_ontology,
+                                "authors": author_info,
+                            },
+                            "hmm": {
+                                "commands": {
+                                    "build": build_method,
+                                    "search": search_method,
+                                },
+                                "cutoffs": {
+                                    "gathering": {
+                                        "sequence": sequence_ga,
+                                        "domain": domain_ga
+                                    }
+                                },
+                                "version": version,
+                            },
+                            "wiki": wiki,
                         }
-                    }
+
+                    else:
+                        signatures.append(
+                            Method(
+                                accession,
+                                _TYPES[long_type],  # convert to single letter
+                                name,
+                                description,
+                                abstract=formatter.update(accession, abstract) if abstract else None,
+                                references=list(references.values())
+                            )
+                        )
 
                     # start afresh for the next record/signature
                     (
@@ -240,9 +242,13 @@ def get_signatures(pfam_path: str) -> list[Method], dict:
                 "Not retrieving signature data"
             ), pfam_path
         )
-        return signatures, entries
+        if persist_pfam:
+            return entries
+        return signatures
 
-    return signatures, entries
+    if persist_pfam:
+        return entries
+    return signatures
 
 
 def get_fam_seq_counts(
@@ -315,12 +321,15 @@ def get_clans(
     pfam_clan_path: str,
     pfam_fasta_path: str,
     pfam_full_path: str,
+    populating_entries=False,
 ) -> list[Clan]:
     """Retrieve clans and clan members from the Pfam file Pfam-C
     
     :param pfam_clan_path: path to Pfam-C.tsv.gz file
     :param pfam_fasta_path: path to Pfam-A.fasta.gz file
     :param pfam_full_path: path to Pfam-A-full.gz alignment file
+    :param populating_entries: bool, gathering addition clan data required
+        by populate_entries
     """
     clans =[]
 
@@ -364,7 +373,7 @@ def get_clans(
                     # store the previous record
                     clan = Clan(
                             accession,
-                            clan_id,
+                            clan_id,  # referred to as clan name in interpro
                             description,
                         )
                     
