@@ -720,7 +720,7 @@ DC_STATUSES = {
 }
 
 
-def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv", buffer_size: int = 1000000):
+def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
     con = oracledb.connect(ora_url)
     cur = con.cursor()
     cur.execute(
@@ -732,13 +732,13 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv", buffer_size
         ON H.METHOD_AC = D.METHOD_AC
         WHERE H.DBCODE in ('H', 'J', 'M', 'R', 'N')
         AND (D.SIG_TYPE = 'D' OR D.SIG_TYPE = 'R')
+        AND PROTEIN_AC IN ('A0A009I3Q0', 'A0A011TAH1', 'A0A085P1L3', 'A0A093F7A4', 'A0A093P588', 'A0A0B4FAT8', 'A0A0D9SF28')
         ORDER BY PROTEIN_AC
         """
     )
 
     logger.info(f"Writing {output}")
     proteins_domains = {}
-    batch_repr_domains = []
     current_protein = None
     with open(output, "w") as f:
         for protein_acc, signature_acc, model_acc, dbcode, pos_start, pos_end, frags in cur:
@@ -756,23 +756,19 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv", buffer_size
                     repr_domains = _select_repr_domains(list(proteins_domains[current_protein]))
                     for domain in repr_domains:
                         if domain.get('representative', None):
-                            batch_repr_domains.append(
-                                f"{current_protein}\t{domain['signature']}\t{domain['model']}\t{domain['fragments']}\t{domain['representative']}"
+                            f.write(
+                                f"{current_protein}\t{domain['signature']}\t{domain['model']}\t{domain['fragments']}\t{domain['representative']}\n"
                             )
                     proteins_domains.clear()
-                    if len(batch_repr_domains) >= buffer_size:
-                        f.write("\n".join(batch_repr_domains))
-                        batch_repr_domains.clear()
                 current_protein = protein_acc
                 proteins_domains[protein_acc] = [match]
         if proteins_domains:
             repr_domains = _select_repr_domains(list(proteins_domains[current_protein]))
             for domain in repr_domains:
                 if domain.get('representative', None):
-                    batch_repr_domains.append(
-                        f"{current_protein}\t{domain['signature']}\t{domain['model']}\t{domain['fragments']}\t{domain['representative']}"
+                    f.write(
+                        f"{current_protein}\t{domain['signature']}\t{domain['model']}\t{domain['fragments']}\t{domain['representative']}\n"
                     )
-            f.write("\n".join(batch_repr_domains))
 
     logger.info("Done")
     cur.close()
@@ -930,3 +926,14 @@ def _get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
         }]
 
     return result
+
+
+if __name__ == '__main__':
+    import configparser
+
+    config = configparser.ConfigParser()
+    config.read("/Users/lcf/PycharmProjects/pyinterprod/test_data/pyinterprod.config")
+
+    get_repr_domains(
+        config["oracle"]["ipro-interpro"]
+    )
