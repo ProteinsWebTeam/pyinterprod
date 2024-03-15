@@ -98,7 +98,7 @@ def get_default_values(
         return None, None, None, []
 
 
-def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method], dict:
+def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method] | dict:
     """Parse Pfam-A.seed.gz file and extract signatures.
 
     :param pfam_path: str, path to Pfam-A.seed.gz file
@@ -134,11 +134,6 @@ def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method], dict:
 
                     if persist_pfam:
                         entries[accession] = {
-                            "type": _TYPES[long_type],
-                            "name": name,
-                            "description": description,
-                            "abstract": formatter.update(accession, abstract) if abstract else None,
-                            "references": list(references.values()),
                             "curation": {
                                 "sequence_ontology": sequence_ontology,
                                 "authors": author_info,
@@ -207,9 +202,9 @@ def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method], dict:
                 elif line.startswith("#=GF RM"):
                     references[current_ref_pos] = int(line[7:].strip())  # = pmid
 
-
-                elif bool(re.match(r'^#=GF\s+DR', line)):
+                elif line.startswith("#=GF DR"):
                     sequence_ontology = line.split(";")[1].strip()
+                    print(sequence_ontology)
 
                 elif line.startswith("#=GF AU"):
                     author_info.append(
@@ -321,15 +316,12 @@ def get_clans(
     pfam_clan_path: str,
     pfam_fasta_path: str,
     pfam_full_path: str,
-    populating_entries=False,
 ) -> list[Clan]:
     """Retrieve clans and clan members from the Pfam file Pfam-C
     
     :param pfam_clan_path: path to Pfam-C.tsv.gz file
     :param pfam_fasta_path: path to Pfam-A.fasta.gz file
     :param pfam_full_path: path to Pfam-A-full.gz alignment file
-    :param populating_entries: bool, gathering addition clan data required
-        by populate_entries
     """
     clans =[]
 
@@ -513,3 +505,99 @@ def get_protenn_entries(cur, file: str) -> list[Method]:
         cur.execute("RENAME PFAMN_MATCH_TMP TO PFAMN_MATCH")
 
     return [Method(pfam_acc, sig_type=None) for pfam_acc in accessions]
+
+
+def persist_pfam_data(
+    pfam_seed_path: str,
+    pfam_clan_path: str,
+    pfam_fasta_path: str,
+    pfam_full_path: str,
+    con,
+):
+    """
+    :param pfam_seed_path: str, path to Pfam-A.seed.gz file
+    :param pfam_clan_path: path to Pfam-C.tsv.gz file
+    :param pfam_fasta_path: path to Pfam-A.fasta.gz file
+    :param pfam_full_path: path to Pfam-A-full.gz alignment file
+    :param con: oracle db connection
+    """
+    signatures = get_signatures(pfam_path=pfam_seed_path, persist_pfam=True)
+    
+
+    drop_table(cur, "INTERPRO.PFAM_DATA", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.PFAM_DATA (
+            accession VARCHAR2(25) PRIMARY KEY,
+            seq_ontology NUMBER,
+            hmm_build VARCHAR2(255),
+            hmm_search VARCHAR2(255),
+            seq_gathering FLOAT,
+            domain_gathering FLOAT,
+            version NUMBER
+        )
+        """
+    )
+
+    drop_table(cur, "INTERPRO.PFAM_AUTHORM", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.PFAM_DATA (
+            accession VARCHAR2(25) PRIMARY KEY,
+            author VARCHAR2(225),
+            orcid VARCHAR2(225)
+        )
+        """
+    )
+
+    drop_table(cur, "INTERPRO.PFAM_WIKIPEDIA", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.PFAM_WIKIPEDIA (
+            accession VARCHAR2(25) PRIMARY KEY,
+            title VARCHAR2(225)
+        )
+        """
+    )
+    
+    pfam_query = """
+        INSERT /*+ APPEND */ 
+        INTO INTERPRO.PFAM_DATA 
+        VALUES (:1, :2, :3, :4, :5, :6, :7)
+    """
+    author_query = """
+        INSERT /*+ APPEND */ 
+        INTO INTERPRO.PFAM_AUTHOR
+        VALUES (:1, :2, :3)
+    """
+    wiki_query = """
+        INSERT /*+ APPEND */ 
+        INTO INTERPRO.PFAM_WIKIPEDIA 
+        VALUES (:1, :2)
+    """
+
+    with con.cursor() as cur:
+        for pfam_acc in signatures:
+            cur.execute(
+                pfam_query,
+                [
+                    pfam_acc,
+                    signatures[pfam_acc]["curation"]["sequence_ontology"],
+                    signatures[pfam_acc]["hmm"]["commands"]["build"],
+                    signatures[pfam_acc]["hmm"]["commands"]["search"],
+                    signatures[pfam_acc]["hmm"]["cutoffs"]["gathering"]["sequence"],
+                    signatures[pfam_acc]["hmm"]["cutoffs"]["gathering"]["domain"],
+                    signatures[pfam_acc]["hmm"]["version"],
+                ]
+            )
+
+            for author_info in signatures[pfam_acc]["curation"]["authors"]:
+                cur.execute(
+                    author_query,
+                    author_info
+                )
+            
+            cur.execute(
+                wiki_query,
+                signatures[pfam_acc]["wiki"]
+            )
