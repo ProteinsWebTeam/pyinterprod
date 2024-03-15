@@ -361,15 +361,3 @@ def import_protein_pubmed(swp_url: str, pg_url: str):
     pg_con.close()
     ora_con.close()
     logger.info("done")
-
-
-if __name__ == '__main__':
-    import configparser
-
-    config = configparser.ConfigParser()
-    config.read("/Users/lcf/PycharmProjects/pyinterprod/test_data/pyinterprod.config")
-
-    import_protein_pubmed(
-        config["oracle"]["unpr-swpread"],
-        config["postgresql"]["pronto"]
-    )
