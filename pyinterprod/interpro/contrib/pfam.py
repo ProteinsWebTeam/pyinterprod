@@ -541,7 +541,7 @@ def persist_extra_pfam_data(
     author_query = """
         INSERT /*+ APPEND */ 
         INTO INTERPRO.PFAM_AUTHOR
-        VALUES (:1, :2, :3)
+        VALUES (:1, :2)
     """
     wiki_query = """
         INSERT /*+ APPEND */ 
