@@ -533,6 +533,8 @@ def persist_extra_pfam_data(
         persist_pfam=True,
     )
 
+    logger.info("Persisting data for %s signatures", len(signatures))
+
     pfam_query = """
         INSERT /*+ APPEND */ 
         INTO INTERPRO.PFAM_DATA 
