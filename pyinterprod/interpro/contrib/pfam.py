@@ -569,7 +569,7 @@ def persist_extra_pfam_data(
         drop_table(cur, "INTERPRO.PFAM_AUTHOR", purge=True)
         cur.execute(
             """
-            CREATE TABLE INTERPRO.PFAM_DATA (
+            CREATE TABLE INTERPRO.PFAM_AUTHOR (
                 accession VARCHAR2(25) PRIMARY KEY,
                 author VARCHAR2(225),
                 orcid VARCHAR2(225)
