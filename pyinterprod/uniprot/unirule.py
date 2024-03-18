@@ -711,6 +711,7 @@ def update_signatures(filepath: str, uri: str):
 
 MAX_DOM_BY_GROUP = 20
 DOM_OVERLAP_THRESHOLD = 0.3
+REPR_DOM_DATABASES = ["H", "J", "M", "R", "N"]
 
 
 def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
@@ -718,8 +719,7 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
     cur = con.cursor()
     cur.execute(
         """
-        SELECT PROTEIN_AC, H.METHOD_AC, MODEL_AC,
-            POS_FROM, POS_TO, FRAGMENTS
+        SELECT PROTEIN_AC, H.METHOD_AC, H.DBCODE, POS_FROM, POS_TO, FRAGMENTS
         FROM INTERPRO.MATCH H
         INNER JOIN INTERPRO.METHOD D
         ON H.METHOD_AC = D.METHOD_AC
@@ -730,37 +730,38 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
     )
 
     logger.info(f"Writing {output}")
-    proteins_domains = {}
-    current_protein = None
+    previous_protein_acc = None
+    domains = []
     with open(output, "w") as f:
-        for protein_acc, signature_acc, model_acc, dbcode, pos_start, pos_end, frags in cur:
-            fragments = _get_fragments(pos_start, pos_end, frags)
+        for protein_acc, signature_acc, dbcode, pos_start, pos_end, frags in cur:
+            frag_list = _get_fragments(pos_start, pos_end, frags)
             match = {
                 "signature": signature_acc,
-                "model": model_acc or signature_acc,
-                "fragments": fragments,
+                "pos_start": pos_start,
+                "pos_end": pos_end,
+                "fragments_string": frags,
+                "fragments": frag_list,
                 "rank": REPR_DOM_DATABASES.index(dbcode)
             }
-            try:
-                proteins_domains[protein_acc].append(match)
-            except KeyError:
-                if proteins_domains:
-                    repr_domains = _select_repr_domains(list(proteins_domains[current_protein]))
-                    for domain in repr_domains:
-                        if domain.get('representative', None):
-                            f.write(
-                                f"{current_protein}\t{domain['signature']}\t{domain['model']}\t{domain['fragments']}\t{domain['representative']}\n"
-                            )
-                    proteins_domains.clear()
-                current_protein = protein_acc
-                proteins_domains[protein_acc] = [match]
-        if proteins_domains:
-            repr_domains = _select_repr_domains(list(proteins_domains[current_protein]))
-            for domain in repr_domains:
-                if domain.get('representative', None):
+            if previous_protein_acc is None:
+                previous_protein_acc = protein_acc
+            if protein_acc != previous_protein_acc:
+                repr_domains = _select_repr_domains(domains)
+                for domain in repr_domains:
                     f.write(
-                        f"{current_protein}\t{domain['signature']}\t{domain['model']}\t{domain['fragments']}\t{domain['representative']}\n"
+                        f"{previous_protein_acc}\t{domain['signature']}\t{domain['pos_start']}\t{domain['pos_end']}\t{domain['fragments_string']}\n"
                     )
+                domains = []
+                previous_protein_acc = protein_acc
+
+            domains.append(match)
+
+        if domains:
+            repr_domains = _select_repr_domains(domains)
+            for domain in repr_domains:
+                f.write(
+                    f"{protein_acc}\t{domain['signature']}\t{domain['pos_start']}\t{domain['pos_end']}\t{domain['fragments_string']}\n"
+                )
 
     logger.info("Done")
     cur.close()
@@ -768,6 +769,8 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
 
 
 def _select_repr_domains(domains: list[dict]):
+    repr_domains = []
+
     # Sort by boundaries
     domains.sort(key=lambda d: (d["fragments"][0]["start"],
                                 d["fragments"][-1]["end"]))
@@ -844,8 +847,16 @@ def _select_repr_domains(domains: list[dict]):
 
         # Flag selected representative domains
         for domain in best_subgroup:
-            domain["representative"] = True
-    return domains
+            repr_domains.append(domain)
+    return repr_domains
+
+
+def _calc_coverage(domain: dict) -> set[int]:
+    residues = set()
+    for f in domain["fragments"]:
+        residues |= set(range(f["start"], f["end"] + 1))
+
+    return residues
 
 
 def _resolve_domains(graph: dict[int, set[int]]) -> list[set[int]]:
@@ -877,14 +888,6 @@ def _resolve_domains(graph: dict[int, set[int]]) -> list[set[int]]:
     all_sets = []
     make_sets([], list(graph.keys()))
     return all_sets
-
-
-def _calc_coverage(domain: dict) -> set[int]:
-    residues = set()
-    for f in domain["fragments"]:
-        residues |= set(range(f["start"], f["end"] + 1))
-
-    return residues
 
 
 def _eval_overlap(dom_a: dict, dom_b: dict, threshold: float) -> bool:
