@@ -883,7 +883,7 @@ def run_uniprot_update():
             requires=["update-ipm-matches"]
         ),
         Task(
-            fn=interpro.match n.update_site_matches,
+            fn=interpro.match.update_site_matches,
             args=(ora_interpro_uri,),
             name="update-sites",
             scheduler=dict(type="lsf", queue=lsf_queue),
