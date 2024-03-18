@@ -446,7 +446,7 @@ def get_clans(
             ), pfam_clan_path
         )
 
-    return list(clans.values())
+    return clans
 
 
 def iter_protenn_matches(file: str):
