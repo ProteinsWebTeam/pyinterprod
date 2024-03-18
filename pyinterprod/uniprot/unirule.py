@@ -725,7 +725,7 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
     cur = con.cursor()
     cur.execute(
         """
-        SELECT PROTEIN_AC, H.METHOD_AC, MODEL_AC, H.DBCODE, 
+        SELECT PROTEIN_AC, H.METHOD_AC, MODEL_AC,
             POS_FROM, POS_TO, FRAGMENTS
         FROM INTERPRO.MATCH H
         INNER JOIN INTERPRO.METHOD D
