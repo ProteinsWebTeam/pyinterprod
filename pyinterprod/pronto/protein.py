@@ -340,7 +340,7 @@ def import_protein_pubmed(swp_url: str, pg_url: str):
             pmids = reg_pubmed.findall(text)
             if pmids:
                 for pmid in pmids:
-                    swp2pmid.add((acc, pmid[1]))
+                    swp2pmid.add((acc, int(pmid[1])))
                     if len(swp2pmid) == 1000:
                         pg_cur.executemany(sql, swp2pmid)
                         pg_con.commit()
