@@ -611,3 +611,5 @@ def persist_extra_pfam_data(
                 wiki_query,
                 [pfam_acc, signatures[pfam_acc]["wiki"]]
             )
+    
+    con.close()
