@@ -2,6 +2,7 @@ import re
 
 import MySQLdb
 import MySQLdb.cursors
+import oracledb
 
 from .common import Clan, Method
 from pyinterprod import logger
@@ -507,14 +508,17 @@ def get_protenn_entries(cur, file: str) -> list[Method]:
     return [Method(pfam_acc, sig_type=None) for pfam_acc in accessions]
 
 
-def persist_pfam_data(
+def persist_extra_pfam_data(
     pfam_seed_path: str,
     pfam_clan_path: str,
     pfam_fasta_path: str,
     pfam_full_path: str,
-    con,
+    ora_url: str,
 ):
     """
+    Persist additional Pfam data from Pfam release files that is not captured in the signatures
+        or clan tables. Primarily persists data required by interpro7.
+
     :param pfam_seed_path: str, path to Pfam-A.seed.gz file
     :param pfam_clan_path: path to Pfam-C.tsv.gz file
     :param pfam_fasta_path: path to Pfam-A.fasta.gz file
@@ -522,44 +526,9 @@ def persist_pfam_data(
     :param con: oracle db connection
     """
     signatures = get_signatures(pfam_path=pfam_seed_path, persist_pfam=True)
-    
 
-    drop_table(cur, "INTERPRO.PFAM_DATA", purge=True)
-    cur.execute(
-        """
-        CREATE TABLE INTERPRO.PFAM_DATA (
-            accession VARCHAR2(25) PRIMARY KEY,
-            seq_ontology NUMBER,
-            hmm_build VARCHAR2(255),
-            hmm_search VARCHAR2(255),
-            seq_gathering FLOAT,
-            domain_gathering FLOAT,
-            version NUMBER
-        )
-        """
-    )
+    con = oracledb.connect(ora_url)
 
-    drop_table(cur, "INTERPRO.PFAM_AUTHORM", purge=True)
-    cur.execute(
-        """
-        CREATE TABLE INTERPRO.PFAM_DATA (
-            accession VARCHAR2(25) PRIMARY KEY,
-            author VARCHAR2(225),
-            orcid VARCHAR2(225)
-        )
-        """
-    )
-
-    drop_table(cur, "INTERPRO.PFAM_WIKIPEDIA", purge=True)
-    cur.execute(
-        """
-        CREATE TABLE INTERPRO.PFAM_WIKIPEDIA (
-            accession VARCHAR2(25) PRIMARY KEY,
-            title VARCHAR2(225)
-        )
-        """
-    )
-    
     pfam_query = """
         INSERT /*+ APPEND */ 
         INTO INTERPRO.PFAM_DATA 
@@ -577,6 +546,42 @@ def persist_pfam_data(
     """
 
     with con.cursor() as cur:
+        drop_table(cur, "INTERPRO.PFAM_DATA", purge=True)
+        cur.execute(
+            """
+            CREATE TABLE INTERPRO.PFAM_DATA (
+                accession VARCHAR2(25) PRIMARY KEY,
+                seq_ontology NUMBER,
+                hmm_build VARCHAR2(255),
+                hmm_search VARCHAR2(255),
+                seq_gathering FLOAT,
+                domain_gathering FLOAT,
+                version NUMBER
+            )
+            """
+        )
+
+        drop_table(cur, "INTERPRO.PFAM_AUTHOR", purge=True)
+        cur.execute(
+            """
+            CREATE TABLE INTERPRO.PFAM_DATA (
+                accession VARCHAR2(25) PRIMARY KEY,
+                author VARCHAR2(225),
+                orcid VARCHAR2(225)
+            )
+            """
+        )
+
+        drop_table(cur, "INTERPRO.PFAM_WIKIPEDIA", purge=True)
+        cur.execute(
+            """
+            CREATE TABLE INTERPRO.PFAM_WIKIPEDIA (
+                accession VARCHAR2(25) PRIMARY KEY,
+                title VARCHAR2(225)
+            )
+            """
+        )
+        
         for pfam_acc in signatures:
             cur.execute(
                 pfam_query,
