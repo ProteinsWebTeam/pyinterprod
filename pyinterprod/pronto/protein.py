@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 from tempfile import mkstemp
 
@@ -289,3 +290,64 @@ def import_proteins(ora_url: str, pg_url: str):
 
     pg_con.close()
     logger.info("complete")
+
+
+def import_protein_pubmed(swp_url: str, pg_url: str):
+    logger.info("populating protein2publication")
+    pg_con = psycopg.connect(**url2dict(pg_url))
+    with pg_con.cursor() as pg_cur:
+        pg_cur.execute("DROP TABLE IF EXISTS protein2publication")
+        pg_cur.execute(
+            """
+            CREATE TABLE protein2publication (
+                PROTEIN_ACC VARCHAR(15) NOT NULL,
+                PUBMED_ID INTEGER NOT NULL
+            )
+            """
+        )
+
+        ora_con = oracledb.connect(swp_url)
+        ora_cur = ora_con.cursor()
+
+        ora_cur.execute(
+            """
+                SELECT E.ACCESSION, NVL(B.TEXT, SS.TEXT) AS TEXT
+                FROM SPTR.DBENTRY E
+                INNER JOIN SPTR.COMMENT_BLOCK B ON E.DBENTRY_ID = B.DBENTRY_ID
+                    AND B.COMMENT_TOPICS_ID = 2
+                INNER JOIN SPTR.CV_COMMENT_TOPICS CT 
+                    ON B.COMMENT_TOPICS_ID = CT.COMMENT_TOPICS_ID
+                LEFT OUTER JOIN SPTR.COMMENT_STRUCTURE S
+                    ON B.COMMENT_BLOCK_ID = S.COMMENT_BLOCK_ID
+                    AND S.CC_STRUCTURE_TYPE_ID = 1
+                LEFT OUTER JOIN SPTR.COMMENT_SUBSTRUCTURE SS
+                    ON S.COMMENT_STRUCTURE_ID = SS.COMMENT_STRUCTURE_ID
+                WHERE E.ENTRY_TYPE = 0
+                  AND E.MERGE_STATUS != 'R'           
+                  AND E.DELETED = 'N'
+            """
+        )
+
+        swp2pmid = set()
+        for protein_acc, text in ora_cur.fetchall():
+            for pmid in re.findall(r"PubMed:(\d+)", text):
+                swp2pmid.add((protein_acc, int(pmid)))
+
+        pg_cur.executemany(
+            """
+            INSERT INTO protein2publication
+                (protein_acc, pubmed_id)
+            VALUES (%s, %s)
+            """, swp2pmid
+        )
+
+        pg_cur.execute(
+            """
+            CREATE INDEX protein2publication_idx
+            ON protein2publication (protein_acc)
+            """
+        )
+
+    pg_con.commit()
+    pg_con.close()
+    logger.info("done")
