@@ -1,4 +1,5 @@
 import gzip
+import os
 import re
 
 import MySQLdb
@@ -325,14 +326,27 @@ def get_clans(
     :param pfam_fasta_path: path to Pfam-A.fasta.gz file
     :param pfam_full_path: path to Pfam-A-full.gz alignment file
     """
-    clans =[]
+    clans = []
+
+    clan_file_found, fasta_file_found, full_file_found = True, True, True
+    if os.path.isfile(pfam_clan_path) is False:
+        logger.error("Could not find Pfam-C (clan file) at %s", pfam_clan_path)
+        clan_file_found = False
+    if os.path.isfile(pfam_fasta_path) is False:
+        logger.error("Could not find Pfam-A-fasta file at %s", pfam_fasta_path)
+        fasta_file_found = False
+    if os.path.isfile(pfam_full_path) is False:
+        logger.error("Could not find Pfam-A-full file at %s", pfam_full_path)
+    if any(_ is False for _ in (clan_file_found, fasta_file_found, full_file_found)):
+        logger.error("Check Pfam file paths are correct.\nNot retrieving clan data")
+        return clans
 
     logger.info("Getting num_full values")
     num_fulls = get_num_full(pfam_full_path)
     if num_fulls is None:
         logger.error(
             (
-                "Could not find Pfam-A-full (full alignment file) at %s\n"
+                "Could not retrieve num_full values from Pfam-A-full (full alignment file) at %s\n"
                 "Not retrieving clan data"
             ), pfam_full_path
         )
@@ -344,7 +358,7 @@ def get_clans(
     if fam_seq_counts is None:
         logger.error(
             (
-                "Could not find Pfam FASTA file at %s\n"
+                "Could not parse Pfam FASTA file at %s\n"
                 "Not retrieving clan data"
             ), pfam_fasta_path
         )
@@ -431,7 +445,7 @@ def get_clans(
     except FileNotFoundError:
         logger.error(
             (
-                "Could not find Pfam-C (clan) file at %s\n"
+                "Could not parse Pfam-C (clan) file at %s\n"
                 "Not retrieving clan data"
             ), pfam_clan_path
         )
