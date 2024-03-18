@@ -337,9 +337,7 @@ def import_protein_pubmed(swp_url: str, pg_url: str):
         """
         reg_pubmed = re.compile(r"(PubMed:(\d+))")
         for acc, text in protein_text.items():
-            pmids = reg_pubmed.findall(text)
-            if pmids:
-                for pmid in pmids:
+            for pmid in re.findall(r"PubMed:(\d+)", text):
                     swp2pmid.add((acc, int(pmid[1])))
         if swp2pmid:
             pg_cur.executemany(sql, swp2pmid)
