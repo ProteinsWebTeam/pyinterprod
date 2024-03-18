@@ -711,7 +711,6 @@ def update_signatures(filepath: str, uri: str):
 
 MAX_DOM_BY_GROUP = 20
 DOM_OVERLAP_THRESHOLD = 0.3
-REPR_DOM_DATABASES = ["H", "J", "M", "R", "N"]
 
 
 def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
