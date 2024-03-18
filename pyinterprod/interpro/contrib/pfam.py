@@ -1,3 +1,4 @@
+import gzip
 import re
 
 import MySQLdb
@@ -349,7 +350,7 @@ def get_clans(
         return clans
     logger.info("Completed")
 
-   logger.info("Getting Clans")
+    logger.info("Getting Clans")
     try:
         with gzip.open(pfam_clan_path, 'rt') as fh:
             (
