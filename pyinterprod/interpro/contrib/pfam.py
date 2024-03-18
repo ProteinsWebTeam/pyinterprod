@@ -205,7 +205,6 @@ def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method] | dict:
 
                 elif line.startswith("#=GF DR"):
                     sequence_ontology = line.split(";")[1].strip()
-                    print(sequence_ontology)
 
                 elif line.startswith("#=GF AU"):
                     author_info.append(
@@ -509,25 +508,20 @@ def get_protenn_entries(cur, file: str) -> list[Method]:
 
 
 def persist_extra_pfam_data(
-    pfam_seed_path: str,
-    pfam_clan_path: str,
-    pfam_fasta_path: str,
-    pfam_full_path: str,
+    db_props: dict[str, str],
     ora_url: str,
 ):
     """
     Persist additional Pfam data from Pfam release files that is not captured in the signatures
         or clan tables. Primarily persists data required by interpro7.
 
-    :param pfam_seed_path: str, path to Pfam-A.seed.gz file
-    :param pfam_clan_path: path to Pfam-C.tsv.gz file
-    :param pfam_fasta_path: path to Pfam-A.fasta.gz file
-    :param pfam_full_path: path to Pfam-A-full.gz alignment file
+    :param db_props: db properties from members.conf file
     :param con: oracle db connection
     """
-    signatures = get_signatures(pfam_path=pfam_seed_path, persist_pfam=True)
-
-    con = oracledb.connect(ora_url)
+    signatures = get_signatures(
+        pfam_path=db_props["seed"],
+        persist_pfam=True,
+    )
 
     pfam_query = """
         INSERT /*+ APPEND */ 
@@ -545,6 +539,7 @@ def persist_extra_pfam_data(
         VALUES (:1, :2)
     """
 
+    con = oracledb.connect(ora_url)
     with con.cursor() as cur:
         drop_table(cur, "INTERPRO.PFAM_DATA", purge=True)
         cur.execute(

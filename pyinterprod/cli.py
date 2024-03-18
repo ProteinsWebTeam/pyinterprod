@@ -230,9 +230,9 @@ def run_clan_update():
             update_hmm_clans(ora_interpro_uri, database,
                              hmmdb=params["hmm"],
                              source=params["members"],
-                             pfam_clan_path=["clan"],
-                             pfam_fasta_path=["fasta"],
-                             pfam_full_path=["full"],
+                             pfam_clan_path=params["clan"],
+                             pfam_fasta_path=params["fasta"],
+                             pfam_full_path=params["full"],
                              **kwargs)
         else:
             update_hmm_clans(ora_interpro_uri, database,
@@ -456,6 +456,18 @@ def run_member_db_update():
                 requires=ipm_dependencies + ["update-signatures"]
             )
         ]
+
+        for db in member_dbs:
+            if db.identifier == 'H':
+                tasks.append(
+                    Task(
+                        fn=interpro.contrib.pfam.persist_extra_pfam_data,
+                        args=(model_sources[db.identifier], ora_interpro_uri,),
+                        names="persist-pfam",
+                        scheduler=dict(type="lsf", queue=lsf_queue),
+                        requires=ipm_dependencies + ["update-signatures"]
+                    )
+                )
 
     feature_dbs += non_ipm_dbs
     if feature_dbs:
@@ -871,7 +883,7 @@ def run_uniprot_update():
             requires=["update-ipm-matches"]
         ),
         Task(
-            fn=interpro.match.update_site_matches,
+            fn=interpro.match n.update_site_matches,
             args=(ora_interpro_uri,),
             name="update-sites",
             scheduler=dict(type="lsf", queue=lsf_queue),
