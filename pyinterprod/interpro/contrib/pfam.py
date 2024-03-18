@@ -12,6 +12,7 @@ from pyinterprod.utils.oracle import drop_table
 from pyinterprod.utils.pg import url2dict
 
 
+_RECORD_BREAK = "//"
 _TYPES = {
     "Domain": 'D',
     "Family": 'F',
@@ -130,7 +131,7 @@ def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method] | dict:
             ) = get_default_values(signatures=True)
 
             for line in fh:
-                if line.strip() == RECORD_BREAK:
+                if line.strip() == _RECORD_BREAK:
                     # create signature record from previous Pfam record
                     formatter = AbstractFormatter(references)
 
@@ -290,7 +291,7 @@ def get_num_full(
 
             for line in fh:
 
-                if line.strip() == RECORD_BREAK:
+                if line.strip() == _RECORD_BREAK:
                     # store the previous record
                     num_fulls[accession] = num_full_count
                     
@@ -362,7 +363,7 @@ def get_clans(
 
             for line in fh:
 
-                if line.strip() == RECORD_BREAK:
+                if line.strip() == _RECORD_BREAK:
                     # store the previous record
                     clan = Clan(
                             accession,
