@@ -351,7 +351,6 @@ def get_clans(
             ), pfam_full_path
         )
         return clans
-    logger.info("Completed")
 
     logger.info("Getting Pfam family seq counts")
     fam_seq_counts = get_fam_seq_counts(pfam_fasta_path)
@@ -363,7 +362,6 @@ def get_clans(
             ), pfam_fasta_path
         )
         return clans
-    logger.info("Completed")
 
     logger.info("Getting Clans")
     try:
@@ -449,8 +447,6 @@ def get_clans(
                 "Not retrieving clan data"
             ), pfam_clan_path
         )
-    
-    logger.info("Completed")
 
     return list(clans.values())
 
