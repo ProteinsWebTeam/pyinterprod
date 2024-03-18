@@ -541,7 +541,7 @@ def persist_extra_pfam_data(
     author_query = """
         INSERT /*+ APPEND */ 
         INTO INTERPRO.PFAM_AUTHOR
-        VALUES (:1, :2)
+        VALUES (:1, :2, :3)
     """
     wiki_query = """
         INSERT /*+ APPEND */ 
@@ -570,7 +570,7 @@ def persist_extra_pfam_data(
         cur.execute(
             """
             CREATE TABLE INTERPRO.PFAM_AUTHOR (
-                accession VARCHAR2(25) PRIMARY KEY,
+                accession VARCHAR2(25),
                 author VARCHAR2(225),
                 orcid VARCHAR2(225)
             )
@@ -581,7 +581,7 @@ def persist_extra_pfam_data(
         cur.execute(
             """
             CREATE TABLE INTERPRO.PFAM_WIKIPEDIA (
-                accession VARCHAR2(25) PRIMARY KEY,
+                accession VARCHAR2(25),
                 title VARCHAR2(225)
             )
             """
@@ -604,10 +604,10 @@ def persist_extra_pfam_data(
             for author_info in signatures[pfam_acc]["curation"]["authors"]:
                 cur.execute(
                     author_query,
-                    author_info
+                    (pfam_acc,) + author_info
                 )
             
             cur.execute(
                 wiki_query,
-                signatures[pfam_acc]["wiki"]
+                [pfam_acc, signatures[pfam_acc]["wiki"]]
             )
