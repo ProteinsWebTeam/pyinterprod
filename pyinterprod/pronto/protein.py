@@ -308,7 +308,6 @@ def import_protein_pubmed(swp_url: str, pg_url: str):
 
         ora_con = oracledb.connect(swp_url)
         ora_cur = ora_con.cursor()
-        swp2pmid = set()
 
         ora_cur.execute(
             """
@@ -329,20 +328,18 @@ def import_protein_pubmed(swp_url: str, pg_url: str):
             """
         )
 
+        swp2pmid = set()
         for protein_acc, text in ora_cur.fetchall():
             for pmid in re.findall(r"PubMed:(\d+)", text):
-                    swp2pmid.add((protein_acc, int(pmid[1])))
+                swp2pmid.add((protein_acc, int(pmid)))
 
-        if swp2pmid:
-            pg_cur.executemany(
-                """
-                INSERT INTO protein2publication
-                    (protein_acc, pubmed_id)
-                VALUES (%s, %s)
-                """, swp2pmid
-            )
-            pg_con.commit()
-            swp2pmid.clear()
+        pg_cur.executemany(
+            """
+            INSERT INTO protein2publication
+                (protein_acc, pubmed_id)
+            VALUES (%s, %s)
+            """, swp2pmid
+        )
 
         pg_cur.execute(
             """
