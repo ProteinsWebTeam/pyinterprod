@@ -401,8 +401,6 @@ def get_clans(
                         try:
                             num_full = num_fulls[pfamA_acc]  # num of seq accessions listed in full alignment (pfam-a.full)
                         except KeyError:
-                            if pfamA_acc in dead_fams:
-                                continue
                                 
                             num_full = 0
                             logger.warning("Could not find num_full for %s in clan %s -> Setting score as '0'", pfamA_acc, accession)
