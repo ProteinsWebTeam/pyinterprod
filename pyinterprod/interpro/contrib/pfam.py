@@ -261,7 +261,7 @@ def get_fam_seq_counts(
     fams = {}
 
     try:
-        with gzip.open(PFAM_FASTA, 'rt') as fh:
+        with gzip.open(pfam_fasta_path, 'rt') as fh:
             for line in fh:
                 if line.startswith(">"):
                     pfamA_acc = line.strip().split(" ")[-1].split(";")[0].split(".")[0]
