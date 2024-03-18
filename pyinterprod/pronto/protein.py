@@ -328,19 +328,19 @@ def import_protein_pubmed(swp_url: str, pg_url: str):
                   AND E.DELETED = 'N'
             """
         )
-        protein_text = {acc: text for acc, text in ora_cur.fetchall()}
 
-        sql = """
-            INSERT INTO protein2publication
-                (protein_acc, pubmed_id)
-            VALUES (%s, %s)
-        """
-        reg_pubmed = re.compile(r"(PubMed:(\d+))")
-        for acc, text in protein_text.items():
+        for protein_acc, text in ora_cur.fetchall():
             for pmid in re.findall(r"PubMed:(\d+)", text):
-                    swp2pmid.add((acc, int(pmid[1])))
+                    swp2pmid.add((protein_acc, int(pmid[1])))
+
         if swp2pmid:
-            pg_cur.executemany(sql, swp2pmid)
+            pg_cur.executemany(
+                """
+                INSERT INTO protein2publication
+                    (protein_acc, pubmed_id)
+                VALUES (%s, %s)
+                """, swp2pmid
+            )
             pg_con.commit()
             swp2pmid.clear()
 
@@ -353,5 +353,4 @@ def import_protein_pubmed(swp_url: str, pg_url: str):
 
     pg_con.commit()
     pg_con.close()
-    ora_con.close()
     logger.info("done")
