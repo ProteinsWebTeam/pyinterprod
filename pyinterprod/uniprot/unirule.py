@@ -906,7 +906,7 @@ def _get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
             result.append({
                 "start": int(s),
                 "end": int(e),
-                "dc-status": DC_STATUSES[t]
+                "dc-status": t
             })
 
         result.sort(key=lambda x: (x["start"], x["end"]))
@@ -914,7 +914,7 @@ def _get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
         result = [{
             "start": pos_start,
             "end": pos_end,
-            "dc-status": DC_STATUSES['S']  # Continuous
+            "dc-status": "S"  # Continuous
         }]
 
     return result
