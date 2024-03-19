@@ -237,9 +237,6 @@ def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method] | dict:
                 "Not retrieving signature data"
             ), pfam_path
         )
-        if persist_pfam:
-            return entries
-        return signatures
 
     if persist_pfam:
         return entries
