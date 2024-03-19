@@ -733,13 +733,13 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
     previous_protein_acc = None
     domains = []
     with open(output, "w") as f:
-        for protein_acc, signature_acc, dbcode, pos_start, pos_end, frags in cur:
-            frag_list = _get_fragments(pos_start, pos_end, frags)
+        for protein_acc, signature_acc, dbcode, pos_start, pos_end, frags_str in cur:
+            frag_list = _get_fragments(pos_start, pos_end, frags_str)
             match = {
                 "signature": signature_acc,
-                "pos_start": pos_start,
-                "pos_end": pos_end,
-                "fragments_string": frags,
+                "start": pos_start,
+                "end": pos_end,
+                "frag": frags_str,
                 "fragments": frag_list,
                 "rank": REPR_DOM_DATABASES.index(dbcode)
             }
@@ -749,7 +749,7 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
                 repr_domains = _select_repr_domains(domains)
                 for domain in repr_domains:
                     f.write(
-                        f"{previous_protein_acc}\t{domain['signature']}\t{domain['pos_start']}\t{domain['pos_end']}\t{domain['fragments_string']}\n"
+                        f"{previous_protein_acc}\t{domain['signature']}\t{domain['start']}\t{domain['end']}\t{domain['frag']}\n"
                     )
                 domains = []
                 previous_protein_acc = protein_acc
@@ -760,7 +760,7 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
             repr_domains = _select_repr_domains(domains)
             for domain in repr_domains:
                 f.write(
-                    f"{protein_acc}\t{domain['signature']}\t{domain['pos_start']}\t{domain['pos_end']}\t{domain['fragments_string']}\n"
+                    f"{protein_acc}\t{domain['signature']}\t{domain['start']}\t{domain['end']}\t{domain['frag']}\n"
                 )
 
     logger.info("Done")
