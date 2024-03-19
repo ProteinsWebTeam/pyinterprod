@@ -8,7 +8,6 @@ from .common import Clan, Method
 from pyinterprod import logger
 from pyinterprod.utils import Table
 from pyinterprod.utils.oracle import drop_table
-from pyinterprod.utils.pg import url2dict
 
 
 _RECORD_BREAK = "//"
