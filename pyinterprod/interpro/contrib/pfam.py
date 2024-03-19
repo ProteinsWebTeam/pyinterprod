@@ -2,8 +2,6 @@ import gzip
 import os
 import re
 
-import MySQLdb
-import MySQLdb.cursors
 import oracledb
 
 from .common import Clan, Method
