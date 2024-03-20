@@ -717,16 +717,18 @@ REPR_DOM_DATABASES = ["H", "J", "M", "R", "N"]
 def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
     con = oracledb.connect(ora_url)
     cur = con.cursor()
+
+    dbcodes = ', '.join([f"'{db}'" for db in REPR_DOM_DATABASES])
     cur.execute(
-        """
+        f"""
         SELECT PROTEIN_AC, H.METHOD_AC, H.DBCODE, POS_FROM, POS_TO, FRAGMENTS
         FROM INTERPRO.MATCH H
         INNER JOIN INTERPRO.METHOD D
         ON H.METHOD_AC = D.METHOD_AC
-        WHERE H.DBCODE in :db_codes
+        WHERE H.DBCODE in ({dbcodes})
         AND (D.SIG_TYPE = 'D' OR D.SIG_TYPE = 'R')
         ORDER BY PROTEIN_AC
-        """, {'db_codes': tuple(REPR_DOM_DATABASES)}
+        """
     )
 
     logger.info(f"Writing {output}")
