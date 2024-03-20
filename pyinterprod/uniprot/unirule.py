@@ -723,10 +723,10 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
         FROM INTERPRO.MATCH H
         INNER JOIN INTERPRO.METHOD D
         ON H.METHOD_AC = D.METHOD_AC
-        WHERE H.DBCODE in ('H', 'J', 'M', 'R', 'N')
+        WHERE H.DBCODE in :db_codes
         AND (D.SIG_TYPE = 'D' OR D.SIG_TYPE = 'R')
         ORDER BY PROTEIN_AC
-        """
+        """, {'db_codes': tuple(REPR_DOM_DATABASES)}
     )
 
     logger.info(f"Writing {output}")
