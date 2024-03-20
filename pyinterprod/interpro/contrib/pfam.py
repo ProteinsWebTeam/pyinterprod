@@ -112,9 +112,10 @@ def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method] | dict:
     """
     signatures = []
     entries = {}
+    line_count = 0
 
     try:
-        with gzip.open(pfam_path, 'rt') as fh:
+        with gzip.open(pfam_path, 'rb') as fh:
             (
                 accession,
                 name,
@@ -128,7 +129,17 @@ def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method] | dict:
                 wiki, version,
             ) = get_default_values(signatures=True)
 
-            for line in fh:
+            for _line in fh:
+                line_count += 1
+                try:
+                    line = _line.decode('utf-8')
+                except UnicodeDecodeError:
+                    logger.error(
+                        "UnicodeDecodeError encountered on PFAM-A.seed line %s. Skipping line.",
+                        line_count
+                    )
+                    continue
+
                 if line.strip() == _RECORD_BREAK:
                     # create signature record from previous Pfam record
                     formatter = AbstractFormatter(references)
@@ -227,9 +238,6 @@ def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method] | dict:
                 elif line.startswith("#=GF WK"):
                     wiki = line[7:].strip().replace(" ", "_")   # wikipedia article
 
-    except UnicodeDecodeError:
-        pass
-
     except FileNotFoundError:
         logger.error(
             (
@@ -253,18 +261,26 @@ def get_fam_seq_counts(
     Return {fam accession [str] : number of seqs in fam [int]}
     """
     fams = {}
+    line_count = 0
 
     try:
-        with gzip.open(pfam_fasta_path, 'rt') as fh:
-            for line in fh:
+        with gzip.open(pfam_fasta_path, 'rb') as fh:
+            for _line in fh:
+                line_count += 1
+                try:
+                    line = _line.decode('utf-8')
+                except UnicodeDecodeError:
+                    logger.error(
+                        "UnicodeDecodeError encountered on PFAM-A.fasta line %s. Skipping line.",
+                        line_count
+                    )
+                    continue
                 if line.startswith(">"):
                     pfamA_acc = line.strip().split(" ")[-1].split(";")[0].split(".")[0]
                     try:
                         fams[pfamA_acc] += 1
                     except KeyError:
                         fams[pfamA_acc] = 1
-    except UnicodeDecodeError:
-        pass
 
     except FileNotFoundError:
         return
@@ -279,12 +295,22 @@ def get_num_full(
     
     :param pfam_full_path: path to pfam-a-full alignemnt file
     """
+    line_count = 0
     try:
         with gzip.open(pfam_full_path, 'rt') as fh:
             num_fulls = {}  # {acc [str]: num_full [int]}
             num_full_count = 0
 
-            for line in fh:
+            for _line in fh:
+                line_count += 1
+                try:
+                    line = _line.decode('utf-8')
+                except UnicodeDecodeError:
+                    logger.error(
+                        "UnicodeDecodeError encountered on PFAM-A.full line %s. Skipping line.",
+                        line_count
+                    )
+                    continue
 
                 if line.strip() == _RECORD_BREAK:
                     # store the previous record
@@ -299,10 +325,7 @@ def get_num_full(
                 
                 elif re.search(r"^#=GS\s+\S+\s+AC\s+", line.strip()):
                     num_full_count += 1
-                    
-    except UnicodeDecodeError:
-        pass
-    
+
     except FileNotFoundError:
         return
 
@@ -358,6 +381,7 @@ def get_clans(
         return clans
 
     logger.info("Getting Clans")
+    line_count = 0
     try:
         with gzip.open(pfam_clan_path, 'rt') as fh:
             (
@@ -367,8 +391,15 @@ def get_clans(
                 members,
             ) = get_default_values(clans=True)
 
-            for line in fh:
-
+            for _line in fh:
+                try:
+                    line = _line.decode('utf-8')
+                except UnicodeDecodeError:
+                    logger.error(
+                        "UnicodeDecodeError encountered on PFAM-C line %s. Skipping line.",
+                        line_count
+                    )
+                    continue
                 if line.strip() == _RECORD_BREAK:
                     # store the previous record
                     clan = Clan(
@@ -428,9 +459,6 @@ def get_clans(
 
                 elif line.startswith("#=GF MB"):
                     members.append(line[7:].strip().replace(";",""))
-
-    except UnicodeDecodeError:
-        pass
     
     except FileNotFoundError:
         logger.error(
