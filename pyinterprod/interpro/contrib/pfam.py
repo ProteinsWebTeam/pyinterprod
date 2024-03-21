@@ -615,7 +615,7 @@ def persist_extra_pfam_data(
             cur.execute(
                 pfam_query,
                 [
-                    pfam_acc,
+                    pfam_acc.split(".")[0],
                     signatures[pfam_acc]["curation"]["sequence_ontology"],
                     signatures[pfam_acc]["hmm"]["commands"]["build"],
                     signatures[pfam_acc]["hmm"]["commands"]["search"],
@@ -628,14 +628,13 @@ def persist_extra_pfam_data(
             for author_info in signatures[pfam_acc]["curation"]["authors"]:
                 cur.execute(
                     author_query,
-                    (pfam_acc,) + author_info
+                    (pfam_acc.split(".")[0],) + author_info
                 )
             
-            if signatures[pfam_acc]['wiki']:
-                cur.execute(
-                    wiki_query,
-                    [pfam_acc, signatures[pfam_acc]["wiki"]]
-                )
+            cur.execute(
+                wiki_query,
+                [pfam_acc.split(".")[0], signatures[pfam_acc]["wiki"]]
+            )
     
     con.commit()
     con.close()
