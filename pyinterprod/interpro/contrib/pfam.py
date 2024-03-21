@@ -631,10 +631,11 @@ def persist_extra_pfam_data(
                     (pfam_acc,) + author_info
                 )
             
-            cur.execute(
-                wiki_query,
-                [pfam_acc, signatures[pfam_acc]["wiki"]]
-            )
+            if signatures[pfam_acc]['wiki']:
+                cur.execute(
+                    wiki_query,
+                    [pfam_acc, signatures[pfam_acc]["wiki"]]
+                )
     
     con.commit()
     con.close()
