@@ -636,4 +636,5 @@ def persist_extra_pfam_data(
                 [pfam_acc, signatures[pfam_acc]["wiki"]]
             )
     
+    con.commit()
     con.close()
