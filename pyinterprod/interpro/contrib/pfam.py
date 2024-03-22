@@ -64,12 +64,14 @@ class AbstractFormatter:
 
 def get_default_values(
     signatures=False,
-    clans=False
+    clans=False,
+    clans_lit=False,
 ) -> tuple:
     """Return default values for Pfam variables
 
     :param signatures: bool - get default values for a signature
     :param clans: bool - get default values for a clan
+    :param clans_lit: bool - get clan literature data
     
     In order, for signatures return:
     Accession [str]
@@ -92,11 +94,18 @@ def get_default_values(
     Clan id [int]
     Description [str]
     List of member accessions [List[str]]
+
+    For clans lit:
+    Clan accession (excluding version) number [int]
+    Authors [str]
+    References [dict]
     """
     if signatures:
         return None, None, None, None, "", {}, None, [], None, None, None, None, None, None
     if clans:
         return None, None, None, []
+    if clans_lit:
+        return None, None, {}
 
 
 def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method] | dict:
@@ -297,7 +306,7 @@ def get_num_full(
     """
     line_count = 0
     try:
-        with gzip.open(pfam_full_path, 'rt') as fh:
+        with gzip.open(pfam_full_path, 'rb') as fh:
             num_fulls = {}  # {acc [str]: num_full [int]}
             num_full_count = 0
 
@@ -383,7 +392,7 @@ def get_clans(
     logger.info("Getting Clans")
     line_count = 0
     try:
-        with gzip.open(pfam_clan_path, 'rt') as fh:
+        with gzip.open(pfam_clan_path, 'rb') as fh:
             (
                 accession,
                 clan_id,
@@ -477,9 +486,13 @@ def get_clan_literature(pfam_clan_path: str) -> dict:
     :param pfam_clan_path: path to Pfam-C release file.
     """
     clans = {}
+    line_count = 0
     try:
-        with gzip.open(pfam_clan_path, 'rt') as fh:
+        with gzip.open(pfam_clan_path, 'rb') as fh:
+            accession, authors, references = get_default_values(clans_lit=True)
+
             for _line in fh:
+                line_count += 1
                 try:
                     line = _line.decode('utf-8')
                 except UnicodeDecodeError:
@@ -488,6 +501,43 @@ def get_clan_literature(pfam_clan_path: str) -> dict:
                         line_count
                     )
                     continue
+            
+                if line.strip() == _RECORD_BREAK:
+                    clans[accession] = {
+                        'authors': authors,
+                        'references': references,
+                    }
+                    # set to default values for next accession
+                    accession, authors, references = get_default_values(clans_lit=True)
+
+                elif line.startswith("#=GF AC"):
+                    accession = line.split(" ")[-1].split(".")[0].strip()
+
+                elif line.startswith('#=GF AU'):
+                    authors = line[7:].split(",")
+                    authors = [_.strip() for _ in authors]
+
+                elif line.startswith("#=GF RN"):
+                    current_ref_pos = int(line.split("[")[-1][:-2])
+                    references[current_ref_pos] = {
+                        'pmid': None,
+                        'authors': '',
+                        'title': '',
+                        'journal': '',
+                    }
+
+                elif line.startswith("#=GF RM"):
+                    references[current_ref_pos]['pmid'] = int(line[7:].strip())
+
+                elif line.startswith("#=GF RA"):
+                    references[current_ref_pos]['authors'] += line[7:-1].strip()
+
+                elif line.startswith("#=GF RT"):
+                    references[current_ref_pos]['title'] += line[7:].strip()
+
+                elif line.startswith("#=GF RL"):
+                    references[current_ref_pos]['journal'] += line[7:].split(";")[0][:-4].strip()
+
     except FileNotFoundError:
         logger.error(
             (
@@ -599,6 +649,10 @@ def persist_extra_pfam_data(
         INTO INTERPRO.PFAM_WIKIPEDIA 
         VALUES (:1, :2)
     """
+    clan_au_query = """
+    """
+    clan_lit_query = """
+    """
 
     con = oracledb.connect(ora_url)
     with con.cursor() as cur:
@@ -637,6 +691,30 @@ def persist_extra_pfam_data(
             )
             """
         )
+
+        drop_table(cur, "INTERPRO.PFAM_CLAN_AUTHOR", purge=True)
+        cur.execute(
+            """
+            CREATE TABLE INTERPRO.PFAM_CLAN_AUTHOR (
+                clan_id VARCHAR2(25),
+                author VARCHAR2(225)
+            )
+            """
+        )
+
+        drop_table(cur, "INTERPRO.PFAM_CLAN_LITERATURE", purge=True)
+        cur.execute(
+            """
+            CREATE TABLE INTERPRO.PFAM_CLAN_LITERATURE (
+                clan_id VARCHAR2(25),
+                pubmed_id NUMBER,
+                title VARCHAR2(225),
+                author VARCHAR2(225),
+                journal VARCHAR2(225),
+                order_added NUMBER
+            )
+            """
+        )
         
         for pfam_acc in signatures:
             cur.execute(
@@ -664,5 +742,7 @@ def persist_extra_pfam_data(
                     [pfam_acc.split(".")[0], signatures[pfam_acc]["wiki"]]
                 )
     
+        for clan_id in clans:
+
     con.commit()
     con.close()
