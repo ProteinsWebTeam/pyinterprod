@@ -471,6 +471,32 @@ def get_clans(
     return clans
 
 
+def get_clan_literature(pfam_clan_path: str) -> dict:
+    """Get clan authors and literature data from Pfam-C file
+
+    :param pfam_clan_path: path to Pfam-C release file.
+    """
+    clans = {}
+    try:
+        with gzip.open(pfam_clan_path, 'rt') as fh:
+            for _line in fh:
+                try:
+                    line = _line.decode('utf-8')
+                except UnicodeDecodeError:
+                    logger.error(
+                        "UnicodeDecodeError encountered on PFAM-C line %s. Skipping line.",
+                        line_count
+                    )
+                    continue
+    except FileNotFoundError:
+        logger.error(
+            (
+                "Could not parse Pfam-C (clan) file at %s\n"
+                "Not retrieving clan data"
+            ), pfam_clan_path
+        )
+    return clans
+
 def iter_protenn_matches(file: str):
     """Iterate ProtENN matches from the Pfam-N domain calls TSV file
     """
@@ -554,6 +580,7 @@ def persist_extra_pfam_data(
         pfam_path=db_props["seed"],
         persist_pfam=True,
     )
+    clans = get_clan_literature(db_props['clan'])
 
     logger.info("Persisting data for %s signatures", len(signatures))
 
