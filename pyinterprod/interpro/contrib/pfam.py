@@ -633,6 +633,7 @@ def persist_extra_pfam_data(
     clans = get_clan_literature(db_props['clan'])
 
     logger.info("Persisting data for %s signatures", len(signatures))
+    logger.info("Persisting data for %s clans", len(clans))
 
     pfam_query = """
         INSERT /*+ APPEND */ 
@@ -650,8 +651,14 @@ def persist_extra_pfam_data(
         VALUES (:1, :2)
     """
     clan_au_query = """
+        INSERT /*+ APPEND */ 
+        INTO INTERPRO.PFAM_CLAN_AUTHOR
+        VALUES (:1, :2)
     """
     clan_lit_query = """
+        INSERT /*+ APPEND */ 
+        INTO INTERPRO.PFAM_CLAN_LITERATURE
+        VALUES (:1, :2, :3, :4, :5, :6)
     """
 
     con = oracledb.connect(ora_url)
@@ -708,8 +715,8 @@ def persist_extra_pfam_data(
             CREATE TABLE INTERPRO.PFAM_CLAN_LITERATURE (
                 clan_id VARCHAR2(25),
                 pubmed_id NUMBER,
-                title VARCHAR2(225),
-                author VARCHAR2(225),
+                title VARCHAR2(500),
+                author VARCHAR2(500),
                 journal VARCHAR2(225),
                 order_added NUMBER
             )
@@ -743,6 +750,46 @@ def persist_extra_pfam_data(
                 )
     
         for clan_id in clans:
+            for author in clans[clan_id]['authors']:
+                cur.execute(clan_au_query, [clan_id, author])
+            
+            for order_added in clans[clan_id]['references']:
+                try:
+                    cur.execute(
+                        clan_lit_query,
+                        [
+                            clan_id,
+                            clans[clan_id]['references'][order_added]['pmid'],
+                            _check_str_len(clan_id, clans[clan_id]['references'][order_added]['title'], "TITLE", 500),
+                            _check_str_len(clan_id, clans[clan_id]['references'][order_added]['authors'], "AUTHORS", 500),
+                            clans[clan_id]['references'][order_added]['journal'],
+                            order_added
+                        ]
+                    )
+                except oracledb.DatabaseError as err:
+                    logger.error(
+                        "Could not insert citation (order_added:%s) for clan %s\nERROR:%s",
+                        order_added, clan_id, err
+                    )
 
     con.commit()
     con.close()
+
+
+def _check_str_len(clan_id: str, field: str, field_name: str, max_len: int) -> str:
+    """Check if the len of a field is too long for the db. If too long, flag, and truncate.
+
+    :param clan_id: clan accession
+    :param field: str to be inserted into db
+    :param field_name: name of column to be inserted into
+    :param max_len: int, max number of accepted chars
+    """
+    if len(field) > max_len:
+        logger.error(
+            (
+                "The %s for clan %s is too long (actual: %s, maximum: %s)\n"
+                "Truncating %s to %s chars"
+            ), field_name, clan_id, len(field), max_len, field_name, max_len
+        )
+        return field[:max_len]
+    return field
