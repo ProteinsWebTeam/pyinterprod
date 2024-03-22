@@ -761,7 +761,7 @@ def persist_extra_pfam_data(
                             clan_id,
                             clans[clan_id]['references'][order_added]['pmid'],
                             _check_str_len(clan_id, clans[clan_id]['references'][order_added]['title'], "TITLE", 500),
-                            _check_str_len(clan_id, clans[clan_id]['references'][order_added]['authors'], "AUTHORS", 500),
+                            _check_str_len(clan_id, clans[clan_id]['references'][order_added]['authors'][:-1], "AUTHORS", 500),
                             clans[clan_id]['references'][order_added]['journal'],
                             order_added
                         ]
