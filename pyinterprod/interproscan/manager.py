@@ -137,6 +137,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     to_run = kwargs.get("analyses", [])
     to_exclude = kwargs.get("exclude", [])
 
+    logger.info("starting")
     con = oracledb.connect(uri)
     cur = con.cursor()
 
@@ -168,7 +169,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     if not analyses:
         cur.close()
         con.close()
-        logger.error("No analyses to process: exit")
+        logger.error("no analyses to process: exit")
         return
 
     # Override default config with custom configs
@@ -310,7 +311,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         con.close()
 
         n_tasks = len(running_jobs) + len(pending_jobs)
-        logger.info(f"Tasks: {n_tasks:,}")
+        logger.info(f"tasks: {n_tasks:,}")
 
         if dry_run:
             return
@@ -332,6 +333,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 task = obj.pop(i)
                 pool.submit(task)
 
+        logger.info(f"monitoring")
         con = oracle.try_connect(uri)
         cur = con.cursor()
 
@@ -422,7 +424,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     while progress >= milestone:
                         milestone += step
 
-                    logger.info(f"Progress: {milestone - step:>3}%")
+                    logger.info(f"progress: {milestone - step:>3}%")
 
         if n_failed:
             logger.error(f"{n_failed} task(s) failed")
