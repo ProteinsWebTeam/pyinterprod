@@ -299,6 +299,7 @@ def get_fam_seq_counts(
 
 def get_num_full(
     pfam_full_path: str,
+    seed=False,
 ) -> dict[str: int] | None:
     """Calculate num_full values by parsing Pfam-A.full.gz alignment file
     
@@ -316,8 +317,8 @@ def get_num_full(
                     line = _line.decode('utf-8')
                 except UnicodeDecodeError:
                     logger.error(
-                        "UnicodeDecodeError encountered on PFAM-A.full line %s. Skipping line.",
-                        line_count
+                        "UnicodeDecodeError encountered on PFAM-A.%s line %s. Skipping line.",
+                        "seed" if seed else "full", line_count
                     )
                     continue
 
@@ -642,7 +643,7 @@ def persist_extra_pfam_data(
     clans = get_clan_literature(db_props['clan'])
 
     logger.info("Getting pfam-A.seed alignment counts")
-    seed_num = get_num_full(db_props["seed"])
+    seed_num = get_num_full(db_props["seed"], seed=True)
     if seed_num is None:
         logger.error("Could not find file pfam-A.seed at %s\nNot persisting seed_num values", db_props["seed"])
         seed_num = {}
@@ -652,15 +653,15 @@ def persist_extra_pfam_data(
         logger.error("Could not find file pfam-A.seed at %s\nNot persisting full_num values", db_props["full"])
         full_num = {}
     logger.info("Getting RP15 alignment counts")
-    rp15_num = get_alignment_counts(db_props["rp15"])
+    rp15_num = get_alignment_counts(db_props["rp15"], "rp15")
     logger.info("Getting RP35 alignment counts")
-    rp35_num = get_alignment_counts(db_props["rp35"])
+    rp35_num = get_alignment_counts(db_props["rp35"], "rp35")
     logger.info("Getting RP55 alignment counts")
-    rp55_num = get_alignment_counts(db_props["rp55"])
+    rp55_num = get_alignment_counts(db_props["rp55"], "rp55")
     logger.info("Getting RP75 alignment counts")
-    rp75_num = get_alignment_counts(db_props["rp75"])
+    rp75_num = get_alignment_counts(db_props["rp75"], "rp75")
     logger.info("Getting UniProt alignment counts")
-    uniprot_num = get_alignment_counts(db_props["uniprot"])
+    uniprot_num = get_alignment_counts(db_props["uniprot"], "uniprot")
 
     logger.info("Persisting data for %s signatures", len(signatures))
     logger.info("Persisting data for %s clans", len(clans))
@@ -668,7 +669,7 @@ def persist_extra_pfam_data(
     pfam_query = """
         INSERT /*+ APPEND */ 
         INTO INTERPRO.PFAM_DATA 
-        VALUES (:1, :2, :3, :4, :5, :6, :7)
+        VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, :14)
     """
     author_query = """
         INSERT /*+ APPEND */ 
@@ -767,13 +768,13 @@ def persist_extra_pfam_data(
                 signatures[pfam_acc]["hmm"]["cutoffs"]["gathering"]["domain"],
                 signatures[pfam_acc]["hmm"]["version"],
             ]
-            record = add_num_val(pfam_acc, seed_num, record)
-            record = add_num_val(pfam_acc, full_num, record)
-            record = add_num_val(pfam_acc, rp15_num, record)
-            record = add_num_val(pfam_acc, rp35_num, record)
-            record = add_num_val(pfam_acc, rp55_num, record)
-            record = add_num_val(pfam_acc, rp75_num, record)
-            record = add_num_val(pfam_acc, uniprot_num, record)
+            record = add_num_val(pfam_acc.split(".")[0], seed_num, record)
+            record = add_num_val(pfam_acc.split(".")[0], full_num, record)
+            record = add_num_val(pfam_acc.split(".")[0], rp15_num, record)
+            record = add_num_val(pfam_acc.split(".")[0], rp35_num, record)
+            record = add_num_val(pfam_acc.split(".")[0], rp55_num, record)
+            record = add_num_val(pfam_acc.split(".")[0], rp75_num, record)
+            record = add_num_val(pfam_acc.split(".")[0], uniprot_num, record)
 
             cur.execute(
                 pfam_query,
