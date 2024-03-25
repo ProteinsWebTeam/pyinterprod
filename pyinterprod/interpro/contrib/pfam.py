@@ -547,6 +547,7 @@ def get_clan_literature(pfam_clan_path: str) -> dict:
         )
     return clans
 
+
 def iter_protenn_matches(file: str):
     """Iterate ProtENN matches from the Pfam-N domain calls TSV file
     """
@@ -626,11 +627,40 @@ def persist_extra_pfam_data(
     :param db_props: db properties from members.conf file
     :param con: oracle db connection
     """
+    def add_num_val(acc, num_dict, _record):
+        """Add alignment count if available to record, else add None"""
+        try:
+            _record.append(num_dict[acc])
+        except KeyError:
+            _record.append(None)
+        return record
+
     signatures = get_signatures(
         pfam_path=db_props["seed"],
         persist_pfam=True,
     )
     clans = get_clan_literature(db_props['clan'])
+
+    logger.info("Getting pfam-A.seed alignment counts")
+    seed_num = get_num_full(db_props["seed"])
+    if seed_num is None:
+        logger.error("Could not find file pfam-A.seed at %s\nNot persisting seed_num values", db_props["seed"])
+        seed_num = {}
+    logger.info("Getting pfam-A.full alignment counts")
+    full_num = get_num_full(db_props["full"])
+    if full_num is None:
+        logger.error("Could not find file pfam-A.seed at %s\nNot persisting full_num values", db_props["full"])
+        full_num = {}
+    logger.info("Getting RP15 alignment counts")
+    rp15_num = get_alignment_counts(db_props["rp15"])
+    logger.info("Getting RP35 alignment counts")
+    rp35_num = get_alignment_counts(db_props["rp35"])
+    logger.info("Getting RP55 alignment counts")
+    rp55_num = get_alignment_counts(db_props["rp55"])
+    logger.info("Getting RP75 alignment counts")
+    rp75_num = get_alignment_counts(db_props["rp75"])
+    logger.info("Getting UniProt alignment counts")
+    uniprot_num = get_alignment_counts(db_props["uniprot"])
 
     logger.info("Persisting data for %s signatures", len(signatures))
     logger.info("Persisting data for %s clans", len(clans))
@@ -673,7 +703,11 @@ def persist_extra_pfam_data(
                 hmm_search VARCHAR2(255),
                 seq_gathering FLOAT,
                 domain_gathering FLOAT,
-                version NUMBER
+                version NUMBER,
+                seed_num NUMBER, full_num NUMBER,
+                rp15_num NUMBER, rp35_num NUMBER,
+                rp55_num NUMBER, rp75_num NUMBER,
+                uniprot_num NUMBER
             )
             """
         )
@@ -724,17 +758,26 @@ def persist_extra_pfam_data(
         )
         
         for pfam_acc in signatures:
+            record = [
+                pfam_acc.split(".")[0],
+                signatures[pfam_acc]["curation"]["sequence_ontology"],
+                signatures[pfam_acc]["hmm"]["commands"]["build"],
+                signatures[pfam_acc]["hmm"]["commands"]["search"],
+                signatures[pfam_acc]["hmm"]["cutoffs"]["gathering"]["sequence"],
+                signatures[pfam_acc]["hmm"]["cutoffs"]["gathering"]["domain"],
+                signatures[pfam_acc]["hmm"]["version"],
+            ]
+            record = add_num_val(pfam_acc, seed_num, record)
+            record = add_num_val(pfam_acc, full_num, record)
+            record = add_num_val(pfam_acc, rp15_num, record)
+            record = add_num_val(pfam_acc, rp35_num, record)
+            record = add_num_val(pfam_acc, rp55_num, record)
+            record = add_num_val(pfam_acc, rp75_num, record)
+            record = add_num_val(pfam_acc, uniprot_num, record)
+
             cur.execute(
                 pfam_query,
-                [
-                    pfam_acc.split(".")[0],
-                    signatures[pfam_acc]["curation"]["sequence_ontology"],
-                    signatures[pfam_acc]["hmm"]["commands"]["build"],
-                    signatures[pfam_acc]["hmm"]["commands"]["search"],
-                    signatures[pfam_acc]["hmm"]["cutoffs"]["gathering"]["sequence"],
-                    signatures[pfam_acc]["hmm"]["cutoffs"]["gathering"]["domain"],
-                    signatures[pfam_acc]["hmm"]["version"],
-                ]
+                record,
             )
 
             for author_info in signatures[pfam_acc]["curation"]["authors"]:
@@ -793,3 +836,45 @@ def _check_str_len(clan_id: str, field: str, field_name: str, max_len: int) -> s
         )
         return field[:max_len]
     return field
+
+
+def get_alignment_counts(pfam_file: str, alignment_name: str) -> dict[str, int]:
+    """Count the number of hits in the alignemnt file for each accession
+
+    :param pfam_file: path to rp15, rp35, rp55, rp75, uniprot
+    :param alignment_name: name of alignment: rp15, rp35, rp55, rp75, uniprot
+    
+    Return {accession: count [int]}
+    """
+    line_count, count_dict = 0, {}
+    try:
+        with gzip.open(pfam_file, 'rb') as fh:
+            count, acc = 0, ""
+
+            for _line in fh:
+                line_count += 1
+                try:
+                    line = _line.decode("utf-8")
+                except UnicodeDecodeError:
+                    logger.error(
+                        (
+                            "Unicode Decode Error encountered in PFAM %s file line %s\n"
+                            "Not parsing this line and continuing to the next"
+                        ),
+                        alignment_name, line_count
+                    )
+
+                if line.strip() == _RECORD_BREAK:
+                    count_dict[acc] = count
+                    count, acc = 0, ""
+
+                elif line.startswith("#=GF AC"):
+                    acc = line.split(" ")[-1].split(".")[0].strip()
+
+                elif line.startswith("#") is False:
+                    count += 1
+
+    except FileNotFoundError:
+        logger.error("Could not find Pfam file (%s) at %s", alignment_name, pfam_file)
+    
+    return count_dict
