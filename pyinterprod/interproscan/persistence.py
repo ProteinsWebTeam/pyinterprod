@@ -134,8 +134,10 @@ def hamap_matches(cur: Cursor, file: str, analysis_id: int, table: str):
     """
 
     values = []
+    num_matches = num_inserted = 0
     with open(file, "rt") as fh:
         for line in fh:
+            num_matches += 1
             cols = line.rstrip().split('\t')
             values.append({
                 "analysis_id": analysis_id,
@@ -154,10 +156,14 @@ def hamap_matches(cur: Cursor, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
+                num_inserted += cur.rowcount
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
+        num_inserted += cur.rowcount
+
+    print("INSERT", num_matches, num_inserted)
 
 
 def _hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str,
