@@ -353,18 +353,23 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
                 logfile = os.path.join(temp_dir, f"{task.name}.log")
                 if ok:
-                    # Remove the log file (exists if a previous run failed)
-                    try:
-                        os.unlink(logfile)
-                    except FileNotFoundError:
-                        pass
+                    if keep_files == "all":
+                        with open(logfile, "wt") as fh:
+                            fh.write(task.stdout)
+                            fh.write(task.stderr)
+                    else:
+                        # Remove the log file (exists if a previous run failed)
+                        try:
+                            os.unlink(logfile)
+                        except FileNotFoundError:
+                            pass
 
                     n_completed += 1
                 else:
-                    # Write to log file
-                    with open(logfile, "wt") as fh:
-                        fh.write(task.stdout)
-                        fh.write(task.stderr)
+                    if keep_files in ("all", "failed"):
+                        with open(logfile, "wt") as fh:
+                            fh.write(task.stdout)
+                            fh.write(task.stderr)
 
                     # Number of times the task was re-submitted
                     num_retries = retries.get(task.name, 0)
