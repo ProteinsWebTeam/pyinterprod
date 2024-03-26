@@ -718,8 +718,8 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
     con = oracledb.connect(ora_url)
     cur = con.cursor()
 
-    placeholders = ', '.join(':' + str(i + 1) for i in range(len(REPR_DOM_DATABASES)))
-    params = {str(i + 1): db for i, db in enumerate(REPR_DOM_DATABASES)}
+    placeholders = ','.join(':' + str(i + 1)
+                            for i in range(len(REPR_DOM_DATABASES)))
     cur.execute(
         f"""
         SELECT PROTEIN_AC, H.METHOD_AC, H.DBCODE, POS_FROM, POS_TO, FRAGMENTS
@@ -729,9 +729,10 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
         WHERE H.DBCODE in ({placeholders})
         AND (D.SIG_TYPE = 'D' OR D.SIG_TYPE = 'R')
         ORDER BY PROTEIN_AC
-        """, params
+        """,
+        REPR_DOM_DATABASES
     )
-   
+
 
     logger.info(f"Writing {output}")
     previous_protein_acc = None
