@@ -898,7 +898,8 @@ def _resolve_domains(graph: dict[int, set[int]]) -> list[set[int]]:
 
 def _eval_overlap(dom_a: dict, dom_b: dict, threshold: float) -> bool:
     overlap = len(dom_a["residues"] & dom_b["residues"])
-    return overlap and overlap / min(len(dom_a["residues"]), len(dom_b["residues"])) >= threshold
+    return overlap and overlap / min(len(dom_a["residues"]),
+                                     len(dom_b["residues"])) >= threshold
 
 
 def _get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
