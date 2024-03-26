@@ -4,6 +4,10 @@ from pyinterprod import logger
 from pyinterprod.interpro import iprscan
 from pyinterprod.utils import email, oracle, Table
 
+MAX_DOM_BY_GROUP = 20
+DOM_OVERLAP_THRESHOLD = 0.3
+REPR_DOM_DATABASES = ["H", "J", "M", "R", "N"]
+
 
 def report_integration_changes(uri: str, emails: dict):
     """Sends a list of integration changes.
@@ -707,11 +711,6 @@ def update_signatures(filepath: str, uri: str):
     con.commit()
     cur.close()
     con.close()
-
-
-MAX_DOM_BY_GROUP = 20
-DOM_OVERLAP_THRESHOLD = 0.3
-REPR_DOM_DATABASES = ["H", "J", "M", "R", "N"]
 
 
 def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
