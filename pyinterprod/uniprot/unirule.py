@@ -765,7 +765,8 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
             repr_domains = _select_repr_domains(domains)
             for domain in repr_domains:
                 f.write(
-                    f"{protein_acc}\t{domain['signature']}\t{domain['start']}\t{domain['end']}\t{domain['frag']}\n"
+                    f"{protein_acc}\t{domain['signature']}\t{domain['start']}\t"
+                    f"{domain['end']}\t{domain['frag']}\n"
                 )
 
     logger.info("Done")
