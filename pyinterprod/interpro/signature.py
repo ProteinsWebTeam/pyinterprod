@@ -70,7 +70,7 @@ def add_staging(uri: str, update: list[tuple[Database, dict[str, str]]]):
             if db.identifier == 'H':
                 # Pfam
                 signatures = contrib.pfam.get_signatures(
-                    db_props["signatures"]
+                    db_props["seed"]
                 )
             elif db.identifier == 'J':
                 # CDD

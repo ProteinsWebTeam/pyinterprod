@@ -235,6 +235,14 @@ def run_clan_update():
                              cddid=params["summary"],
                              fam2supfam=params["members"],
                              **kwargs)
+        elif dbname == "pfam":
+            update_hmm_clans(ora_interpro_uri, database,
+                             hmmdb=params["hmm"],
+                             source=params["members"],
+                             pfam_clan_path=params["clan"],
+                             pfam_fasta_path=params["fasta"],
+                             pfam_full_path=params["full"],
+                             **kwargs)
         else:
             update_hmm_clans(ora_interpro_uri, database,
                              hmmdb=params["hmm"],
@@ -457,6 +465,18 @@ def run_member_db_update():
                 requires=ipm_dependencies + ["update-signatures"]
             )
         ]
+
+        for db in member_dbs:
+            if db.identifier == 'H':
+                tasks.append(
+                    Task(
+                        fn=interpro.contrib.pfam.persist_extra_pfam_data,
+                        args=(model_sources[db.identifier], ora_interpro_uri,),
+                        names="persist-pfam",
+                        scheduler=dict(type="lsf", queue=lsf_queue),
+                        requires=ipm_dependencies + ["update-signatures"]
+                    )
+                )
 
     feature_dbs += non_ipm_dbs
     if feature_dbs:

@@ -7,6 +7,7 @@ import subprocess as sp
 import sys
 from concurrent import futures
 from tempfile import mkdtemp, mkstemp
+from typing import Optional
 
 import oracledb
 
@@ -593,10 +594,19 @@ def update_cdd_clans(url: str, database: Database, cddmasters: str,
             raise RuntimeError(f"{errors} error(s)")
 
 
-def update_hmm_clans(url: str, database: Database, hmmdb: str, **kwargs):
+def update_hmm_clans(
+    url: str,
+    database: Database,
+    hmmdb: str,
+    pfam_clan_path: Optional[str] = None,
+    pfam_fasta_path: Optional[str] = None,
+    pfam_full_path: Optional[str] = None,
+    **kwargs
+):
     clan_source = kwargs.get("source")
     threads = kwargs.get("threads")
     tmpdir = kwargs.get("tmpdir")
+
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
@@ -615,7 +625,11 @@ def update_hmm_clans(url: str, database: Database, hmmdb: str, **kwargs):
 
         def getsubdir(x): return x[:7]
     elif database.name.lower() == "pfam":
-        clans = contrib.pfam.get_clans(clan_source)
+        clans = contrib.pfam.get_clans(
+            pfam_clan_path,
+            pfam_fasta_path,
+            pfam_full_path,
+        )
 
         def getsubdir(x): return x[:5]
     elif database.name.lower() == "pirsf":

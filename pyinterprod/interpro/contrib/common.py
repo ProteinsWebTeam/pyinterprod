@@ -11,7 +11,6 @@ class Method:
     name: str | None = None
     description: str | None = None
     abstract: str | None = None
-    date: datetime | None = None
     references: list[int] = field(default_factory=list)
     model: str | None = None
 
