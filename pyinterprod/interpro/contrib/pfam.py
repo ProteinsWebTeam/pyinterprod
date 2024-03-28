@@ -889,11 +889,27 @@ def get_alignment_counts(pfam_file: str, alignment_name: str) -> dict[str, int]:
 def persist_alignments(db_props: dict[str, str], con) -> None:
     """Persist Pfam alignments in the oracle db.
 
+    Alignments types to be stored are defined by assigning a value to the 
+    corresponding file/alignment type in members.conf:
+        seed, full, rpXX (where XX is a number), uniprot
+
     :param db_props: db properties from members.conf file
     :param con: open oracle db connection
     """
     def get_ali_paths(directory: Path):
         return (entry for entry in Path(directory).iterdir() if entry.is_file())
+
+    types_to_store = [
+        _ for _ in db_props 
+        if db_props[_] is not None 
+        and _ not in ['hmm', 'members', 'signatures', 'clan', 'alignment']
+    ]
+    if len(types_to_store) == 0:
+        logger.warning("No alignment types specified. Not storing alignments")
+        return
+    
+    logger.info("Storing alignments: %s", types_to_store)
+    sql_insert = "INSERT INTO INTERPRO.PFAM_ALIGNMENTS (accession, type, alignment) VALUES (:1, :2, :3)"
 
     with con.cursor() as cur:
         drop_table(cur, "INTERPRO.PFAM_ALIGNMENTS", purge=True)
@@ -907,18 +923,15 @@ def persist_alignments(db_props: dict[str, str], con) -> None:
             """
         )
 
-    sql_insert = "INSERT INTO table_name (accession, type, alignment) VALUES (:1, :2, :3)"
+        dir_paths = (entry for entry in Path(db_props['alignment']).iterdir() if entry.is_dir())
+        for _path in dir_paths:
+            pfam_acc = _path.name
+            for alignment_path in get_ali_paths(_path):
+                ali_type = alignment_path.name.split(".")[1]
+                if ali_type in types_to_store:
+                    with gzip.open(alignment_path, 'rb') as fh:
+                        alignment = fh.read()
 
-    dir_paths = (entry for entry in Path(db_props['alignment']).iterdir() if entry.is_dir())
-    for _path in dir_paths:
-        pfam_acc = _path.name
-        ali_paths = get_ali_paths(_path)
-        for alignment_path in ali_paths:
-            ali_type = alignment_path.name.split(".")[1]
-            with gzip.open(alignment_path, 'rb') as fh:
-                alignment = fh.read()
-
-                with con.cursor() as cur:
-                    cur.execute(sql_insert, [pfam_acc, alignemnt, ali_type])
+                        cur.execute(sql_insert, [pfam_acc, ali_type, alignment])
 
     con.commit()
