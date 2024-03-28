@@ -157,6 +157,9 @@ def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method] | dict:
 
                     if persist_pfam:
                         entries[accession] = {
+                            "name": name,
+                            "description": description,
+                            "type": _TYPES[long_type],
                             "curation": {
                                 "sequence_ontology": sequence_ontology,
                                 "authors": author_info,
@@ -671,7 +674,7 @@ def persist_extra_pfam_data(
     pfam_query = """
         INSERT /*+ APPEND */ 
         INTO INTERPRO.PFAM_DATA 
-        VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, :14)
+        VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, :14, :15, :16, :17)
     """
     author_query = """
         INSERT /*+ APPEND */ 
@@ -701,6 +704,9 @@ def persist_extra_pfam_data(
             """
             CREATE TABLE INTERPRO.PFAM_DATA (
                 accession VARCHAR2(25) PRIMARY KEY,
+                name VARCHAR2(255),
+                description VARCHAR2(500),
+                type VARCHAR2(25),
                 seq_ontology NUMBER,
                 hmm_build VARCHAR2(255),
                 hmm_search VARCHAR2(255),
@@ -763,6 +769,9 @@ def persist_extra_pfam_data(
         for pfam_acc in signatures:
             record = [
                 pfam_acc.split(".")[0],
+                signatures[pfam_acc]['name'],
+                signatures[pfam_acc]['description'],
+                signatures[pfam_acc]['type'],
                 signatures[pfam_acc]["curation"]["sequence_ontology"],
                 signatures[pfam_acc]["hmm"]["commands"]["build"],
                 signatures[pfam_acc]["hmm"]["commands"]["search"],
@@ -820,7 +829,8 @@ def persist_extra_pfam_data(
 
     con.commit()
 
-    persist_alignments(db_props, con)
+    if db_props["alignment"]:
+        persist_alignments(db_props, con)
 
     con.close()
 
