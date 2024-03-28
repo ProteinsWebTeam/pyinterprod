@@ -2,6 +2,8 @@ import gzip
 import os
 import re
 
+from pathlib import Path
+
 import oracledb
 
 from .common import Clan, Method
@@ -155,6 +157,9 @@ def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method] | dict:
 
                     if persist_pfam:
                         entries[accession] = {
+                            "name": name,
+                            "description": description,
+                            "type": _TYPES[long_type],
                             "curation": {
                                 "sequence_ontology": sequence_ontology,
                                 "authors": author_info,
@@ -626,7 +631,7 @@ def persist_extra_pfam_data(
         or clan tables. Primarily persists data required by interpro7.
 
     :param db_props: db properties from members.conf file
-    :param con: oracle db connection
+    :param ora_url: connection str for oracle db
     """
     def add_num_val(acc, num_dict, _record):
         """Add alignment count if available to record, else add None"""
@@ -669,7 +674,7 @@ def persist_extra_pfam_data(
     pfam_query = """
         INSERT /*+ APPEND */ 
         INTO INTERPRO.PFAM_DATA 
-        VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, :14)
+        VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, :14, :15, :16, :17)
     """
     author_query = """
         INSERT /*+ APPEND */ 
@@ -699,6 +704,9 @@ def persist_extra_pfam_data(
             """
             CREATE TABLE INTERPRO.PFAM_DATA (
                 accession VARCHAR2(25) PRIMARY KEY,
+                name VARCHAR2(255),
+                description VARCHAR2(500),
+                type VARCHAR2(25),
                 seq_ontology NUMBER,
                 hmm_build VARCHAR2(255),
                 hmm_search VARCHAR2(255),
@@ -761,6 +769,9 @@ def persist_extra_pfam_data(
         for pfam_acc in signatures:
             record = [
                 pfam_acc.split(".")[0],
+                signatures[pfam_acc]['name'],
+                signatures[pfam_acc]['description'],
+                signatures[pfam_acc]['type'],
                 signatures[pfam_acc]["curation"]["sequence_ontology"],
                 signatures[pfam_acc]["hmm"]["commands"]["build"],
                 signatures[pfam_acc]["hmm"]["commands"]["search"],
@@ -817,6 +828,10 @@ def persist_extra_pfam_data(
                     )
 
     con.commit()
+
+    if db_props["alignment"]:
+        persist_alignments(db_props, con)
+
     con.close()
 
 
@@ -879,3 +894,54 @@ def get_alignment_counts(pfam_file: str, alignment_name: str) -> dict[str, int]:
         logger.error("Could not find Pfam file (%s) at %s", alignment_name, pfam_file)
     
     return count_dict
+
+
+def persist_alignments(db_props: dict[str, str], con) -> None:
+    """Persist Pfam alignments in the oracle db.
+
+    Alignments types to be stored are defined by assigning a value to the 
+    corresponding file/alignment type in members.conf:
+        seed, full, rpXX (where XX is a number), uniprot
+
+    :param db_props: db properties from members.conf file
+    :param con: open oracle db connection
+    """
+    def get_ali_paths(directory: Path):
+        return (entry for entry in Path(directory).iterdir() if entry.is_file())
+
+    types_to_store = [
+        _ for _ in db_props 
+        if db_props[_] is not None 
+        and _ not in ['hmm', 'members', 'signatures', 'clan', 'alignment']
+    ]
+    if len(types_to_store) == 0:
+        logger.warning("No alignment types specified. Not storing alignments")
+        return
+    
+    logger.info("Storing alignments: %s", types_to_store)
+    sql_insert = "INSERT INTO INTERPRO.PFAM_ALIGNMENTS (accession, type, alignment) VALUES (:1, :2, :3)"
+
+    with con.cursor() as cur:
+        drop_table(cur, "INTERPRO.PFAM_ALIGNMENTS", purge=True)
+        cur.execute(
+            """
+            CREATE TABLE INTERPRO.PFAM_ALIGNMENTS (
+                accession VARCHAR2(25),
+                type VARCHAR2(35),
+                alignment BLOB
+            )
+            """
+        )
+
+        dir_paths = (entry for entry in Path(db_props['alignment']).iterdir() if entry.is_dir())
+        for _path in dir_paths:
+            pfam_acc = _path.name
+            for alignment_path in get_ali_paths(_path):
+                ali_type = alignment_path.name.split(".")[1]
+                if ali_type in types_to_store:
+                    with gzip.open(alignment_path, 'rb') as fh:
+                        alignment = fh.read()
+
+                        cur.execute(sql_insert, [pfam_acc, ali_type, alignment])
+
+    con.commit()
