@@ -2,6 +2,8 @@ import gzip
 import os
 import re
 
+from pathlib import Path
+
 import oracledb
 
 from .common import Clan, Method
@@ -626,7 +628,7 @@ def persist_extra_pfam_data(
         or clan tables. Primarily persists data required by interpro7.
 
     :param db_props: db properties from members.conf file
-    :param con: oracle db connection
+    :param ora_url: connection str for oracle db
     """
     def add_num_val(acc, num_dict, _record):
         """Add alignment count if available to record, else add None"""
@@ -817,6 +819,9 @@ def persist_extra_pfam_data(
                     )
 
     con.commit()
+
+    persist_alignments(db_props, con)
+
     con.close()
 
 
@@ -879,3 +884,41 @@ def get_alignment_counts(pfam_file: str, alignment_name: str) -> dict[str, int]:
         logger.error("Could not find Pfam file (%s) at %s", alignment_name, pfam_file)
     
     return count_dict
+
+
+def persist_alignments(db_props: dict[str, str], con) -> None:
+    """Persist Pfam alignments in the oracle db.
+
+    :param db_props: db properties from members.conf file
+    :param con: open oracle db connection
+    """
+    def get_ali_paths(directory: Path):
+        return (entry for entry in Path(directory).iterdir() if entry.is_file())
+
+    with con.cursor() as cur:
+        drop_table(cur, "INTERPRO.PFAM_ALIGNMENTS", purge=True)
+        cur.execute(
+            """
+            CREATE TABLE INTERPRO.PFAM_ALIGNMENTS (
+                accession VARCHAR2(25),
+                type VARCHAR2(35),
+                alignment BLOB
+            )
+            """
+        )
+
+    sql_insert = "INSERT INTO table_name (accession, type, alignment) VALUES (:1, :2, :3)"
+
+    dir_paths = (entry for entry in Path(db_props['alignment']).iterdir() if entry.is_dir())
+    for _path in dir_paths:
+        pfam_acc = _path.name
+        ali_paths = get_ali_paths(_path)
+        for alignment_path in ali_paths:
+            ali_type = alignment_path.name.split(".")[1]
+            with gzip.open(alignment_path, 'rb') as fh:
+                alignment = fh.read()
+
+                with con.cursor() as cur:
+                    cur.execute(sql_insert, [pfam_acc, alignemnt, ali_type])
+
+    con.commit()
