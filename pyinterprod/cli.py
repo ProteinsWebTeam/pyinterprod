@@ -843,7 +843,7 @@ def run_uniprot_update():
             fn=interpro.signature.export_swissprot_descriptions,
             args=(pg_uri, data_dir),
             name="swissprot-de",
-            scheduler=dict(type=scheduler, queue=queue, mem=500, hours=1),
+            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=1),
         ),
 
         # Update signatures used by UniRule
