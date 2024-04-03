@@ -94,6 +94,16 @@ Additional properties:
 - `mapping`: Cath-Gene3D only, family-model mapping file
 - `go-terms`: PANTHER only, directory of PAINT annotations (which include GO annotations)
 
+Additional Pfam properties:
+
+- `seed`: Path to `Pfam-A.seed.gz`
+- `full`: Path to `Pfam-A.full.gz` 
+- `clan`: Path to `Pfam-C.gz`
+- `fasta`: Path to `Pfam-A.fasta.gz`
+- `rpXX`: Path to `Pfam-A.rpXX.gz`(where XX is a number)
+- `uniprot`: Path to `Pfam-A.full.uniprot.gz`
+- `alignment`: Path to directory containing alignments
+
 ### analyses.conf
 
 The `DEFAULT` section defines the defaults values for the following properties:
