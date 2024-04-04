@@ -86,13 +86,15 @@ def update_go_terms(uri: str, root: str):
         """
         CREATE TABLE INTERPRO.PANTHER2GO
         (
-            METHOD_AC VARCHAR2(25) NOT NULL
+            FAMILY_AC VARCHAR2(25) NOT NULL
                 CONSTRAINT FK_PANTHER2GO
                 REFERENCES INTERPRO.METHOD (METHOD_AC) ON DELETE CASCADE,
             AN_ID VARCHAR(10) NOT NULL,
             GO_ID VARCHAR2(10) NOT NULL,
+            SUBFAMILY_AC VARCHAR2(25),
+            PTN_ID VARCHAR(12),
             CONSTRAINT PK_PANTHER2GO
-            PRIMARY KEY (METHOD_AC, AN_ID, GO_ID)
+            PRIMARY KEY (FAMILY_AC, AN_ID, GO_ID)
         ) NOLOGGING
         """
     )
@@ -100,19 +102,28 @@ def update_go_terms(uri: str, root: str):
     sql = """
         INSERT /*+ APPEND */ 
         INTO INTERPRO.PANTHER2GO
-        VALUES (:1, :2, :3)
+        VALUES (:1, :2, :3, :4, :5)
     """
 
     records = []
     for name in os.listdir(root):
         if name.endswith(".json"):
+            fam_id = name[:-5]
+
             with open(os.path.join(root, name), "rt") as fh:
                 data = json.load(fh)
 
-            for ancestral_node_id, (subfam_id, go_terms, _, _) in data.items():
-                if subfam_id and go_terms:
+            for an_id, (subfam_id, go_terms, _, graft_point) in data.items():
+                # PTN: PANTHER node ID
+                if re.fullmatch(r"PTN\d+", graft_point):
+                    ptn_id = graft_point
+                else:
+                    ptn_id = None
+
+                if go_terms is not None:
                     for go_id in set(go_terms.split(",")):
-                        records.append((subfam_id, ancestral_node_id, go_id))
+                        records.append((fam_id, an_id, go_id, subfam_id,
+                                        ptn_id))
 
                         if len(records) == 1000:
                             cur.executemany(sql, records)
