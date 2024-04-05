@@ -470,13 +470,16 @@ def run_member_db_update():
             if db.identifier == 'H':
                 tasks.append(
                     Task(
-                        fn=interpro.contrib.pfam.persist_extra_pfam_data,
+                        fn=interpro.signature.contrib.pfam.persist_extra_pfam_data,
                         args=(model_sources[db.identifier], ora_interpro_uri,),
                         names="persist-pfam",
-                        scheduler=dict(type="lsf", queue=lsf_queue),
+                        # TODO: update resource requirements
+                        scheduler=dict(type=scheduler, queue=queue, mem=10000,
+                                       hours=12),
                         requires=ipm_dependencies + ["update-signatures"]
                     )
                 )
+                break
 
     feature_dbs += non_ipm_dbs
     if feature_dbs:
