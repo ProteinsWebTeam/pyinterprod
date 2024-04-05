@@ -410,7 +410,7 @@ def run_member_db_update():
                 args=(ora_iprscan_uri, "matches"),
                 kwargs=dict(databases=member_dbs + feature_dbs + site_dbs,
                             force=True,
-                            threads=8),
+                            threads=4),
                 name="update-ipm-matches",
                 scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
                 requires=["import-ipm-matches"]
@@ -707,7 +707,7 @@ def run_uniprot_update():
         Task(
             fn=interpro.iprscan.update_partitions,
             args=(ora_iprscan_uri, "matches"),
-            kwargs=dict(force=True, threads=8),
+            kwargs=dict(force=True, threads=4),
             name="update-ipm-matches",
             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
             requires=["import-ipm-matches"]
