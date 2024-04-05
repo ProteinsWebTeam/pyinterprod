@@ -88,7 +88,7 @@ def get_default_values(
     Search method: None
     Sequence gathering threshold: None
     Domain gather threshold: None
-    Wikipedia article: None
+    Wikipedia article: [str] -- can be multiple wiki articles
     Version: None
 
     For clans return:
@@ -103,7 +103,7 @@ def get_default_values(
     References [dict]
     """
     if signatures:
-        return None, None, None, None, "", {}, None, [], None, None, None, None, None, None
+        return None, None, None, None, "", {}, None, [], None, None, None, None, [], None
     if clans:
         return None, None, None, []
     if clans_lit:
@@ -177,7 +177,7 @@ def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method] | dict:
                                 },
                                 "version": version,
                             },
-                            "wiki": wiki,
+                            "wiki": wiki,  # list, can be multiple articles
                         }
 
                     else:
@@ -250,7 +250,7 @@ def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method] | dict:
                     domain_ga = line[7:].strip().split(" ")[1].replace(";","").strip()
 
                 elif line.startswith("#=GF WK"):
-                    wiki = line[7:].strip().replace(" ", "_")   # wikipedia article
+                    wiki.append(line[7:].strip().replace(" ", "_"))   # wikipedia article
 
     except FileNotFoundError:
         logger.error(
@@ -798,10 +798,10 @@ def persist_extra_pfam_data(
                     (pfam_acc.split(".")[0],) + author_info
                 )
             
-            if signatures[pfam_acc]["wiki"]:
+            for wiki_title in signatures[pfam_acc]["wiki"]:
                 cur.execute(
                     wiki_query,
-                    [pfam_acc.split(".")[0], signatures[pfam_acc]["wiki"]]
+                    [pfam_acc.split(".")[0], wiki_title]
                 )
     
         for clan_id in clans:
@@ -829,8 +829,11 @@ def persist_extra_pfam_data(
 
     con.commit()
 
-    if db_props["alignment"]:
+    try:
+        db_props["alignment"]
         persist_alignments(db_props, con)
+    except KeyError:
+        pass
 
     con.close()
 
