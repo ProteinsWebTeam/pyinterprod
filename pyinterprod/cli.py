@@ -752,7 +752,7 @@ def run_uniprot_update():
             args=(ora_interpro_uri,),
             kwargs=dict(truncate=True),
             name="delete-proteins",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=60),
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=96),
             requires=["update-proteins"]
         ),
         Task(
