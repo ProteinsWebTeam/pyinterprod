@@ -371,13 +371,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     num_retries = retries.get(task.name, 0)
 
                     # Did the job reached the memory usage limit?
-                    maxmem = task.maxmem
-                    if (maxmem is not None and
-                            task.executor.memory is not None and
-                            maxmem >= task.executor.memory):
-                        mem_err = True
-                    else:
-                        mem_err = False
+                    mem_err = task.is_oom()
 
                     # Did the job reached the timeout limit?
                     time_err = False
@@ -394,11 +388,15 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         # Increase hours if time limit reached
                         if time_err and (task_limit * 1.25 < max_timeout):
                             task.executor.limit *= 1.25
-                        else:
+
+                        if mem_err:
+                            # Increase memory requirement
+                            maxmem = task.maxmem
                             try:
-                                # Increase memory requirement if needed
-                                while task.executor.memory < maxmem:
+                                while True:
                                     task.executor.memory *= 1.5
+                                    if task.executor.memory > maxmem:
+                                        break
                             except TypeError:
                                 pass
 
