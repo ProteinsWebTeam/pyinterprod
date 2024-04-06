@@ -101,8 +101,7 @@ class TaskFactory:
                 self.persist_sites
             ),
             kwargs=dict(cpu=self.config["job_cpu"],
-                        keep_files=self.keep_files,
-                        timeout=self.config["job_timeout"]),
+                        keep_files=self.keep_files),
             name=self.make_name(upi_from, upi_to),
             scheduler=dict(type=self.scheduler,
                            queue=self.queue,
@@ -119,9 +118,9 @@ class TaskFactory:
 def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     base_config = {
         "job_cpu": kwargs.get("job_cpu", 8),
-        "job_mem": kwargs.get("job_mem", 8 * 1024),
+        "job_mem": kwargs.get("job_mem", 8 * 1024),  # MB
         "job_size": kwargs.get("job_size", 32000),
-        "job_timeout": kwargs.get("job_timeout"),
+        "job_timeout": kwargs.get("job_timeout", 12),  # Hours
     }
     custom_configs = kwargs.get("config", {})
     dry_run = kwargs.get("dry_run", False)
