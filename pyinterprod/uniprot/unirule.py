@@ -505,9 +505,10 @@ def build_xref_summary(uri: str):
         """
     )
 
+    logger.info("inserting signature matches")
     cur.execute(
         """
-        INSERT INTO INTERPRO.XREF_SUMMARY
+        INSERT /*+ APPEND */ INTO INTERPRO.XREF_SUMMARY
         SELECT
             MA.DBCODE,
             MA.PROTEIN_AC,
@@ -533,8 +534,14 @@ def build_xref_summary(uri: str):
             ON ME.METHOD_AC = EM.METHOD_AC
         LEFT OUTER JOIN INTERPRO.ENTRY E 
             ON EM.ENTRY_AC = E.ENTRY_AC AND E.CHECKED = 'Y'
-        UNION ALL
-        -- PANTHER subfamilies
+        """
+    )
+    con.commit()
+
+    logger.info("inserting PANTHER subfamily matches")
+    cur.execute(
+        """
+        INSERT /*+ APPEND */ INTO INTERPRO.XREF_SUMMARY
         SELECT
             MA.DBCODE,
             MA.PROTEIN_AC,
@@ -558,8 +565,14 @@ def build_xref_summary(uri: str):
             ON MA.MODEL_AC = ME.METHOD_AC
         WHERE MA.MODEL_AC IS NOT NULL 
           AND REGEXP_LIKE(MA.MODEL_AC, '^PTHR\d+:SF\d+$')
-        UNION ALL
-        -- AntiFam, FunFam
+        """
+    )
+    con.commit()
+
+    logger.info("inserting AntiFam and FunFam matches")
+    cur.execute(
+        """
+        INSERT /*+ APPEND */ INTO INTERPRO.XREF_SUMMARY
         SELECT
             FM.DBCODE,
             FM.PROTEIN_AC,
@@ -576,10 +589,9 @@ def build_xref_summary(uri: str):
         FROM INTERPRO.FEATURE_MATCH FM
         INNER JOIN INTERPRO.FEATURE_METHOD ME
             ON FM.METHOD_AC = ME.METHOD_AC
-        WHERE FM.DBCODE IN ('a', 'f')
+        WHERE FM.DBCODE IN ('a', 'f')           
         """
     )
-
     con.commit()
 
     logger.info("indexing")
