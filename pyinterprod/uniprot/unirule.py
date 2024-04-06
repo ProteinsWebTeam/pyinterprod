@@ -370,7 +370,7 @@ def build_xref_condensed(uri: str):
     with Table(con, sql, autocommit=True) as table:
         cur.execute(
             """
-            SELECT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, FRAGMENTS
+            SELECT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
             FROM INTERPRO.MATCH
             ORDER BY PROTEIN_AC
             """
