@@ -780,7 +780,7 @@ def export_repr_domains(ora_url: str, output: str):
     logger.info("done")
 
 
-def _select_repr_domains(domains: list[dict]):
+def _select_repr_domains(domains: list[dict]) -> list[dict]:
     repr_domains = []
 
     # Sort by boundaries
