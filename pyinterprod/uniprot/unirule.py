@@ -713,7 +713,7 @@ def update_signatures(filepath: str, uri: str):
     con.close()
 
 
-def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
+def export_repr_domains(ora_url: str, output: str):
     con = oracledb.connect(ora_url)
     cur = con.cursor()
 
@@ -732,8 +732,7 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
         REPR_DOM_DATABASES
     )
 
-
-    logger.info(f"Writing {output}")
+    logger.info(f"writing {output}")
     previous_protein_acc = None
     domains = []
     with open(output, "w") as f:
@@ -770,7 +769,7 @@ def get_repr_domains(ora_url: str, output: str = "repr_domains.tsv"):
                     f"{domain['end']}\t{domain['frag']}\n"
                 )
 
-    logger.info("Done")
+    logger.info("done")
     cur.close()
     con.close()
 
