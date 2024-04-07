@@ -152,8 +152,9 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             name="ready",
             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1),
             requires=["taxonomy", "index-signature2proteins", "index-matches",
-                      "proteins", "proteins-similarities", "proteomes",
-                      "go-terms", "go-constraints", "signatures", "structures"]
+                      "proteins", "proteins-similarities", "proteins-pubmed",
+                      "proteomes", "go-terms", "go-constraints", "signatures",
+                      "structures"]
         ),
     ]
 
