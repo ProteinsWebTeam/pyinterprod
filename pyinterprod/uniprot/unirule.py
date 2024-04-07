@@ -714,6 +714,7 @@ def update_signatures(filepath: str, uri: str):
 
 
 def export_repr_domains(ora_url: str, output: str):
+    logger.info("starting")
     con = oracledb.connect(ora_url)
     cur = con.cursor()
 
@@ -732,46 +733,51 @@ def export_repr_domains(ora_url: str, output: str):
         REPR_DOM_DATABASES
     )
 
-    logger.info(f"writing {output}")
     previous_protein_acc = None
     domains = []
-    with open(output, "w") as f:
-        for protein_acc, signature_acc, dbcode, pos_start, pos_end, frags_str in cur:
-            frag_list = _get_fragments(pos_start, pos_end, frags_str)
-            match = {
+    cnt = -1
+    with open(output, "wt") as fh:
+        for (protein_acc, signature_acc, dbcode,
+             pos_start, pos_end, frags_str) in cur:
+            if protein_acc != previous_protein_acc:
+                cnt += 1
+                if domains:
+                    for domain in _select_repr_domains(domains):
+                        fh.write(
+                            f"{previous_protein_acc}\t{domain['signature']}\t"
+                            f"{domain['start']}\t{domain['end']}\t"
+                            f"{domain['frag']}\n"
+                        )
+                    domains.clear()
+
+                previous_protein_acc = protein_acc
+
+                if cnt and cnt % 10e6 == 0:
+                    logger.info(f"{cnt:>12,}")
+
+            domains.append({
                 "signature": signature_acc,
                 "start": pos_start,
                 "end": pos_end,
                 "frag": frags_str,
-                "fragments": frag_list,
+                "fragments": _get_fragments(pos_start, pos_end, frags_str),
                 "rank": REPR_DOM_DATABASES.index(dbcode)
-            }
-            if previous_protein_acc is None:
-                previous_protein_acc = protein_acc
-            if protein_acc != previous_protein_acc:
-                repr_domains = _select_repr_domains(domains)
-                for domain in repr_domains:
-                    f.write(
-                        f"{previous_protein_acc}\t{domain['signature']}\t"
-                        f"{domain['start']}\t{domain['end']}\t"
-                        f"{domain['frag']}\n"
-                    )
-                domains = []
-                previous_protein_acc = protein_acc
-
-            domains.append(match)
+            })
 
         if domains:
             repr_domains = _select_repr_domains(domains)
             for domain in repr_domains:
-                f.write(
-                    f"{protein_acc}\t{domain['signature']}\t{domain['start']}\t"
-                    f"{domain['end']}\t{domain['frag']}\n"
+                fh.write(
+                    f"{protein_acc}\t{domain['signature']}\t"
+                    f"{domain['start']}\t{domain['end']}\t"
+                    f"{domain['frag']}\n"
                 )
 
-    logger.info("done")
+        logger.info(f"{cnt:>12,}")
+
     cur.close()
     con.close()
+    logger.info("done")
 
 
 def _select_repr_domains(domains: list[dict]):
