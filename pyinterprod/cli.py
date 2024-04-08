@@ -768,7 +768,7 @@ def run_uniprot_update():
             fn=interpro.match.update_matches,
             args=(ora_interpro_uri,),
             name="update-matches",
-            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=10),
+            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=24),
             requires=["check-proteins", "update-ipm-matches"]
         ),
         Task(
