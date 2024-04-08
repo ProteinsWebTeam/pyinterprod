@@ -1,3 +1,4 @@
+import sys
 from decimal import Decimal
 
 from oracledb import Cursor, DB_TYPE_BINARY_DOUBLE
@@ -20,8 +21,10 @@ def cdd_matches(cur: Cursor, file: str, analysis_id: int, table: str):
     cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE)
 
     values = []
+    num_parsed = num_inserted = 0
     with open(file, "rt") as fh:
         for line in fh:
+            num_parsed += 1
             cols = line.rstrip().split('\t')
             values.append({
                 "analysis_id": analysis_id,
@@ -40,10 +43,14 @@ def cdd_matches(cur: Cursor, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
+                num_inserted += cur.rowcount
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
+        num_inserted += cur.rowcount
+
+    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
 def sites(cur: Cursor, file: str, analysis_id: int, table: str):
@@ -59,8 +66,10 @@ def sites(cur: Cursor, file: str, analysis_id: int, table: str):
     """
 
     values = []
+    num_parsed = num_inserted = 0
     with open(file, "rt") as fh:
         for line in fh:
+            num_parsed += 1
             cols = line.rstrip().split('\t')
             values.append({
                 "analysis_id": analysis_id,
@@ -80,10 +89,14 @@ def sites(cur: Cursor, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
+                num_inserted += cur.rowcount
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
+        num_inserted += cur.rowcount
+
+    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
 def coils_phobius_matches(cur: Cursor, file: str, analysis_id: int, table: str):
@@ -97,8 +110,10 @@ def coils_phobius_matches(cur: Cursor, file: str, analysis_id: int, table: str):
     """
 
     values = []
+    num_parsed = num_inserted = 0
     with open(file, "rt") as fh:
         for line in fh:
+            num_parsed += 1
             cols = line.rstrip().split('\t')
             values.append({
                 "analysis_id": analysis_id,
@@ -115,10 +130,14 @@ def coils_phobius_matches(cur: Cursor, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
+                num_inserted += cur.rowcount
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
+        num_inserted += cur.rowcount
+
+    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
 def hamap_matches(cur: Cursor, file: str, analysis_id: int, table: str):
@@ -134,8 +153,10 @@ def hamap_matches(cur: Cursor, file: str, analysis_id: int, table: str):
     """
 
     values = []
+    num_parsed = num_inserted = 0
     with open(file, "rt") as fh:
         for line in fh:
+            num_parsed += 1
             cols = line.rstrip().split('\t')
             values.append({
                 "analysis_id": analysis_id,
@@ -154,10 +175,14 @@ def hamap_matches(cur: Cursor, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
+                num_inserted += cur.rowcount
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
+        num_inserted += cur.rowcount
+
+    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
 def _hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str,
@@ -179,8 +204,10 @@ def _hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str,
                       evalue=DB_TYPE_BINARY_DOUBLE)
 
     values = []
+    num_parsed = num_inserted = 0
     with open(file, "rt") as fh:
         for line in fh:
+            num_parsed += 1
             cols = line.rstrip().split('\t')
             values.append({
                 "analysis_id": analysis_id,
@@ -207,10 +234,14 @@ def _hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str,
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
+                num_inserted += cur.rowcount
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
+        num_inserted += cur.rowcount
+
+    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
 def funfam_matches(cur: Cursor, file: str, analysis_id: int, table: str):
@@ -233,8 +264,10 @@ def funfam_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                       evalue=DB_TYPE_BINARY_DOUBLE)
 
     values = []
+    num_parsed = num_inserted = 0
     with open(file, "rt") as fh:
         for line in fh:
+            num_parsed += 1
             cols = line.rstrip().split('\t')
             values.append({
                 "analysis_id": analysis_id,
@@ -264,10 +297,14 @@ def funfam_matches(cur: Cursor, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
+                num_inserted += cur.rowcount
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
+        num_inserted += cur.rowcount
+
+    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
 def hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str):
@@ -287,8 +324,10 @@ def mobidb_lite_matches(cur: Cursor, file: str, analysis_id: int, table: str):
     """
 
     values = []
+    num_parsed = num_inserted = 0
     with open(file, "rt") as fh:
         for line in fh:
+            num_parsed += 1
             cols = line.rstrip().split('\t')
 
             try:
@@ -312,10 +351,14 @@ def mobidb_lite_matches(cur: Cursor, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
+                num_inserted += cur.rowcount
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
+        num_inserted += cur.rowcount
+
+    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
 def panther_matches(cur: Cursor, file: str, analysis_id: int, table: str):
@@ -335,8 +378,10 @@ def panther_matches(cur: Cursor, file: str, analysis_id: int, table: str):
     cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE)
 
     values = []
+    num_parsed = num_inserted = 0
     with open(file, "rt") as fh:
         for line in fh:
+            num_parsed += 1
             cols = line.rstrip().split('\t')
 
             try:
@@ -371,10 +416,14 @@ def panther_matches(cur: Cursor, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
+                num_inserted += cur.rowcount
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
+        num_inserted += cur.rowcount
+
+    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
 def pirsr_matches(cur: Cursor, file: str, analysis_id: int, table: str):
@@ -397,8 +446,10 @@ def prints_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                       pvalue=DB_TYPE_BINARY_DOUBLE)
 
     values = []
+    num_parsed = num_inserted = 0
     with open(file, "rt") as fh:
         for line in fh:
+            num_parsed += 1
             cols = line.rstrip().split('\t')
             values.append({
                 "analysis_id": analysis_id,
@@ -420,10 +471,14 @@ def prints_matches(cur: Cursor, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
+                num_inserted += cur.rowcount
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
+        num_inserted += cur.rowcount
+
+    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
 prosite_profiles_matches = hamap_matches
@@ -443,8 +498,10 @@ def prosite_patterns_matches(cur: Cursor, file: str, analysis_id: int,
     """
 
     values = []
+    num_parsed = num_inserted = 0
     with open(file, "rt") as fh:
         for line in fh:
+            num_parsed += 1
             cols = line.rstrip().split('\t')
             values.append({
                 "analysis_id": analysis_id,
@@ -463,10 +520,14 @@ def prosite_patterns_matches(cur: Cursor, file: str, analysis_id: int,
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
+                num_inserted += cur.rowcount
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
+        num_inserted += cur.rowcount
+
+    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
 def signalp_tmhmm_matches(cur: Cursor, file: str, analysis_id: int, table: str,
@@ -483,8 +544,10 @@ def signalp_tmhmm_matches(cur: Cursor, file: str, analysis_id: int, table: str,
     """
 
     values = []
+    num_parsed = num_inserted = 0
     with open(file, "rt") as fh:
         for line in fh:
+            num_parsed += 1
             cols = line.rstrip().split('\t')
             values.append({
                 "analysis_id": analysis_id,
@@ -502,10 +565,14 @@ def signalp_tmhmm_matches(cur: Cursor, file: str, analysis_id: int, table: str,
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
+                num_inserted += cur.rowcount
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
+        num_inserted += cur.rowcount
+
+    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
 def signalp_matches(cur: Cursor, file: str, analysis_id: int, table: str):
@@ -535,8 +602,10 @@ def smart_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                       evalue=DB_TYPE_BINARY_DOUBLE)
 
     values = []
+    num_parsed = num_inserted = 0
     with open(file, "rt") as fh:
         for line in fh:
+            num_parsed += 1
             cols = line.rstrip().split('\t')
             values.append({
                 "analysis_id": analysis_id,
@@ -561,10 +630,14 @@ def smart_matches(cur: Cursor, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
+                num_inserted += cur.rowcount
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
+        num_inserted += cur.rowcount
+
+    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
 def superfamily_matches(cur: Cursor, file: str, analysis_id: int, table: str):
@@ -582,8 +655,10 @@ def superfamily_matches(cur: Cursor, file: str, analysis_id: int, table: str):
     cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE)
 
     values = []
+    num_parsed = num_inserted = 0
     with open(file, "rt") as fh:
         for line in fh:
+            num_parsed += 1
             cols = line.rstrip().split('\t')
             values.append({
                 "analysis_id": analysis_id,
@@ -602,10 +677,14 @@ def superfamily_matches(cur: Cursor, file: str, analysis_id: int, table: str):
 
             if len(values) == _COMMIT_SIZE:
                 cur.executemany(sql, values)
+                num_inserted += cur.rowcount
                 values.clear()
 
     if values:
         cur.executemany(sql, values)
+        num_inserted += cur.rowcount
+
+    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
 def tmhmm_matches(cur: Cursor, file: str, analysis_id: int, table: str):
