@@ -655,6 +655,11 @@ def persist_extra_pfam_data(
         except KeyError:
             _record.append(None)
         return record
+    
+    try:
+        logger.info("Getting signatures from %s", Path(db_props["seed"]).name)
+    except KeyError:
+        return
 
     signatures = get_signatures(
         pfam_path=db_props["seed"],
@@ -662,16 +667,28 @@ def persist_extra_pfam_data(
     )
     clans = get_clan_literature(db_props['clan'])
 
-    logger.info("Getting pfam-A.seed alignment counts")
+    logger.info("Getting Pfam-A.seed alignment counts")
     seed_num = get_num_full(db_props["seed"], seed=True)
     if seed_num is None:
         logger.error("Could not find file pfam-A.seed at %s\nNot persisting seed_num values", db_props["seed"])
         seed_num = {}
-    logger.info("Getting pfam-A.full alignment counts")
-    full_num = get_num_full(db_props["full"])
-    if full_num is None:
-        logger.error("Could not find file pfam-A.seed at %s\nNot persisting full_num values", db_props["full"])
+
+    try:
+        logger.info("Getting %s alignment counts", Path(db_props["full"]).name)
+        full_num = get_num_full(db_props["full"])
+        if full_num is None:
+            logger.error("Could not find file pfam-A.seed at %s\nNot persisting full_num values", db_props["full"])
+            full_num = {}
+    except KeyError:
+        logger.error(
+            (
+                f"Pfam file path for full alignments (Pfam-A.full) is not defined in "
+                "the members.config file.\n"
+                f"Skipping retrieving full (Pfam-A.full) alignemnts."
+            ),
+        )
         full_num = {}
+
     logger.info("Getting RP15 alignment counts")
     rp15_num = get_alignment_counts(db_props, "rp15")
     logger.info("Getting RP35 alignment counts")
