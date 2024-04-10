@@ -382,18 +382,14 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             except KeyError:
                 entry_descrs[description] = set(proteins)
 
-    all_entries = set(entries_then.keys()) | set(entries_now.keys())
-    changes = {}  # key: entry accession, value: (gained, lost)
-
-    for entry_acc in all_entries:
-        descrs_then = entries_then.get(entry_acc, {})
-        descrs_now = entries_now.get(entry_acc, {})
-        _then = set(descrs_then.keys())
-        _now = set(descrs_now.keys())
-        if _then != _now:
+    changes = {}  # key: entry accession, value: (lost, gained)
+    for entry_acc in (set(entries_then.keys()) | set(entries_now.keys())):
+        descrs_then = set(entries_then.get(entry_acc, {}).keys())
+        descrs_now = set(entries_now.get(entry_acc, {}).keys())
+        if descrs_then != descrs_now:
             changes[entry_acc] = (
-                _now - _then,
-                _then - _now
+                descrs_then - descrs_now,
+                descrs_now - descrs_then
             )
 
     # Write entries with changes (by entry type: families, domains, others)
@@ -422,15 +418,15 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             fh = files[filename] = open(filepath, "wt")
             fh.write(header)
 
-        gained, lost = changes[entry_acc]
+        lost, gained = changes[entry_acc]
         lost_descrs = []
         for descr in sorted(lost):
-            ex_acc = entries_then[entry_acc][descr]
+            ex_acc = next(iter(entries_then[entry_acc][descr]))
             lost_descrs.append(f"{descr} ({ex_acc})")
 
         gained_descrs = []
         for descr in sorted(gained):
-            ex_acc = entries_now[entry_acc][descr]
+            ex_acc = next(iter(entries_now[entry_acc][descr]))
             gained_descrs.append(f"{descr} ({ex_acc})")
 
         fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
