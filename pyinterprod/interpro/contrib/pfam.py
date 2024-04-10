@@ -673,15 +673,15 @@ def persist_extra_pfam_data(
         logger.error("Could not find file pfam-A.seed at %s\nNot persisting full_num values", db_props["full"])
         full_num = {}
     logger.info("Getting RP15 alignment counts")
-    rp15_num = get_alignment_counts(db_props["rp15"], "rp15")
+    rp15_num = get_alignment_counts(db_props, "rp15")
     logger.info("Getting RP35 alignment counts")
-    rp35_num = get_alignment_counts(db_props["rp35"], "rp35")
+    rp35_num = get_alignment_counts(db_props, "rp35")
     logger.info("Getting RP55 alignment counts")
-    rp55_num = get_alignment_counts(db_props["rp55"], "rp55")
+    rp55_num = get_alignment_counts(db_props, "rp55")
     logger.info("Getting RP75 alignment counts")
-    rp75_num = get_alignment_counts(db_props["rp75"], "rp75")
+    rp75_num = get_alignment_counts(db_props, "rp75")
     logger.info("Getting UniProt alignment counts")
-    uniprot_num = get_alignment_counts(db_props["uniprot"], "uniprot")
+    uniprot_num = get_alignment_counts(db_props, "uniprot")
 
     logger.info("Persisting data for %s signatures", len(signatures))
     logger.info("Persisting data for %s clans", len(clans))
@@ -872,15 +872,27 @@ def _check_str_len(clan_id: str, field: str, field_name: str, max_len: int) -> s
     return field
 
 
-def get_alignment_counts(pfam_file: str, alignment_name: str) -> dict[str, int]:
+def get_alignment_counts(db_props: dict[str, str], alignment_name: str) -> dict[str, int]:
     """Count the number of hits in the alignemnt file for each accession
 
-    :param pfam_file: path to rp15, rp35, rp55, rp75, uniprot
+    :param db_props: db properties from members.conf file
     :param alignment_name: name of alignment: rp15, rp35, rp55, rp75, uniprot
     
     Return {accession: count [int]}
     """
     line_count, count_dict = 0, {}
+    try:
+        pfam_file = db_props[alignment_name]
+    except KeyError:
+        logger.error(
+            (
+                f"Pfam file path for {alignment_name} alignments is not defined in "
+                "the members.config file.\n"
+                f"Skipping retrieving {alignment_name} alignemnts."
+            ),
+        )
+        return count_dict
+
     try:
         with gzip.open(pfam_file, 'rb') as fh:
             count, acc = 0, ""
