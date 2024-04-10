@@ -298,7 +298,7 @@ def get_fam_seq_counts(
                         line_count
                     )
                     continue
-                    
+
                 if line.startswith(">"):
                     pfamA_acc = line.strip().split(" ")[-1].split(";")[0].split(".")[0]
                     try:
@@ -785,7 +785,7 @@ def persist_extra_pfam_data(
                 clan_id VARCHAR2(25),
                 pubmed_id NUMBER,
                 title VARCHAR2(500),
-                author VARCHAR2(500),
+                author VARCHAR2(750),
                 journal VARCHAR2(225),
                 order_added NUMBER
             )
@@ -842,7 +842,7 @@ def persist_extra_pfam_data(
                             clan_id,
                             clans[clan_id]['references'][order_added]['pmid'],
                             _check_str_len(clan_id, clans[clan_id]['references'][order_added]['title'], "TITLE", 500),
-                            _check_str_len(clan_id, clans[clan_id]['references'][order_added]['authors'][:-1], "AUTHORS", 500),
+                            _check_str_len(clan_id, clans[clan_id]['references'][order_added]['authors'][:-1], "AUTHORS", 750),
                             clans[clan_id]['references'][order_added]['journal'],
                             order_added
                         ]
