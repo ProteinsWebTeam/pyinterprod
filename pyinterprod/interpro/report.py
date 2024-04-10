@@ -21,7 +21,7 @@ MIN_SIGNATURE_CHANGE = 0.1
 def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                           data_dir: str, pronto_link: str, emails: dict):
     # Get Swiss-Prot descriptions (after the update)
-    all_sig2info = get_swissprot_descriptions(pg_url)
+    all_sig2descrs = get_swissprot_descriptions(pg_url)
 
     pronto_link = pronto_link.rstrip('/')
 
@@ -111,52 +111,32 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                          f"\t{new_val}\n")
 
         # Swiss-Prot descriptions
-        old_sigs = data["descriptions"]
-        new_sigs = {}
-        descr2prots = {}
+        sigs_then = data["descriptions"]
+        sigs_now = {}
         sig2prots = {}
-        for acc in all_sig2info:
+        for acc in all_sig2descrs:
             if acc in integrated and integrated[acc][3] == db_id:
-                new_sigs[acc] = all_sig2info[acc]
+                sigs_now[acc] = all_sig2descrs[acc]
+                sig2prots[acc] = set()
 
-                for descr, proteins in all_sig2info[acc].items():
-                    try:
-                        descr2prots[descr] |= proteins
-                    except KeyError:
-                        descr2prots[descr] = set(proteins)
-
-                    try:
-                        sig2prots[acc] |= proteins
-                    except KeyError:
-                        sig2prots[acc] = proteins
+                for proteins in sigs_now[acc].values():
+                    sig2prots[acc] |= proteins
 
         changes = {}
-        for acc, old_info in old_sigs.items():
-            new_info = new_sigs.pop(acc, {})
-            old_descrs = set(old_info.keys())
-            new_descrs = set(new_info.keys())
-            for descr, proteins in old_info.items():
-                try:
-                    descr2prots[descr] |= proteins
-                except KeyError:
-                    descr2prots[descr] = set(proteins)
-
+        for acc in (set(sigs_then.keys()) | set(sigs_now.keys())):
             try:
                 entry_acc, entry_type, entry_name, _ = integrated[acc]
             except KeyError:
                 continue
 
-            if old_descrs != new_descrs:
-                changes[acc] = (entry_acc, entry_name, entry_type,
-                                old_descrs - new_descrs,
-                                new_descrs - old_descrs)
-
-        descr2prot = {descr: sorted(proteins)[0]
-                      for descr, proteins in descr2prots.items()}
-
-        for acc, new_descrs in new_sigs.items():
-            entry_acc, entry_type, entry_name, _ = integrated[acc]
-            changes[acc] = (entry_acc, entry_name, entry_type, [], new_descrs)
+            descrs_then = set(sigs_then.get(acc, {}).keys())
+            descrs_now = set(sigs_now.get(acc, {}).keys())
+            if descrs_then != descrs_now:
+                changes[entry_acc] = (
+                    entry_acc, entry_name, entry_type,
+                    descrs_then - descrs_now,
+                    descrs_now - descrs_then
+                )
 
         files = {}  # file objects
         for acc in sorted(changes):
@@ -178,10 +158,16 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
 
             link = f"{pronto_link}/signatures/{acc}/descriptions/?reviewed"
 
-            lost_descrs = [f"{descr} ({descr2prot[descr]})"
-                           for descr in sorted(lost)]
-            gained_descrs = [f"{descr} ({descr2prot[descr]})"
-                             for descr in sorted(gained)]
+            lost_descrs = []
+            for descr in sorted(lost):
+                ex_acc = next(iter(sigs_then[acc][descr]))
+                lost_descrs.append(f"{descr} ({ex_acc})")
+
+            gained_descrs = []
+            for descr in sorted(gained):
+                ex_acc = next(iter(sigs_now[acc][descr]))
+                gained_descrs.append(f"{descr} ({ex_acc})")
+
             fh.write(f"{acc}\t{link}\t{entry_acc}\t{types[entry_type]}\t"
                      f"{len(sig2prots.get(acc, []))}\t{entry_name}\t"
                      f"{len(lost)}\t{len(gained)}\t"
