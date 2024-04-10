@@ -64,6 +64,17 @@ class AbstractFormatter:
         return f"[{','.join(refs)}]" if refs else ""
 
 
+def _decode_line(_line):
+    try:
+        line = _line.decode('utf-8')
+    except UnicodeDecodeError:
+        try:
+            line = _line.decode('latin-1')
+        except UnicodeDecodeError:
+            line = None
+    return line
+
+
 def get_default_values(
     signatures=False,
     clans=False,
@@ -142,9 +153,8 @@ def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method] | dict:
 
             for _line in fh:
                 line_count += 1
-                try:
-                    line = _line.decode('utf-8')
-                except UnicodeDecodeError:
+                line = _decode_line(_line)
+                if not line:
                     logger.error(
                         "UnicodeDecodeError encountered on PFAM-A.seed line %s. Skipping line.",
                         line_count
@@ -281,14 +291,14 @@ def get_fam_seq_counts(
         with gzip.open(pfam_fasta_path, 'rb') as fh:
             for _line in fh:
                 line_count += 1
-                try:
-                    line = _line.decode('utf-8')
-                except UnicodeDecodeError:
+                line = _decode_line(_line)
+                if not line:
                     logger.error(
                         "UnicodeDecodeError encountered on PFAM-A.fasta line %s. Skipping line.",
                         line_count
                     )
                     continue
+
                 if line.startswith(">"):
                     pfamA_acc = line.strip().split(" ")[-1].split(";")[0].split(".")[0]
                     try:
@@ -318,9 +328,8 @@ def get_num_full(
 
             for _line in fh:
                 line_count += 1
-                try:
-                    line = _line.decode('utf-8')
-                except UnicodeDecodeError:
+                line = _decode_line(_line)
+                if not line:
                     logger.error(
                         "UnicodeDecodeError encountered on PFAM-A.%s line %s. Skipping line.",
                         "seed" if seed else "full", line_count
@@ -407,14 +416,15 @@ def get_clans(
             ) = get_default_values(clans=True)
 
             for _line in fh:
-                try:
-                    line = _line.decode('utf-8')
-                except UnicodeDecodeError:
+                line_count += 1
+                line = _decode_line(_line)
+                if not line:
                     logger.error(
                         "UnicodeDecodeError encountered on PFAM-C line %s. Skipping line.",
                         line_count
                     )
                     continue
+
                 if line.strip() == _RECORD_BREAK:
                     # store the previous record
                     clan = Clan(
@@ -499,9 +509,8 @@ def get_clan_literature(pfam_clan_path: str) -> dict:
 
             for _line in fh:
                 line_count += 1
-                try:
-                    line = _line.decode('utf-8')
-                except UnicodeDecodeError:
+                line = _decode_line(_line)
+                if not line:
                     logger.error(
                         "UnicodeDecodeError encountered on PFAM-C line %s. Skipping line.",
                         line_count
@@ -640,6 +649,11 @@ def persist_extra_pfam_data(
         except KeyError:
             _record.append(None)
         return record
+    
+    try:
+        logger.info("Getting signatures from %s", Path(db_props["seed"]).name)
+    except KeyError:
+        return
 
     signatures = get_signatures(
         pfam_path=db_props["seed"],
@@ -647,26 +661,38 @@ def persist_extra_pfam_data(
     )
     clans = get_clan_literature(db_props['clan'])
 
-    logger.info("Getting pfam-A.seed alignment counts")
+    logger.info("Getting Pfam-A.seed alignment counts")
     seed_num = get_num_full(db_props["seed"], seed=True)
     if seed_num is None:
         logger.error("Could not find file pfam-A.seed at %s\nNot persisting seed_num values", db_props["seed"])
         seed_num = {}
-    logger.info("Getting pfam-A.full alignment counts")
-    full_num = get_num_full(db_props["full"])
-    if full_num is None:
-        logger.error("Could not find file pfam-A.seed at %s\nNot persisting full_num values", db_props["full"])
+
+    try:
+        logger.info("Getting %s alignment counts", Path(db_props["full"]).name)
+        full_num = get_num_full(db_props["full"])
+        if full_num is None:
+            logger.error("Could not find file pfam-A.seed at %s\nNot persisting full_num values", db_props["full"])
+            full_num = {}
+    except KeyError:
+        logger.error(
+            (
+                f"Pfam file path for full alignments (Pfam-A.full) is not defined in "
+                "the members.config file.\n"
+                f"Skipping retrieving full (Pfam-A.full) alignemnts."
+            ),
+        )
         full_num = {}
+
     logger.info("Getting RP15 alignment counts")
-    rp15_num = get_alignment_counts(db_props["rp15"], "rp15")
+    rp15_num = get_alignment_counts(db_props, "rp15")
     logger.info("Getting RP35 alignment counts")
-    rp35_num = get_alignment_counts(db_props["rp35"], "rp35")
+    rp35_num = get_alignment_counts(db_props, "rp35")
     logger.info("Getting RP55 alignment counts")
-    rp55_num = get_alignment_counts(db_props["rp55"], "rp55")
+    rp55_num = get_alignment_counts(db_props, "rp55")
     logger.info("Getting RP75 alignment counts")
-    rp75_num = get_alignment_counts(db_props["rp75"], "rp75")
+    rp75_num = get_alignment_counts(db_props, "rp75")
     logger.info("Getting UniProt alignment counts")
-    uniprot_num = get_alignment_counts(db_props["uniprot"], "uniprot")
+    uniprot_num = get_alignment_counts(db_props, "uniprot")
 
     logger.info("Persisting data for %s signatures", len(signatures))
     logger.info("Persisting data for %s clans", len(clans))
@@ -759,7 +785,7 @@ def persist_extra_pfam_data(
                 clan_id VARCHAR2(25),
                 pubmed_id NUMBER,
                 title VARCHAR2(500),
-                author VARCHAR2(500),
+                author VARCHAR2(750),
                 journal VARCHAR2(225),
                 order_added NUMBER
             )
@@ -816,7 +842,7 @@ def persist_extra_pfam_data(
                             clan_id,
                             clans[clan_id]['references'][order_added]['pmid'],
                             _check_str_len(clan_id, clans[clan_id]['references'][order_added]['title'], "TITLE", 500),
-                            _check_str_len(clan_id, clans[clan_id]['references'][order_added]['authors'][:-1], "AUTHORS", 500),
+                            _check_str_len(clan_id, clans[clan_id]['references'][order_added]['authors'][:-1], "AUTHORS", 750),
                             clans[clan_id]['references'][order_added]['journal'],
                             order_added
                         ]
@@ -857,24 +883,35 @@ def _check_str_len(clan_id: str, field: str, field_name: str, max_len: int) -> s
     return field
 
 
-def get_alignment_counts(pfam_file: str, alignment_name: str) -> dict[str, int]:
+def get_alignment_counts(db_props: dict[str, str], alignment_name: str) -> dict[str, int]:
     """Count the number of hits in the alignemnt file for each accession
 
-    :param pfam_file: path to rp15, rp35, rp55, rp75, uniprot
+    :param db_props: db properties from members.conf file
     :param alignment_name: name of alignment: rp15, rp35, rp55, rp75, uniprot
     
     Return {accession: count [int]}
     """
     line_count, count_dict = 0, {}
     try:
+        pfam_file = db_props[alignment_name]
+    except KeyError:
+        logger.error(
+            (
+                f"Pfam file path for {alignment_name} alignments is not defined in "
+                "the members.config file.\n"
+                f"Skipping retrieving {alignment_name} alignemnts."
+            ),
+        )
+        return count_dict
+
+    try:
         with gzip.open(pfam_file, 'rb') as fh:
             count, acc = 0, ""
 
             for _line in fh:
                 line_count += 1
-                try:
-                    line = _line.decode("utf-8")
-                except UnicodeDecodeError:
+                line = _decode_line(_line)
+                if not line:
                     logger.error(
                         (
                             "Unicode Decode Error encountered in PFAM %s file line %s\n"
@@ -882,6 +919,7 @@ def get_alignment_counts(pfam_file: str, alignment_name: str) -> dict[str, int]:
                         ),
                         alignment_name, line_count
                     )
+                    continue
 
                 if line.strip() == _RECORD_BREAK:
                     count_dict[acc] = count
