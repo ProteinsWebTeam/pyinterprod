@@ -145,11 +145,14 @@ def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method] | dict:
                 try:
                     line = _line.decode('utf-8')
                 except UnicodeDecodeError:
-                    logger.error(
-                        "UnicodeDecodeError encountered on PFAM-A.seed line %s. Skipping line.",
-                        line_count
-                    )
-                    continue
+                    try:
+                        line = _line.decode('latin-1')
+                    except UnicodeDecodeError:
+                        logger.error(
+                            "UnicodeDecodeError encountered on PFAM-A.seed line %s. Skipping line.",
+                            line_count
+                        )
+                        continue
 
                 if line.strip() == _RECORD_BREAK:
                     # create signature record from previous Pfam record
@@ -284,11 +287,14 @@ def get_fam_seq_counts(
                 try:
                     line = _line.decode('utf-8')
                 except UnicodeDecodeError:
-                    logger.error(
-                        "UnicodeDecodeError encountered on PFAM-A.fasta line %s. Skipping line.",
-                        line_count
-                    )
-                    continue
+                    try:
+                        line = _line.decode('latin-1')
+                    except UnicodeDecodeError:
+                        logger.error(
+                            "UnicodeDecodeError encountered on PFAM-A.fasta line %s. Skipping line.",
+                            line_count
+                        )
+                        continue
                 if line.startswith(">"):
                     pfamA_acc = line.strip().split(" ")[-1].split(";")[0].split(".")[0]
                     try:
@@ -321,11 +327,14 @@ def get_num_full(
                 try:
                     line = _line.decode('utf-8')
                 except UnicodeDecodeError:
-                    logger.error(
-                        "UnicodeDecodeError encountered on PFAM-A.%s line %s. Skipping line.",
-                        "seed" if seed else "full", line_count
-                    )
-                    continue
+                    try:
+                        line = _line.decode('latin-1')
+                    except UnicodeDecodeError:
+                        logger.error(
+                            "UnicodeDecodeError encountered on PFAM-A.%s line %s. Skipping line.",
+                            "seed" if seed else "full", line_count
+                        )
+                        continue
 
                 if line.strip() == _RECORD_BREAK:
                     # store the previous record
@@ -410,11 +419,14 @@ def get_clans(
                 try:
                     line = _line.decode('utf-8')
                 except UnicodeDecodeError:
-                    logger.error(
-                        "UnicodeDecodeError encountered on PFAM-C line %s. Skipping line.",
-                        line_count
-                    )
-                    continue
+                    try:
+                        line = _line.decode('latin-1')
+                    except UnicodeDecodeError:
+                        logger.error(
+                            "UnicodeDecodeError encountered on PFAM-C line %s. Skipping line.",
+                            line_count
+                        )
+                        continue
                 if line.strip() == _RECORD_BREAK:
                     # store the previous record
                     clan = Clan(
@@ -502,11 +514,14 @@ def get_clan_literature(pfam_clan_path: str) -> dict:
                 try:
                     line = _line.decode('utf-8')
                 except UnicodeDecodeError:
-                    logger.error(
-                        "UnicodeDecodeError encountered on PFAM-C line %s. Skipping line.",
-                        line_count
-                    )
-                    continue
+                    try:
+                        line = _line.decode('latin-1')
+                    except UnicodeDecodeError:
+                        logger.error(
+                            "UnicodeDecodeError encountered on PFAM-C line %s. Skipping line.",
+                            line_count
+                        )
+                        continue
             
                 if line.strip() == _RECORD_BREAK:
                     clans[accession] = {
@@ -875,13 +890,17 @@ def get_alignment_counts(pfam_file: str, alignment_name: str) -> dict[str, int]:
                 try:
                     line = _line.decode("utf-8")
                 except UnicodeDecodeError:
-                    logger.error(
-                        (
-                            "Unicode Decode Error encountered in PFAM %s file line %s\n"
-                            "Not parsing this line and continuing to the next"
-                        ),
-                        alignment_name, line_count
-                    )
+                    try:
+                        line = _line.decode('latin-1')
+                    except UnicodeDecodeError:
+                        logger.error(
+                            (
+                                "Unicode Decode Error encountered in PFAM %s file line %s\n"
+                                "Not parsing this line and continuing to the next"
+                            ),
+                            alignment_name, line_count
+                        )
+                        continue
 
                 if line.strip() == _RECORD_BREAK:
                     count_dict[acc] = count
