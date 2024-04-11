@@ -90,7 +90,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             args=(ora_ipr_uri, matches_file),
             kwargs=dict(tmpdir=temp_dir),
             name="export-matches",
-            scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=10)
+            scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=24)
         ),
         Task(
             fn=pronto.match.insert_fmatches,
@@ -768,7 +768,7 @@ def run_uniprot_update():
             fn=interpro.match.update_matches,
             args=(ora_interpro_uri,),
             name="update-matches",
-            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=10),
+            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=24),
             requires=["check-proteins", "update-ipm-matches"]
         ),
         Task(
@@ -830,7 +830,7 @@ def run_uniprot_update():
             fn=uniprot.exchange.export_xrefs,
             args=(ora_interpro_uri, xrefs_dir, emails),
             name="export-xrefs",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=6),
+            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=6),
             requires=["xref-summary"]
         ),
         Task(
