@@ -34,15 +34,26 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
 
     con = oracledb.connect(ora_url)
     cur = con.cursor()
+    integrated = {}
     cur.execute(
         """
-        SELECT M.METHOD_AC, E.ENTRY_AC, E.ENTRY_TYPE, E.NAME, M.DBCODE
+        SELECT M.METHOD_AC, M.DBCODE, E.ENTRY_AC, E.ENTRY_TYPE, E.NAME, 
+               E.LLM, E.LLM_CHECKED
         FROM INTERPRO.METHOD M
         INNER JOIN INTERPRO.ENTRY2METHOD EM ON M.METHOD_AC = EM.METHOD_AC
         INNER JOIN INTERPRO.ENTRY E ON EM.ENTRY_AC = E.ENTRY_AC
         """
     )
-    integrated = {row[0]: row[1:] for row in cur}
+    for row in cur.fetchall():
+        if row[5] == "N":
+            origin = "Curator"
+        elif row[6] == "Y":
+            origin = "AI, reviewed"
+        else:
+            origin = "AI, unreviewed"
+
+        # value: dbcode, entry_acc, type_code, entry_name, origin
+        integrated[row[0]] = (row[1], row[2], row[3], row[4], origin)
 
     cur.execute(
         """
@@ -73,7 +84,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
 
             for acc, old_val, new_val in data["changes"]["names"]:
                 try:
-                    entry_acc = integrated[acc][0]
+                    _, entry_acc, _, _, _ = integrated[acc]
                 except KeyError:
                     continue
 
@@ -88,7 +99,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
 
             for acc, old_val, new_val in data["changes"]["descriptions"]:
                 try:
-                    entry_acc = integrated[acc][0]
+                    _, entry_acc, _, _, _ = integrated[acc]
                 except KeyError:
                     continue
 
@@ -102,7 +113,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
 
             for acc, old_val, new_val in data["changes"]["types"]:
                 try:
-                    entry_acc = integrated[acc][0]
+                    _, entry_acc, _, _, _ = integrated[acc]
                 except KeyError:
                     continue
 
@@ -115,7 +126,12 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
         sigs_now = {}
         sig2prots = {}
         for acc in all_sig2descrs:
-            if acc in integrated and integrated[acc][3] == db_id:
+            try:
+                dbcode, _, _, _, _ = integrated[acc]
+            except KeyError:
+                continue
+
+            if db_id == dbcode:
                 sigs_now[acc] = all_sig2descrs[acc]
                 sig2prots[acc] = set()
 
@@ -125,7 +141,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
         changes = {}
         for acc in (set(sigs_then.keys()) | set(sigs_now.keys())):
             try:
-                entry_acc, entry_type, entry_name, _ = integrated[acc]
+                _, entry_acc, type_code, entry_name, origin = integrated[acc]
             except KeyError:
                 continue
 
@@ -133,17 +149,17 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             descrs_now = set(sigs_now.get(acc, {}).keys())
             if descrs_then != descrs_now:
                 changes[entry_acc] = (
-                    entry_acc, entry_name, entry_type,
+                    entry_acc, entry_name, type_code, origin,
                     descrs_then - descrs_now,
                     descrs_now - descrs_then
                 )
 
         files = {}  # file objects
-        for acc in sorted(changes):
-            entry_acc, entry_name, entry_type, lost, gained = changes[acc]
-            if entry_type == 'F':
+        for acc, obj in sorted(changes.items(), key=lambda x: x[0]):
+            entry_acc, entry_name, type_code, origin, lost, gained = obj
+            if type_code == 'F':
                 filename = "swiss_de_families.tsv"
-            elif entry_type == 'D':
+            elif type_code == 'D':
                 filename = "swiss_de_domains.tsv"
             else:
                 filename = "swiss_de_others.tsv"
@@ -153,7 +169,8 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             except KeyError:
                 filepath = os.path.join(dst, filename)
                 fh = files[filename] = open(filepath, "wt")
-                fh.write(f"Signature\tLink\tEntry\tType\t# Swiss-Prot\tName\t"
+                fh.write(f"Signature\tLink\tEntry\tType\t"
+                         f"Source origin\t# Swiss-Prot\tName\t"
                          f"# Lost\t# Gained\tLost\tGained\n")
 
             link = f"{pronto_link}/signatures/{acc}/descriptions/?reviewed"
@@ -168,8 +185,8 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 ex_acc = next(iter(sigs_now[acc][descr]))
                 gained_descrs.append(f"{descr} ({ex_acc})")
 
-            fh.write(f"{acc}\t{link}\t{entry_acc}\t{types[entry_type]}\t"
-                     f"{len(sig2prots.get(acc, []))}\t{entry_name}\t"
+            fh.write(f"{acc}\t{link}\t{entry_acc}\t{types[type_code]}\t"
+                     f"{origin}\t{len(sig2prots.get(acc, []))}\t{entry_name}\t"
                      f"{len(lost)}\t{len(gained)}\t"
                      f"{' | '.join(lost_descrs)}\t"
                      f"{' | '.join(gained_descrs)}\n")
@@ -190,7 +207,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             sig_new_cnts = new_counts.get(acc, {})
 
             try:
-                entry_acc, entry_type, entry_name, _ = integrated[acc]
+                _, entry_acc, type_code, entry_name, origin = integrated[acc]
             except KeyError:
                 continue
 
@@ -220,7 +237,8 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 acc,
                 entry_acc,
                 entry_name,
-                entry_type,
+                type_code,
+                origin,
                 sig_old_tot,
                 sig_new_tot,
                 change,
@@ -231,12 +249,13 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
         with open(os.path.join(dst, "protein_counts.tsv"), "wt") as fh:
             # Header
             line = ["Signature", "Link", "DE changes", "Entry", "Type",
-                    "Name", "Previous count", "New count", "Change (%)"]
+                    "Source origin", "Name", "Previous count", "New count",
+                    "Change (%)"]
             for sk in superkingdoms:
                 line += [sk, '']
             fh.write('\t'.join(line) + '\n')
 
-            line = [''] * 9
+            line = [''] * 10
             line += ["Previous count", "New count"] * len(superkingdoms)
             fh.write('\t'.join(line) + '\n')
 
@@ -246,10 +265,11 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 entry_acc = obj[1]
                 entry_name = obj[2]
                 entry_type = types[obj[3]]
-                sig_old_tot = obj[4]
-                sig_new_tot = obj[5]
-                change = obj[6]
-                sig_superkingdoms = obj[7]
+                origin = obj[4],
+                sig_old_tot = obj[5]
+                sig_new_tot = obj[6]
+                change = obj[7]
+                sig_superkingdoms = obj[8]
 
                 line = [
                     acc,
@@ -257,6 +277,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                     "Yes" if acc in sig_changes else "No",
                     entry_acc,
                     entry_type,
+                    origin,
                     entry_name,
                     str(sig_old_tot),
                     str(sig_new_tot),
@@ -319,13 +340,22 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
     cur.execute("SELECT METHOD_AC, ENTRY_AC FROM INTERPRO.ENTRY2METHOD")
     integrated = dict(cur.fetchall())
 
+    entries = {}
     cur.execute(
         """
-        SELECT ENTRY_AC, ENTRY_TYPE, NAME, CHECKED
+        SELECT ENTRY_AC, ENTRY_TYPE, NAME, CHECKED, LLM, LLM_CHECKED
         FROM INTERPRO.ENTRY
         """
     )
-    entries = {row[0]: row[1:] for row in cur}
+    for entry_acc, type_code, name, checked, llm, llm_checked in cur.fetchall():
+        if llm == "N":
+            origin = "Curator"
+        elif llm_checked == "Y":
+            origin = "AI, reviewed"
+        else:
+            origin = "AI, unreviewed"
+
+        entries[entry_acc] = (type_code, name, checked == "Y", origin)
 
     cur.execute(
         """
@@ -395,18 +425,18 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
     # Write entries with changes (by entry type: families, domains, others)
     tmpdir = mkdtemp()
     files = {}
-    header = ("Accession\tLink\tName\tChecked\t# Swiss-Prot"
+    header = ("Accession\tLink\tName\tChecked\tSource origin\t# Swiss-Prot"
               "\t# Lost\t# Gained\tLost\tGained\n")
     for entry_acc in sorted(changes):
         try:
-            entry_type, name, checked_flag = entries[entry_acc]
+            type_code, name, is_checked, origin = entries[entry_acc]
         except KeyError:
             # Entry does not exist anymore
             continue
 
-        if entry_type == 'F':
+        if type_code == 'F':
             filename = "swiss_de_families.tsv"
-        elif entry_type == 'D':
+        elif type_code == 'D':
             filename = "swiss_de_domains.tsv"
         else:
             filename = "swiss_de_others.tsv"
@@ -430,7 +460,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             gained_descrs.append(f"{descr} ({ex_acc})")
 
         fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
-                 f"{name}\t{'Yes' if checked_flag == 'Y' else 'No'}\t"
+                 f"{name}\t{'Yes' if is_checked else 'No'}\t{origin}\t"
                  f"{len(entry2prots[entry_acc])}\t"
                  f"{len(lost)}\t{len(gained)}\t"
                  f"{' | '.join(lost_descrs)}\t"
@@ -448,15 +478,16 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
         superkingdoms = sorted({sk for e in changes for sk in e[4]})
 
         # Header
-        line = ["Accession", "Link", "Type", "Name", "Checked",
+        line = ["Accession", "Link", "Type", "Name", "Checked", "Source origin",
                 "DE changes", "Previous count", "New count", "Change (%)"]
         for sk in superkingdoms:
             line += [sk, '']
 
         fh.write('\t'.join(line) + '\n')
 
-        line = [''] * 9
+        line = [''] * 10
         line += ["Previous count", "New count"] * len(superkingdoms)
+        fh.write('\t'.join(line) + '\n')
 
         # Body
         for obj in changes:
@@ -466,7 +497,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             change = obj[3]
             entry_superkingdoms = obj[4]
             try:
-                entry_type, name, checked_flag = entries[entry_acc]
+                type_code, name, is_checked, origin = entries[entry_acc]
             except KeyError:
                 # Entry does not exist anymore
                 continue
@@ -474,9 +505,10 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             line = [
                 entry_acc,
                 f"{pronto_link}/entry/{entry_acc}/",
-                types[entry_type],
+                types[type_code],
                 name,
-                "Yes" if checked_flag == 'Y' else "No",
+                "Yes" if is_checked else "No",
+                origin,
                 "Yes" if entry_acc in entries_changes else "No",
                 str(old_total),
                 str(new_total),
