@@ -21,6 +21,9 @@ _TYPES = {
     "Disordered": 'O',
     "Motif": 'C'
 }
+_ALN_TYPES = {
+    "seed",
+}
 
 
 class AbstractFormatter:
@@ -855,12 +858,8 @@ def persist_extra_pfam_data(
 
     con.commit()
 
-    try:
-        db_props["alignment"]
-        persist_alignments(db_props, con)
-    except KeyError:
-        pass
-
+    n = persist_alignments(db_props["alignment"], con)
+    logger.info(f"{n:,} alignments persisted")
     con.close()
 
 
@@ -937,31 +936,13 @@ def get_alignment_counts(db_props: dict[str, str], alignment_name: str) -> dict[
     return count_dict
 
 
-def persist_alignments(db_props: dict[str, str], con) -> None:
-    """Persist Pfam alignments in the oracle db.
+def persist_alignments(alndir: str, con: oracledb.Connection) -> int:
+    """Persist Pfam alignments in Oracle
 
-    Alignments types to be stored are defined by assigning a value to the 
-    corresponding file/alignment type in members.conf:
-        seed, full, rpXX (where XX is a number), uniprot
-
-    :param db_props: db properties from members.conf file
+    :param alndir: string representing the path to the directory of alignments
     :param con: open oracle db connection
     """
-    def get_ali_paths(directory: Path):
-        return (entry for entry in Path(directory).iterdir() if entry.is_file())
-
-    types_to_store = [
-        _ for _ in db_props 
-        if db_props[_] is not None 
-        and _ not in ['hmm', 'members', 'signatures', 'clan', 'alignment']
-    ]
-    if len(types_to_store) == 0:
-        logger.warning("No alignment types specified. Not storing alignments")
-        return
-    
-    logger.info("Storing alignments: %s", types_to_store)
-    sql_insert = "INSERT INTO INTERPRO.PFAM_ALIGNMENTS (accession, type, alignment) VALUES (:1, :2, :3)"
-
+    count = 0
     with con.cursor() as cur:
         drop_table(cur, "INTERPRO.PFAM_ALIGNMENTS", purge=True)
         cur.execute(
@@ -974,15 +955,23 @@ def persist_alignments(db_props: dict[str, str], con) -> None:
             """
         )
 
-        dir_paths = (entry for entry in Path(db_props['alignment']).iterdir() if entry.is_dir())
-        for _path in dir_paths:
-            pfam_acc = _path.name
-            for alignment_path in get_ali_paths(_path):
-                ali_type = alignment_path.name.split(".")[1]
-                if ali_type in types_to_store:
-                    with gzip.open(alignment_path, 'rb') as fh:
-                        alignment = fh.read()
-
-                        cur.execute(sql_insert, [pfam_acc, ali_type, alignment])
+        for accession, aln_type, aln_bytes in find_alignments(alndir):
+            cur.execute(
+                """
+                INSERT INTO INTERPRO.PFAM_ALIGNMENTS
+                VALUES (:1, :2, :3)
+                """,
+                [accession, aln_type, aln_bytes]
+            )
+            count += 1
 
     con.commit()
+    return count
+
+
+def find_alignments(root: str):
+    for path in Path(root).rglob("*.gz"):
+        accession, aln_type, _ = path.name.split(".")
+        if aln_type in _ALN_TYPES:
+            with gzip.open(path, "rb") as fh:
+                yield accession, aln_type, fh.read()
