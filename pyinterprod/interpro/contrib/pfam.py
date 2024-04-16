@@ -280,7 +280,7 @@ def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
     cur.execute(
         """
         CREATE TABLE INTERPRO.PFAM_A (
-            ACCESSION VARCHAR2(25),
+            ACCESSION VARCHAR2(7),
             VERSION NUMBER NOT NULL,
             SEQ_ONTOLOGY_ID VARCHAR2(20),
             BUILD_CMD VARCHAR2(255) NOT NULL,
@@ -291,8 +291,8 @@ def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
             SEED_ALN BLOB NOT NULL,
             FULL_NUM NUMBER NOT NULL,
             FULL_ALN BLOB NOT NULL,
-            AUTHORS CLOB NOT NULL,
-            WIKIPEDIA CLOB NOT NULL,
+            AUTHORS VARCHAR2(1000) NOT NULL,
+            WIKIPEDIA VARCHAR2(255) NOT NULL,
             CONSTRAINT PK_PFAM_A PRIMARY KEY (ACCESSION)
         ) NOLOGGING
         """
