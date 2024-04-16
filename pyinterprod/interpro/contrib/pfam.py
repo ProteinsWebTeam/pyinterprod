@@ -1,4 +1,5 @@
 import gzip
+import json
 import os
 import re
 from io import BytesIO
@@ -728,7 +729,7 @@ def get_signatures_alt(pfam_seed_file: str) -> list[Method]:
         comment = entry.features.get("CC")
         rn2pmid = {}
         if comment:
-            for i, obj in enumerate(entry.references):
+            for i, obj in enumerate(entry.features.get("RN", [])):
                 rn2pmid[i+1] = int(obj["RM"])
 
             abstract = _repl_references(comment, rn2pmid)
@@ -792,33 +793,56 @@ def _init_entry() -> dict:
     }
 
 
-_KEPT_FIELDS = {"AC", "ID", "DE", "AU", "BM", "SM", "GA", "TC", "TP", "SQ",
-                "DR", "CC", "WK", "CL", "MB"}
+_MAIN_FIELDS = {"AC", "ID", "DE", "AU", "BM", "SM", "GA", "TC", "TP", "SQ"}
+_OTHER_FIELDS = {"DR", "CC", "WK", "CL", "MB"}
 _REFERENCE_FIELDS = {"RC", "RM", "RT", "RA", "RL"}
 
 
 class StockholdMSA:
     def __init__(self):
         self.features = {}
-        self.references = []
         self.sequences = []
 
     def add_feature(self, name: str, value: str):
         if name == "RN":
-            self.references.append({})
+            try:
+                self.features[name].append({})
+            except KeyError:
+                self.features[name] = [{}]
         elif name in _REFERENCE_FIELDS:
-            obj = self.references[-1]
-            obj[name] = self.concat(obj.get(name, ""), value)
-        elif name in _KEPT_FIELDS:
-            self.features[name] = self.concat(self.features.get(name, ""),
-                                              value)
+            if "RN" not in self.features:
+                # logger.warning(f"{name} {value} ignored (preceding RN field)")
+                return
 
-    @staticmethod
-    def concat(s: str, s2: str) -> str:
-        if s and s[-1].isspace():
-            return s + s2
-        else:
-            return s + " " + s2
+            ref_dict = self.features["RN"][-1]
+            try:
+                ref_dict[name].append(value)
+            except KeyError:
+                ref_dict[name] = [value]
+        elif name in _MAIN_FIELDS or name in _OTHER_FIELDS:
+            try:
+                self.features[name].append(value)
+            except KeyError:
+                self.features[name] = [value]
+
+    def close(self):
+        for key in _MAIN_FIELDS:
+            assert key in self.features
+
+        for key, values in self.features.items():
+            if key in ("BM", "SM", "CC"):
+                self.features[key] = " ".join(values)
+            elif key in ("AU", "WK", "RN", "DR"):
+                pass
+            else:
+                # Other fields should have one value only
+                assert len(values) == 1
+                if key == "SQ":
+                    num_sequences = int(values.pop())
+                    assert num_sequences == len(self.sequences)
+                    self.features[key] = num_sequences
+                else:
+                    self.features[key] = values.pop()
 
     def get_alignments(self, compresslevel: int = 9) -> bytes:
         with BytesIO() as bs:
@@ -832,9 +856,7 @@ class StockholdMSA:
         return data
 
     def is_empty(self) -> bool:
-        return (not self.features and
-                not self.references and
-                not self.sequences)
+        return not self.features and not self.sequences
 
 
 def parse_sto(file: str):
@@ -851,6 +873,7 @@ def parse_sto(file: str):
         entry = StockholdMSA()
         for line in map(_decode, fh):
             if line == "//":
+                entry.close()
                 yield entry
                 entry = StockholdMSA()
             elif line.startswith("#=GF"):
@@ -914,7 +937,7 @@ def parse_sto(file: str):
             elif line.startswith("#=GC"):
                 # Generic per-Column
                 pass
-            else:
+            elif line[0] != "#":
                 # Sequence line
                 entry.sequences.append(line)
 
@@ -979,3 +1002,92 @@ def compress_alignments(alignments: list[str]) -> bytes:
 
         data = bs.getvalue()
     return data
+
+
+def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
+    logger.info(f"parsing {os.path.basename(pfama_seed)}")
+    seeds = {}
+    for entry in parse_sto(pfama_seed):
+        seeds[entry.features["AC"]] = (
+            entry.features["SQ"],
+            entry.get_alignments()
+        )
+
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+    drop_table(cur, "INTERPRO.PFAM_A", purge=True)
+    cur.execute(
+        """
+        CREATE TABLE INTERPRO.PFAM_A (
+            ACCESSION VARCHAR2(25),
+            VERSION NUMBER NOT NULL,
+            SEQ_ONTOLOGY_ID VARCHAR2(20),
+            BUILD_CMD VARCHAR2(255) NOT NULL,
+            SEARCH_CMD VARCHAR2(255) NOT NULL,
+            SEQ_GA FLOAT NOT NULL,
+            DOM_GA FLOAT NOT NULL,
+            SEED_NUM NUMBER NOT NULL,
+            SEED_ALN BLOB NOT NULL,
+            FULL_NUM NUMBER NOT NULL,
+            FULL_ALN BLOB NOT NULL,
+            AUTHORS CLOB NOT NULL,
+            WIKIPEDIA CLOB NOT NULL,
+            CONSTRAINT PK_PFAM_A PRIMARY KEY (ACCESSION)
+        )
+        """
+    )
+
+    logger.info(f"parsing {os.path.basename(pfama_full)}")
+    for entry in parse_sto(pfama_full):
+        seed_num, seed_aln = seeds.pop(entry.features["AC"])
+
+        accession, version = entry.features["AC"].split(".")
+        seq_ontology = None
+        for ref in entry.features.get("DR", []):
+            m = re.match(r"SO;\s*(\d+);", ref)
+            if m:
+                seq_ontology = m.group(1)
+                break
+
+        seq_ga_str, dom_ga_str = entry.features["GA"].rstrip(";").split()
+        seq_ga = float(seq_ga_str)
+        dom_ga = float(dom_ga_str)
+        authors = []
+        for author in entry.features["AU"]:
+            name, orcid = author.split(";")
+            authors.append({
+                "author": author,
+                "orcid": orcid or None
+            })
+
+        cur.execute(
+            """
+            INSERT INTO INTERPRO.PFAM_A
+            VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13)
+            """,
+            [
+                accession,
+                version,
+                seq_ontology,
+                entry.features["BM"],
+                entry.features["SM"],
+                seq_ga,
+                dom_ga,
+                seed_num,
+                seed_aln,
+                entry.features["SQ"],
+                entry.get_alignments(),
+                json.dumps(authors),
+                json.dumps(entry.features.get("WK", []))
+            ]
+        )
+
+    con.commit()
+    cur.close()
+    con.close()
+
+    logger.info("done")
+
+
+def persist_pfam_c():
+    pass
