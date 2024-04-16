@@ -1030,7 +1030,7 @@ def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
             AUTHORS CLOB NOT NULL,
             WIKIPEDIA CLOB NOT NULL,
             CONSTRAINT PK_PFAM_A PRIMARY KEY (ACCESSION)
-        )
+        ) NOLOGGING
         """
     )
 
@@ -1059,7 +1059,7 @@ def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
 
         cur.execute(
             """
-            INSERT INTO INTERPRO.PFAM_A
+            INSERT /*+ APPEND */  INTO INTERPRO.PFAM_A
             VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13)
             """,
             [
