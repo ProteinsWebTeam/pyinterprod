@@ -1,6 +1,7 @@
 import gzip
 import os
 import re
+from io import BytesIO
 from pathlib import Path
 
 import oracledb
@@ -19,9 +20,6 @@ _TYPES = {
     "Coiled-coil": 'I',
     "Disordered": 'O',
     "Motif": 'C'
-}
-_ALN_TYPES = {
-    "seed",
 }
 
 
@@ -118,160 +116,6 @@ def get_default_values(
         return None, None, None, []
     if clans_lit:
         return None, None, {}
-
-
-def get_signatures(pfam_path: str, persist_pfam=False) -> list[Method] | dict:
-    """Parse Pfam-A.seed.gz file and extract signatures.
-
-    :param pfam_path: str, path to Pfam-A.seed.gz file
-    :param update_sigs: bool, parser called during member database
-        update to persist the Pfam data in the oracle db
-    
-    Return 
-    * list of Method objs
-    * dict of entries
-    """
-    signatures = []
-    entries = {}
-    line_count = 0
-
-    try:
-        with gzip.open(pfam_path, 'rb') as fh:
-            (
-                accession,
-                name,
-                description,
-                long_type,
-                abstract,
-                references,  # {order added/pos ref [int]: pmid [int]}
-                sequence_ontology, author_info,
-                build_method, search_method,
-                sequence_ga, domain_ga,
-                wiki, version,
-            ) = get_default_values(signatures=True)
-
-            for _line in fh:
-                line_count += 1
-                line = _decode_line(_line)
-                if not line:
-                    logger.error(
-                        "UnicodeDecodeError encountered on PFAM-A.seed line %s. Skipping line.",
-                        line_count
-                    )
-                    continue
-
-                if line.strip() == _RECORD_BREAK:
-                    # create signature record from previous Pfam record
-                    formatter = AbstractFormatter(references)
-
-                    if persist_pfam:
-                        entries[accession] = {
-                            "name": name,
-                            "description": description,
-                            "type": _TYPES[long_type],
-                            "curation": {
-                                "sequence_ontology": sequence_ontology,
-                                "authors": author_info,
-                            },
-                            "hmm": {
-                                "commands": {
-                                    "build": build_method,
-                                    "search": search_method,
-                                },
-                                "cutoffs": {
-                                    "gathering": {
-                                        "sequence": sequence_ga,
-                                        "domain": domain_ga
-                                    }
-                                },
-                                "version": version,
-                            },
-                            "wiki": wiki,  # list, can be multiple articles
-                        }
-
-                    else:
-                        signatures.append(
-                            Method(
-                                accession,
-                                _TYPES[long_type],  # convert to single letter
-                                name,
-                                description,
-                                abstract=formatter.update(accession, abstract) if abstract else None,
-                                references=list(references.values())
-                            )
-                        )
-
-                    # start afresh for the next record/signature
-                    (
-                        accession,
-                        name,
-                        description,
-                        long_type,
-                        abstract,
-                        references,  # {order added/pos ref [int]: pmid [int]}
-                        sequence_ontology, author_info,
-                        build_method, search_method,
-                        sequence_ga, domain_ga,
-                        wiki, version,
-                    ) = get_default_values(signatures=True)
-
-                elif line.startswith("#=GF AC"):
-                    accession = line.split(" ")[-1].strip()
-                    version = accession.split(".")[-1]
-
-                elif line.startswith("#=GF ID"):
-                    name = line[7:].strip()   # pfam id
-
-                elif line.startswith("#=GF DE"):
-                    description = line[7:].strip()
-
-                elif line.startswith("#=GF TP"):
-                    long_type = line[7:].strip()
-
-                elif line.startswith("#=GF CC"):
-                    abstract += line[7:].strip()
-
-                elif line.startswith("#=GF RN"):
-                    current_ref_pos = int(line.split("[")[-1][:-2])
-
-                elif line.startswith("#=GF RM"):
-                    references[current_ref_pos] = int(line[7:].strip())  # = pmid
-
-                elif line.startswith("#=GF DR"):
-                    sequence_ontology = line.split(";")[1].strip()
-
-                elif line.startswith("#=GF AU"):
-                    author_info.append(
-                        (
-                            line[7:].split(";")[0].strip(),  # author
-                            line.split(";")[1].strip(),  # orcidID
-                        )
-                    )
-
-                elif line.startswith("#=GF BM"):
-                    build_method = line[7:].strip()
-
-                elif line.startswith("#=GF SM"):
-                    search_method = line[7:].strip()
-
-                elif line.startswith("#=GF GA"):  # GA = gathering threshold
-                    sequence_ga = line[7:].strip().split(" ")[0].strip()
-                    domain_ga = line[7:].strip().split(" ")[1].replace(";","").strip()
-
-                elif line.startswith("#=GF WK"):
-                    wiki.append(line[7:].strip().replace(" ", "_"))   # wikipedia article
-
-    except FileNotFoundError:
-        logger.error(
-            (
-                "Could not find Pfam-A-seed (seed alignment) file at %s\n"
-                "Not retrieving signature data"
-            ), pfam_path
-        )
-
-    if persist_pfam:
-        return entries
-    return signatures
 
 
 def get_fam_seq_counts(
@@ -975,23 +819,26 @@ def find_alignments(root: str):
 
 def get_signatures_alt(pfam_seed_file: str) -> list[Method]:
     methods = []
-    for entry in parse_seed(pfam_seed_file):
-        if entry["curation"]["comment"]:
-            abstract = _repl_references(
-                entry["curation"]["comment"],
-                entry["curation"]["references"]
-            )
+    for entry in parse_sto(pfam_seed_file):
+        comment = entry.features.get("CC")
+        rn2pmid = {}
+        if comment:
+            for i, obj in enumerate(entry.references):
+                rn2pmid[i+1] = int(obj["RM"])
+
+            abstract = _repl_references(comment, rn2pmid)
         else:
             abstract = None
 
+        accession, version = entry.features["AC"].split(".")
         methods.append(
             Method(
-                entry["accession"],
-                _TYPES[entry["type"]],
-                entry["name"],
-                entry["description"],
+                accession,
+                _TYPES[entry.features["TP"]],
+                entry.features["ID"],
+                entry.features["DE"],
                 abstract,
-                list(entry["curation"]["references"].values())
+                list(rn2pmid.values())
             )
         )
 
@@ -1035,70 +882,164 @@ def _init_entry() -> dict:
             },
             "version": None,
         },
-        "wikipedia": []
+        "wikipedia": [],
+        "alignments": [],
     }
 
 
-def parse_seed(file: str):
-    """Parse Pfam-A.seed.gz
+_KEPT_FIELDS = {"AC", "ID", "DE", "AU", "BM", "SM", "GA", "TC", "TP", "SQ",
+                "DR", "CC", "WK", "CL", "MB"}
+_REFERENCE_FIELDS = {"RC", "RM", "RT", "RA", "RL"}
 
-    :param file: string representing the path to Pfam-A.seed.gz
+
+class StockholdMSA:
+    def __init__(self):
+        self.features = {}
+        self.references = []
+        self.sequences = []
+
+    def add_feature(self, name: str, value: str):
+        if name == "RN":
+            self.references.append({})
+        elif name in _REFERENCE_FIELDS:
+            obj = self.references[-1]
+            obj[name] = self.concat(obj.get(name, ""), value)
+        elif name in _KEPT_FIELDS:
+            self.features[name] = self.concat(self.features.get(name, ""),
+                                              value)
+
+    @staticmethod
+    def concat(s: str, s2: str) -> str:
+        if s and s[-1].isspace():
+            return s + s2
+        else:
+            return s + " " + s2
+
+    def get_alignments(self, compresslevel: int = 9) -> bytes:
+        with BytesIO() as bs:
+            with gzip.GzipFile(mode="wb",
+                               compresslevel=compresslevel,
+                               fileobj=bs) as gz:
+                for line in self.sequences:
+                    gz.write((line + "\n").encode("utf-8"))
+
+            data = bs.getvalue()
+        return data
+
+    def is_empty(self) -> bool:
+        return (not self.features and
+                not self.references and
+                not self.sequences)
+
+
+def parse_sto(file: str):
+    """Parse a Gzip-compressed Pfam file in the Stockhold format
+
+    :param file: string representing the path to the file.
     """
-    with gzip.open(file, "rb") as fh:
-        entry = _init_entry()
-        current_ref = None
+    if file.endswith(".gz"):
+        _open = gzip.open
+    else:
+        _open = open
+
+    with _open(file, "rb") as fh:
+        entry = StockholdMSA()
         for line in map(_decode, fh):
             if line == "//":
                 yield entry
-                entry = _init_entry()
+                entry = StockholdMSA()
             elif line.startswith("#=GF"):
+                # Generic per-File
                 _, field, value = line.split(maxsplit=2)
-                # Compulsory fields
-                if field == "ID":
-                    entry["name"] = value
-                elif field == "AC":
-                    accession, version = value.split(".")
-                    entry["accession"] = accession
-                    entry["hmm"]["version"] = version
-                elif field == "DE":
-                    entry["description"] = value
-                elif field == "AU":
-                    author, orcid = value.split(";")
-                    entry["curation"]["authors"].append((
-                        author,
-                        orcid or None
-                    ))
-                elif field == "BM":
-                    entry["hmm"]["commands"] = value
-                elif field == "SM":
-                    entry["hmm"]["search"] = value
-                elif field == "GA":
-                    seq_ga, dom_ga = value.rstrip(";").split()
-                    entry["hmm"]["cutoffs"]["sequence"] = float(seq_ga)
-                    entry["hmm"]["cutoffs"]["domain"] = float(dom_ga)
-                elif field == "TP":
-                    entry["type"] = value
-                # Optional fields
-                elif field == "DR":
-                    m = re.match(r"SO;\s*(\d+);", value)
-                    if m:
-                        entry["curation"]["sequence_ontology"] = m.group(1)
-                elif field == "RN":
-                    current_ref = int(value[1:-1])  # expects [1], [2], etc.
-                    entry["curation"]["references"][current_ref] = None
-                elif field == "RM":
-                    # Ensure there is only one Medline number per reference
-                    assert entry["curation"]["references"][current_ref] is None
-                    entry["curation"]["references"][current_ref] = int(value)
-                elif field == "CC":
-                    if entry["curation"]["comment"] is None:
-                        entry["curation"]["references"] = ""
-                    else:
-                        entry["curation"]["references"] += " "
+                entry.add_feature(field, value)
+                # # Compulsory fields
+                # if field == "ID":
+                #     entry["name"] = value
+                # elif field == "AC":
+                #     accession, version = value.split(".")
+                #     entry["accession"] = accession
+                #     entry["hmm"]["version"] = version
+                # elif field == "DE":
+                #     entry["description"] = value
+                # elif field == "AU":
+                #     author, orcid = value.split(";")
+                #     entry["curation"]["authors"].append({
+                #         "author": author,
+                #         "orcid": orcid or None
+                #     })
+                # elif field == "BM":
+                #     entry["hmm"]["commands"] = value
+                # elif field == "SM":
+                #     entry["hmm"]["search"] = value
+                # elif field == "GA":
+                #     seq_ga, dom_ga = value.rstrip(";").split()
+                #     entry["hmm"]["cutoffs"]["sequence"] = float(seq_ga)
+                #     entry["hmm"]["cutoffs"]["domain"] = float(dom_ga)
+                # elif field == "TP":
+                #     entry["type"] = value
+                # # Optional fields
+                # elif field == "DR":
+                #     m = re.match(r"SO;\s*(\d+);", value)
+                #     if m:
+                #         entry["curation"]["sequence_ontology"] = m.group(1)
+                # elif field == "RN":
+                #     # expects [1], [2], etc.
+                #     current_ref = int(value[1:-1])
+                #     entry["curation"]["references"][current_ref] = None
+                # elif field == "RM":
+                #     references = entry["curation"]["references"]
+                #     # Ensure there is only one Medline number per reference
+                #     assert references[current_ref] is None
+                #     references[current_ref] = int(value)
+                # elif field == "CC":
+                #     if entry["curation"]["comment"] is None:
+                #         entry["curation"]["references"] = ""
+                #     else:
+                #         entry["curation"]["references"] += " "
+                #
+                #     entry["curation"]["references"] += value
+                # elif field == "WK":
+                #     entry["wikipedia"].append(value.replace(" ", "_"))
+            elif line.startswith("#=GS"):
+                # Generic per-Sequence
+                pass
+            elif line.startswith("#=GR"):
+                # Generic per-Residue
+                pass
+            elif line.startswith("#=GC"):
+                # Generic per-Column
+                pass
+            else:
+                # Sequence line
+                entry.sequences.append(line)
 
-                    entry["curation"]["references"] += value
-                elif field == "WK":
-                    entry["wikipedia"].append(value.replace(" ", "_"))
+    assert entry.is_empty() is True
+
+
+def parse_fasta(file: str) -> dict[str, int]:
+    """Count the number of sequences per Pfam family
+
+    :param file: string representation of the path to Pfam-A.fasta.gz
+    :return: dictionary of Pfam accession -> number of sequences
+    """
+    if file.endswith(".gz"):
+        _open = gzip.open
+    else:
+        _open = open
+
+    counts = {}
+    with _open(file, "rt") as fh:
+        for line in map(str.rstrip, fh):
+            if line[0] == ">":
+                # >A0A8S0GYS1_9PSED/45-323 A0A8S0GYS1.1 PF00389.35;2-Hacid_dh;
+                _, _, entry = line.split(None, maxsplit=2)
+                pfam_acc = entry.split(".")[0]
+                try:
+                    counts[pfam_acc] += 1
+                except KeyError:
+                    counts[pfam_acc] = 1
+
+    return counts
 
 
 def _decode(b: bytes) -> str:
@@ -1110,3 +1051,26 @@ def _decode(b: bytes) -> str:
         return s.rstrip()
 
     return b.decode("latin-1").rstrip()
+
+
+def _is_empty(obj) -> bool:
+    if isinstance(obj, dict):
+        for v in obj.values():
+            if not _is_empty(v):
+                return False
+
+        return True
+    elif isinstance(obj, list):
+        return len(obj) == 0
+    else:
+        return obj is None
+
+
+def compress_alignments(alignments: list[str]) -> bytes:
+    with BytesIO() as bs:
+        with gzip.GzipFile(mode="wb", compresslevel=9, fileobj=bs) as gz:
+            for line in alignments:
+                gz.write((line + "\n").encode("utf-8"))
+
+        data = bs.getvalue()
+    return data
