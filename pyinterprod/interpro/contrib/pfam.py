@@ -1008,10 +1008,7 @@ def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
     logger.info(f"parsing {os.path.basename(pfama_seed)}")
     seeds = {}
     for entry in parse_sto(pfama_seed):
-        seeds[entry.features["AC"]] = (
-            entry.features["SQ"],
-            entry.get_alignments()
-        )
+        seeds[entry.features["AC"]] = entry
 
     con = oracledb.connect(uri)
     cur = con.cursor()
@@ -1038,22 +1035,22 @@ def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
     )
 
     logger.info(f"parsing {os.path.basename(pfama_full)}")
-    for entry in parse_sto(pfama_full):
-        seed_num, seed_aln = seeds.pop(entry.features["AC"])
+    for full_entry in parse_sto(pfama_full):
+        seed_entry = seeds.pop(full_entry.features["AC"])
 
-        accession, version = entry.features["AC"].split(".")
+        accession, version = full_entry.features["AC"].split(".")
         seq_ontology = None
-        for ref in entry.features.get("DR", []):
+        for ref in full_entry.features.get("DR", []):
             m = re.match(r"SO;\s*(\d+);", ref)
             if m:
                 seq_ontology = m.group(1)
                 break
 
-        seq_ga_str, dom_ga_str = entry.features["GA"].rstrip(";").split()
+        seq_ga_str, dom_ga_str = full_entry.features["GA"].rstrip(";").split()
         seq_ga = float(seq_ga_str)
         dom_ga = float(dom_ga_str)
         authors = []
-        for author in entry.features["AU"]:
+        for author in full_entry.features["AU"]:
             name, orcid = author.split(";")
             authors.append({
                 "author": author,
@@ -1069,16 +1066,16 @@ def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
                 accession,
                 version,
                 seq_ontology,
-                entry.features["BM"],
-                entry.features["SM"],
+                full_entry.features["BM"],
+                full_entry.features["SM"],
                 seq_ga,
                 dom_ga,
-                seed_num,
-                seed_aln,
-                entry.features["SQ"],
-                entry.get_alignments(),
+                seed_entry.features["SQ"],
+                seed_entry.get_alignments(),
+                full_entry.features["SQ"],
+                full_entry.get_alignments(),
                 json.dumps(authors),
-                json.dumps(entry.features.get("WK", []))
+                json.dumps(full_entry.features.get("WK", []))
             ]
         )
 
