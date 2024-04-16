@@ -393,7 +393,7 @@ def persist_pfam_c(uri: str, pfam_c: str):
             ACCESSION VARCHAR2(6),
             NAME VARCHAR2(40) NOT NULL,
             DESCRIPTION VARCHAR2(100) NOT NULL,
-            COMMENT VARCHAR2(4000),
+            ABSTRACT VARCHAR2(4000),
             AUTHORS VARCHAR2(255) NOT NULL,
             REFERENCES VARCHAR2(4000) NOT NULL,
             CONSTRAINT PK_PFAM_C PRIMARY KEY (ACCESSION)
