@@ -179,7 +179,7 @@ class StockholdMSA:
                 else:
                     self.features[key] = values.pop()
 
-    def get_alignments(self, compresslevel: int = 9) -> bytes:
+    def get_alignments(self, compresslevel: int = 6) -> bytes:
         with BytesIO() as bs:
             with gzip.GzipFile(mode="wb",
                                compresslevel=compresslevel,
