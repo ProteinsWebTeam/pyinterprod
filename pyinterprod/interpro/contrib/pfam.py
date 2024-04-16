@@ -981,29 +981,6 @@ def _decode(b: bytes) -> str:
     return b.decode("latin-1").rstrip()
 
 
-def _is_empty(obj) -> bool:
-    if isinstance(obj, dict):
-        for v in obj.values():
-            if not _is_empty(v):
-                return False
-
-        return True
-    elif isinstance(obj, list):
-        return len(obj) == 0
-    else:
-        return obj is None
-
-
-def compress_alignments(alignments: list[str]) -> bytes:
-    with BytesIO() as bs:
-        with gzip.GzipFile(mode="wb", compresslevel=9, fileobj=bs) as gz:
-            for line in alignments:
-                gz.write((line + "\n").encode("utf-8"))
-
-        data = bs.getvalue()
-    return data
-
-
 def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
     logger.info(f"parsing {os.path.basename(pfama_seed)}")
     seeds = {}
