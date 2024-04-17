@@ -236,18 +236,9 @@ def run_clan_update():
                              cddid=params["summary"],
                              fam2supfam=params["members"],
                              **kwargs)
-        elif dbname == "pfam":
-            update_hmm_clans(ora_interpro_uri, database,
-                             hmmdb=params["hmm"],
-                             source=params["members"],
-                             pfam_clan_path=params["clan"],
-                             pfam_fasta_path=params["fasta"],
-                             pfam_full_path=params["full"],
-                             **kwargs)
         else:
-            update_hmm_clans(ora_interpro_uri, database,
-                             hmmdb=params["hmm"],
-                             source=params["members"],
+            update_hmm_clans(ora_interpro_uri, database, params["hmm"],
+                             **dict(params),
                              **kwargs)
 
 
@@ -468,18 +459,26 @@ def run_member_db_update():
         ]
 
         for db in member_dbs:
-            if db.identifier == 'H':
-                tasks.append(
+            if db.name.lower() == "pfam":
+                props = model_sources[db.identifier]
+                tasks += [
                     Task(
-                        fn=interpro.signature.contrib.pfam.persist_extra_pfam_data,
-                        args=(model_sources[db.identifier], ora_interpro_uri,),
-                        names="persist-pfam",
-                        # TODO: update resource requirements
-                        scheduler=dict(type=scheduler, queue=queue, mem=10000,
-                                       hours=12),
+                        fn=interpro.signature.contrib.pfam.persist_pfam_a,
+                        args=(ora_interpro_uri, props["seed"], props["full"]),
+                        names="persist-pfam-a",
+                        scheduler=dict(type=scheduler, queue=queue, mem=4000,
+                                       hours=6),
                         requires=ipm_dependencies + ["update-signatures"]
-                    )
-                )
+                    ),
+                    Task(
+                        fn=interpro.signature.contrib.pfam.persist_pfam_c,
+                        args=(ora_interpro_uri, props["clan"]),
+                        names="persist-pfam-c",
+                        scheduler=dict(type=scheduler, queue=queue, mem=500,
+                                       hours=1),
+                        requires=ipm_dependencies + ["update-signatures"]
+                    ),
+                ]
                 break
 
     feature_dbs += non_ipm_dbs
