@@ -623,8 +623,7 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
                                        sig_type=None,
                                        name=row[1],
                                        description=row[3],
-                                       abstract=row[4],
-                                       date=row[2]))
+                                       abstract=row[4]))
         else:
             cur.close()
             con.close()
@@ -647,7 +646,7 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
                     f.accession,
                     f.name or None,
                     db.identifier,
-                    f.date or datetime.now(),
+                    datetime.now(),  # TODO: use date already in Oracle?
                     f.description,
                     f.abstract[:4000] if f.abstract else None,
                 )
