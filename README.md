@@ -24,7 +24,7 @@ The `pyinterprod` package relies on three configuration files:
 - `members.conf`: contains path to files used to update InterPro's member databases (e.g. files containing signatures, HMM files, etc.).
 - `analyses.conf`: contains settings for the InterProScan match calculation (`ipr-calc`).
  
-All files can be renamed. `main.conf` is passed as an command line argument, and the paths to `members.conf` and `analyses.conf` are defined in `main.conf`.  
+All files can be renamed. `main.conf` is passed as a command line argument, and the paths to `members.conf` and `analyses.conf` are defined in `main.conf`.  
 
 ### main.conf
 
