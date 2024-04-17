@@ -620,11 +620,7 @@ def update_hmm_clans(
     con.close()
 
     logger.info("loading new clans")
-    if database.name.lower() == "panther":
-        clans = contrib.panther.get_clans(url)
-
-        def getsubdir(x): return x[:7]
-    elif database.name.lower() == "pfam":
+    if database.name.lower() == "pfam":
         clans = contrib.pfam.get_clans(
             pfam_clan_path,
             pfam_fasta_path,
