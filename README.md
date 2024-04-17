@@ -100,9 +100,6 @@ Additional Pfam properties:
 - `full`: Path to `Pfam-A.full.gz` 
 - `clan`: Path to `Pfam-C.gz`
 - `fasta`: Path to `Pfam-A.fasta.gz`
-- `rpXX`: Path to `Pfam-A.rpXX.gz`(where XX is a number)
-- `uniprot`: Path to `Pfam-A.full.uniprot.gz`
-- `alignment`: Path to directory containing alignments
 
 ### analyses.conf
 
@@ -346,6 +343,16 @@ The optional arguments are:
 <tr>
     <td>update-varsplic</td>
     <td>Update splice variant matches</td>
+    <td>update-ipm-matches, update-signatures</td>
+</tr>
+<tr>
+    <td>persist-pfam-a</td>
+    <td>Parse Pfam-A files and store relevant information (only when updating Pfam)</td>
+    <td>update-ipm-matches, update-signatures</td>
+</tr>
+<tr>
+    <td>persist-pfam-a</td>
+    <td>Parse Pfam-C to store clan information (only when updating Pfam)</td>
     <td>update-ipm-matches, update-signatures</td>
 </tr>
 <tr>
