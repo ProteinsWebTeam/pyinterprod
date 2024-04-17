@@ -257,6 +257,11 @@ def parse_fasta(file: str) -> dict[str, int]:
 
 
 def _decode(b: bytes) -> str:
+    """Decode bytes to a string using UTF-8 or Latin-1
+
+    :param b: bytes to decode
+    :return: a string, with any trailing whitespace trimmed
+    """
     try:
         s = b.decode("utf-8")
     except UnicodeDecodeError:
@@ -268,6 +273,12 @@ def _decode(b: bytes) -> str:
 
 
 def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
+    """Extract information about Pfam families and persist it in Oracle.
+
+    :param uri: Oracle connection string
+    :param pfama_seed: string representation of the path to Pfam-A.seed[.gz]
+    :param pfama_full: string representation of the path to Pfam-A.full[.gz]
+    """
     logger.info(f"parsing {os.path.basename(pfama_seed)}")
     seeds = {}
     for entry in parse_sto(pfama_seed):
@@ -349,13 +360,20 @@ def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
     logger.info("done")
 
 
-def get_clans(pfam_c: str, pfam_fa: str, pfam_full: str) -> list[Clan]:
-    logger.info(f"parsing {os.path.basename(pfam_fa)}")
-    num_seqs = parse_fasta(pfam_fa)
+def get_clans(pfam_c: str, pfama_fa: str, pfama_full: str) -> list[Clan]:
+    """Extract information about Pfam clans and their members
 
-    logger.info(f"parsing {os.path.basename(pfam_full)}")
+    :param pfam_c: string representation of the path to Pfam-C[.gz]
+    :param pfama_fa: string representation of the path to Pfam-A.fasta[.gz]
+    :param pfama_full: string representation of the path to Pfam-A.full[.gz]
+    :return: list of Clan objects
+    """
+    logger.info(f"parsing {os.path.basename(pfama_fa)}")
+    num_seqs = parse_fasta(pfama_fa)
+
+    logger.info(f"parsing {os.path.basename(pfama_full)}")
     num_full = {}
-    for entry in parse_sto(pfam_full):
+    for entry in parse_sto(pfama_full):
         accession, version = entry.features["AC"].split(".")
         num_full[accession] = entry.features["SQ"]
 
@@ -383,6 +401,11 @@ def get_clans(pfam_c: str, pfam_fa: str, pfam_full: str) -> list[Clan]:
 
 
 def persist_pfam_c(uri: str, pfam_c: str):
+    """Extract Clan information from Pfam-C and persist it in Oracle.
+
+    :param uri: Oracle connection string
+    :param pfam_c: string representation of the path to Pfam-C[.gz]
+    """
     con = oracledb.connect(uri)
     cur = con.cursor()
     drop_table(cur, "INTERPRO.PFAM_C", purge=True)
