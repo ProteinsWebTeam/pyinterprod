@@ -605,7 +605,7 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
             features = contrib.elm.load_classes(cur,
                                                 db_props["classes"],
                                                 db_props["instances"],
-                                                db_props["sequences"])
+                                                db_props["fasta"])
         elif db.identifier == 'x':
             # COILS
             features = []

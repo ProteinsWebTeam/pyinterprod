@@ -232,7 +232,7 @@ def run_clan_update():
         params = options[dbname]
         if dbname == "cdd":
             update_cdd_clans(ora_interpro_uri, database,
-                             cddmasters=params["sequences"],
+                             cddmasters=params["fasta"],
                              cddid=params["summary"],
                              fam2supfam=params["members"],
                              **kwargs)
@@ -472,7 +472,7 @@ def run_member_db_update():
                     ),
                     Task(
                         fn=interpro.signature.contrib.pfam.persist_pfam_c,
-                        args=(ora_interpro_uri, props["clan"]),
+                        args=(ora_interpro_uri, props["clans"]),
                         names="persist-pfam-c",
                         scheduler=dict(type=scheduler, queue=queue, mem=500,
                                        hours=1),

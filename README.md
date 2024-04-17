@@ -76,30 +76,28 @@ All files can be renamed. `main.conf` is passed as a command line argument, and 
 Each section corresponds to a member database (or a sequence feature database), e.g.
 
 ```
-[pfam]
-hmm =
-members =
+[profile]
 signatures =
 ```
 
-The most common properties are:
+Supported properties are:
 
-- `hmm`: path the HMM file (only for databases using HMMER3-based models). Required when running `ipr-hmm`.
-- `members`: path to the file containing the clan-signature mapping. Required when running `ipr-clans`.
-- `signatures`: path to the source of the database signatures (database connection string for Pfam, file for other resources).
+| Name         | Description                                                                                            |
+|--------------|--------------------------------------------------------------------------------------------------------|
+| `signatures` | Path to the source of database signatures.                                                             |
+| `hmm`        | Path to an HMM file, used for databases using on HMMER3-based models. Required when running `ipr-hmm`. |
+| `fasta`      | Path to sequences used by models, in the FASTA format.                                                 |
+| `members`    | Path to file containing the clan-signature mapping.                                                    |
+| `go-terms`   | Path to file or directory of GO annotations. PANTHER and NCBIfam only.                                 |
+| `triage`     | Path to file containing the signatures/models to include in InterPro. NCBIfam only.                    |       
+| `summary`    | Path to file of summary information. CDD only.                                                         |
+| `seed`       | Path to file of SEED alignments. Pfam only.                                                            |
+| `full`       | Path to file of full alignments. Pfam only.                                                            |
+| `clans`      | Path to file of clan information. Pfam only.                                                           |
+| `mapping`    | Path to file of model-signature mapping. CATH-Gene3D only.                                             |
+| `classes`    | Path to file of information about classes. ELM only.                                                   |
+| `instances`  | Path to file of information about instances. ELM only.                                                 |
 
-Additional properties:
-
-- `summary`: CDD only, information on superfamilies
-- `mapping`: Cath-Gene3D only, family-model mapping file
-- `go-terms`: PANTHER only, directory of PAINT annotations (which include GO annotations)
-
-Additional Pfam properties:
-
-- `seed`: Path to `Pfam-A.seed.gz`
-- `full`: Path to `Pfam-A.full.gz` 
-- `clan`: Path to `Pfam-C.gz`
-- `fasta`: Path to `Pfam-A.fasta.gz`
 
 ### analyses.conf
 
