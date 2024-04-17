@@ -12,7 +12,6 @@ from pyinterprod.utils import Table
 from pyinterprod.utils.oracle import drop_table
 
 
-_RECORD_BREAK = "//"
 _TYPES = {
     "Domain": 'D',
     "Family": 'F',
