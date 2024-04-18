@@ -96,17 +96,17 @@ def get_protenn_entries(cur, file: str) -> list[Method]:
 def get_signatures(pfam_seed_file: str) -> list[Method]:
     methods = []
     for entry in parse_sto(pfam_seed_file):
+        accession, version = entry.features["AC"].split(".")
         comment = entry.features.get("CC")
         rn2pmid = {}
         if comment:
             for i, obj in enumerate(entry.features.get("RN", [])):
-                rn2pmid[i+1] = int(obj["RM"])
+                rn2pmid[i+1] = int(" ".join(obj["RM"]))
 
-            abstract = _repl_references(comment, rn2pmid)
+            abstract = _repl_references(accession, comment, rn2pmid)
         else:
             abstract = None
 
-        accession, version = entry.features["AC"].split(".")
         methods.append(
             Method(
                 accession,
@@ -121,12 +121,17 @@ def get_signatures(pfam_seed_file: str) -> list[Method]:
     return methods
 
 
-def _repl_references(text: str, references: dict[int, int]):
+def _repl_references(acc: str, text: str, references: dict[int, int]):
     def _repl(match: re.Match) -> str:
         refs = []
         for ref_num in map(int, map(str.strip, match.group(1).split(','))):
-            pmid = references[ref_num]
-            refs.append(f"PMID:{pmid}")
+            try:
+                pmid = references[ref_num]
+            except KeyError:
+                logger.warning(f"{acc}: missing PubMed ID "
+                               f"for reference #{ref_num}")
+            else:
+                refs.append(f"PMID:{pmid}")
 
         return f"[{','.join(refs)}]"
 
