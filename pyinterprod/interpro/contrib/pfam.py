@@ -391,13 +391,13 @@ def get_clans(pfam_c: str, pfama_fa: str, pfama_full: str) -> list[Clan]:
         members = []
         for member in entry.features["MB"]:
             member = member.rstrip(";")
-            total += num_seqs[member]
+            total += num_seqs.get(member, 0)
 
         clans.append(Clan(accession, name, description))
         for member in members:
             clans[-1].members.append({
                 "accession": member,
-                "score": num_full[member] / total if total > 0 else 0
+                "score": num_full.get(member, 0) / total if total > 0 else 0
             })
 
     return clans
