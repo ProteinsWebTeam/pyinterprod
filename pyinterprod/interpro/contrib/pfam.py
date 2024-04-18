@@ -20,6 +20,9 @@ _TYPES = {
     "Disordered": 'O',
     "Motif": 'C'
 }
+_STO_MAIN_FIELDS = {"AC", "ID", "DE", "AU", "BM", "SM", "GA", "TC", "TP", "SQ"}
+_STO_OTHER_FIELDS = {"DR", "CC", "WK", "CL", "MB"}
+_STO_REFERENCE_FIELDS = {"RC", "RM", "RT", "RA", "RL"}
 
 
 def iter_protenn_matches(file: str):
@@ -130,11 +133,6 @@ def _repl_references(text: str, references: dict[int, int]):
     return re.sub(r"\[([\d\s,]+)]", _repl, text)
 
 
-_MAIN_FIELDS = {"AC", "ID", "DE", "AU", "BM", "SM", "GA", "TC", "TP", "SQ"}
-_OTHER_FIELDS = {"DR", "CC", "WK", "CL", "MB"}
-_REFERENCE_FIELDS = {"RC", "RM", "RT", "RA", "RL"}
-
-
 class StockholdMSA:
     def __init__(self):
         self.features = {}
@@ -146,7 +144,7 @@ class StockholdMSA:
                 self.features[name].append({})
             except KeyError:
                 self.features[name] = [{}]
-        elif name in _REFERENCE_FIELDS:
+        elif name in _STO_REFERENCE_FIELDS:
             if "RN" not in self.features:
                 # logger.warning(f"{name} {value} ignored (preceding RN field)")
                 return
@@ -156,7 +154,7 @@ class StockholdMSA:
                 ref_dict[name].append(value)
             except KeyError:
                 ref_dict[name] = [value]
-        elif name in _MAIN_FIELDS or name in _OTHER_FIELDS:
+        elif name in _STO_MAIN_FIELDS or name in _STO_OTHER_FIELDS:
             try:
                 self.features[name].append(value)
             except KeyError:
