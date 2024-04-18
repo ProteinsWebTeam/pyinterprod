@@ -349,7 +349,7 @@ The optional arguments are:
     <td>update-ipm-matches, update-signatures</td>
 </tr>
 <tr>
-    <td>persist-pfam-a</td>
+    <td>persist-pfam-c</td>
     <td>Parse Pfam-C to store clan information (only when updating Pfam)</td>
     <td>update-ipm-matches, update-signatures</td>
 </tr>
