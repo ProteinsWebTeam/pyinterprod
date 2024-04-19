@@ -594,16 +594,13 @@ def update_cdd_clans(url: str, database: Database, cddmasters: str,
             raise RuntimeError(f"{errors} error(s)")
 
 
-def update_hmm_clans(
-    url: str,
-    database: Database,
-    hmmdb: str,
-    pfam_clan_path: Optional[str] = None,
-    pfam_fasta_path: Optional[str] = None,
-    pfam_full_path: Optional[str] = None,
-    **kwargs
-):
-    clan_source = kwargs.get("source")
+def update_hmm_clans(uri: str, database: Database, hmmdb: str, **kwargs):
+    """Run a profile-profile comparison between clan members and update clans
+    :param uri: Oracle connection string
+    :param database: Database object
+    :param hmmdb: string representation of the path to the HMM file
+    :param kwargs: dict of additional options and database-specific arguments
+    """
     threads = kwargs.get("threads")
     tmpdir = kwargs.get("tmpdir")
 
@@ -611,7 +608,7 @@ def update_hmm_clans(
         os.makedirs(tmpdir, exist_ok=True)
 
     logger.info("deleting old clans")
-    con = oracledb.connect(url)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute("DELETE FROM INTERPRO.CLAN WHERE DBCODE = :1",
                 (database.identifier,))
@@ -620,20 +617,14 @@ def update_hmm_clans(
     con.close()
 
     logger.info("loading new clans")
-    if database.name.lower() == "panther":
-        clans = contrib.panther.get_clans(url)
-
-        def getsubdir(x): return x[:7]
-    elif database.name.lower() == "pfam":
-        clans = contrib.pfam.get_clans(
-            pfam_clan_path,
-            pfam_fasta_path,
-            pfam_full_path,
-        )
+    if database.name.lower() == "pfam":
+        clans = contrib.pfam.get_clans(kwargs["clans"],
+                                       kwargs["fasta"],
+                                       kwargs["full"])
 
         def getsubdir(x): return x[:5]
     elif database.name.lower() == "pirsf":
-        clans = contrib.pirsf.get_clans(clan_source)
+        clans = contrib.pirsf.get_clans(kwargs["members"])
 
         def getsubdir(x): return x[:8]
     else:
@@ -695,7 +686,7 @@ def update_hmm_clans(
             f = executor.submit(run_hmmscan, hmmdb, seqfile, domfile, outfile)
             fs[f] = model_acc
 
-        con = oracledb.connect(url)
+        con = oracledb.connect(uri)
         cur = con.cursor()
         cur2 = con.cursor()
         cur2.setinputsizes(25, 25, oracledb.DB_TYPE_BINARY_DOUBLE,
