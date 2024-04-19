@@ -167,19 +167,24 @@ class StockholdMSA:
 
     def close(self):
         for key, values in self.features.items():
-            if key in ("BM", "SM", "CC"):
+            if key in ("BM", "SM", "CC", "DE"):
                 self.features[key] = " ".join(values)
             elif key in ("AU", "WK", "RN", "DR", "MB"):
                 pass
-            else:
+            elif len(values) != 1:
                 # Other fields should have one value only
-                assert len(values) == 1
-                if key == "SQ":
-                    num_sequences = int(values.pop())
-                    assert num_sequences == len(self.sequences)
+                raise ValueError(f"more than one value "
+                                 f"for field {key}: {values}")
+            elif key == "SQ":
+                num_sequences = int(values.pop())
+                if num_sequences == len(self.sequences):
                     self.features[key] = num_sequences
                 else:
-                    self.features[key] = values.pop()
+                    raise ValueError(f"inconsistent number of sequences: "
+                                     f"{num_sequences} != {len(self.sequences)}"
+                                     f" ({self.features})")
+            else:
+                self.features[key] = values.pop()
 
     def get_alignments(self, compresslevel: int = 6) -> bytes:
         with BytesIO() as bs:
