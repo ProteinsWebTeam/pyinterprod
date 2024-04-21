@@ -265,7 +265,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 entry_acc = obj[1]
                 entry_name = obj[2]
                 entry_type = types[obj[3]]
-                origin = obj[4],
+                origin = obj[4]
                 sig_old_tot = obj[5]
                 sig_new_tot = obj[6]
                 change = obj[7]
