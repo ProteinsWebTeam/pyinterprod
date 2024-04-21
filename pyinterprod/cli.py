@@ -465,7 +465,7 @@ def run_member_db_update():
                     Task(
                         fn=interpro.signature.contrib.pfam.persist_pfam_a,
                         args=(ora_interpro_uri, props["seed"], props["full"]),
-                        names="persist-pfam-a",
+                        name="persist-pfam-a",
                         scheduler=dict(type=scheduler, queue=queue, mem=4000,
                                        hours=6),
                         requires=ipm_dependencies + ["update-signatures"]
@@ -473,7 +473,7 @@ def run_member_db_update():
                     Task(
                         fn=interpro.signature.contrib.pfam.persist_pfam_c,
                         args=(ora_interpro_uri, props["clans"]),
-                        names="persist-pfam-c",
+                        name="persist-pfam-c",
                         scheduler=dict(type=scheduler, queue=queue, mem=500,
                                        hours=1),
                         requires=ipm_dependencies + ["update-signatures"]
