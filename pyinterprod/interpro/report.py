@@ -148,7 +148,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             descrs_then = set(sigs_then.get(acc, {}).keys())
             descrs_now = set(sigs_now.get(acc, {}).keys())
             if descrs_then != descrs_now:
-                changes[entry_acc] = (
+                changes[acc] = (
                     entry_acc, entry_name, type_code, origin,
                     descrs_then - descrs_now,
                     descrs_now - descrs_then
