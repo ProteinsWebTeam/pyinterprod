@@ -135,5 +135,13 @@ def update_go_terms(uri: str, root: str):
         con.commit()
         records.clear()
 
+    cur.execute(
+        """
+        CREATE INDEX I_PANTHER2GO_SUBFAM
+        ON INTERPRO.PANTHER2GO (SUBFAMILY_AC)
+        NOLOGGING        
+        """
+    )
+
     cur.close()
     con.close()
