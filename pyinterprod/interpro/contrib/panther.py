@@ -142,6 +142,7 @@ def update_go_terms(uri: str, root: str):
         NOLOGGING        
         """
     )
+    cur.execute("GRANT SELECT ON INTERPRO.PANTHER2GO TO INTERPRO_SELECT")
 
     cur.close()
     con.close()
