@@ -2,6 +2,7 @@ import gzip
 import json
 import os
 import re
+import tarfile
 from io import BytesIO
 
 import oracledb
@@ -25,21 +26,25 @@ _STO_OTHER_FIELDS = {"DR", "CC", "WK", "CL", "MB"}
 _STO_REFERENCE_FIELDS = {"RC", "RM", "RT", "RA", "RL"}
 
 
-def iter_protenn_matches(file: str):
-    """Iterate ProtENN matches from the Pfam-N domain calls TSV file
+def iter_interpro_n_matches(file: str):
+    """Iterate Pfam inferences from the InterPro-N archive
     """
-    with open(file, "rt") as fh:
-        for line in fh:
-            sequence_id, pfam_acc, start, end = line.rstrip().split("\t")
-            if re.fullmatch(r"PF\d+", pfam_acc):
-                yield sequence_id, pfam_acc, int(start), int(end)
+    with tarfile.open(file, mode="r") as tar:
+        for member in tar:
+            if member.name.endswith(".tsv"):
+                br = tar.extractfile(member)
+                lines = br.read().decode("utf-8").splitlines(keepends=False)
+
+                for line in lines[1:]:
+                    uniprot_acc, pfam_acc, start, end, score = line.split("\t")
+                    yield uniprot_acc, pfam_acc, int(start), int(end)
 
 
-def get_protenn_entries(cur, file: str) -> list[Method]:
-    drop_table(cur, "INTERPRO.PFAMN_MATCH_TMP", purge=True)
+def get_pfam_n_entries(cur, file: str) -> list[Method]:
+    drop_table(cur, "INTERPRO.PFAMN_MATCH", purge=True)
     cur.execute(
         """
-        CREATE TABLE INTERPRO.PFAMN_MATCH_TMP (
+        CREATE TABLE INTERPRO.PFAMN_MATCH (
             PROTEIN_ID VARCHAR(15) NOT NULL,
             METHOD_AC VARCHAR2(25) NOT NULL,
             POS_FROM NUMBER(5) NOT NULL,
@@ -50,45 +55,15 @@ def get_protenn_entries(cur, file: str) -> list[Method]:
 
     query = """
         INSERT /*+ APPEND */ 
-        INTO INTERPRO.PFAMN_MATCH_TMP 
+        INTO INTERPRO.PFAMN_MATCH 
         VALUES (:1, :2, :3, :4)
     """
 
     with Table(con=cur.connection, query=query, autocommit=True) as table:
-        it = iter_protenn_matches(file)
-
-        sequence_id, pfam_acc, start, end = next(it)
-        accessions = {pfam_acc}
-        uniparc = sequence_id.startswith("UPI")
-        table.insert((sequence_id, pfam_acc, start, end))
-
-        for sequence_id, pfam_acc, start, end in it:
+        accessions = set()
+        for uniprot_acc, pfam_acc, start, end in iter_interpro_n_matches(file):
             accessions.add(pfam_acc)
-            table.insert((sequence_id, pfam_acc, start, end))
-
-    drop_table(cur, "INTERPRO.PFAMN_MATCH", purge=True)
-    if uniparc:
-        cur.execute(
-            """
-            CREATE TABLE INTERPRO.PFAMN_MATCH NOLOGGING
-            AS SELECT * FROM INTERPRO.PFAMN_MATCH_TMP WHERE 1 = 0
-            """
-        )
-
-        cur.execute(
-            """
-            INSERT /*+ APPEND */ INTO INTERPRO.PFAMN_MATCH
-            SELECT X.AC, M.METHOD_AC, M.POS_FROM, M.POS_TO
-            FROM INTERPRO.PFAMN_MATCH_TMP M
-            INNER JOIN UNIPARC.XREF X ON M.PROTEIN_ID = X.UPI
-            WHERE X.DBID IN (2, 3) AND X.DELETED = 'N'
-            """
-        )
-
-        cur.connection.commit()
-        drop_table(cur, "INTERPRO.PFAMN_MATCH_TMP", purge=True)
-    else:
-        cur.execute("RENAME PFAMN_MATCH_TMP TO PFAMN_MATCH")
+            table.insert((uniprot_acc, pfam_acc, start, end))
 
     return [Method(pfam_acc, sig_type=None) for pfam_acc in accessions]
 
