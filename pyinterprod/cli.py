@@ -489,14 +489,14 @@ def run_member_db_update():
                 args=(ora_interpro_uri, [(db, model_sources[db.identifier])
                                          for db in feature_dbs]),
                 name="update-features",
-                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=2),
+                scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=2),
                 requires=ipm_dependencies
             ),
             Task(
                 fn=interpro.match.update_database_feature_matches,
                 args=(ora_interpro_uri, feature_dbs),
                 name="update-fmatches",
-                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=4),
+                scheduler=dict(type=scheduler, queue=queue, mem=500, hours=4),
                 requires=["update-features"]
             )
         ]
