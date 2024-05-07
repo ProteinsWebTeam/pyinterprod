@@ -258,7 +258,7 @@ def update_database_feature_matches(uri: str, databases: list):
             cur.execute(
                 """
                 INSERT /*+ APPEND */ INTO INTERPRO.FEATURE_MATCH_NEW
-                SELECT M.PROTEIN_ID, M.METHOD_AC, NULL, M.POS_FROM, M.POS_TO, :1
+                SELECT M.PROTEIN_ID,M.METHOD_AC,NULL,M.POS_FROM,M.POS_TO,:1
                 FROM INTERPRO.PFAMN_MATCH M
                 WHERE EXISTS (
                     SELECT 1
@@ -274,7 +274,7 @@ def update_database_feature_matches(uri: str, databases: list):
             cur.execute(
                 """
                 INSERT /*+ APPEND */ INTO INTERPRO.FEATURE_MATCH_NEW
-                SELECT M.PROTEIN_ID, M.METHOD_AC, NULL, M.POS_FROM, M.POS_TO, :1
+                SELECT M.PROTEIN_ID,M.METHOD_AC,NULL,M.POS_FROM,M.POS_TO,:1
                 FROM INTERPRO.ELM_MATCH M
                 WHERE EXISTS (
                     SELECT 1
@@ -992,7 +992,9 @@ def _get_taxon2superkingdom(cur: oracledb.Cursor) -> dict[int, str]:
     return taxon2superkingdom
 
 
-def _get_entries_protein_counts(cur: oracledb.Cursor) -> dict[str, dict[str, int]]:
+def _get_entries_protein_counts(
+        cur: oracledb.Cursor
+) -> dict[str, dict[str, int]]:
     """
     Return the number of protein matched by each InterPro entry.
     Only complete sequences are considered.
@@ -1027,7 +1029,8 @@ def _get_entries_protein_counts(cur: oracledb.Cursor) -> dict[str, dict[str, int
     return counts
 
 
-def get_sig_protein_counts(cur: oracledb.Cursor, dbid: str) -> dict[str, dict[str, int]]:
+def get_sig_protein_counts(cur: oracledb.Cursor,
+                           dbid: str) -> dict[str, dict[str, int]]:
     """
     Return the number of protein matches by each member database signature.
     Only complete sequences are considered
