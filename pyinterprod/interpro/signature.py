@@ -595,7 +595,7 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
         elif db.identifier == 'd':
             # Pfam-N
             file = db_props["signatures"]
-            features = contrib.pfam.get_protenn_entries(cur, file)
+            features = contrib.pfam.get_pfam_n_entries(cur, file)
         elif db.identifier == 'f':
             # FunFams
             file = db_props["signatures"]

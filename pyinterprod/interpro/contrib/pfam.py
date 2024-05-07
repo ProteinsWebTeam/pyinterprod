@@ -40,7 +40,7 @@ def iter_interpro_n_matches(file: str):
                     yield uniprot_acc, pfam_acc, int(start), int(end)
 
 
-def get_pfam_n_entries(cur, file: str) -> list[Method]:
+def get_pfam_n_entries(cur: oracledb.Cursor, file: str) -> list[Method]:
     drop_table(cur, "INTERPRO.PFAMN_MATCH", purge=True)
     cur.execute(
         """
