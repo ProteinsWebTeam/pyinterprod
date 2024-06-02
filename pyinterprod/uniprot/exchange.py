@@ -188,7 +188,7 @@ def export_xrefs(url: str, outdir: str, emails: dict):
         info=emails,
         to=["uniprot_db"],
         cc=["uniprot_prod"],
-        bcc=["interpro"],
+        bcc=["sender"],
         subject="InterPro XREF files are ready",
         content=f"""\
 Dear UniProt team,
