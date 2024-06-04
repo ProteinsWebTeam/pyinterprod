@@ -295,11 +295,13 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
 
         # New signatures
         with open(os.path.join(dst, "new.tsv"), "wt") as fh:
-            fh.write("Signature\tName\tDescription\n")
+            fh.write("Signature\tName\tDescription\t# Proteins\n")
             for acc, name, descr, _type in data["new"]:
                 # Ignore PANTHER subfamilies (won't be integrated)
                 if not re.fullmatch(r"PTHR\d+:SF\d+", acc):
-                    fh.write(f"{acc}\t{name or 'N/A'}\t{descr or 'N/A'}\n")
+                    sig_cnts = sum(new_counts.get(acc, {}).values())
+                    fh.write(f"{acc}\t{name or 'N/A'}\t{descr or 'N/A'}\t"
+                             f"{sig_cnts}\n")
 
     cur.close()
     con.close()
