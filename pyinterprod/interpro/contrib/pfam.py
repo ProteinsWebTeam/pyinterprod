@@ -339,9 +339,9 @@ def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
                 seq_ga,
                 dom_ga,
                 seed_entry.features["SQ"],
-                seed_entry.get_alignments(),
+                seed_entry.compress(),
                 full_entry.features["SQ"],
-                full_entry.get_alignments(),
+                full_entry.compress(),
                 json.dumps(authors),
                 json.dumps(full_entry.features.get("WK", []))
             ]
