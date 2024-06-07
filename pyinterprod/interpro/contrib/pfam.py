@@ -115,8 +115,31 @@ def _repl_references(acc: str, text: str, references: dict[int, int]):
 
 class StockholdMSA:
     def __init__(self):
+        self.lines = ""
         self.features = {}
         self.sequences = []
+        self.complete = False
+
+    def add_line(self, line: str):
+        self.lines += line
+        if line == "//":
+            self.close()
+        elif line.startswith("#=GF"):
+            # Generic per-File
+            _, field, value = line.split(maxsplit=2)
+            self.add_feature(field, value)
+        elif line.startswith("#=GS"):
+            # Generic per-Sequence
+            pass
+        elif line.startswith("#=GR"):
+            # Generic per-Residue
+            pass
+        elif line.startswith("#=GC"):
+            # Generic per-Column
+            pass
+        elif line[0] != "#":
+            # Sequence line
+            self.sequences.append(line)
 
     def add_feature(self, name: str, value: str):
         if name == "RN":
@@ -141,6 +164,10 @@ class StockholdMSA:
                 self.features[name] = [value]
 
     def close(self):
+        if self.complete:
+            return
+
+        self.complete = True
         for key, values in self.features.items():
             if key in ("BM", "SM", "CC", "DE"):
                 self.features[key] = " ".join(values)
@@ -161,19 +188,19 @@ class StockholdMSA:
             else:
                 self.features[key] = values.pop()
 
-    def get_alignments(self, compresslevel: int = 6) -> bytes:
+    def compress(self, compresslevel: int = 6) -> bytes:
         with BytesIO() as bs:
             with gzip.GzipFile(mode="wb",
                                compresslevel=compresslevel,
                                fileobj=bs) as gz:
-                for line in self.sequences:
+                for line in self.lines:
                     gz.write((line + "\n").encode("utf-8"))
 
             data = bs.getvalue()
         return data
 
     def is_empty(self) -> bool:
-        return not self.features and not self.sequences
+        return len(self.lines) == 0
 
 
 def parse_sto(file: str):
@@ -189,26 +216,10 @@ def parse_sto(file: str):
     with _open(file, "rb") as fh:
         entry = StockholdMSA()
         for line in map(_decode, fh):
-            if line == "//":
-                entry.close()
+            entry.add_line(line)
+            if entry.complete:
                 yield entry
                 entry = StockholdMSA()
-            elif line.startswith("#=GF"):
-                # Generic per-File
-                _, field, value = line.split(maxsplit=2)
-                entry.add_feature(field, value)
-            elif line.startswith("#=GS"):
-                # Generic per-Sequence
-                pass
-            elif line.startswith("#=GR"):
-                # Generic per-Residue
-                pass
-            elif line.startswith("#=GC"):
-                # Generic per-Column
-                pass
-            elif line[0] != "#":
-                # Sequence line
-                entry.sequences.append(line)
 
     assert entry.is_empty() is True
 
