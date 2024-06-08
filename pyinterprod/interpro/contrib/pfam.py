@@ -3,7 +3,6 @@ import json
 import os
 import re
 import tarfile
-from io import BytesIO
 
 import oracledb
 
@@ -70,7 +69,7 @@ def get_pfam_n_entries(cur: oracledb.Cursor, file: str) -> list[Method]:
 
 def get_signatures(pfam_seed_file: str) -> list[Method]:
     methods = []
-    for entry in parse_sto(pfam_seed_file):
+    for entry, _ in parse_sto(pfam_seed_file):
         accession, version = entry.features["AC"].split(".")
         comment = entry.features.get("CC")
         rn2pmid = {}
@@ -115,13 +114,11 @@ def _repl_references(acc: str, text: str, references: dict[int, int]):
 
 class StockholdMSA:
     def __init__(self):
-        self.lines = []
         self.features = {}
         self.sequences = []
         self.complete = False
 
-    def add_line(self, line: str):
-        self.lines.append(line)
+    def process_line(self, line: str):
         if line == "//":
             self.close()
         elif line.startswith("#=GF"):
@@ -188,20 +185,6 @@ class StockholdMSA:
             else:
                 self.features[key] = values.pop()
 
-    def compress(self, compresslevel: int = 6) -> bytes:
-        with BytesIO() as bs:
-            with gzip.GzipFile(mode="wb",
-                               compresslevel=compresslevel,
-                               fileobj=bs) as gz:
-                for line in self.lines:
-                    gz.write((line + "\n").encode("utf-8"))
-
-            data = bs.getvalue()
-        return data
-
-    def is_empty(self) -> bool:
-        return len(self.lines) == 0
-
 
 def parse_sto(file: str):
     """Parse a Gzip-compressed Pfam file in the Stockhold format
@@ -215,13 +198,16 @@ def parse_sto(file: str):
 
     with _open(file, "rb") as fh:
         entry = StockholdMSA()
+        raw = ""
         for line in map(_decode, fh):
-            entry.add_line(line)
+            raw += line + "\n"
+            entry.process_line(line)
             if entry.complete:
-                yield entry
+                yield entry, raw
                 entry = StockholdMSA()
+                raw = ""
 
-    assert entry.is_empty() is True
+    assert len(raw) == 0
 
 
 def parse_fasta(file: str) -> dict[str, int]:
@@ -275,8 +261,8 @@ def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
     """
     logger.info(f"parsing {os.path.basename(pfama_seed)}")
     seeds = {}
-    for entry in parse_sto(pfama_seed):
-        seeds[entry.features["AC"]] = entry
+    for entry, raw in parse_sto(pfama_seed):
+        seeds[entry.features["AC"]] = (entry, raw)
 
     con = oracledb.connect(uri)
     cur = con.cursor()
@@ -304,8 +290,8 @@ def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
 
     logger.info(f"parsing {os.path.basename(pfama_full)}")
     progress = 0
-    for full_entry in parse_sto(pfama_full):
-        seed_entry = seeds.pop(full_entry.features["AC"])
+    for full_entry, full_raw in parse_sto(pfama_full):
+        seed_entry, seed_raw = seeds.pop(full_entry.features["AC"])
 
         accession, version = full_entry.features["AC"].split(".")
         seq_ontology = None
@@ -340,9 +326,9 @@ def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
                 seq_ga,
                 dom_ga,
                 seed_entry.features["SQ"],
-                seed_entry.compress(),
+                gzip.compress(seed_raw.encode("utf-8"), compresslevel=6),
                 full_entry.features["SQ"],
-                full_entry.compress(),
+                gzip.compress(full_raw.encode("utf-8"), compresslevel=6),
                 json.dumps(authors),
                 json.dumps(full_entry.features.get("WK", []))
             ]
@@ -372,13 +358,13 @@ def get_clans(pfam_c: str, pfama_fa: str, pfama_full: str) -> list[Clan]:
 
     logger.info(f"parsing {os.path.basename(pfama_full)}")
     num_full = {}
-    for entry in parse_sto(pfama_full):
+    for entry, _ in parse_sto(pfama_full):
         accession, version = entry.features["AC"].split(".")
         num_full[accession] = entry.features["SQ"]
 
     logger.info(f"parsing {os.path.basename(pfam_c)}")
     clans = []
-    for entry in parse_sto(pfam_c):
+    for entry, _ in parse_sto(pfam_c):
         accession, version = entry.features["AC"].split(".")
         name = entry.features["ID"]
         description = entry.features["DE"]
@@ -424,7 +410,7 @@ def persist_pfam_c(uri: str, pfam_c: str):
     )
 
     logger.info(f"parsing {os.path.basename(pfam_c)}")
-    for entry in parse_sto(pfam_c):
+    for entry, _ in parse_sto(pfam_c):
         accession, version = entry.features["AC"].split(".")
         name = entry.features["ID"]
         description = entry.features["DE"]
