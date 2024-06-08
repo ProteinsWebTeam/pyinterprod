@@ -303,6 +303,7 @@ def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
     )
 
     logger.info(f"parsing {os.path.basename(pfama_full)}")
+    progress = 0
     for full_entry in parse_sto(pfama_full):
         seed_entry = seeds.pop(full_entry.features["AC"])
 
@@ -346,7 +347,11 @@ def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
                 json.dumps(full_entry.features.get("WK", []))
             ]
         )
+        progress += 1
+        if progress % 100 == 0:
+            logger.info(f"{progress:>15,}")
 
+    logger.info(f"{progress:>15,}")
     con.commit()
     cur.close()
     con.close()
