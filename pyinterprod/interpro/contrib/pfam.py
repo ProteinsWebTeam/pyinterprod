@@ -115,13 +115,13 @@ def _repl_references(acc: str, text: str, references: dict[int, int]):
 
 class StockholdMSA:
     def __init__(self):
-        self.lines = ""
+        self.lines = []
         self.features = {}
         self.sequences = []
         self.complete = False
 
     def add_line(self, line: str):
-        self.lines += line
+        self.lines.append(line)
         if line == "//":
             self.close()
         elif line.startswith("#=GF"):
