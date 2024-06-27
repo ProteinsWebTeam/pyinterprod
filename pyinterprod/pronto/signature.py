@@ -409,17 +409,17 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
     logger.info("done")
 
 
-def _iter_comparisons(comps: dict[str, dict[str, list[int, int, int]]]):
+def _iter_comparisons(comps: dict[str, dict[str, list[int, int, int, int]]]):
     for acc1, others in comps.items():
         for acc2, (collocations, protein_overlaps, _, rev_overlaps) in others.items():
             yield acc1, acc2, collocations, protein_overlaps, rev_overlaps
             yield acc2, acc1, collocations, protein_overlaps, rev_overlaps
 
 
-def _iter_predictions(comps: dict[str, dict[str, list[int, int, int]]],
+def _iter_predictions(comps: dict[str, dict[str, list[int, int, int, int]]],
                       sigs: dict[str, list[int, int, int, int, int]]):
     for acc1, others in comps.items():
-        for acc2, (collocts, prot_overlaps, res_overlaps) in others.items():
+        for acc2, (collocts, prot_overlaps, res_overlaps, _) in others.items():
             _, _, num_proteins1, num_reviewed1, _, num_residues1 = sigs[acc1]
             _, _, num_proteins2, num_reviewed2, _, num_residues2 = sigs[acc2]
 
