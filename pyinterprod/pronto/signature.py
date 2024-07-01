@@ -324,14 +324,14 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 signature_acc_2 VARCHAR(25) NOT NULL,
                 num_collocations INTEGER NOT NULL,
                 num_overlaps INTEGER NOT NULL,
-                num_reviewed_overlaps INTEGER NOT NULL
+                num_reviewed_res_overlaps INTEGER NOT NULL
             )
             """
         )
 
         sql = """
             INSERT INTO comparison (signature_acc_1, signature_acc_2, 
-                                    num_collocations, num_overlaps, num_reviewed_overlaps) 
+                                    num_collocations, num_overlaps, num_reviewed_res_overlaps) 
             VALUES (%s, %s, %s, %s, %s)
         """
 
