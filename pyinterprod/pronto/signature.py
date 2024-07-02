@@ -115,7 +115,7 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                                 0,  # number of collocations
                                 0,  # number of proteins with overlaps
                                 0,  # number of overlapping residues
-                                0, # number of overlapping reviewed residues
+                                0,  # number of overlapping reviewed residues
                             ]
 
                         cmp[0] += 1
@@ -331,7 +331,8 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
 
         sql = """
             INSERT INTO comparison (signature_acc_1, signature_acc_2, 
-                                    num_collocations, num_overlaps, num_reviewed_res_overlaps) 
+                                    num_collocations, num_overlaps, 
+                                    num_reviewed_res_overlaps) 
             VALUES (%s, %s, %s, %s, %s)
         """
 
@@ -411,9 +412,9 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
 
 def _iter_comparisons(comps: dict[str, dict[str, list[int, int, int, int]]]):
     for acc1, others in comps.items():
-        for acc2, (collocations, protein_overlaps, _, rev_overlaps) in others.items():
-            yield acc1, acc2, collocations, protein_overlaps, rev_overlaps
-            yield acc2, acc1, collocations, protein_overlaps, rev_overlaps
+        for acc2, (collocs, prot_ovrs, _, rev_res_ovrs) in others.items():
+            yield acc1, acc2, collocs, prot_ovrs, rev_res_ovrs
+            yield acc2, acc1, collocs, prot_ovrs, rev_res_ovrs
 
 
 def _iter_predictions(comps: dict[str, dict[str, list[int, int, int, int]]],
