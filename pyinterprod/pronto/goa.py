@@ -305,8 +305,22 @@ def import_go_constraints(go_url: str, pg_url: str):
         for go_id, relat2const in go2constraints.items():
             for relation, constraints in relat2const.items():
                 for taxon_id in constraints:
-                    records.append((go_id, relation, taxon_id))
-                    if len(records) == 1000:
+                    if taxon_id == 131567:
+                        """
+                        meta-superkingdom (131567) includes three superkingdoms
+                            * Bacteria (2)
+                            * Archaea (2157)
+                            * Eukaryota (2759)
+                        """
+                        records += [
+                            (go_id, relation, 2),
+                            (go_id, relation, 2157),
+                            (go_id, relation, 2759)
+                        ]
+                    else:
+                        records.append((go_id, relation, taxon_id))
+
+                    if len(records) >= 1000:
                         pg_cur.executemany(sql, records)
                         pg_con.commit()
                         records.clear()
