@@ -265,7 +265,7 @@ def update_database_feature_matches(uri: str, databases: list):
                            NULL,
                            M.POS_FROM,
                            CASE WHEN M.POS_TO > P.LEN 
-                                THEN P.LEN ELSE M.POS_TO END POS_END,
+                                THEN P.LEN ELSE M.POS_TO END POS_TO,
                            :1
                     FROM INTERPRO.PFAMN_MATCH M
                     INNER JOIN INTERPRO.PROTEIN P 
