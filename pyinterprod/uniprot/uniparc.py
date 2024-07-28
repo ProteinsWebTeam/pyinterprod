@@ -166,29 +166,30 @@ def update_xrefs(ipr_uri: str, unp_uri: str):
         """
     )
 
-    req = """
-        INSERT /*+ APPEND */ 
-        INTO UNIPARC.XREF
-        VALUES (:1, :2, :3, :4, :5)
-    """
-    records = []
-
     unp_cur.execute(
         """
         SELECT UPI, AC, DBID, DELETED, VERSION
         FROM UNIPARC.XREF          
         """
     )
-    for rec in unp_cur:
-        records.append(rec)
+    total = 0
+    while rows := unp_cur.fetchmany(size=10000):
+        ipr_cur.execute(
+            """
+                INSERT /*+ APPEND */ 
+                INTO UNIPARC.XREF
+                VALUES (:1, :2, :3, :4, :5)
+            """,
+            rows
+        )
+        total += len(rows)
+        if total % 1e7 == 0:
+            logger.info(f"{total:>20,}")
 
-        if len(records) == 1000:
-            ipr_cur.executemany(req, records)
-            ipr_con.commit()
-            records.clear()
-
+    logger.info(f"{total:>20,}")
     unp_cur.close()
     unp_con.close()
+    ipr_con.commit()
 
     ipr_cur.execute("GRANT SELECT ON UNIPARC.XREF TO PUBLIC")
 
