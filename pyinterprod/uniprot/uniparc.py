@@ -183,7 +183,7 @@ def update_xrefs(ipr_uri: str, unp_uri: str):
             rows
         )
         total += len(rows)
-        if total % 1e7 == 0:
+        if total % 1e8 == 0:
             logger.info(f"{total:>20,}")
 
     logger.info(f"{total:>20,}")
