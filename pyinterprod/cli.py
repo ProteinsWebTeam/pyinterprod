@@ -687,7 +687,7 @@ def run_uniprot_update():
             fn=uniprot.uniparc.update_xrefs,
             args=(ora_uniparc_uri, ora_uaread_uri),
             name="update-uniparc-xrefs",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=36),
+            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=36),
         ),
 
         # Data from SWPREAD
