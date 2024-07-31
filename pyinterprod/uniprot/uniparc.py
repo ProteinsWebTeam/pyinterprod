@@ -174,7 +174,7 @@ def update_xrefs(ipr_uri: str, unp_uri: str):
     )
     total = 0
     while rows := unp_cur.fetchmany(size=10000):
-        ipr_cur.execute(
+        ipr_cur.executemany(
             """
                 INSERT /*+ APPEND */ 
                 INTO UNIPARC.XREF
