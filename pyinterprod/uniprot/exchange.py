@@ -148,17 +148,24 @@ def export_xrefs(url: str, outdir: str, emails: dict):
         dbname = dbcodes[dbcode]
         fh = handlers[dbcode]
 
-        if dbcode in ("X", "f"):
-            # CATH-Gene3D/FunFam: G3DSA:3.50.70.10 -> 3.50.70.10
-            identifier = signature_acc[6:]
+        parts = [dbname]
+        if dbcode == "X":
+            # CATH-Gene3D: e.g. G3DSA:3.50.70.10 -> 3.50.70.10
+            parts.append(signature_acc[6:])
+        elif dbcode == "f":
+            # FunFam: G3DSA:1.10.287.210:FF:000004 -> 1.10.287.210; 000004
+            supfam_acc, funfam_acc = signature_acc[6:].split(":FF:")
+            parts += [supfam_acc, funfam_acc]
         else:
-            identifier = signature_acc
+            parts.append(signature_acc)
 
-        optional_1 = (signature_name or "-").replace("\"", "'")
-        optional_2 = "" if dbcode == "F" else f"; {num_matches}"
+        # Name, with double quotes replaced by single quotes
+        parts.append((signature_name or "-").replace("\"", "'"))
 
-        fh.write(f"{protein_acc}    DR   {dbname}; {identifier}; "
-                 f"{optional_1}{optional_2}.\n")
+        # Number of hits, except for PRINTS (who knows why)
+        parts.append(str(num_matches) if dbcode != "F" else "")
+
+        fh.write(f"{protein_acc}    DR   {'; '.join(parts)}.\n")
 
         if protein_acc != prev_acc:
             for entry in sorted(entries):
