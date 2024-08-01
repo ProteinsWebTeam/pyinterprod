@@ -616,11 +616,10 @@ def update_partitions(uri: str, data_type: str = "matches", **kwargs):
     con = oracledb.connect(uri)
     cur = con.cursor()
 
-    for index in oracle.get_indexes(cur, "IPRSCAN", partitioned_table):
-        if index["is_unusable"]:
-            logger.info(f"rebuilding index {index['name']}")
-            oracle.catch_temp_error(fn=oracle.rebuild_index,
-                                    args=(cur, index["name"]))
+    index = f"I_{partitioned_table}$UPI"
+    logger.info(f"recreating index {index}")
+    oracle.drop_index(cur, index)
+    cur.execute(f"CREATE INDEX {index} on IPRSCAN.{partitioned_table} (UPI)")
 
     logger.info("gathering statistics")
     oracle.gather_stats(cur, "IPRSCAN", partitioned_table)
