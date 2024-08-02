@@ -1,3 +1,5 @@
+import gzip
+
 import oracledb
 
 from pyinterprod import logger
@@ -529,6 +531,11 @@ def create_xref_summary(uri: str):
 
 def export_repr_domains(ora_url: str, output: str):
     logger.info("starting")
+    if output.lower().endswith(".gz"):
+        _open = gzip.open
+    else:
+        _open = open
+
     con = oracledb.connect(ora_url)
     cur = con.cursor()
 
@@ -550,7 +557,7 @@ def export_repr_domains(ora_url: str, output: str):
     previous_protein_acc = None
     domains = []
     cnt = -1
-    with open(output, "wt") as fh:
+    with _open(output, "wt") as fh:
         for (protein_acc, signature_acc, dbcode,
              pos_start, pos_end, frags_str) in cur:
             if protein_acc != previous_protein_acc:
