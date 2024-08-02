@@ -780,7 +780,7 @@ def run_uniprot_update():
 
         # Data for UniProt/SIB
         Task(
-            fn=uniprot.exchange.export_sib,
+            fn=uniprot.sib.export,
             args=(ora_interpro_uri, emails),
             name="export-sib",
             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=3),
@@ -794,7 +794,7 @@ def run_uniprot_update():
             requires=["update-matches"]
         ),
         Task(
-            fn=uniprot.unirule.build_aa_alignment,
+            fn=uniprot.aa.create_aa_alignment,
             args=(ora_iprscan_uri,),
             name="aa-alignment",
             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=8),
@@ -802,7 +802,7 @@ def run_uniprot_update():
             requires=["update-matches"]
         ),
         Task(
-            fn=uniprot.unirule.build_aa_iprscan,
+            fn=uniprot.aa.create_aa_iprscan,
             args=(ora_iprscan_uri,),
             name="aa-iprscan",
             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=15),
@@ -810,14 +810,14 @@ def run_uniprot_update():
             requires=["update-matches"]
         ),
         Task(
-            fn=uniprot.unirule.build_xref_condensed,
+            fn=uniprot.aa.create_xref_condensed,
             args=(ora_interpro_uri,),
             name="xref-condensed",
             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12),
             requires=["update-matches"]
         ),
         Task(
-            fn=uniprot.unirule.build_xref_summary,
+            fn=uniprot.aa.create_xref_summary,
             args=(ora_interpro_uri,),
             name="xref-summary",
             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=8),
@@ -826,7 +826,7 @@ def run_uniprot_update():
             requires=["report-changes"]
         ),
         Task(
-            fn=uniprot.exchange.export_xrefs,
+            fn=uniprot.xrefs.export,
             args=(ora_interpro_uri, xrefs_dir, emails),
             name="export-xrefs",
             scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=6),
