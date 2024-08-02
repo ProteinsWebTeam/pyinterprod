@@ -825,6 +825,15 @@ def run_uniprot_update():
             # until it completes before re-creating the table
             requires=["report-changes"]
         ),
+        # Task(
+        #     fn=uniprot.aa.export_repr_domains,
+        #     args=(ora_interpro_uri,
+        #           os.path.join(data_dir, "repr-domains.tsv.gz")),
+        #     name="repr-domains",
+        #     # TODO: update requirements
+        #     scheduler=dict(type=scheduler, queue=queue, mem=10000, hours=24),
+        #     requires=["update-matches"]
+        # ),
         Task(
             fn=uniprot.xrefs.export,
             args=(ora_interpro_uri, xrefs_dir, emails),
