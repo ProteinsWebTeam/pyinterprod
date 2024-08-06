@@ -573,7 +573,7 @@ def export_repr_domains(ora_url: str, output: str):
 
                 previous_protein_acc = protein_acc
 
-                if cnt % 1e7 == 0:
+                if cnt > 0 and cnt % 1e7 == 0:
                     logger.info(f"{cnt:>12,}")
 
             domains.append({
