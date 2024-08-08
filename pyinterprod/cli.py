@@ -830,8 +830,7 @@ def run_uniprot_update():
         #     args=(ora_interpro_uri,
         #           os.path.join(data_dir, "repr-domains.tsv.gz")),
         #     name="repr-domains",
-        #     # TODO: update requirements
-        #     scheduler=dict(type=scheduler, queue=queue, mem=10000, hours=24),
+        #     scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=48),
         #     requires=["update-matches"]
         # ),
         Task(
