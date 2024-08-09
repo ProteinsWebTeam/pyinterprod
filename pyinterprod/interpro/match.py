@@ -68,7 +68,7 @@ def update_database_matches(uri: str, databases: list):
     for database in databases:
         logger.info(f"{database.name}")
         oracle.drop_table(cur, "INTERPRO.MATCH_NEW", purge=True)
-        logger.info(f"\tpopulating MATCH_MEW "
+        logger.info(f"\tpopulating MATCH_NEW "
                     f"(ANALYSIS_ID: {database.analysis_id})")
         cur.execute(
             """
