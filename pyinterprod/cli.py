@@ -446,7 +446,7 @@ def run_member_db_update():
                 fn=interpro.match.update_database_matches,
                 args=(ora_interpro_uri, member_dbs),
                 name="update-matches",
-                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=8),
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
                 requires=ipm_dependencies + ["update-signatures"]
             ),
             Task(
