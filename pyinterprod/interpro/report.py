@@ -463,7 +463,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
         fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
                  f"{name}\t{'Yes' if is_checked else 'No'}\t{origin}\t"
-                 f"{len(entry2prots[entry_acc])}\t"
+                 f"{len(entry2prots.get(entry_acc, []))}\t"
                  f"{len(lost)}\t{len(gained)}\t"
                  f"{' | '.join(lost_descrs)}\t"
                  f"{' | '.join(gained_descrs)}\n")
