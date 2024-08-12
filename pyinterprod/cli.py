@@ -828,7 +828,8 @@ def run_uniprot_update():
         Task(
             fn=uniprot.aa.export_repr_domains,
             args=(ora_interpro_uri,
-                  os.path.join(xrefs_dir, "representative-domains.tsv")),
+                  os.path.join(xrefs_dir, "representative-domains.tsv"),
+                  emails),
             name="repr-domains",
             scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=48),
             requires=["update-matches"]

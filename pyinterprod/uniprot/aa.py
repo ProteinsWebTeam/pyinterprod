@@ -1,10 +1,11 @@
 import gzip
+import os
 
 import oracledb
 
 from pyinterprod import logger
 from pyinterprod.interpro import iprscan
-from pyinterprod.utils import oracle, Table
+from pyinterprod.utils import email, oracle, Table
 
 
 MAX_DOM_BY_GROUP = 20
@@ -529,7 +530,7 @@ def create_xref_summary(uri: str):
     logger.info("XREF_SUMMARY ready")
 
 
-def export_repr_domains(ora_url: str, output: str):
+def export_repr_domains(ora_url: str, output: str, emails: dict):
     logger.info("starting")
     if output.lower().endswith(".gz"):
         _open = gzip.open
@@ -596,8 +597,29 @@ def export_repr_domains(ora_url: str, output: str):
 
         logger.info(f"{cnt:>12,}")
 
+    cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
+    release, = cur.fetchone()
     cur.close()
     con.close()
+
+    os.chmod(output, 0o664)
+
+    email.send(
+        info=emails,
+        to=["aa_dev"],
+        bcc=["sender"],
+        subject="InterPro representative domains are ready",
+        content=f"""\
+Dear UniProt team,
+
+The file containing the representative domains for UniProt {release} is \
+available at the following path:
+  {output}
+
+Kind regards,
+The InterPro Production Team
+"""
+    )
     logger.info("done")
 
 
