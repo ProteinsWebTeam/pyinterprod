@@ -483,9 +483,7 @@ def update_database_site_matches(uri: str, databases: list):
 
     logger.info("complete")
 
-#Table = "SITE_MATCH", database = "INTERPRO" - sites
-#TABLE = "MATCH", - mebmer?
-#TABLE FEATURE_MATCH -features db
+
 def check_index(uri, table):
     con = oracledb.connect(uri)
     cur = con.cursor()
@@ -504,7 +502,6 @@ def check_index(uri, table):
 
     cur.close()
     con.close()
-
 
 
 def update_matches(uri: str):
