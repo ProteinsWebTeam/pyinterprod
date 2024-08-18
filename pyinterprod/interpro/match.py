@@ -503,6 +503,8 @@ def check_index(uri, table):
     cur.close()
     con.close()
 
+    logger.info("complete")
+
 
 def update_matches(uri: str):
     """
