@@ -421,8 +421,7 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
                     tmp[table] = analyses
                     continue
 
-                f = executor.submit(_import_table, uri, table, ready, force)
-                running.append((f, table, [f"{e.name} {e.version}"
+                running.append((table, [f"{e.name} {e.version}"
                                            for e in analyses]))
 
             pending = tmp
@@ -439,91 +438,6 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
         raise RuntimeError(f"{failed} errors")
 
     logger.info("done")
-
-
-def _import_table(uri: str, remote_table: str, analyses: list[Analysis],
-                  force: bool = True):
-    con = oracledb.connect(uri)
-    cur = con.cursor()
-    # MV_TABLE - need to skip
-    local_table = PREFIX + remote_table
-
-    if not force:
-        # Check if the data is already up-to-date
-        up_to_date = 0
-
-        for analysis in analyses:
-            cur.execute(
-                f"""
-                SELECT MAX(UPI)
-                FROM IPRSCAN.{local_table}
-                WHERE ANALYSIS_ID = :1
-                """,
-                [analysis.id]
-            )
-            max_upi_1, = cur.fetchone()
-
-            cur.execute(
-                f"""
-                SELECT MAX(UPI)
-                FROM IPRSCAN.{remote_table}@ISPRO
-                WHERE ANALYSIS_ID = :1
-                """,
-                [analysis.id]
-            )
-            max_upi_2, = cur.fetchone()
-
-            if max_upi_1 == max_upi_2:
-                up_to_date += 1
-
-        if up_to_date == len(analyses):
-            # All analyses are up-to-date
-            cur.close()
-            con.close()
-            return
-
-    oracle.drop_table(cur, local_table, purge=True)
-
-    # do not create this table! make the tmp table instead
-    # BUT HOW DIFFERENT IS THE STRUCTURE?
-    cur.execute(
-        f"""
-        CREATE TABLE IPRSCAN.{local_table} NOLOGGING
-        AS
-        SELECT *
-        FROM IPRSCAN.{remote_table}@ISPRO
-        WHERE 1 = 0
-        """
-    )
-
-    for analysis in analyses:
-        cur.execute(
-            f"""
-            INSERT /*+ APPEND */ INTO {local_table}
-            SELECT *
-            FROM IPRSCAN.{remote_table}@ISPRO
-            WHERE ANALYSIS_ID = :1
-            """,
-            [analysis.id]
-        )
-        con.commit()
-
-    """
-    Use remote table name to have fewer characters (no prefix)
-    as Oracle < 12.2 do not allow object names longer than 30 characters
-    """
-    for suffix, column in [("UPI", "UPI"), ("AC", "METHOD_AC")]:
-        cur.execute(
-            f"""
-            CREATE INDEX {remote_table}${suffix}
-            ON IPRSCAN.{local_table} ({column})
-            TABLESPACE IPRSCAN_IND
-            NOLOGGING
-            """
-        )
-
-    cur.close()
-    con.close()
 
 
 def update_partitions(uri: str, data_type: str = "matches", **kwargs):
