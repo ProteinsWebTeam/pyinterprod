@@ -445,7 +445,7 @@ def _import_table(uri: str, remote_table: str, analyses: list[Analysis],
                   force: bool = True):
     con = oracledb.connect(uri)
     cur = con.cursor()
-
+    # MV_TABLE - need to skip
     local_table = PREFIX + remote_table
 
     if not force:
@@ -484,6 +484,8 @@ def _import_table(uri: str, remote_table: str, analyses: list[Analysis],
 
     oracle.drop_table(cur, local_table, purge=True)
 
+    # do not create this table! make the tmp table instead
+    # BUT HOW DIFFERENT IS THE STRUCTURE?
     cur.execute(
         f"""
         CREATE TABLE IPRSCAN.{local_table} NOLOGGING
@@ -581,9 +583,10 @@ def update_partitions(uri: str, data_type: str = "matches", **kwargs):
     with ThreadPoolExecutor(max_workers=threads) as executor:
         fs = {}
         for table, analyses in tables.items():
+            #MV TABLE (THE TABLE WHICH DO NOT WANT)
             args = (
                 uri,
-                PREFIX + table,
+                table,
                 partitioned_table,
                 [
                     (analysis.id, partition, columns)
@@ -636,7 +639,7 @@ def update_partitions(uri: str, data_type: str = "matches", **kwargs):
     logger.info("done")
 
 
-def _update_partition(uri: str, table: str, partitioned_table: str,
+def _update_partition(uri: str, remote_table: str, partitioned_table: str,
                       analyses: list[tuple[int, str, list[str]]],
                       force: bool = True):
     """
@@ -648,18 +651,19 @@ def _update_partition(uri: str, table: str, partitioned_table: str,
                      in `partitioned_table`, columns to select from `table`)
     :param force: If True, update partition even if up-to-date
     """
+    # table = mv_TABLE
     con = oracledb.connect(uri)
     cur = con.cursor()
 
     if not force:
         # Check if the data is already up-to-date
         up_to_date = 0
-
+        # get max upi from ISPRO.MV_{db} instead
         for analysis_id, partition, columns in analyses:
             cur.execute(
                 f"""
                 SELECT MAX(UPI)
-                FROM IPRSCAN.{table}
+                FROM IPRSCAN.{remote_table}@ISPRO
                 """
             )
             max_upi_1, = cur.fetchone()
@@ -684,19 +688,21 @@ def _update_partition(uri: str, table: str, partitioned_table: str,
             con.close()
             return
 
-    tmp_table = f"IPRSCAN.{table}_TMP"
+    tmp_table = f"IPRSCAN.{remote_table}_TMP"
 
     for analysis_id, partition, columns in analyses:
         # Create temporary table for the partition exchange
         oracle.drop_table(cur, tmp_table, purge=True)
 
         sql = f"CREATE TABLE {tmp_table}"
+        #
         subparts = oracle.get_subpartitions(cur, schema="IPRSCAN",
                                             table=partitioned_table,
                                             partition=partition)
 
         if subparts:
             """
+            # the temporary table = staging table (TMP_TABLE?)
             The target table is sub-partitioned: the staging table needs
             to be partitioned
             """
@@ -719,15 +725,17 @@ def _update_partition(uri: str, table: str, partitioned_table: str,
         )
 
         # Insert only one analysis ID
+        # gets the columns from ippro.mv_iprscan?
         cur.execute(
             f"""
             INSERT /*+ APPEND */ INTO {tmp_table}
             SELECT {', '.join(columns)}
-            FROM IPRSCAN.{table}
+            FROM IPRSCAN.{remote_table}@ISPRO
             WHERE ANALYSIS_ID = :1
             """,
             [analysis_id]
         )
+        # select from ISPRO.PIPM_db_MATCH{ instead!
         con.commit()
 
         high_value = None
