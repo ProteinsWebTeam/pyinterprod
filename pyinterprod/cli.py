@@ -450,7 +450,7 @@ def run_member_db_update():
                 requires=ipm_dependencies + ["update-signatures"]
             ),
             Task(
-                fn=interpro.match.check_index,
+                fn=interpro.match.rebuild_indexes,
                 args=(ora_interpro_uri, "MATCH"),
                 name="index-matches",
                 scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12),
@@ -507,7 +507,7 @@ def run_member_db_update():
                 requires=["update-features"]
             ),
             Task(
-                fn=interpro.match.check_index,
+                fn=interpro.match.rebuild_indexes,
                 args=(ora_interpro_uri, "FEATURE_MATCH"),
                 name="index-fmatches",
                 scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12),
@@ -545,7 +545,7 @@ def run_member_db_update():
                 requires=req
             ),
             Task(
-                fn=interpro.match.check_index,
+                fn=interpro.match.rebuild_indexes,
                 args=(ora_interpro_uri, "SITE_MATCH"),
                 name="index-sites",
                 scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12),
