@@ -547,7 +547,7 @@ def run_member_db_update():
             Task(
                 fn=interpro.match.check_index,
                 args=(ora_interpro_uri, "SITE_MATCH"),
-                name="check-index-creation",
+                name="index-sites",
                 scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12),
                 requires=["update-sites"]
             )

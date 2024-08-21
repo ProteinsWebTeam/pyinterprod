@@ -484,7 +484,7 @@ def update_database_site_matches(uri: str, databases: list):
     logger.info("complete")
 
 
-def check_index(uri, table):
+def rebuild_indexes(uri: str, table: str):
     con = oracledb.connect(uri)
     cur = con.cursor()
 
