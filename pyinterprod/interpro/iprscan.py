@@ -349,15 +349,24 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
     force = kwargs.get("force", True)
     threads = kwargs.get("threads", 1)
 
-    if data_type not in ("matches", "sites"):
+    if data_type == "matches":
+        partitions = MATCH_PARTITIONS
+        partitioned_table = "MV_IPRSCAN"
+    elif data_type == "sites":
+        partitions = SITE_PARITIONS
+        partitioned_table = "SITE"
+    else:
         raise ValueError(f"invalid data type '{data_type}'")
-    elif databases:  # expects a sequence of Database objects
+
+    if databases:  # expects a sequence of Database objects
         databases = {db.analysis_id for db in databases
                      if db.analysis_id is not None}
 
         if not databases:
             # Databases not in ISPRO (e.g. Pfam-N): nothing to import
             return
+
+    logger.info("starting")
 
     con = oracledb.connect(uri)
     cur = con.cursor()
@@ -366,11 +375,19 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
     for analysis in get_analyses(cur, type=data_type):
         if databases and analysis.id not in databases:
             continue
+        # adds partition information to pending analysis
+        try:
+            obj = partitions[analysis.name]
+        except KeyError:
+            logger.warning(f"ignoring {analysis.name} {analysis.version}")
+            continue
+
+        item = (analysis, obj["partition"], obj["columns"])
 
         try:
-            pending[analysis.table].append(analysis)
+            pending[analysis.table].append(item)
         except KeyError:
-            pending[analysis.table] = [analysis]
+            pending[analysis.table] = [item]
 
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     max_upi, = cur.fetchone()
@@ -412,7 +429,7 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
             tmp = {}
             for table, analyses in pending.items():
                 ready = []
-                for analysis in analyses:
+                for analysis, _, _ in analyses:
                     if analysis.is_ready(cur, max_upi):
                         ready.append(analysis)
 
@@ -421,8 +438,21 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
                     tmp[table] = analyses
                     continue
 
-                running.append((table, [f"{e.name} {e.version}"
-                                           for e in analyses]))
+                args = (
+                    uri,
+                    table,
+                    partitioned_table,
+                    [
+                        (analysis.id, partition, columns)
+                        for analysis, partition, columns in analyses
+                    ],
+                    force
+                )
+            #f = executor.submit(_import_table, uri, table, ready, force)
+                f = executor.submit(_update_partition, *args)
+                # updates running in format as update_partition
+                running.append((f, table, [f"{analysis.name} {analysis.version}"
+                							for analysis, _, _ in analyses]))
 
             pending = tmp
 
@@ -436,6 +466,26 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
 
     if failed:
         raise RuntimeError(f"{failed} errors")
+
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+
+    index = f"I_{partitioned_table}$UPI"
+    logger.info(f"recreating index {index}")
+    oracle.drop_index(cur, index)
+    cur.execute(
+        f"""
+            CREATE INDEX {index} 
+            ON IPRSCAN.{partitioned_table} (UPI)
+            TABLESPACE IPRSCAN_IND
+            """
+    )
+
+    logger.info("gathering statistics")
+    oracle.gather_stats(cur, "IPRSCAN", partitioned_table)
+
+    cur.close()
+    con.close()
 
     logger.info("done")
 
