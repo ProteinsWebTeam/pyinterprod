@@ -68,7 +68,7 @@ def update_database_matches(uri: str, databases: list):
     for database in databases:
         logger.info(f"{database.name}")
         oracle.drop_table(cur, "INTERPRO.MATCH_NEW", purge=True)
-        logger.info(f"\tpopulating MATCH_MEW "
+        logger.info(f"\tpopulating MATCH_NEW "
                     f"(ANALYSIS_ID: {database.analysis_id})")
         cur.execute(
             """
@@ -212,8 +212,8 @@ def update_database_matches(uri: str, databases: list):
         )
         oracle.drop_table(cur, "INTERPRO.MATCH_NEW", purge=True)
 
-        logger.info("\tgathering statistics")
-        oracle.gather_stats(cur, "INTERPRO", "MATCH", partition)
+        # logger.info("\tgathering statistics")
+        # oracle.gather_stats(cur, "INTERPRO", "MATCH", partition)
 
     for index in oracle.get_indexes(cur, "INTERPRO", "MATCH"):
         if index["is_unusable"]:

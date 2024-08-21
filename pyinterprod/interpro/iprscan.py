@@ -619,7 +619,13 @@ def update_partitions(uri: str, data_type: str = "matches", **kwargs):
     index = f"I_{partitioned_table}$UPI"
     logger.info(f"recreating index {index}")
     oracle.drop_index(cur, index)
-    cur.execute(f"CREATE INDEX {index} on IPRSCAN.{partitioned_table} (UPI)")
+    cur.execute(
+        f"""
+        CREATE INDEX {index} 
+        ON IPRSCAN.{partitioned_table} (UPI)
+        TABLESPACE IPRSCAN_IND
+        """
+    )
 
     logger.info("gathering statistics")
     oracle.gather_stats(cur, "IPRSCAN", partitioned_table)
