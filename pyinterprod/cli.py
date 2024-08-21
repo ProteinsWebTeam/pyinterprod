@@ -389,12 +389,12 @@ def run_member_db_update():
     if member_dbs or feature_dbs or site_dbs:
         tasks += [
             Task(
-                fn=interpro.iprscan.import_tables,
+                fn=interpro.iprscan.update_tables,
                 args=(ora_iprscan_uri, "matches"),
                 kwargs=dict(databases=member_dbs + feature_dbs + site_dbs,
                             force=True,
                             threads=8),
-                name="import-ipm-matches",
+                name="update-ipm-matches",
                 scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24)
             )
         ]
@@ -499,10 +499,10 @@ def run_member_db_update():
 
         tasks += [
             Task(
-                fn=interpro.iprscan.import_tables,
+                fn=interpro.iprscan.update_tables,
                 args=(ora_iprscan_uri, "sites"),
                 kwargs=dict(databases=site_dbs, force=True, threads=2),
-                name="import-ipm-sites",
+                name="update-ipm-sites",
                 scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
             ),
             Task(
@@ -682,18 +682,18 @@ def run_uniprot_update():
 
         # Data from ISPRO
         Task(
-            fn=interpro.iprscan.import_tables,
+            fn=interpro.iprscan.update_tables,
             args=(ora_iprscan_uri, "matches"),
             kwargs=dict(force=True, threads=8),
-            name="import-ipm-matches",
+            name="update-ipm-matches",
             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
             requires=["update-uniparc-proteins"]
         ),
         Task(
-            fn=interpro.iprscan.import_tables,
+            fn=interpro.iprscan.update_tables,
             args=(ora_iprscan_uri, "sites"),
             kwargs=dict(force=True, threads=2),
-            name="import-ipm-sites",
+            name="update-ipm-sites",
             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
             requires=["update-uniparc-proteins"]
         ),

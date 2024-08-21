@@ -344,7 +344,7 @@ def get_analyses(cur: Cursor, **kwargs) -> list[Analysis]:
     return analyses
 
 
-def import_tables(uri: str, data_type: str = "matches", **kwargs):
+def update_tables(uri: str, data_type: str = "matches", **kwargs):
     databases = kwargs.get("databases", [])
     force = kwargs.get("force", True)
     threads = kwargs.get("threads", 1)
@@ -449,7 +449,7 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
                     force
                 )
             #f = executor.submit(_import_table, uri, table, ready, force)
-                f = executor.submit(_update_partition, *args)
+                f = executor.submit(_update_table, *args)
                 # updates running in format as update_partition
                 running.append((f, table, [f"{analysis.name} {analysis.version}"
                 							for analysis, _, _ in analyses]))
@@ -490,7 +490,7 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
     logger.info("done")
 
 
-def _update_partition(uri: str, remote_table: str, partitioned_table: str,
+def _update_table(uri: str, remote_table: str, partitioned_table: str,
                       analyses: list[tuple[int, str, list[str]]],
                       force: bool = True):
     """
