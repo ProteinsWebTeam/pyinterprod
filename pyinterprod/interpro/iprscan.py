@@ -448,11 +448,10 @@ def update_tables(uri: str, data_type: str = "matches", **kwargs):
                     ],
                     force
                 )
-            #f = executor.submit(_import_table, uri, table, ready, force)
+
                 f = executor.submit(_update_table, *args)
-                # updates running in format as update_partition
                 running.append((f, table, [f"{analysis.name} {analysis.version}"
-                							for analysis, _, _ in analyses]))
+                                for analysis, _, _ in analyses]))
 
             pending = tmp
 
@@ -491,18 +490,17 @@ def update_tables(uri: str, data_type: str = "matches", **kwargs):
 
 
 def _update_table(uri: str, remote_table: str, partitioned_table: str,
-                      analyses: list[tuple[int, str, list[str]]],
-                      force: bool = True):
+                  analyses: list[tuple[int, str, list[str]]],
+                  force: bool = True):
     """
     Update partitioned table with matches
     :param uri: Oracle connection string
-    :param table: Match table
+    :param remote_table: Match table
     :param partitioned_table: Partitioned table
     :param analyses: list of analyses to update (analysis ID, partition name
                      in `partitioned_table`, columns to select from `table`)
     :param force: If True, update partition even if up-to-date
     """
-    # table = mv_TABLE
     con = oracledb.connect(uri)
     cur = con.cursor()
 
@@ -586,7 +584,6 @@ def _update_table(uri: str, remote_table: str, partitioned_table: str,
             """,
             [analysis_id]
         )
-        # select from ISPRO.PIPM_db_MATCH{ instead!
         con.commit()
 
         high_value = None
