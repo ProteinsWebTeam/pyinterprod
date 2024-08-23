@@ -507,7 +507,6 @@ def _update_table(uri: str, remote_table: str, partitioned_table: str,
     if not force:
         # Check if the data is already up-to-date
         up_to_date = 0
-        # get max upi from ISPRO.MV_{db} instead
         for analysis_id, partition, columns in analyses:
             cur.execute(
                 f"""
@@ -544,7 +543,6 @@ def _update_table(uri: str, remote_table: str, partitioned_table: str,
         oracle.drop_table(cur, tmp_table, purge=True)
 
         sql = f"CREATE TABLE {tmp_table}"
-        #
         subparts = oracle.get_subpartitions(cur, schema="IPRSCAN",
                                             table=partitioned_table,
                                             partition=partition)
@@ -574,7 +572,6 @@ def _update_table(uri: str, remote_table: str, partitioned_table: str,
         )
 
         # Insert only one analysis ID
-        # gets the columns from ippro.mv_iprscan?
         cur.execute(
             f"""
             INSERT /*+ APPEND */ INTO {tmp_table}
