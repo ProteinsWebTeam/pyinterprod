@@ -3,6 +3,7 @@ import random
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from typing import Callable
 
@@ -504,7 +505,11 @@ def run_i5(i5_dir: str, fasta_file: str, analysis_name: str, output: str,
     else:
         _timeout = None
 
+    logger.info(f"Command: {' '.join(args)}")
+    ts = time.time()
     process = subprocess.run(args, capture_output=True, timeout=_timeout)
+    logger.info(f"Process exited with code {process.returncode} "
+                f"after {time.time() - ts:.0f} seconds.")
     return (
         process.returncode == 0,
         process.stdout.decode("utf-8"),
@@ -530,6 +535,7 @@ def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
     ok = False
     try:
         num_sequences = export_fasta(uri, fasta_file, upi_from, upi_to)
+        logger.info(f"Written {num_sequences:,} sequences to {fasta_file}")
 
         if num_sequences > 0:
             i5_ok, stdout, stderr = run_i5(i5_dir, fasta_file, appl,
