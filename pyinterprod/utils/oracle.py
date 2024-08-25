@@ -25,7 +25,10 @@ def try_connect(uri: str, seconds: int = 10, max_attempts: int = 10):
                        with matching protocol stack
             """
             if error.code in (12170, 12516) and num_attempts < max_attempts:
-                time.sleep(random.randint(1, seconds))
+                secs = random.randint(1, seconds)
+                logger.error(f"Connection error ({error.code}). "
+                             f"Retrying in {secs} seconds.")
+                time.sleep(secs)
             else:
                 raise
         else:
