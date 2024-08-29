@@ -1,6 +1,16 @@
+import os
+import subprocess
+import sys
+import time
 from datetime import datetime
 
 import oracledb
+
+from pyinterprod import logger
+
+
+# String printed by I5 on successful completion
+_I5_SUCCESS = "100% done:  InterProScan analyses completed"
 
 
 def get_incomplete_jobs(cur: oracledb.Cursor) -> dict[int, tuple]:
@@ -107,3 +117,84 @@ def update_job(cur: oracledb.Cursor,
             params + [analysis_id, upi_from, upi_to]
         )
         cur.connection.commit()
+
+
+def get_unfinished_lsf_jobs() -> dict[str, int]:
+    stdout = subprocess.run(["bjobs", "-o", "jobid name"],
+                            capture_output=True,
+                            encoding="utf-8").stdout
+    jobs = {}
+    if "No unfinished job found" in stdout:
+        return jobs
+
+    for line in stdout.split("\n")[1:]:
+        if line:
+            job_id, name = line.split(maxsplit=1)
+            jobs[name] = int(job_id)
+
+    return jobs
+
+
+def get_unfinished_slurm_jobs() -> dict[str, int]:
+    stdout = subprocess.run(["squeue", "-h" "-O", "JobId,Name",
+                             "-t", "pending,running"],
+                            capture_output=True,
+                            encoding="utf-8").stdout
+
+    jobs = {}
+    for line in stdout.split("\n")[1:]:
+        if line:
+            job_id, name = line.split(maxsplit=1)
+            jobs[name] = int(job_id)
+
+    return jobs
+
+
+def run_job(i5_dir: str,
+            applications: str,
+            fasta_file: str,
+            matches_output: str,
+            sites_output: str | None = None,
+            cpu: int | None = None,
+            timeout: int | None = None):
+    workdir = os.path.dirname(matches_output)
+
+    args = [
+        os.path.join(i5_dir, "interproscan.sh"),
+        "-i", fasta_file,
+        "-appl", applications,
+        "-dp",
+        "-f", "tsv-pro",
+        "-o", matches_output,
+        "-T", workdir
+    ]
+
+    if cpu is not None:
+        args += ["-cpu", str(cpu)]
+
+    if isinstance(timeout, int) and timeout > 0:
+        # timeout in hours, but subprocess.run takes in seconds
+        _timeout = timeout * 3600
+    else:
+        _timeout = None
+
+    logger.info(f"Command: {' '.join(args)}")
+    ts = time.time()
+    process = subprocess.run(args, capture_output=True, timeout=_timeout)
+    stdout = process.stdout.decode("utf-8")
+    stderr = process.stderr.decode("utf-8")
+    code = process.returncode
+    runtime = time.time() - ts
+
+    # Write captured streams
+    print(stdout, file=sys.stdout)
+    print(stderr, file=sys.stderr)
+
+    logger.info(f"Process exited with code {code} after {runtime:.0f} seconds.")
+
+    if code != 0 or _I5_SUCCESS not in stdout:
+        raise RuntimeError("InterProScan error")
+    elif not os.path.isfile(matches_output):
+        raise RuntimeError(f"Matches output file not found")
+    elif sites_output is not None and not os.path.isfile(sites_output):
+        raise RuntimeError(f"Sites output file not found")
