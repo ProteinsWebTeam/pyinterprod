@@ -458,7 +458,7 @@ def create_xref_summary(uri: str):
 
     logger.info("inserting PANTHER subfamily matches")
     cur.execute(
-        """
+        r"""
         INSERT /*+ APPEND */ INTO INTERPRO.XREF_SUMMARY
         SELECT
             MA.DBCODE,
