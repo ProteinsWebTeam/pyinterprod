@@ -1041,16 +1041,16 @@ def run_interproscan_manager():
     unpr_uniparc_uri = config["oracle"]["unpr-uapro"]
 
     if args.mode == "import":
-        interproscan.database.import_uniparc(ispro_uri=iscn_uniparc_uri,
-                                             uniparc_uri=unpr_uniparc_uri,
-                                             top_up=args.top_up,
-                                             max_upi=args.max_upi)
+        interproscan.uniparc.import_sequences(ispro_uri=iscn_uniparc_uri,
+                                              uniparc_uri=unpr_uniparc_uri,
+                                              top_up=args.top_up,
+                                              max_upi=args.max_upi)
     elif args.mode == "clean":
-        interproscan.database.clean_tables(iscn_iprscan_uri, args.analyses)
+        interproscan.utils.clean_tables(iscn_iprscan_uri, args.analyses)
 
     elif args.mode == "search":
         if args.list:
-            analyses = interproscan.database.get_analyses(iscn_iprscan_uri)
+            analyses = interproscan.analyses.get_analyses(iscn_iprscan_uri)
             for analysis_id in sorted(analyses,
                                       key=lambda k: (analyses[k]["name"], k)):
                 name = analyses[analysis_id]["name"]
@@ -1060,8 +1060,8 @@ def run_interproscan_manager():
             return
 
         if not args.dry_run:
-            interproscan.database.rebuild_indexes(uri=iscn_iprscan_uri,
-                                                  analysis_ids=args.analyses)
+            interproscan.utils.rebuild_indexes(uri=iscn_iprscan_uri,
+                                               analysis_ids=args.analyses)
 
         analyses_config = ConfigParser()
         analyses_config.read(config["misc"]["analyses"])

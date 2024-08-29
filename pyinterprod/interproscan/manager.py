@@ -410,6 +410,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 if task.is_successful():
                     # Persist data
 
+                    persistence.persist_results()
+
 
                     if keep_files == "all":
                         with open(logfile, "wt") as fh:
