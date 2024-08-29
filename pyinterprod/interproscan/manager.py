@@ -437,6 +437,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         except FileNotFoundError:
                             pass
 
+                    shutil.rmtree(run_dir)
                     n_completed += 1
                 else:
                     logger.debug(f"Failed: {analysis_name} ({analysis_id})"
@@ -495,6 +496,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     else:
                         # Max number of retries reached
                         n_failed += 1
+                        shutil.rmtree(run_dir)
 
                 progress = (n_completed + n_failed) * 100 / n_tasks
                 if progress >= milestone:
