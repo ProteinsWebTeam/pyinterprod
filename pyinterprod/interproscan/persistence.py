@@ -1,9 +1,32 @@
+import os.path
 import sys
 from decimal import Decimal
+from typing import Callable
 
 from oracledb import Cursor, DB_TYPE_BINARY_DOUBLE
 
 _COMMIT_SIZE = 10000
+
+
+def persist_results(cur: Cursor,
+                    analysis_id: int,
+                    matches_fn: Callable,
+                    matches_file: str,
+                    matches_table: str,
+                    sites_fn: Callable | None,
+                    sites_file: str | None,
+                    sites_table: str | None) -> bool:
+    if not os.path.isfile(matches_file):
+        return False
+    elif sites_fn is not None and not os.path.isfile(sites_file):
+        return False
+
+    matches_fn(cur, matches_file, analysis_id, matches_table)
+
+    if sites_fn is not None:
+        sites_fn(cur, sites_file, analysis_id, sites_table)
+
+    return True
 
 
 def cdd_matches(cur: Cursor, file: str, analysis_id: int, table: str):

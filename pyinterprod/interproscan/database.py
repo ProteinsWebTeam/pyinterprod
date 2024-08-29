@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 
 import oracledb
-from mundone.task import Task
 
 from pyinterprod import logger
 from pyinterprod.uniprot.uniparc import iter_proteins
@@ -231,16 +231,16 @@ def import_uniparc(ispro_uri: str, uniparc_uri: str, top_up: bool = False,
     logger.info(f"\t{cnt:,} sequences imported")
 
 
-def get_incomplete_jobs(cur: oracledb.Cursor) -> dict:
+def get_incomplete_jobs(cur: oracledb.Cursor) -> dict[int, tuple]:
     cur.execute(
         """
-        SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME
+        SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME, SEQUENCES
         FROM IPRSCAN.ANALYSIS_JOBS
         WHERE END_TIME IS NULL AND SUCCESS = 'N'
         UNION 
-        SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME
+        SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME, SEQUENCES
         FROM (
-            SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME, SUCCESS, 
+            SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME, SEQUENCES, SUCCESS, 
                    ROW_NUMBER() OVER (
                        PARTITION BY ANALYSIS_ID, UPI_FROM, UPI_TO 
                        ORDER BY END_TIME DESC
@@ -252,20 +252,19 @@ def get_incomplete_jobs(cur: oracledb.Cursor) -> dict:
     )
 
     incomplete_jobs = {}
-    for analysis_id, upi_from, upi_to, end_time in cur:
+    for analysis_id, upi_from, upi_to, end_time, sequences in cur:
         is_running = end_time is None
         try:
             analysis_jobs = incomplete_jobs[analysis_id]
         except KeyError:
             analysis_jobs = incomplete_jobs[analysis_id] = []
         finally:
-            analysis_jobs.append((upi_from, upi_to, is_running))
+            analysis_jobs.append((upi_from, upi_to, is_running, sequences))
 
     return incomplete_jobs
 
 
-def add_job(cur: oracledb.Cursor, analysis_id: int, upi_from: str,
-            upi_to: str):
+def add_job(cur: oracledb.Cursor, analysis_id: int, upi_from: str, upi_to: str):
     cur.execute(
         """
         UPDATE IPRSCAN.ANALYSIS
@@ -284,60 +283,58 @@ def add_job(cur: oracledb.Cursor, analysis_id: int, upi_from: str,
     cur.connection.commit()
 
 
-def update_job(cur: oracledb.Cursor, analysis_id: int, upi_from: str,
-               upi_to: str, task: Task):
-    cur.execute(
-        """
-        UPDATE IPRSCAN.ANALYSIS_JOBS
-        SET SUBMIT_TIME = :1,
-            START_TIME = :2,
-            END_TIME = :3,
-            MAX_MEMORY = :4,
-            LIM_MEMORY = :5,
-            CPU_TIME = :6
-        WHERE ANALYSIS_ID = :7
-            AND UPI_FROM = :8
-            AND UPI_TO = :9
-            AND END_TIME IS NULL
-        """,
-        [task.submit_time, task.start_time, task.end_time, task.maxmem,
-         task.executor.memory, task.cputime, analysis_id, upi_from,
-         upi_to]
-    )
-    cur.connection.commit()
+def update_job(cur: oracledb.Cursor,
+               analysis_id: int,
+               upi_from: str,
+               upi_to: str,
+               submit_time: datetime | None = None,
+               start_time: datetime | None = None,
+               end_time: datetime | None = None,
+               max_mem: int | None = None,
+               lim_mem: int | None = None,
+               cpu_time: int | None = None,
+               success: bool | None = None,
+               sequences: int | None = None):
+    columns = []
+    params = []
+    if submit_time is not None:
+        columns.append("SUBMIT_TIME = :sbmtm")
+        params.append(submit_time)
+    if start_time is not None:
+        columns.append("START_TIME = :strtm")
+        params.append(start_time)
+    if end_time is not None:
+        columns.append("END_TIME = :endtm")
+        params.append(end_time)
+    if max_mem is not None:
+        columns.append("MAX_MEMORY = :maxmem")
+        params.append(max_mem)
+    if lim_mem is not None:
+        columns.append("LIM_MEMORY = :limmem")
+        params.append(lim_mem)
+    if cpu_time is not None:
+        columns.append("CPU_TIME = :cputm")
+        params.append(cpu_time)
+    if success is not None:
+        columns.append("SUCCESS = :success")
+        params.append("Y" if success else None)
+    if sequences is not None:
+        columns.append("SEQUENCES = :sequences")
+        params.append(sequences)
 
-
-def is_job_done(cur: oracledb.Cursor, analysis_id: int, upi_from: str,
-                upi_to: str) -> bool:
-    cur.execute(
-        """
-        SELECT COUNT(*)
-        FROM IPRSCAN.ANALYSIS_JOBS
-        WHERE ANALYSIS_ID = :1 
-          AND UPI_FROM = :2 
-          AND UPI_TO = :3
-          AND SUCCESS = 'Y' 
-        """,
-        [analysis_id, upi_from, upi_to]
-    )
-    cnt, = cur.fetchone()
-    return cnt > 0
-
-
-def set_job_done(cur: oracledb.Cursor, analysis_id: int, upi_from: str,
-                 upi_to: str, num_sequences: int):
-    cur.execute(
-        """
-        UPDATE IPRSCAN.ANALYSIS_JOBS
-        SET SUCCESS = 'Y',
-            SEQUENCES = :1
-        WHERE ANALYSIS_ID = :2
-          AND UPI_FROM = :3
-          AND UPI_TO = :4
-          AND END_TIME IS NULL
-        """,
-        [num_sequences, analysis_id, upi_from, upi_to]
-    )
+    if columns:
+        cur.execute(
+            f"""
+            UPDATE IPRSCAN.ANALYSIS_JOBS
+            SET {','.join(columns)}
+            WHERE ANALYSIS_ID = :analysisid
+                AND UPI_FROM = :upifrom
+                AND UPI_TO = :upito
+                AND END_TIME IS NULL
+            """,
+            params + [analysis_id, upi_from, upi_to]
+        )
+        cur.connection.commit()
 
 
 def rebuild_indexes(uri: str, analysis_ids: list[int] | None = None):
