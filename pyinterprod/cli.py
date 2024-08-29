@@ -997,6 +997,8 @@ def run_interproscan_manager():
                                              "(default: all)")
 
     parser_search = subparsers.add_parser("search", help="search sequences")
+    parser_search.add_argument("--debug", action="store_true", default=False,
+                               help="show debug messages (default: off)")
     parser_search.add_argument("--dry-run", action="store_true", default=False,
                                help="show the number of jobs to run and exit "
                                     "(default: off)")
@@ -1110,7 +1112,8 @@ def run_interproscan_manager():
                                  # Analyses to exclude
                                  exclude=args.exclude,
                                  # Debug options
-                                 keep_files=args.keep)
+                                 keep_files=args.keep,
+                                 debug=args.debug)
 
 
 def parse_scheduler(value: str) -> tuple[str, str | None]:
