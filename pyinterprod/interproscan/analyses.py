@@ -162,7 +162,8 @@ def sites(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
     print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
-def coils_phobius_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
+def coils_phobius_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                          table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -203,7 +204,8 @@ def coils_phobius_matches(cur: oracledb.Cursor, file: str, analysis_id: int, tab
     print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
-def hamap_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
+def hamap_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                  table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -248,8 +250,8 @@ def hamap_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str)
     print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
-def _hmmer3_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str,
-                    relno_maj_as_int: bool):
+def _hmmer3_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                    table: str, relno_maj_as_int: bool):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -307,7 +309,8 @@ def _hmmer3_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: st
     print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
-def funfam_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
+def funfam_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                   table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -370,11 +373,13 @@ def funfam_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str
     print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
-def hmmer3_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
+def hmmer3_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                   table: str):
     _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=True)
 
 
-def mobidb_lite_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
+def mobidb_lite_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                        table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -424,7 +429,8 @@ def mobidb_lite_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table
     print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
-def panther_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
+def panther_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                    table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -489,7 +495,8 @@ def panther_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: st
     print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
-def pirsr_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
+def pirsr_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                  table: str):
     _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=False)
 
 
@@ -593,8 +600,8 @@ def prosite_patterns_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
     print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
-def signalp_tmhmm_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str,
-                          relno_maj_as_int: bool):
+def signalp_tmhmm_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                          table: str, relno_maj_as_int: bool):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -638,7 +645,8 @@ def signalp_tmhmm_matches(cur: oracledb.Cursor, file: str, analysis_id: int, tab
     print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
-def signalp_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
+def signalp_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                    table: str):
     signalp_tmhmm_matches(cur, file, analysis_id, table,
                           relno_maj_as_int=False)
 
@@ -647,7 +655,8 @@ def sfld_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
     _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=True)
 
 
-def smart_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
+def smart_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                  table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -703,7 +712,8 @@ def smart_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str)
     print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
-def superfamily_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
+def superfamily_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                        table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -750,6 +760,7 @@ def superfamily_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table
     print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
 
 
-def tmhmm_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
+def tmhmm_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                  table: str):
     signalp_tmhmm_matches(cur, file, analysis_id, table,
                           relno_maj_as_int=True)
