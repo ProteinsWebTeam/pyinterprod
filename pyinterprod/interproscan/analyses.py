@@ -1,12 +1,12 @@
-import os
-import sys
 from decimal import Decimal
 from typing import Callable
 
 import oracledb
 
+from pyinterprod import logger
 
-_COMMIT_SIZE = 10000
+
+_INSERT_SIZE = 10000
 
 
 def get_analyses(obj: str | oracledb.Cursor) -> dict:
@@ -55,18 +55,13 @@ def persist_results(cur: oracledb.Cursor,
                     matches_table: str,
                     sites_fn: Callable | None,
                     sites_file: str | None,
-                    sites_table: str | None) -> bool:
-    if not os.path.isfile(matches_file):
-        return False
-    elif sites_fn is not None and not os.path.isfile(sites_file):
-        return False
-
+                    sites_table: str | None):
     matches_fn(cur, matches_file, analysis_id, matches_table)
 
     if sites_fn is not None:
         sites_fn(cur, sites_file, analysis_id, sites_table)
 
-    return True
+    cur.connection.commit()
 
 
 def cdd_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
@@ -104,7 +99,7 @@ def cdd_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
                 "seq_evalue": Decimal(cols[10])
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -113,7 +108,7 @@ def cdd_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
 def sites(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
@@ -150,7 +145,7 @@ def sites(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
                 "description": cols[11]
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -159,7 +154,7 @@ def sites(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
 def coils_phobius_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
@@ -192,7 +187,7 @@ def coils_phobius_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
                 "fragments": cols[8]
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -201,7 +196,7 @@ def coils_phobius_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
 def hamap_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
@@ -238,7 +233,7 @@ def hamap_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
                 "alignment": cols[10]
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -247,7 +242,7 @@ def hamap_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
 def _hmmer3_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
@@ -297,7 +292,7 @@ def _hmmer3_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
                 "evalue": Decimal(cols[18])
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -306,7 +301,7 @@ def _hmmer3_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
 def funfam_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
@@ -361,7 +356,7 @@ def funfam_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
                 "alignment": cols[21],
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -370,7 +365,7 @@ def funfam_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
 def hmmer3_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
@@ -417,7 +412,7 @@ def mobidb_lite_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
                 "seq_feature": seq_feature
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -426,7 +421,7 @@ def mobidb_lite_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
 def panther_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
@@ -483,7 +478,7 @@ def panther_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
                 "an_node_id": an_node_id
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -492,7 +487,7 @@ def panther_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
 def pirsr_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
@@ -539,7 +534,7 @@ def prints_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str
                 "graphscan": cols[13]
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -548,7 +543,7 @@ def prints_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
 prosite_profiles_matches = hamap_matches
@@ -588,7 +583,7 @@ def prosite_patterns_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
                 "alignment": cols[10]
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -597,7 +592,7 @@ def prosite_patterns_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
 def signalp_tmhmm_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
@@ -633,7 +628,7 @@ def signalp_tmhmm_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
                 "seq_score": Decimal(cols[9])
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -642,7 +637,7 @@ def signalp_tmhmm_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
 def signalp_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
@@ -700,7 +695,7 @@ def smart_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
                 "evalue": Decimal(cols[16])
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -709,7 +704,7 @@ def smart_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
 def superfamily_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
@@ -748,7 +743,7 @@ def superfamily_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
                 "hmm_length": int(cols[10]),
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -757,7 +752,7 @@ def superfamily_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
 def tmhmm_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
