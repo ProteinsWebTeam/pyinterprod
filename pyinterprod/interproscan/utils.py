@@ -4,6 +4,7 @@ import oracledb
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
+from .analyses import get_analyses
 
 
 def clean_tables(uri: str, analysis_ids: list[int] | None = None):
