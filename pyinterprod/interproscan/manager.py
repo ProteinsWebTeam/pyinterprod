@@ -437,7 +437,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         except FileNotFoundError:
                             pass
 
-                    shutil.rmtree(run_dir)
+                    shutil.rmtree(run_dir, ignore_errors=True)
                     n_completed += 1
                 else:
                     logger.debug(f"Failed: {analysis_name} ({analysis_id})"
@@ -496,18 +496,14 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     else:
                         # Max number of retries reached
                         n_failed += 1
-                        shutil.rmtree(run_dir)
+                        shutil.rmtree(run_dir, ignore_errors=True)
 
                 progress = (n_completed + n_failed) * 100 / n_tasks
                 if progress >= milestone:
-                    """
-                    Skip intermediate milestones  (e.g. progress went 
-                    from 0 to 10%): we don't want to print 5%
-                    """
                     while progress >= milestone:
                         milestone += step
 
-                    logger.info(f"progress: {milestone - step:>3}%")
+                    logger.info(f"progress: {progress:>3}%")
 
         if n_failed:
             logger.error(f"{n_failed} task(s) failed")
