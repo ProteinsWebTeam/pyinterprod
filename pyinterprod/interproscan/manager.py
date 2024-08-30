@@ -503,7 +503,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     while progress >= milestone:
                         milestone += step
 
-                    logger.info(f"progress: {progress:>3}%")
+                    logger.info(f"progress: {progress:>3.0f}%")
 
         if n_failed:
             logger.error(f"{n_failed} task(s) failed")
