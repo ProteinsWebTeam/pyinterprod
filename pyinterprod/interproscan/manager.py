@@ -334,6 +334,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     # Export sequences
                     run_dir = factory.get_run_dir(upi_from, upi_to, mkdir=True)
                     fasta_path = factory.get_fasta_path(upi_from, upi_to)
+                    task = factory.make(upi_from, upi_to)
                     f = executor.submit(export_sequences, uri, upi_from,
                                         upi_to, fasta_path)
                     fs[f] = (analysis_id, upi_from, upi_to, run_dir, task)
