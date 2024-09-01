@@ -1,8 +1,8 @@
 import os
 import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from logging import DEBUG
-
 
 import oracledb
 from mundone import Pool, Task
@@ -109,9 +109,20 @@ class TaskFactory:
             random_suffix=False
         )
 
-    def get_run_dir(self, upi_from: str, upi_to: str) -> str:
+    def get_run_dir(self, upi_from: str, upi_to: str,
+                    mkdir: bool = False) -> str:
         name = f"{upi_from}_{upi_to}"
-        return os.path.join(self.work_dir, self.appl, self.version, name)
+        path = os.path.join(self.work_dir, self.appl, self.version, name)
+
+        if mkdir:
+            try:
+                shutil.rmtree(path)
+            except FileNotFoundError:
+                pass
+
+            os.makedirs(path)
+
+        return path
 
     def get_fasta_path(self, upi_from: str, upi_to: str) -> str:
         return os.path.join(self.get_run_dir(upi_from, upi_to), _INPUT_FASTA)
@@ -123,41 +134,6 @@ class TaskFactory:
     @staticmethod
     def get_sites_path(run_dir: str) -> str:
         return os.path.join(run_dir, _OUTPUT_SITES)
-
-    def export_sequences(self,
-                         cur: oracledb.Cursor,
-                         upi_from: str,
-                         upi_to: str) -> int:
-        cur.execute(
-            """
-            SELECT UPI, SEQ_SHORT, SEQ_LONG
-            FROM UNIPARC.PROTEIN
-            WHERE UPI BETWEEN :1 AND :2
-            """,
-            [upi_from, upi_to]
-        )
-        rows = cur.fetchall()
-        num_sequences = len(rows)
-
-        if num_sequences > 0:
-            fasta_file = self.get_fasta_path(upi_from, upi_to)
-            run_dir = os.path.dirname(fasta_file)
-
-            try:
-                shutil.rmtree(run_dir)
-            except FileNotFoundError:
-                pass
-
-            os.makedirs(run_dir)
-            with open(fasta_file, "wt") as fh:
-                for upi, seq_short, seq_long in rows:
-                    sequence = seq_short or seq_long.read()
-
-                    fh.write(f">{upi}\n")
-                    for i in range(0, len(sequence), 60):
-                        fh.write(f"{sequence[i:i + 60]}\n")
-
-        return num_sequences
 
 
 def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
@@ -248,129 +224,143 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
               kill_on_exit=False,
               threads=pool_threads) as pool:
         tasks_info = {}
-        for analysis_id, analysis in analyses_info.items():
-            analysis_name = analysis["name"]
-            analysis_version = analysis["version"]
-            has_sites = analysis["tables"]["sites"] is not None
 
-            appl, _, _ = _DB_TO_I5[analysis_name]
-            config = configs[analysis_id]
-            factory = TaskFactory(i5_dir=analysis["i5_dir"],
-                                  work_dir=work_dir,
-                                  appl=appl, version=analysis_version,
-                                  config=config,
-                                  has_sites=has_sites,
-                                  scheduler=scheduler, queue=queue)
+        with ThreadPoolExecutor(max_workers=pool_threads) as executor:
+            fs = {}
 
-            n_tasks_analysis = 0
+            for analysis_id, analysis in analyses_info.items():
+                analysis_name = analysis["name"]
+                analysis_version = analysis["version"]
+                has_sites = analysis["tables"]["sites"] is not None
 
-            # First, take care of existing jobs marked as incomplete in the DB
-            analysis_jobs = incomplete_jobs.pop(analysis_id, [])
-            for upi_from, upi_to, is_running, num_seqs in analysis_jobs:
-                if dry_run:
-                    if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
+                appl, _, _ = _DB_TO_I5[analysis_name]
+                config = configs[analysis_id]
+                factory = TaskFactory(i5_dir=analysis["i5_dir"],
+                                      work_dir=work_dir,
+                                      appl=appl, version=analysis_version,
+                                      config=config,
+                                      has_sites=has_sites,
+                                      scheduler=scheduler, queue=queue)
+
+                n_tasks_analysis = 0
+
+                # First, look at existing jobs marked as incomplete in the DB
+                analysis_jobs = incomplete_jobs.pop(analysis_id, [])
+                for upi_from, upi_to, is_running, num_seqs in analysis_jobs:
+                    if dry_run:
+                        if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
+                            break
+                        else:
+                            # Doesn't matter what is in tasks_info (dry run)
+                            tasks_info[(analysis_id, upi_from, upi_to)] = None
+                            n_tasks_analysis += 1
+                            continue
+
+                    task = factory.make(upi_from, upi_to)
+                    task.workdir = os.path.join(temp_dir, task.name)
+
+                    if is_running:
+                        # Flagged as running in the database
+
+                        # Assumes task is running
+                        task.status = RUNNING
+
+                        # Checks if the associated job is running
+                        if task.name in name2id:
+                            # It is!
+                            task.executor.id = name2id.pop(task.name)
+                            pool.submit(task)
+                            tasks_info[task.name] = (
+                                analysis_id, upi_from, upi_to, num_seqs,
+                                factory.get_run_dir(upi_from, upi_to)
+                            )
+                            n_tasks_analysis += 1
+                            continue
+
+                        task.poll()  # Checks if output exists
+                        if task.is_done():
+                            """
+                            Completed or failed. Submitted to the pool
+                            which will send it back without restarting it.
+                            """
+                            pool.submit(task)
+                            tasks_info[task.name] = (
+                                analysis_id, upi_from, upi_to, num_seqs,
+                                factory.get_run_dir(upi_from, upi_to)
+                            )
+                        elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
+                            break
+                        else:
+                            task.status = PENDING
+                            pool.submit(task)
+                            tasks_info[task.name] = (
+                                analysis_id, upi_from, upi_to, num_seqs,
+                                factory.get_run_dir(upi_from, upi_to)
+                            )
+                            n_tasks_analysis += 1
+                    elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                         break
                     else:
+                        # Flagged as failed in the database: re-submit
+                        # Change status to pending
+                        task.status = PENDING
+
+                        # Re-export sequences
+                        run_dir = factory.get_run_dir(upi_from, upi_to,
+                                                      mkdir=True)
+                        fasta_path = factory.get_fasta_path(upi_from, upi_to)
+                        f = executor.submit(export_sequences, uri, upi_from,
+                                            upi_to, fasta_path)
+                        fs[f] = (analysis_id, upi_from, upi_to, run_dir, task)
+
+                        n_tasks_analysis += 1
+
+                # Now submit new jobs
+                if analysis["max_upi"]:
+                    next_upi = int_to_upi(upi_to_int(analysis["max_upi"]) + 1)
+                else:
+                    next_upi = int_to_upi(1)
+
+                job_size = config["job_size"]
+                for upi_from, upi_to in range_upi(next_upi, max_upi, job_size):
+                    if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
+                        break
+                    elif dry_run:
                         # Doesn't matter what is in tasks_info (dry run)
                         tasks_info[(analysis_id, upi_from, upi_to)] = None
                         n_tasks_analysis += 1
                         continue
 
-                task = factory.make(upi_from, upi_to)
-                task.workdir = os.path.join(temp_dir, task.name)
-
-                if is_running:
-                    # Flagged as running in the database
-
-                    # Assumes task is running
-                    task.status = RUNNING
-
-                    # Checks if the associated job is running
-                    if task.name in name2id:
-                        # It is!
-                        task.executor.id = name2id.pop(task.name)
-                        pool.submit(task)
-                        tasks_info[task.name] = (
-                            analysis_id, upi_from, upi_to, num_seqs,
-                            factory.get_run_dir(upi_from, upi_to)
-                        )
-                        n_tasks_analysis += 1
-                        continue
-
-                    task.poll()  # Checks if output exists
-                    if task.is_done():
-                        """
-                        Completed or failed. Submitted to the pool
-                        which will send it back without restarting it.
-                        """
-                        pool.submit(task)
-                        tasks_info[task.name] = (
-                            analysis_id, upi_from, upi_to, num_seqs,
-                            factory.get_run_dir(upi_from, upi_to)
-                        )
-                    elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
-                        break
-                    else:
-                        task.status = PENDING
-                        pool.submit(task)
-                        tasks_info[task.name] = (
-                            analysis_id, upi_from, upi_to, num_seqs,
-                            factory.get_run_dir(upi_from, upi_to)
-                        )
-                        n_tasks_analysis += 1
-                elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
-                    break
-                else:
-                    # Flagged as failed in the database
-
                     # Export sequences
-                    num_seqs = factory.export_sequences(cur, upi_from, upi_to)
-
-                    # Create new job in the database
-                    jobs.add_job(cur, analysis_id, upi_from, upi_to)
-
-                    # Add task to queue
-                    task.status = PENDING
-                    pool.submit(task)
-                    tasks_info[task.name] = (
-                        analysis_id, upi_from, upi_to, num_seqs,
-                        factory.get_run_dir(upi_from, upi_to)
-                    )
+                    run_dir = factory.get_run_dir(upi_from, upi_to, mkdir=True)
+                    fasta_path = factory.get_fasta_path(upi_from, upi_to)
+                    f = executor.submit(export_sequences, uri, upi_from,
+                                        upi_to, fasta_path)
+                    fs[f] = (analysis_id, upi_from, upi_to, run_dir, task)
                     n_tasks_analysis += 1
 
-            # Now submit new jobs
-            if analysis["max_upi"]:
-                next_upi = int_to_upi(upi_to_int(analysis["max_upi"]) + 1)
-            else:
-                next_upi = int_to_upi(1)
+                logger.info(f"{analysis_name} {analysis_version}: "
+                            f"{n_tasks_analysis} tasks")
 
-            job_size = config["job_size"]
-            for upi_from, upi_to in range_upi(next_upi, max_upi, job_size):
-                if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
-                    break
-                elif dry_run:
-                    # Doesn't matter what is in tasks_info (dry run)
-                    tasks_info[(analysis_id, upi_from, upi_to)] = None
-                    n_tasks_analysis += 1
-                    continue
+            for f in as_completed(fs):
+                analysis_id, upi_from, upi_to, run_dir, task = fs[f]
+                num_seqs = f.result()
 
-                num_seqs = factory.export_sequences(cur, upi_from, upi_to)
+                # Add a (placeholder/inactive) job
                 jobs.add_job(cur, analysis_id, upi_from, upi_to)
 
                 if num_seqs > 0:
-                    task = factory.make(upi_from, upi_to)
+                    # Submit the task
                     pool.submit(task)
-                    tasks_info[task.name] = (
-                        analysis_id, upi_from, upi_to, num_seqs,
-                        factory.get_run_dir(upi_from, upi_to)
-                    )
-                    n_tasks_analysis += 1
+                    tasks_info[task.name] = (analysis_id, upi_from, upi_to,
+                                             num_seqs, run_dir)
                 else:
+                    # Empty job: flag it as successful
                     jobs.update_job(cur, analysis_id, upi_from, upi_to,
                                     success=True, sequences=0)
+                    shutil.rmtree(run_dir, ignore_errors=True)
 
-            logger.info(f"{analysis_name} {analysis_version}: "
-                        f"{n_tasks_analysis} tasks")
+            del fs
 
         cur.close()
         con.close()
@@ -509,3 +499,31 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             logger.error(f"{n_failed} task(s) failed")
         else:
             logger.info("complete")
+
+
+def export_sequences(uri: str, upi_from: str, upi_to: str, output: str) -> int:
+    con = oracle.connect(uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT UPI, SEQ_SHORT, SEQ_LONG
+        FROM UNIPARC.PROTEIN
+        WHERE UPI BETWEEN :1 AND :2
+        """,
+        [upi_from, upi_to]
+    )
+    rows = cur.fetchall()
+    cur.close()
+    con.close()
+
+    num_sequences = len(rows)
+    if num_sequences > 0:
+        with open(output, "wt") as fh:
+            for upi, seq_short, seq_long in rows:
+                sequence = seq_short or seq_long.read()
+
+                fh.write(f">{upi}\n")
+                for i in range(0, len(sequence), 60):
+                    fh.write(f"{sequence[i:i + 60]}\n")
+
+    return num_sequences
