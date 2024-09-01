@@ -345,7 +345,15 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
             for f in as_completed(fs):
                 analysis_id, upi_from, upi_to, run_dir, task = fs[f]
-                num_seqs = f.result()
+
+                try:
+                    num_seqs = f.result()
+                except Exception as exc:
+                    logger.error(f"{exc}")
+                    continue
+
+                logger.info(f"{analysis_id} {upi_from} {upi_to} {num_seqs}")
+                continue
 
                 # Add a (placeholder/inactive) job
                 jobs.add_job(cur, analysis_id, upi_from, upi_to)
@@ -371,6 +379,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
         if dry_run:
             return
+
+        return
 
         logger.info(f"monitoring")
         con = oracle.try_connect(uri)
@@ -514,9 +524,6 @@ def export_sequences(uri: str, upi_from: str, upi_to: str, output: str) -> int:
         [upi_from, upi_to]
     )
     rows = cur.fetchall()
-    cur.close()
-    con.close()
-
     num_sequences = len(rows)
     if num_sequences > 0:
         with open(output, "wt") as fh:
@@ -527,4 +534,6 @@ def export_sequences(uri: str, upi_from: str, upi_to: str, output: str) -> int:
                 for i in range(0, len(sequence), 60):
                     fh.write(f"{sequence[i:i + 60]}\n")
 
+    cur.close()
+    con.close()
     return num_sequences
