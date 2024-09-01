@@ -349,11 +349,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 try:
                     num_seqs = f.result()
                 except Exception as exc:
-                    logger.error(f"{exc}")
+                    logger.error(f"{analysis_id} ({upi_from}-{upi_to}): {exc}")
                     continue
-
-                logger.info(f"{analysis_id} {upi_from} {upi_to} {num_seqs}")
-                continue
 
                 # Add a (placeholder/inactive) job
                 jobs.add_job(cur, analysis_id, upi_from, upi_to)
@@ -379,8 +376,6 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
         if dry_run:
             return
-
-        return
 
         logger.info(f"monitoring")
         con = oracle.try_connect(uri)
