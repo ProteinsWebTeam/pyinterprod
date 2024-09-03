@@ -649,7 +649,7 @@ def iter_pdb_matches(pdbe_uri: str, ipr_uri: str):
     con = oracledb.connect(ipr_uri)
     cur = con.cursor()
     cur.execute(
-        """
+        r"""
         SELECT DISTINCT MA.METHOD_AC, X.AC
         FROM UNIPARC.XREF X
         INNER JOIN IPRSCAN.MV_IPRSCAN MA ON X.UPI = MA.UPI

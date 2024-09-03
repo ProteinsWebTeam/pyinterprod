@@ -997,6 +997,8 @@ def run_interproscan_manager():
                                              "(default: all)")
 
     parser_search = subparsers.add_parser("search", help="search sequences")
+    parser_search.add_argument("--debug", action="store_true", default=False,
+                               help="show debug messages (default: off)")
     parser_search.add_argument("--dry-run", action="store_true", default=False,
                                help="show the number of jobs to run and exit "
                                     "(default: off)")
@@ -1041,16 +1043,16 @@ def run_interproscan_manager():
     unpr_uniparc_uri = config["oracle"]["unpr-uapro"]
 
     if args.mode == "import":
-        interproscan.database.import_uniparc(ispro_uri=iscn_uniparc_uri,
-                                             uniparc_uri=unpr_uniparc_uri,
-                                             top_up=args.top_up,
-                                             max_upi=args.max_upi)
+        interproscan.uniparc.import_sequences(ispro_uri=iscn_uniparc_uri,
+                                              uniparc_uri=unpr_uniparc_uri,
+                                              top_up=args.top_up,
+                                              max_upi=args.max_upi)
     elif args.mode == "clean":
-        interproscan.database.clean_tables(iscn_iprscan_uri, args.analyses)
+        interproscan.utils.clean_tables(iscn_iprscan_uri, args.analyses)
 
     elif args.mode == "search":
         if args.list:
-            analyses = interproscan.database.get_analyses(iscn_iprscan_uri)
+            analyses = interproscan.analyses.get_analyses(iscn_iprscan_uri)
             for analysis_id in sorted(analyses,
                                       key=lambda k: (analyses[k]["name"], k)):
                 name = analyses[analysis_id]["name"]
@@ -1060,8 +1062,8 @@ def run_interproscan_manager():
             return
 
         if not args.dry_run:
-            interproscan.database.rebuild_indexes(uri=iscn_iprscan_uri,
-                                                  analysis_ids=args.analyses)
+            interproscan.utils.rebuild_indexes(uri=iscn_iprscan_uri,
+                                               analysis_ids=args.analyses)
 
         analyses_config = ConfigParser()
         analyses_config.read(config["misc"]["analyses"])
@@ -1110,7 +1112,8 @@ def run_interproscan_manager():
                                  # Analyses to exclude
                                  exclude=args.exclude,
                                  # Debug options
-                                 keep_files=args.keep)
+                                 keep_files=args.keep,
+                                 debug=args.debug)
 
 
 def parse_scheduler(value: str) -> tuple[str, str | None]:

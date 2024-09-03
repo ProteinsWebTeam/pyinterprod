@@ -1,12 +1,70 @@
-import sys
 from decimal import Decimal
+from typing import Callable
 
-from oracledb import Cursor, DB_TYPE_BINARY_DOUBLE
+import oracledb
 
-_COMMIT_SIZE = 10000
+from pyinterprod import logger
 
 
-def cdd_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+_INSERT_SIZE = 10000
+
+
+def get_analyses(obj: str | oracledb.Cursor) -> dict:
+    if isinstance(obj, str):
+        con = oracledb.connect(obj)
+        cur = con.cursor()
+    else:
+        con = None
+        cur = obj
+
+    cur.execute(
+        """
+        SELECT A.ID, A.NAME, A.VERSION, A.MAX_UPI, A.I5_DIR,
+               T.MATCH_TABLE, T.SITE_TABLE
+        FROM IPRSCAN.ANALYSIS A
+        INNER JOIN IPRSCAN.ANALYSIS_TABLES T
+            ON LOWER(A.NAME) = LOWER(T.NAME)
+        WHERE A.ACTIVE = 'Y'
+        """
+    )
+
+    analyses = {}
+    for row in cur:
+        analyses[row[0]] = {
+            "name": row[1],
+            "version": row[2],
+            "max_upi": row[3],
+            "i5_dir": row[4],
+            "tables": {
+                "matches": row[5],
+                "sites": row[6],
+            }
+        }
+
+    if con is not None:
+        cur.close()
+        con.close()
+
+    return analyses
+
+
+def persist_results(cur: oracledb.Cursor,
+                    analysis_id: int,
+                    matches_fn: Callable,
+                    matches_file: str,
+                    matches_table: str,
+                    sites_fn: Callable | None,
+                    sites_file: str | None,
+                    sites_table: str | None):
+    matches_fn(cur, matches_file, analysis_id, matches_table)
+
+    if sites_fn is not None:
+        sites_fn(cur, sites_file, analysis_id, sites_table)
+
+    cur.connection.commit()
+
+
+def cdd_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -18,7 +76,7 @@ def cdd_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                 :seq_score, :seq_evalue)
     """
 
-    cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=oracledb.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     num_parsed = num_inserted = 0
@@ -41,7 +99,7 @@ def cdd_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                 "seq_evalue": Decimal(cols[10])
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -50,10 +108,10 @@ def cdd_matches(cur: Cursor, file: str, analysis_id: int, table: str):
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
-def sites(cur: Cursor, file: str, analysis_id: int, table: str):
+def sites(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, UPI, MD5, SEQ_LENGTH, ANALYSIS_NAME, 
@@ -87,7 +145,7 @@ def sites(cur: Cursor, file: str, analysis_id: int, table: str):
                 "description": cols[11]
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -96,10 +154,11 @@ def sites(cur: Cursor, file: str, analysis_id: int, table: str):
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
-def coils_phobius_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+def coils_phobius_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                          table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -128,7 +187,7 @@ def coils_phobius_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                 "fragments": cols[8]
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -137,10 +196,11 @@ def coils_phobius_matches(cur: Cursor, file: str, analysis_id: int, table: str):
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
-def hamap_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+def hamap_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                  table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -173,7 +233,7 @@ def hamap_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                 "alignment": cols[10]
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -182,11 +242,11 @@ def hamap_matches(cur: Cursor, file: str, analysis_id: int, table: str):
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
-def _hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str,
-                    relno_maj_as_int: bool):
+def _hmmer3_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                    table: str, relno_maj_as_int: bool):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -200,8 +260,8 @@ def _hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str,
                 :hmm_length, :env_start, :env_end, :score, :evalue)
     """
 
-    cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE,
-                      evalue=DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=oracledb.DB_TYPE_BINARY_DOUBLE,
+                      evalue=oracledb.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     num_parsed = num_inserted = 0
@@ -232,7 +292,7 @@ def _hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str,
                 "evalue": Decimal(cols[18])
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -241,10 +301,11 @@ def _hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str,
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
-def funfam_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+def funfam_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                   table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -260,8 +321,8 @@ def funfam_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                 :hmmer_seq_start, :hmmer_seq_end, :alignment)
         """
 
-    cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE,
-                      evalue=DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=oracledb.DB_TYPE_BINARY_DOUBLE,
+                      evalue=oracledb.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     num_parsed = num_inserted = 0
@@ -295,7 +356,7 @@ def funfam_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                 "alignment": cols[21],
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -304,14 +365,16 @@ def funfam_matches(cur: Cursor, file: str, analysis_id: int, table: str):
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
-def hmmer3_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+def hmmer3_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                   table: str):
     _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=True)
 
 
-def mobidb_lite_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+def mobidb_lite_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                        table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -349,7 +412,7 @@ def mobidb_lite_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                 "seq_feature": seq_feature
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -358,10 +421,11 @@ def mobidb_lite_matches(cur: Cursor, file: str, analysis_id: int, table: str):
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
-def panther_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+def panther_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                    table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -375,7 +439,7 @@ def panther_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                 :hmm_length, :env_start, :env_end, :an_node_id)
     """
 
-    cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=oracledb.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     num_parsed = num_inserted = 0
@@ -414,7 +478,7 @@ def panther_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                 "an_node_id": an_node_id
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -423,14 +487,15 @@ def panther_matches(cur: Cursor, file: str, analysis_id: int, table: str):
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
-def pirsr_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+def pirsr_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                  table: str):
     _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=False)
 
 
-def prints_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+def prints_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -442,8 +507,8 @@ def prints_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                 :seq_score, :seq_evalue, :motif_number, :pvalue, :graphscan)
     """
 
-    cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE,
-                      pvalue=DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=oracledb.DB_TYPE_BINARY_DOUBLE,
+                      pvalue=oracledb.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     num_parsed = num_inserted = 0
@@ -469,7 +534,7 @@ def prints_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                 "graphscan": cols[13]
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -478,13 +543,13 @@ def prints_matches(cur: Cursor, file: str, analysis_id: int, table: str):
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
 prosite_profiles_matches = hamap_matches
 
 
-def prosite_patterns_matches(cur: Cursor, file: str, analysis_id: int,
+def prosite_patterns_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
                              table: str):
     sql = f"""
         INSERT INTO {table} (
@@ -518,7 +583,7 @@ def prosite_patterns_matches(cur: Cursor, file: str, analysis_id: int,
                 "alignment": cols[10]
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -527,11 +592,11 @@ def prosite_patterns_matches(cur: Cursor, file: str, analysis_id: int,
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
-def signalp_tmhmm_matches(cur: Cursor, file: str, analysis_id: int, table: str,
-                          relno_maj_as_int: bool):
+def signalp_tmhmm_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                          table: str, relno_maj_as_int: bool):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -563,7 +628,7 @@ def signalp_tmhmm_matches(cur: Cursor, file: str, analysis_id: int, table: str,
                 "seq_score": Decimal(cols[9])
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -572,19 +637,21 @@ def signalp_tmhmm_matches(cur: Cursor, file: str, analysis_id: int, table: str,
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
-def signalp_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+def signalp_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                    table: str):
     signalp_tmhmm_matches(cur, file, analysis_id, table,
                           relno_maj_as_int=False)
 
 
-def sfld_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+def sfld_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):
     _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=True)
 
 
-def smart_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+def smart_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                  table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -598,8 +665,8 @@ def smart_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                 :hmm_length, :score, :evalue)
     """
 
-    cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE,
-                      evalue=DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=oracledb.DB_TYPE_BINARY_DOUBLE,
+                      evalue=oracledb.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     num_parsed = num_inserted = 0
@@ -628,7 +695,7 @@ def smart_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                 "evalue": Decimal(cols[16])
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -637,10 +704,11 @@ def smart_matches(cur: Cursor, file: str, analysis_id: int, table: str):
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
-def superfamily_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+def superfamily_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                        table: str):
     sql = f"""
         INSERT INTO {table} (
             ANALYSIS_ID, ANALYSIS_NAME, RELNO_MAJOR, RELNO_MINOR,
@@ -652,7 +720,7 @@ def superfamily_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                 :seq_evalue, :hmm_length)
     """
 
-    cur.setinputsizes(seq_evalue=DB_TYPE_BINARY_DOUBLE)
+    cur.setinputsizes(seq_evalue=oracledb.DB_TYPE_BINARY_DOUBLE)
 
     values = []
     num_parsed = num_inserted = 0
@@ -675,7 +743,7 @@ def superfamily_matches(cur: Cursor, file: str, analysis_id: int, table: str):
                 "hmm_length": int(cols[10]),
             })
 
-            if len(values) == _COMMIT_SIZE:
+            if len(values) == _INSERT_SIZE:
                 cur.executemany(sql, values)
                 num_inserted += cur.rowcount
                 values.clear()
@@ -684,9 +752,10 @@ def superfamily_matches(cur: Cursor, file: str, analysis_id: int, table: str):
         cur.executemany(sql, values)
         num_inserted += cur.rowcount
 
-    print(f"parsed: {num_parsed}; inserted: {num_inserted}", file=sys.stderr)
+    logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
-def tmhmm_matches(cur: Cursor, file: str, analysis_id: int, table: str):
+def tmhmm_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                  table: str):
     signalp_tmhmm_matches(cur, file, analysis_id, table,
                           relno_maj_as_int=True)

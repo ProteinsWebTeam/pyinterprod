@@ -210,7 +210,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
     cur = con.cursor()
     cur.outputtypehandler = clob_as_str
     cur.execute(
-        """
+        r"""
         SELECT
             M.METHOD_AC, LOWER(D.DBSHORT),
             M.NAME, LLM.NAME, M.DESCRIPTION, LLM.DESCRIPTION,
