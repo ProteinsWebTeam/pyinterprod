@@ -245,8 +245,9 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 n_tasks_analysis = 0
 
                 # First, look at existing jobs marked as incomplete in the DB
-                analysis_jobs = incomplete_jobs.pop(analysis_id, [])
-                for upi_from, upi_to, is_running, num_seqs in analysis_jobs:
+                for info in incomplete_jobs.pop(analysis_id, []):
+                    upi_from, upi_to, is_running, num_sequences = info
+
                     if dry_run:
                         if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                             break
@@ -271,7 +272,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                             task.executor.id = name2id.pop(task.name)
                             pool.submit(task)
                             tasks_info[task.name] = (
-                                analysis_id, upi_from, upi_to, num_seqs,
+                                analysis_id, upi_from, upi_to, num_sequences,
                                 factory.get_run_dir(upi_from, upi_to)
                             )
                             n_tasks_analysis += 1
@@ -285,7 +286,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                             """
                             pool.submit(task)
                             tasks_info[task.name] = (
-                                analysis_id, upi_from, upi_to, num_seqs,
+                                analysis_id, upi_from, upi_to, num_sequences,
                                 factory.get_run_dir(upi_from, upi_to)
                             )
                         elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
@@ -294,7 +295,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                             task.status = PENDING
                             pool.submit(task)
                             tasks_info[task.name] = (
-                                analysis_id, upi_from, upi_to, num_seqs,
+                                analysis_id, upi_from, upi_to, num_sequences,
                                 factory.get_run_dir(upi_from, upi_to)
                             )
                             n_tasks_analysis += 1
@@ -347,23 +348,23 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 analysis_id, upi_from, upi_to, run_dir, task = fs[f]
 
                 try:
-                    num_seqs = f.result()
+                    num_sequences = f.result()
                 except Exception as exc:
                     logger.error(f"{analysis_id} ({upi_from}-{upi_to}): {exc}")
                     continue
 
                 # Add a (placeholder/inactive) job
-                jobs.add_job(cur, analysis_id, upi_from, upi_to)
+                jobs.add_job(cur, analysis_id, upi_from, upi_to, num_sequences)
 
-                if num_seqs > 0:
+                if num_sequences > 0:
                     # Submit the task
                     pool.submit(task)
                     tasks_info[task.name] = (analysis_id, upi_from, upi_to,
-                                             num_seqs, run_dir)
+                                             num_sequences, run_dir)
                 else:
                     # Empty job: flag it as successful
                     jobs.update_job(cur, analysis_id, upi_from, upi_to,
-                                    success=True, sequences=0)
+                                    success=True)
                     shutil.rmtree(run_dir, ignore_errors=True)
 
             del fs
@@ -419,7 +420,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         cur, analysis_id, upi_from, upi_to,
                         task.submit_time, task.start_time, task.end_time,
                         task.maxmem, task.executor.memory,
-                        task.cputime, True, num_sequences
+                        task.cputime, True
                     )
 
                     if keep_files == "all":
@@ -485,7 +486,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         pool.submit(task)
 
                         # Add new job
-                        jobs.add_job(cur, analysis_id, upi_from, upi_to)
+                        jobs.add_job(cur, analysis_id, upi_from, upi_to,
+                                     num_sequences)
 
                         # Increment retries counter
                         retries[task.name] = num_retries + 1

@@ -46,7 +46,11 @@ def get_incomplete_jobs(cur: oracledb.Cursor) -> dict[int, tuple]:
     return incomplete_jobs
 
 
-def add_job(cur: oracledb.Cursor, analysis_id: int, upi_from: str, upi_to: str):
+def add_job(cur: oracledb.Cursor,
+            analysis_id: int,
+            upi_from: str,
+            upi_to: str,
+            num_sequences: int):
     cur.execute(
         """
         UPDATE IPRSCAN.ANALYSIS
@@ -57,10 +61,11 @@ def add_job(cur: oracledb.Cursor, analysis_id: int, upi_from: str, upi_to: str):
     )
     cur.execute(
         """
-        INSERT INTO IPRSCAN.ANALYSIS_JOBS (ANALYSIS_ID, UPI_FROM, UPI_TO)
-        VALUES (:1, :2, :3)
+        INSERT INTO IPRSCAN.ANALYSIS_JOBS 
+            (ANALYSIS_ID, UPI_FROM, UPI_TO, SEQUENCES)
+        VALUES (:1, :2, :3. :4)
         """,
-        [analysis_id, upi_from, upi_to]
+        [analysis_id, upi_from, upi_to, num_sequences]
     )
     cur.connection.commit()
 
@@ -75,8 +80,7 @@ def update_job(cur: oracledb.Cursor,
                max_mem: int | None = None,
                lim_mem: int | None = None,
                cpu_time: int | None = None,
-               success: bool | None = None,
-               sequences: int | None = None):
+               success: bool | None = None):
     columns = []
     params = []
     if submit_time is not None:
@@ -100,9 +104,6 @@ def update_job(cur: oracledb.Cursor,
     if success is not None:
         columns.append("SUCCESS = :success")
         params.append("Y" if success else None)
-    if sequences is not None:
-        columns.append("SEQUENCES = :sequences")
-        params.append(sequences)
 
     if columns:
         cur.execute(
