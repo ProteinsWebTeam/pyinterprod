@@ -63,7 +63,7 @@ def add_job(cur: oracledb.Cursor,
         """
         INSERT INTO IPRSCAN.ANALYSIS_JOBS 
             (ANALYSIS_ID, UPI_FROM, UPI_TO, SEQUENCES)
-        VALUES (:1, :2, :3. :4)
+        VALUES (:1, :2, :3, :4)
         """,
         [analysis_id, upi_from, upi_to, num_sequences]
     )
