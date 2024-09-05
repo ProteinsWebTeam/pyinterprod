@@ -497,8 +497,7 @@ def create_xref_summary(uri: str):
             NULL,
             NULL,
             FM.METHOD_AC,
-            CASE WHEN ME.NAME IS NOT NULL AND FM.METHOD_AC != ME.NAME
-                THEN ME.NAME ELSE ME.DESCRIPTION END,
+            ME.DESCRIPTION,
             FM.POS_FROM,
             FM.POS_TO,
             'T',
