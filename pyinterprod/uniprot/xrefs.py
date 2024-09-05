@@ -99,7 +99,9 @@ def export(url: str, outdir: str, emails: dict):
         else:
             identifier = signature_acc
 
-        optional_1 = (signature_name or "-").replace("\"", "'")
+        optional_1 = ((signature_name or "-")
+                      .replace("\"", "'")
+                      .replace(";", ","))
         optional_2 = "" if dbcode == "F" else f"; {num_matches}"
 
         fh.write(f"{protein_acc}    DR   {dbname}; {identifier}; "
