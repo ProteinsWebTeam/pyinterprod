@@ -132,7 +132,7 @@ MATCH_PARTITIONS = {
             'SUBSTR(RELNO_MAJOR', '6', '7)',
             'SEQ_START', 'SEQ_END', '0', '0', '0',
             'LOCATION_LEVEL', '0', '0', '0', '0',
-            '0', '0', 'MODEL_AC', 'ALIGNMENT', 'FRAGMENTS', 'ALIGNMENT'
+            '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS', 'ALIGNMENT'
         ],
         "partition": "PROSITE_PATTERNS"
     },
@@ -142,7 +142,7 @@ MATCH_PARTITIONS = {
             'SUBSTR(RELNO_MAJOR', '6', '7)',
             'SEQ_START', 'SEQ_END', '0', '0', '0',
             'NULL', '0', 'SEQSCORE', '0', '0',
-            '0', '0', 'MODEL_AC', 'ALIGNMENT', 'FRAGMENTS', 'ALIGNMENT'
+            '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS', 'ALIGNMENT'
         ],
         "partition": "PROSITE_PROFILES"
     },
