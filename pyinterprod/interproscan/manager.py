@@ -261,7 +261,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     task.workdir = os.path.join(temp_dir, task.name)
 
                     if is_running:
-                        # Flagged as running in the database
+                        # Flagged as running (incomplete) in the database
 
                         # Assumes task is running
                         task.status = RUNNING
@@ -292,26 +292,26 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                             break
                         else:
+                            # Unknown fate: re-submit
                             task.status = PENDING
-                            pool.submit(task)
-                            tasks_info[task.name] = (
-                                analysis_id, upi_from, upi_to, num_sequences,
-                                factory.get_run_dir(upi_from, upi_to)
-                            )
+                            run_dir = factory.get_run_dir(upi_from, upi_to,
+                                                          mkdir=True)
+                            fasta = factory.get_fasta_path(upi_from, upi_to)
+                            f = executor.submit(export_sequences, uri, upi_from,
+                                                upi_to, fasta)
+                            fs[f] = (analysis_id, upi_from, upi_to, run_dir,
+                                     task)
                             n_tasks_analysis += 1
                     elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                         break
                     else:
                         # Flagged as failed in the database: re-submit
-                        # Change status to pending
                         task.status = PENDING
-
-                        # Re-export sequences
                         run_dir = factory.get_run_dir(upi_from, upi_to,
                                                       mkdir=True)
-                        fasta_path = factory.get_fasta_path(upi_from, upi_to)
+                        fasta = factory.get_fasta_path(upi_from, upi_to)
                         f = executor.submit(export_sequences, uri, upi_from,
-                                            upi_to, fasta_path)
+                                            upi_to, fasta)
                         fs[f] = (analysis_id, upi_from, upi_to, run_dir, task)
 
                         n_tasks_analysis += 1
@@ -332,12 +332,11 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         n_tasks_analysis += 1
                         continue
 
-                    # Export sequences
                     run_dir = factory.get_run_dir(upi_from, upi_to, mkdir=True)
-                    fasta_path = factory.get_fasta_path(upi_from, upi_to)
+                    fasta = factory.get_fasta_path(upi_from, upi_to)
                     task = factory.make(upi_from, upi_to)
                     f = executor.submit(export_sequences, uri, upi_from,
-                                        upi_to, fasta_path)
+                                        upi_to, fasta)
                     fs[f] = (analysis_id, upi_from, upi_to, run_dir, task)
                     n_tasks_analysis += 1
 
@@ -434,7 +433,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         except FileNotFoundError:
                             pass
 
-                    shutil.rmtree(run_dir, ignore_errors=True)
+                        shutil.rmtree(run_dir, ignore_errors=True)
+
                     n_completed += 1
                 else:
                     logger.debug(f"Failed: {analysis_name} ({analysis_id})"
@@ -494,7 +494,9 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     else:
                         # Max number of retries reached
                         n_failed += 1
-                        shutil.rmtree(run_dir, ignore_errors=True)
+
+                        if keep_files not in ("all", "failed"):
+                            shutil.rmtree(run_dir, ignore_errors=True)
 
                 progress = (n_completed + n_failed) * 100 / n_tasks
                 if progress >= milestone:
