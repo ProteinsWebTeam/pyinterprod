@@ -364,7 +364,10 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     # Empty job: flag it as successful
                     jobs.update_job(cur, analysis_id, upi_from, upi_to,
                                     success=True)
-                    shutil.rmtree(run_dir, ignore_errors=True)
+                    try:
+                        shutil.rmtree(run_dir)
+                    except Exception as exc:
+                        logger.error(exc)
 
             del fs
 
@@ -433,7 +436,10 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         except FileNotFoundError:
                             pass
 
-                        shutil.rmtree(run_dir, ignore_errors=True)
+                        try:
+                            shutil.rmtree(run_dir)
+                        except Exception as exc:
+                            logger.error(exc)
 
                     n_completed += 1
                 else:
@@ -496,7 +502,10 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         n_failed += 1
 
                         if keep_files not in ("all", "failed"):
-                            shutil.rmtree(run_dir, ignore_errors=True)
+                            try:
+                                shutil.rmtree(run_dir)
+                            except Exception as exc:
+                                logger.error(exc)
 
                 progress = (n_completed + n_failed) * 100 / n_tasks
                 if progress >= milestone:
