@@ -389,13 +389,13 @@ def run_member_db_update():
     if member_dbs or feature_dbs or site_dbs:
         tasks += [
             Task(
-                fn=interpro.iprscan.update_tables,
+                fn=interpro.iprscan.import_matches_or_sites,
                 args=(ora_iprscan_uri, "matches"),
                 kwargs=dict(databases=member_dbs + feature_dbs + site_dbs,
                             force=True,
                             threads=8),
                 name="update-ipm-matches",
-                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24)
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=48)
             )
         ]
         ipm_dependencies = ["update-ipm-matches"]
@@ -499,11 +499,11 @@ def run_member_db_update():
 
         tasks += [
             Task(
-                fn=interpro.iprscan.update_tables,
+                fn=interpro.iprscan.import_matches_or_sites,
                 args=(ora_iprscan_uri, "sites"),
                 kwargs=dict(databases=site_dbs, force=True, threads=2),
                 name="update-ipm-sites",
-                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=48),
             ),
             Task(
                 fn=interpro.match.update_database_site_matches,
@@ -682,19 +682,19 @@ def run_uniprot_update():
 
         # Data from ISPRO
         Task(
-            fn=interpro.iprscan.update_tables,
+            fn=interpro.iprscan.import_matches_or_sites,
             args=(ora_iprscan_uri, "matches"),
             kwargs=dict(force=True, threads=8),
             name="update-ipm-matches",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=48),
             requires=["update-uniparc-proteins"]
         ),
         Task(
-            fn=interpro.iprscan.update_tables,
+            fn=interpro.iprscan.import_matches_or_sites,
             args=(ora_iprscan_uri, "sites"),
             kwargs=dict(force=True, threads=2),
             name="update-ipm-sites",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=48),
             requires=["update-uniparc-proteins"]
         ),
 

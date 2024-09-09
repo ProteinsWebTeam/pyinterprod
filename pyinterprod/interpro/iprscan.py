@@ -344,7 +344,7 @@ def get_analyses(cur: Cursor, **kwargs) -> list[Analysis]:
     return analyses
 
 
-def update_tables(uri: str, data_type: str = "matches", **kwargs):
+def import_matches_or_sites(uri: str, data_type: str = "matches", **kwargs):
     databases = kwargs.get("databases", [])
     force = kwargs.get("force", True)
     threads = kwargs.get("threads", 1)
@@ -474,10 +474,10 @@ def update_tables(uri: str, data_type: str = "matches", **kwargs):
     oracle.drop_index(cur, index)
     cur.execute(
         f"""
-            CREATE INDEX {index} 
-            ON IPRSCAN.{partitioned_table} (UPI)
-            TABLESPACE IPRSCAN_IND
-            """
+        CREATE INDEX {index} 
+        ON IPRSCAN.{partitioned_table} (UPI)
+        TABLESPACE IPRSCAN_IND
+        """
     )
 
     logger.info("gathering statistics")
@@ -549,8 +549,7 @@ def _update_table(uri: str, remote_table: str, partitioned_table: str,
 
         if subparts:
             """
-            # the temporary table = staging table (TMP_TABLE?)
-            The target table is sub-partitioned: the staging table needs
+            The target table is sub-partitioned: the temporary table needs
             to be partitioned
             """
             col = subparts[0]["column"]
