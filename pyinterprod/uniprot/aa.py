@@ -44,22 +44,12 @@ def create_aa_alignment(uri: str):
     # Open second cursor for INSERT statements (first used for SELECT)
     cur2 = con.cursor()
 
-    for name in ["FunFam", "HAMAP", "PROSITE patterns", "PROSITE profiles"]:
+    for name in ["HAMAP", "PROSITE patterns", "PROSITE profiles"]:
         logger.info(f"inserting data from {name}")
-
-        columns = ["UPI", "METHOD_AC", "SEQ_START", "SEQ_END"]
-
-        if name == "FunFam":
-            columns += ["HMMER_SEQ_START", "HMMER_SEQ_END"]
-        else:
-            columns += ["NULL", "NULL"]
-
-        columns.append("ALIGNMENT")
-
         analysis_id, table = analyses[name]
         cur.execute(
             f"""
-            SELECT {', '.join(columns)}
+            SELECT UPI, METHOD_AC, SEQ_START, SEQ_END, NULL, NULL, ALIGNMENT
             FROM IPRSCAN.{iprscan.PREFIX}{table}
             WHERE ANALYSIS_ID = :1
            """,
