@@ -340,8 +340,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     fs[f] = (analysis_id, upi_from, upi_to, run_dir, task)
                     n_tasks_analysis += 1
 
-                logger.info(f"{analysis_name} {analysis_version}: "
-                            f"{n_tasks_analysis} tasks")
+                logger.debug(f"{analysis_name} {analysis_version}: "
+                             f"{n_tasks_analysis} tasks")
 
             for f in as_completed(fs):
                 analysis_id, upi_from, upi_to, run_dir, task = fs[f]
