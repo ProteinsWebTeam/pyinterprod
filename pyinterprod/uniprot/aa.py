@@ -34,8 +34,6 @@ def create_aa_alignment(uri: str):
             SIGNATURE VARCHAR2(255) NOT NULL,
             SEQ_START NUMBER(10) NOT NULL,
             SEQ_END NUMBER(10) NOT NULL,
-            HMMER_SEQ_START NUMBER(10),
-            HMMER_SEQ_END NUMBER(10),
             ALIGNMENT VARCHAR2(4000)
         ) COMPRESS NOLOGGING
         """
@@ -49,7 +47,7 @@ def create_aa_alignment(uri: str):
         analysis_id, table = analyses[name]
         cur.execute(
             f"""
-            SELECT UPI, METHOD_AC, SEQ_START, SEQ_END, NULL, NULL, ALIGNMENT
+            SELECT UPI, METHOD_AC, SEQ_START, SEQ_END, ALIGNMENT
             FROM IPRSCAN.{iprscan.PREFIX}{table}
             WHERE ANALYSIS_ID = :1
            """,
@@ -59,14 +57,13 @@ def create_aa_alignment(uri: str):
         rows = []
         library = name.replace(" ", "_").upper()
         for row in cur:
-            rows.append((row[0], library, row[1], row[2], row[3], row[4],
-                         row[5], row[6]))
+            rows.append((row[0], library, row[1], row[2], row[3], row[4]))
 
             if len(rows) == 1000:
                 cur2.executemany(
                     f"""
                     INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
-                    VALUES (:1, :2, :3, :4, :5, :6, :7, :8)
+                    VALUES (:1, :2, :3, :4, :5, :6)
                     """,
                     rows
                 )
@@ -77,7 +74,7 @@ def create_aa_alignment(uri: str):
             cur2.executemany(
                 f"""
                 INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
-                VALUES (:1, :2, :3, :4, :5, :6, :7, :8)
+                VALUES (:1, :2, :3, :4, :5, :6)
                 """,
                 rows
             )
