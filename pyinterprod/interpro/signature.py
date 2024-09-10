@@ -606,8 +606,8 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
                                                 db_props["classes"],
                                                 db_props["instances"],
                                                 db_props["fasta"])
-        elif db.identifier == 'x':
-            # COILS
+        elif db.identifier in ('g', 'x'):
+            # MobiDB-Lite and COILS
             features = []
             cur.execute(
                 """

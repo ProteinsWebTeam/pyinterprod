@@ -353,7 +353,7 @@ def run_member_db_update():
             # We usually need a source for signatures
             if dbname in options:
                 props = options[dbname]
-            elif dbname == "coils":
+            elif dbname in ("coils", "mobidblt"):
                 # Exception for feature databases without data files
                 pass
             else:
