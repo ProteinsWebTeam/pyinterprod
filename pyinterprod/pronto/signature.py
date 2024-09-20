@@ -448,10 +448,11 @@ def get_swissprot_descriptions(pg_url: str) -> dict[str, dict[str, set[str]]]:
 
         signatures = {}
         for signature_acc, text, proteins in cur:
-            try:
-                signatures[signature_acc][text] = set(proteins)
-            except KeyError:
-                signatures[signature_acc] = {text: set(proteins)}
+            for protein in proteins:
+                try:
+                    signatures[signature_acc][protein] = text
+                except KeyError:
+                    signatures[signature_acc] = {protein: text}
 
     con.close()
 
