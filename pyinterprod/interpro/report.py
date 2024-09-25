@@ -9,7 +9,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 import oracledb
 
 from pyinterprod.utils import email
-from pyinterprod.pronto.signature import get_swissprot_descriptions
+from pyinterprod.pronto.signature import get_swissprot_descriptions, get_swissprot_proteins
 from .database import Database
 from .match import track_entry_changes, get_sig_protein_counts
 from .signature import FILE_DB_SIG, FILE_SIG_DESCR
@@ -372,6 +372,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
     # Load entry -> descriptions BEFORE UniProt update
     entries_then = {}
+    before_proteins = {}
     with open(os.path.join(data_dir, FILE_SIG_DESCR), "rb") as fh:
         for signature_acc, descriptions in pickle.load(fh).items():
             try:
@@ -389,11 +390,18 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                     entry_descrs[description] |= proteins
                 except KeyError:
                     entry_descrs[description] = set(proteins)
+                before_proteins[entry_acc].update(
+                    {protein: entry_descrs[description] for protein in
+                     proteins if protein not in before_proteins})
 
     # Load entry -> descriptions AFTER UniProt update
     signatures_now = get_swissprot_descriptions(pg_url)
+    proteins_now = get_swissprot_proteins(pg_url)
+    # ignore consists of proteins with changed descriptions, still part of entry, excluding name exceptions
+    ignore = {}
     entries_now = {}
     entry2prots = {}
+    name_exception = ["unknown", "putative", "uncharacterized", "hypothetical", "fragment", "predicted"]
     for signature_acc, descriptions in signatures_now.items():
         try:
             entry_acc = integrated[signature_acc]
@@ -405,6 +413,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
         except KeyError:
             entry_descrs = entries_now[entry_acc] = {}
             entry2prots[entry_acc] = set()
+            ignore[entry_acc] = []
 
         for description, proteins in descriptions.items():
             entry2prots[entry_acc] |= proteins
@@ -414,15 +423,54 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             except KeyError:
                 entry_descrs[description] = set(proteins)
 
+        for protein in proteins_now[signature_acc]:
+            # check protein has same description
+            # check if protein was in before proteins for this entry
+            now_desc = proteins_now[signature_acc][protein]
+            if protein in before_proteins[entry_acc].keys() and protein not in ignore[entry_acc]:
+                before_desc = before_proteins[protein]
+                # check if description contains name_exeception and if it is different
+                if now_desc != before_desc and not [name in (now_desc or before_desc) for name in name_exception]:
+                    ignore[entry_acc].append(protein)
+                else:
+                    continue
+
     changes = {}  # key: entry accession, value: (lost, gained)
+    alt_changes = {}
     for entry_acc in (set(entries_then.keys()) | set(entries_now.keys())):
         descrs_then = set(entries_then.get(entry_acc, {}).keys())
         descrs_now = set(entries_now.get(entry_acc, {}).keys())
         if descrs_then != descrs_now:
+            alt_descrs_then = set()
+            alt_descrs_now = set()
+
             changes[entry_acc] = (
                 descrs_then - descrs_now,
                 descrs_now - descrs_then
             )
+            # check if difference is only because of ignored proteins
+            # if so do not add these descriptions to alt_changes
+            ignore_proteins = ignore[entry_acc]
+            for descr in descrs_then:
+                proteins = entries_then[entry_acc].get(descr, [])
+                if all(protein in proteins in protein in ignore_proteins):
+                    continue
+                else:
+                    alt_descrs_then.add(descr)
+
+            for descr in descrs_now:
+                # in case where a description is empty?
+                proteins = entries_now[entry_acc].get(descr, [])
+                if all(protein in proteins in protein in ignore_proteins):
+                    continue
+                else:
+                    alt_descrs_now.add(descr)
+
+            if alt_descrs_then != alt_descrs_now:
+                alt_changes[entry_acc] = (
+                    alt_descrs_then - alt_descrs_now,
+                    alt_descrs_now - alt_descrs_then
+                )
 
     # Write entries with changes (by entry type: families, domains, others)
     tmpdir = mkdtemp()
@@ -438,10 +486,13 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
         if type_code == 'F':
             filename = "swiss_de_families.tsv"
+            altfilename = "alt_swiss_de_families.tsv"
         elif type_code == 'D':
             filename = "swiss_de_domains.tsv"
+            altfilename = "alt_swiss_de_domains.tsv"
         else:
             filename = "swiss_de_others.tsv"
+            altfilename = "alt_swiss_de_others.tsv"
 
         try:
             fh = files[filename]
@@ -449,6 +500,13 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             filepath = os.path.join(tmpdir, filename)
             fh = files[filename] = open(filepath, "wt")
             fh.write(header)
+
+        try:
+            ah = files[altfilename]
+        except KeyError:
+            altfilepath = os.path.join(tmpdir, altfilename)
+            ah = files[altfilename] = open(altfilepath, "wt")
+            ah.write(header)
 
         lost, gained = changes[entry_acc]
         lost_descrs = []
@@ -461,6 +519,23 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             ex_acc = next(iter(entries_now[entry_acc][descr]))
             gained_descrs.append(f"{descr} ({ex_acc})")
 
+        altlost, altgained = changes[entry_acc]
+        altlost_descrs = []
+        for descr in sorted(altlost):
+            #####
+
+                    #
+            ex_acc = next(iter(entries_then[entry_acc][descr]))
+            ######
+            altlost_descrs.append(f"{descr} ({ex_acc})")
+
+        altgained_descrs = []
+        for descr in sorted(altlost):
+            ####
+            ex_acc = next(iter(entries_now[entry_acc][descr]))
+            ####
+            altgained_descrs.append(f"{descr} ({ex_acc})")
+
         fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
                  f"{name}\t{'Yes' if is_checked else 'No'}\t{origin}\t"
                  f"{len(entry2prots.get(entry_acc, []))}\t"
@@ -468,8 +543,18 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                  f"{' | '.join(lost_descrs)}\t"
                  f"{' | '.join(gained_descrs)}\n")
 
+        ah.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
+                 f"{name}\t{'Yes' if is_checked else 'No'}\t{origin}\t"
+                 f"{len(entry2prots.get(entry_acc, []))}\t"
+                 f"{len(altlost)}\t{len(altgained)}\t"
+                 f"{' | '.join(altlost_descrs)}\t"
+                 f"{' | '.join(altgained_descrs)}\n")
+
     for fh in files.values():
         fh.close()
+
+    for ah in files.values():
+        ah.close()
 
     # Keep track of entries with Swiss-Prot description changes
     entries_changes = set(changes.keys())
@@ -529,6 +614,12 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
     cur.close()
     con.close()
+
+    # making new format file
+    name_exceptions = ["uncharacterized", "putative", "hypothetical", "predicted", "fragment", "unknown"]
+    # go through entries_desc to get name
+    # if name_exceptions in text:
+
 
     filename = os.path.join(data_dir, f"protein_update_{release}.zip")
     with ZipFile(filename, 'w', compression=ZIP_DEFLATED) as fh:
