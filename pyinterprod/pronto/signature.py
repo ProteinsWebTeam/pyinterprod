@@ -448,7 +448,35 @@ def get_swissprot_descriptions(pg_url: str) -> dict[str, dict[str, set[str]]]:
 
         signatures = {}
         for signature_acc, text, proteins in cur:
-            for protein in proteins:
+            try:
+                signatures[signature_acc][text] = set(proteins)
+            except KeyError:
+                signatures[signature_acc] = {text: set(proteins)}
+
+    con.close()
+
+    return signatures
+
+
+def get_swissprot_proteins(pg_url: str) -> dict[str, dict[str, set[str]]]:
+    con = psycopg.connect(**url2dict(pg_url))
+    with con.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                signature_acc,
+                text,
+                ARRAY_AGG(DISTINCT protein_acc)
+            FROM INTERPRO.signature2protein s2p
+            INNER JOIN INTERPRO.protein_name pn ON s2p.name_id = pn.name_id
+            WHERE s2p.is_reviewed
+            GROUP BY signature_acc, text
+            """
+        )
+
+        signatures = {}
+        for signature_acc, text, proteins in cur:
+            for protein in set(proteins):
                 try:
                     signatures[signature_acc][protein] = text
                 except KeyError:
@@ -457,3 +485,4 @@ def get_swissprot_descriptions(pg_url: str) -> dict[str, dict[str, set[str]]]:
     con.close()
 
     return signatures
+
