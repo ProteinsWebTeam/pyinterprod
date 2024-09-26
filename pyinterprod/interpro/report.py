@@ -432,13 +432,17 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             # check protein has same description
             # check if protein was in before proteins for this entry
             now_desc = proteins_now[signature_acc][protein]
-            if protein in before_proteins[entry_acc].keys() and protein not in ignore[entry_acc]:
-                before_desc = before_proteins[protein]
-                # check if description contains name_exeception and if it is different
-                if now_desc != before_desc and not [name in (now_desc or before_desc) for name in name_exception]:
-                    ignore[entry_acc][protein] = (before_desc, now_desc)
-                else:
-                    continue
+            try:
+                if protein in before_proteins[entry_acc].keys() and protein not in ignore[entry_acc]:
+                    before_desc = before_proteins[entry_acc][protein]
+                    # check if description contains name_exeception and if it is different
+                    if now_desc != before_desc and not [name in (now_desc or before_desc) for name in name_exception]:
+                        ignore[entry_acc][protein] = (before_desc, now_desc)
+                    else:
+                        continue
+            except KeyError:
+                # new entry not in before_proteins
+                continue
 
     changes = {}  # key: entry accession, value: (lost, gained)
     alt_changes = {}
