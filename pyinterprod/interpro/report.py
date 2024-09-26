@@ -463,7 +463,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             # check if proteins in both can be ignored
             lost_proteins = set()
             gained_proteins = set()
-            ignore_proteins = ignore[entry_acc].keys()
+            ignore_proteins = ignore[entry_acc]
             for descr in lost:
                 proteins = entries_then[entry_acc].get(descr, [])
                 lost_proteins.update(proteins)
