@@ -395,7 +395,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                         {protein: entry_descrs[description] for protein in
                          proteins if protein not in before_proteins[entry_acc]}.keys())
                 except KeyError:
-                    before_proteins[entry_acc] = set()
+                    before_proteins[entry_acc] = {}
 
     # Load entry -> descriptions AFTER UniProt update
     signatures_now = get_swissprot_descriptions(pg_url)
