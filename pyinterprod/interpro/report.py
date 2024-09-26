@@ -463,19 +463,22 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             # check if proteins in both can be ignored
             lost_proteins = set()
             gained_proteins = set()
-            ignore_proteins = ignore[entry_acc]
-            for descr in lost:
-                proteins = entries_then[entry_acc].get(descr, [])
-                lost_proteins.update(proteins)
-            for descr in gained:
-                proteins = entries_now[entry_acc].get(descr, [])
-                gained_proteins.update(proteins)
-            renamed_proteins = lost_proteins | gained_proteins
-            for protein in renamed_proteins:
-                if protein in ignore_proteins:
-                    lost.remove(ignore[entry_acc][protein][0])
-                    gained.remove(ignore[entry_acc][protein][1])
-            alt_changes[entry_acc] = (lost, gained)
+            try:
+                ignore_proteins = ignore[entry_acc]
+                for descr in lost:
+                    proteins = entries_then[entry_acc].get(descr, [])
+                    lost_proteins.update(proteins)
+                for descr in gained:
+                    proteins = entries_now[entry_acc].get(descr, [])
+                    gained_proteins.update(proteins)
+                renamed_proteins = lost_proteins | gained_proteins
+                for protein in renamed_proteins:
+                    if protein in ignore_proteins:
+                        lost.remove(ignore[entry_acc][protein][0])
+                        gained.remove(ignore[entry_acc][protein][1])
+                alt_changes[entry_acc] = (lost, gained)
+            except KeyError:
+                alt_changes[entry_acc] = (lost, gained)
 
     # Write entries with changes (by entry type: families, domains, others)
     tmpdir = mkdtemp()
