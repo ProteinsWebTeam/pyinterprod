@@ -392,8 +392,10 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                     entry_descrs[description] = set(proteins)
                 try:
                     before_proteins[entry_acc].update(
-                        {protein: entry_descrs[description] for protein in
-                         proteins if protein not in before_proteins[entry_acc]}.keys())
+                        {protein: entry_descrs[description]
+                         for protein in proteins
+                         if protein not in before_proteins[entry_acc]
+                     })
                 except KeyError:
                     before_proteins[entry_acc] = {}
 
