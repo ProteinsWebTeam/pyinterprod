@@ -466,11 +466,6 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                 if protein in ignore_proteins:
                     lost.remove(ignore[entry_acc][protein][0])
                     gained.remove(ignore[entry_acc][protein][1])
-                    # remove descriptions from lost and gained
-                    # possible other proteins in entry/description are not ignorable
-                    # e.g. case sig b has two proteins, one is renamed to desc_1, the other is renamed to desc_5 (which is unnamed)
-                    # with this method it will remove desc_5 if the first protein is selceted first
-
             alt_changes[entry_acc] = (lost, gained)
 
     # Write entries with changes (by entry type: families, domains, others)
@@ -609,12 +604,6 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
     cur.close()
     con.close()
-
-    # making new format file
-    name_exceptions = ["uncharacterized", "putative", "hypothetical", "predicted", "fragment", "unknown"]
-    # go through entries_desc to get name
-    # if name_exceptions in text:
-
 
     filename = os.path.join(data_dir, f"protein_update_{release}.zip")
     with ZipFile(filename, 'w', compression=ZIP_DEFLATED) as fh:
