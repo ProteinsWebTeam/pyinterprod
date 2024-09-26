@@ -431,7 +431,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                 before_desc = before_proteins[protein]
                 # check if description contains name_exeception and if it is different
                 if now_desc != before_desc and not [name in (now_desc or before_desc) for name in name_exception]:
-                    ignore[entry_acc].append(protein)
+                    ignore[entry_acc][protein] = (before_desc, now_desc)
                 else:
                     continue
 
@@ -441,36 +441,37 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
         descrs_then = set(entries_then.get(entry_acc, {}).keys())
         descrs_now = set(entries_now.get(entry_acc, {}).keys())
         if descrs_then != descrs_now:
-            alt_descrs_then = set()
-            alt_descrs_now = set()
 
             changes[entry_acc] = (
                 descrs_then - descrs_now,
                 descrs_now - descrs_then
             )
-            # check if difference is only because of ignored proteins
-            # if so do not add these descriptions to alt_changes
-            ignore_proteins = ignore[entry_acc]
-            for descr in descrs_then:
+
+            lost = descrs_then - descrs_now
+            gained = descrs_now - descrs_then
+
+            # if a protein has changed description, will be in lost and gained but still in entry
+            # check if proteins in both can be ignored
+            lost_proteins = set()
+            gained_proteins = set()
+            ignore_proteins = ignore[entry_acc].keys()
+            for descr in lost:
                 proteins = entries_then[entry_acc].get(descr, [])
-                if all(protein in proteins in protein in ignore_proteins):
-                    continue
-                else:
-                    alt_descrs_then.add(descr)
-
-            for descr in descrs_now:
-                # in case where a description is empty?
+                lost_proteins.update(proteins)
+            for descr in gained:
                 proteins = entries_now[entry_acc].get(descr, [])
-                if all(protein in proteins in protein in ignore_proteins):
-                    continue
-                else:
-                    alt_descrs_now.add(descr)
+                gained_proteins.update(proteins)
+            renamed_proteins = lost_proteins | gained_proteins
+            for protein in renamed_proteins:
+                if protein in ignore_proteins:
+                    lost.remove(ignore[entry_acc][protein][0])
+                    gained.remove(ignore[entry_acc][protein][1])
+                    # remove descriptions from lost and gained
+                    # possible other proteins in entry/description are not ignorable
+                    # e.g. case sig b has two proteins, one is renamed to desc_1, the other is renamed to desc_5 (which is unnamed)
+                    # with this method it will remove desc_5 if the first protein is selceted first
 
-            if alt_descrs_then != alt_descrs_now:
-                alt_changes[entry_acc] = (
-                    alt_descrs_then - alt_descrs_now,
-                    alt_descrs_now - alt_descrs_then
-                )
+            alt_changes[entry_acc] = (lost, gained)
 
     # Write entries with changes (by entry type: families, domains, others)
     tmpdir = mkdtemp()
@@ -519,21 +520,15 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             ex_acc = next(iter(entries_now[entry_acc][descr]))
             gained_descrs.append(f"{descr} ({ex_acc})")
 
-        altlost, altgained = changes[entry_acc]
+        altlost, altgained = alt_changes[entry_acc]
         altlost_descrs = []
         for descr in sorted(altlost):
-            #####
-
-                    #
             ex_acc = next(iter(entries_then[entry_acc][descr]))
-            ######
             altlost_descrs.append(f"{descr} ({ex_acc})")
 
         altgained_descrs = []
-        for descr in sorted(altlost):
-            ####
+        for descr in sorted(altgained):
             ex_acc = next(iter(entries_now[entry_acc][descr]))
-            ####
             altgained_descrs.append(f"{descr} ({ex_acc})")
 
         fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
