@@ -1,5 +1,6 @@
 import os
 import shutil
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from logging import DEBUG
@@ -340,8 +341,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     fs[f] = (analysis_id, upi_from, upi_to, run_dir, task)
                     n_tasks_analysis += 1
 
-                logger.info(f"{analysis_name} {analysis_version}: "
-                            f"{n_tasks_analysis} tasks")
+                logger.debug(f"{analysis_name} {analysis_version}: "
+                             f"{n_tasks_analysis} tasks")
 
             for f in as_completed(fs):
                 analysis_id, upi_from, upi_to, run_dir, task = fs[f]
@@ -364,10 +365,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     # Empty job: flag it as successful
                     jobs.update_job(cur, analysis_id, upi_from, upi_to,
                                     success=True)
-                    try:
-                        shutil.rmtree(run_dir)
-                    except Exception as exc:
-                        logger.error(exc)
+                    try_rmtree(run_dir)
 
             del fs
 
@@ -436,10 +434,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         except FileNotFoundError:
                             pass
 
-                        try:
-                            shutil.rmtree(run_dir)
-                        except Exception as exc:
-                            logger.error(exc)
+                        try_rmtree(run_dir)
 
                     n_completed += 1
                 else:
@@ -502,10 +497,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         n_failed += 1
 
                         if keep_files not in ("all", "failed"):
-                            try:
-                                shutil.rmtree(run_dir)
-                            except Exception as exc:
-                                logger.error(exc)
+                            try_rmtree(run_dir)
 
                 progress = (n_completed + n_failed) * 100 / n_tasks
                 if progress >= milestone:
@@ -545,3 +537,17 @@ def export_sequences(uri: str, upi_from: str, upi_to: str, output: str) -> int:
     cur.close()
     con.close()
     return num_sequences
+
+
+def try_rmtree(path: str, max_attempts: int = 3):
+    num_attempts = 1
+    while num_attempts <= max_attempts:
+        try:
+            shutil.rmtree(path)
+        except Exception as exc:
+            time.sleep(1)
+            num_attempts += 1
+            if num_attempts == max_attempts:
+                logger.error(exc)
+        else:
+            break

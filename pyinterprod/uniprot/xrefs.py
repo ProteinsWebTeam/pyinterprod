@@ -99,8 +99,15 @@ def export(url: str, outdir: str, emails: dict):
         else:
             identifier = signature_acc
 
-        optional_1 = (signature_name or "-").replace("\"", "'")
-        optional_2 = "" if dbcode == "F" else f"; {num_matches}"
+        optional_1 = ((signature_name or "-")
+                      .replace("\"", "'")
+                      .replace(";", ","))
+
+        if dbcode in ("a", "F"):
+            # AntiFam and PRINTS: no number of matches (who knows why)
+            optional_2 = ""
+        else:
+            optional_2 = f"; {num_matches}"
 
         fh.write(f"{protein_acc}    DR   {dbname}; {identifier}; "
                  f"{optional_1}{optional_2}.\n")

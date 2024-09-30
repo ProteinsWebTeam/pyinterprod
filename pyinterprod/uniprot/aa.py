@@ -34,8 +34,6 @@ def create_aa_alignment(uri: str):
             SIGNATURE VARCHAR2(255) NOT NULL,
             SEQ_START NUMBER(10) NOT NULL,
             SEQ_END NUMBER(10) NOT NULL,
-            HMMER_SEQ_START NUMBER(10),
-            HMMER_SEQ_END NUMBER(10),
             ALIGNMENT VARCHAR2(4000)
         ) COMPRESS NOLOGGING
         """
@@ -44,22 +42,12 @@ def create_aa_alignment(uri: str):
     # Open second cursor for INSERT statements (first used for SELECT)
     cur2 = con.cursor()
 
-    for name in ["FunFam", "HAMAP", "PROSITE patterns", "PROSITE profiles"]:
+    for name in ["HAMAP", "PROSITE patterns", "PROSITE profiles"]:
         logger.info(f"inserting data from {name}")
-
-        columns = ["UPI", "METHOD_AC", "SEQ_START", "SEQ_END"]
-
-        if name == "FunFam":
-            columns += ["HMMER_SEQ_START", "HMMER_SEQ_END"]
-        else:
-            columns += ["NULL", "NULL"]
-
-        columns.append("ALIGNMENT")
-
         analysis_id, table = analyses[name]
         cur.execute(
             f"""
-            SELECT {', '.join(columns)}
+            SELECT UPI, METHOD_AC, SEQ_START, SEQ_END, ALIGNMENT
             FROM IPRSCAN.{iprscan.PREFIX}{table}
             WHERE ANALYSIS_ID = :1
            """,
@@ -69,14 +57,13 @@ def create_aa_alignment(uri: str):
         rows = []
         library = name.replace(" ", "_").upper()
         for row in cur:
-            rows.append((row[0], library, row[1], row[2], row[3], row[4],
-                         row[5], row[6]))
+            rows.append((row[0], library, row[1], row[2], row[3], row[4]))
 
             if len(rows) == 1000:
                 cur2.executemany(
                     f"""
                     INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
-                    VALUES (:1, :2, :3, :4, :5, :6, :7, :8)
+                    VALUES (:1, :2, :3, :4, :5, :6)
                     """,
                     rows
                 )
@@ -87,7 +74,7 @@ def create_aa_alignment(uri: str):
             cur2.executemany(
                 f"""
                 INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
-                VALUES (:1, :2, :3, :4, :5, :6, :7, :8)
+                VALUES (:1, :2, :3, :4, :5, :6)
                 """,
                 rows
             )
@@ -497,8 +484,7 @@ def create_xref_summary(uri: str):
             NULL,
             NULL,
             FM.METHOD_AC,
-            CASE WHEN ME.NAME IS NOT NULL AND FM.METHOD_AC != ME.NAME
-                THEN ME.NAME ELSE ME.DESCRIPTION END,
+            ME.DESCRIPTION,
             FM.POS_FROM,
             FM.POS_TO,
             'T',
