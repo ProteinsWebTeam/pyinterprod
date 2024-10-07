@@ -301,6 +301,9 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
     logger.info(f"Obsolete proteins:     {obsolete_proteins.count:>12,}")
     logger.info(f"Disk usage:            {size / 1024 ** 2:>9,.0f} MB")
 
+    if new_reviewed == 0 or new_unreviewed == 0:
+        raise RuntimeError("No reviewed or unreviewed UniProtKB entries")
+
 
 def delete_obsoletes(url: str, truncate: bool = False, threads: int = 8,
                      step: int = 10000):
