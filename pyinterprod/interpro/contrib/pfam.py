@@ -210,32 +210,6 @@ def parse_sto(file: str):
     assert len(raw) == 0
 
 
-def parse_fasta(file: str) -> dict[str, int]:
-    """Count the number of sequences per Pfam family
-
-    :param file: string representation of the path to Pfam-A.fasta.gz
-    :return: dictionary of Pfam accession -> number of sequences
-    """
-    if file.endswith(".gz"):
-        _open = gzip.open
-    else:
-        _open = open
-
-    counts = {}
-    with _open(file, "rt") as fh:
-        for line in map(str.rstrip, fh):
-            if line[0] == ">":
-                # >A0A8S0GYS1_9PSED/45-323 A0A8S0GYS1.1 PF00389.35;2-Hacid_dh;
-                _, _, entry = line.split(None, maxsplit=2)
-                accession, version = entry.split(".")
-                try:
-                    counts[accession] += 1
-                except KeyError:
-                    counts[accession] = 1
-
-    return counts
-
-
 def _decode(b: bytes) -> str:
     """Decode bytes to a string using UTF-8 or Latin-1
 
@@ -345,17 +319,13 @@ def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
     logger.info("done")
 
 
-def get_clans(pfam_c: str, pfama_fa: str, pfama_full: str) -> list[Clan]:
+def get_clans(pfam_c: str, pfama_full: str) -> list[Clan]:
     """Extract information about Pfam clans and their members
 
     :param pfam_c: string representation of the path to Pfam-C[.gz]
-    :param pfama_fa: string representation of the path to Pfam-A.fasta[.gz]
     :param pfama_full: string representation of the path to Pfam-A.full[.gz]
     :return: list of Clan objects
     """
-    logger.info(f"parsing {os.path.basename(pfama_fa)}")
-    num_seqs = parse_fasta(pfama_fa)
-
     logger.info(f"parsing {os.path.basename(pfama_full)}")
     num_full = {}
     for entry, _ in parse_sto(pfama_full):
@@ -373,7 +343,8 @@ def get_clans(pfam_c: str, pfama_fa: str, pfama_full: str) -> list[Clan]:
         members = []
         for member in entry.features.get("MB", []):
             member = member.rstrip(";")
-            total += num_seqs.get(member, 0)
+            if (num_full.get(member, 0) > total):
+                total = num_full.get(member, 0)
             members.append(member)
 
         clans.append(Clan(accession, name, description))

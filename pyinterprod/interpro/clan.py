@@ -619,7 +619,6 @@ def update_hmm_clans(uri: str, database: Database, hmmdb: str, **kwargs):
     logger.info("loading new clans")
     if database.name.lower() == "pfam":
         clans = contrib.pfam.get_clans(kwargs["clans"],
-                                       kwargs["fasta"],
                                        kwargs["full"])
 
         def getsubdir(x): return x[:5]
