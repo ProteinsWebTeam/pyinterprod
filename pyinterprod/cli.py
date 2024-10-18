@@ -57,7 +57,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             args=(ora_swp_uri, pg_ipr_uri, names_db),
             kwargs=dict(tmpdir=temp_dir),
             name="proteins-names",
-            scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=12)
+            scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=24)
         ),
         Task(
             fn=pronto.protein.import_protein_pubmed,
