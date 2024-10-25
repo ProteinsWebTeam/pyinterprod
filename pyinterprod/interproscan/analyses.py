@@ -424,8 +424,8 @@ def mobidb_lite_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
     logger.debug(f"parsed: {num_parsed}; inserted: {num_inserted}")
 
 
-def ncbifam_amr_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
-                        table: str):
+def ncbifam_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
+                    table: str):
     _hmmer3_matches(cur, file, analysis_id, table, relno_maj_as_int=False)
 
 
