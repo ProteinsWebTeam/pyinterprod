@@ -343,8 +343,9 @@ def get_clans(pfam_c: str, pfama_full: str) -> list[Clan]:
         members = []
         for member in entry.features.get("MB", []):
             member = member.rstrip(";")
-            if (num_full.get(member, 0) > total):
-                total = num_full.get(member, 0)
+            num_seqs = num_full.get(member, 0)
+            if num_seqs > total:
+                total = num_seqs
             members.append(member)
 
         clans.append(Clan(accession, name, description))
