@@ -43,7 +43,7 @@ def clean_tables(uri: str, analysis_ids: list[int] | None = None):
             if analysis_id not in analyses:
                 # Obsolete analysis: remove data
                 actions.append((
-                    f"  - {p['name']:<30}: drop partition",
+                    f"  - {p['name']:<30}: delete data",
                     [(
                         f"ALTER TABLE {table} DROP PARTITION {p['name']}", []
                     )]
@@ -56,7 +56,7 @@ def clean_tables(uri: str, analysis_ids: list[int] | None = None):
             if analysis_id not in table2analyses[table]:
                 # Obsolete analysis: remove data
                 actions.append((
-                    f"  - {p['name']:<30}: drop partition",
+                    f"  - {p['name']:<30}: delete data",
                     [(
                         f"ALTER TABLE {table} DROP PARTITION {p['name']}", []
                     )]
@@ -76,7 +76,7 @@ def clean_tables(uri: str, analysis_ids: list[int] | None = None):
                 if cnt > 0:
                     # Delete jobs after the max UPI
                     actions.append((
-                        f"  - {p['name']:<30}: delete jobs > {max_upi}",
+                        f"  - {p['name']:<30}: delete jobs/data > {max_upi}",
                         [(
                             """
                             DELETE FROM IPRSCAN.ANALYSIS_JOBS
@@ -95,7 +95,7 @@ def clean_tables(uri: str, analysis_ids: list[int] | None = None):
             else:
                 # No max UPI: remove data
                 actions.append((
-                    f"  - {p['name']:<30}: delete jobs",
+                    f"  - {p['name']:<30}: delete jobs/data",
                     [(
                         f"DELETE FROM IPRSCAN.ANALYSIS_JOBS "
                         f"WHERE ANALYSIS_ID = :1",
