@@ -31,6 +31,7 @@ _DB_TO_I5 = {
     "HAMAP": ("Hamap", analyses.hamap_matches, None),
     "MobiDB Lite": ("MobiDBLite", analyses.mobidb_lite_matches, None),
     "NCBIfam": ("NCBIfam", analyses.hmmer3_matches, None),
+    "NCBIFAM-AMR": ("NCBIfam-AMR", analyses.hmmer3_matches, None),
     "PANTHER": ("PANTHER", analyses.panther_matches, None),
     "Pfam": ("Pfam", analyses.hmmer3_matches, None),
     "Phobius": ("Phobius", analyses.coils_phobius_matches, None),
