@@ -3,13 +3,20 @@ import uuid
 
 import oracledb
 
+from pyinterprod import logger
 from pyinterprod.utils import Table
-from pyinterprod.utils.oracle import drop_table
+from pyinterprod.utils.oracle import drop_table, get_partitions
 
 
 def load_matches(uri: str, databases: dict[str, str]):
     con = oracledb.connect(uri)
     cur = con.cursor()
+
+    partitions = {}
+    for p in get_partitions(cur, "INTERPRO", "TOAD_MATCH"):
+        name = p["name"]
+        dbcode = p["value"][1:-1]  # 'X' -> X
+        partitions[dbcode] = name
 
     for dbshort, filepath in databases.items():
         sql = "SELECT DBCODE FROM INTERPRO.CV_DATABASE WHERE DBSHORT = :1"
@@ -22,8 +29,22 @@ def load_matches(uri: str, databases: dict[str, str]):
 
         dbcode, = row
 
+        try:
+            partition = partitions[dbcode]
+        except KeyError:
+            cur.close()
+            con.close()
+            err = f"No partition in TOAD_MATCH for database {dbshort}"
+            raise KeyError(err)
 
-def load_database_matches(cur: oracledb.Cursor, dbcode: str, filepath: str):
+        load_database_matches(cur, dbcode, partition, filepath)
+
+    cur.close()
+    con.close()
+
+
+def load_database_matches(cur: oracledb.Cursor, dbcode: str, partition: str,
+                          filepath: str):
     # Insert "raw" matches (as provided by DeepMind)
     drop_table(cur, "INTERPRO.TOAD_MATCH_NEW", purge=True)
     cur.execute(
@@ -87,6 +108,57 @@ def load_database_matches(cur: oracledb.Cursor, dbcode: str, filepath: str):
         """,
     )
     cur.connection.commit()
+
+    cur.execute(
+        """
+        ALTER TABLE INTERPRO.TOAD_MATCH_TMP
+        ADD CONSTRAINT CK_TOAD_MATCH_TMP$FROM 
+        CHECK (POS_FROM >= 1)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE INTERPRO.TOAD_MATCH_TMP
+        ADD CONSTRAINT CK_TOAD_MATCH_TMP$TO 
+        CHECK (POS_FROM <= POS_TO)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE INTERPRO.TOAD_MATCH_TMP
+        ADD CONSTRAINT PK_TOAD_MATCH_TMP
+        PRIMARY KEY (PROTEIN_AC, METHOD_AC, DBCODE, POS_FROM, POS_TO)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE INTERPRO.TOAD_MATCH_TMP
+        ADD CONSTRAINT FK_TOAD_MATCH_TMP$PROTEIN 
+        FOREIGN KEY (PROTEIN_AC) REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE INTERPRO.TOAD_MATCH_TMP
+        ADD CONSTRAINT FK_TOAD_MATCH_TMP$PROTEIN 
+        FOREIGN KEY (METHOD_AC) REFERENCES INTERPRO.METHOD (METHOD_AC)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE INTERPRO.TOAD_MATCH_TMP
+        ADD CONSTRAINT FK_TOAD_MATCH_TMP$DBCODE 
+        FOREIGN KEY (DBCODE) REFERENCES INTERPRO.CV_DATABASE (DBCODE)
+        """
+    )
+
+    cur.execute(
+        f"""
+        ALTER TABLE INTERPRO.TOAD_MATCH
+        EXCHANGE PARTITION ({partition})
+        WITH TABLE INTERPRO.TOAD_MATCH_TMP
+        """
+    )
 
 
 def iter_matches(filepath: str):
