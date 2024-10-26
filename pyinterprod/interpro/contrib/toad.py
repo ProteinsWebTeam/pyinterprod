@@ -94,8 +94,8 @@ def load_database_matches(cur: oracledb.Cursor, dbcode: str, partition: str,
                    T.METHOD_AC,
                    T.DBCODE,
                    T.POS_FROM,
-                   CASE WHEN M.POS_TO <= P.LEN
-                        THEN M.POS_TO 
+                   CASE WHEN T.POS_TO <= P.LEN
+                        THEN T.POS_TO 
                         ELSE P.LEN 
                         END POS_TO,
                    T.UUID,
