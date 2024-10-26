@@ -102,7 +102,7 @@ def load_database_matches(cur: oracledb.Cursor, dbcode: str, partition: str,
                    T.SCORE 
             FROM INTERPRO.TOAD_MATCH_NEW T
             INNER JOIN INTERPRO.PROTEIN P ON T.PROTEIN_AC = P.PROTEIN_AC
-            INNER JOINT INTERPRO.METHOD M ON T.METHOD_AC = M.METHOD_AC
+            INNER JOIN INTERPRO.METHOD M ON T.METHOD_AC = M.METHOD_AC
         )
         WHERE POS_FROM <= POS_TO
         """,
