@@ -77,7 +77,7 @@ def load_database_matches(cur: oracledb.Cursor, dbcode: str, partition: str,
                     score
                 ))
 
-    # Filter out obsolete matches (involving deleted proteins or signatures)
+    # Filter matches (deleted proteins/signatures or out-of-bounds)
     drop_table(cur, "INTERPRO.TOAD_MATCH_TMP", purge=True)
     cur.execute(
         """
@@ -92,7 +92,7 @@ def load_database_matches(cur: oracledb.Cursor, dbcode: str, partition: str,
         FROM (
             SELECT T.PROTEIN_AC,
                    T.METHOD_AC,
-                   T.DBCODE
+                   T.DBCODE,
                    T.POS_FROM,
                    CASE WHEN M.POS_TO <= P.LEN
                         THEN M.POS_TO 
