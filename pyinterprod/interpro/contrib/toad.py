@@ -37,14 +37,13 @@ def load_matches(uri: str, databases: dict[str, str]):
             err = f"No partition in TOAD_MATCH for database {dbshort}"
             raise KeyError(err)
 
-        load_database_matches(cur, dbcode, partition, filepath)
+        load_database_matches(cur, partition, filepath)
 
     cur.close()
     con.close()
 
 
-def load_database_matches(cur: oracledb.Cursor, dbcode: str, partition: str,
-                          filepath: str):
+def load_database_matches(cur: oracledb.Cursor, partition: str, filepath: str):
     # Insert "raw" matches (as provided by DeepMind)
     drop_table(cur, "INTERPRO.TOAD_MATCH_NEW", purge=True)
     cur.execute(
@@ -57,7 +56,7 @@ def load_database_matches(cur: oracledb.Cursor, dbcode: str, partition: str,
     query = """
         INSERT /*+ APPEND */ 
         INTO INTERPRO.TOAD_MATCH_NEW 
-        VALUES (:1, :2, :3, :4, :5, :6, :7)
+        VALUES (:1, :2, :3, :4, :5, :6)
     """
     with Table(con=cur.connection, query=query, autocommit=True) as table:
         for uniprot_acc, method_acc, frags, score in iter_matches(filepath):
@@ -70,7 +69,6 @@ def load_database_matches(cur: oracledb.Cursor, dbcode: str, partition: str,
                 table.insert((
                     uniprot_acc,
                     method_acc,
-                    dbcode,
                     pos_from,
                     pos_to,
                     group_uuid,
@@ -92,7 +90,7 @@ def load_database_matches(cur: oracledb.Cursor, dbcode: str, partition: str,
         FROM (
             SELECT T.PROTEIN_AC,
                    T.METHOD_AC,
-                   T.DBCODE,
+                   M.DBCODE,
                    T.POS_FROM,
                    CASE WHEN T.POS_TO <= P.LEN
                         THEN T.POS_TO 
