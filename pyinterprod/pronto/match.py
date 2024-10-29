@@ -14,7 +14,7 @@ import psycopg
 from pyinterprod import logger
 from pyinterprod.pdbe import get_sifts_mapping
 from pyinterprod.utils import pg
-from pyinterprod.utils.kvdb import KVdb
+from pyinterprod.utils.io import KVdb, dump, iter_util_eof
 
 
 # Domain org.: introduce a gap when distance between two positions > 20 aa
@@ -143,17 +143,6 @@ def _export_matches(url: str, cachesize: int,
     return files
 
 
-def _dump(data: dict, tmpdir: str | None = None) -> str:
-    fd, file = mkstemp(dir=tmpdir)
-    os.close(fd)
-    with gzip.open(file, "wb", compresslevel=6) as fh:
-        for key in sorted(data):
-            pickle.dump((key, data[key]), fh)
-
-    data.clear()
-    return file
-
-
 def _merge_matches(files: list[str]):
     iterable = [iter_util_eof(file, compressed=True) for file in files]
     protein_acc = is_reviewed = is_complete = left_number = None
@@ -180,22 +169,6 @@ def _merge_matches(files: list[str]):
                 models[model_acc] = (signature_db, [fragments])
 
     yield protein_acc, is_reviewed, is_complete, left_number, matches
-
-
-def iter_util_eof(file: str, compressed: bool):
-    if compressed:
-        fh = gzip.open(file, "rb")
-    else:
-        fh = open(file, "rb")
-
-    try:
-        while True:
-            try:
-                yield pickle.load(fh)
-            except EOFError:
-                break
-    finally:
-        fh.close()
 
 
 def insert_signature2protein(url: str, names_db: str, matches_file: str,
