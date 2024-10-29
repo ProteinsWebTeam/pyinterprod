@@ -173,7 +173,7 @@ def process_matches(filepath: str, tmpdir: str | None, **kwargs):
     # shutil.rmtree(outdir)
 
 
-def parse_matches(filepath: str, outdir: str,
+def parse_matches(filepath: str, outdir: str | None,
                   buffersize: int = 1000000) -> list[str]:
     files = []
     proteins = {}
@@ -204,16 +204,14 @@ def parse_matches(filepath: str, outdir: str,
 
         i += 1
         if i % buffersize == 0:
-            file = os.path.join(outdir, f"{len(files):010}.dat")
-            dump(proteins, file)
-            proteins.clear()
+            file = dump(proteins, outdir)
             files.append(file)
+            proteins.clear()
 
     if proteins:
-        file = os.path.join(outdir, f"{len(files):010}.dat")
-        dump(proteins, file)
-        proteins.clear()
+        file = dump(proteins, outdir)
         files.append(file)
+        proteins.clear()
 
     return files
 
