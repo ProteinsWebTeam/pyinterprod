@@ -1,5 +1,10 @@
+import heapq
+import os
+import pickle
+import shutil
 import tarfile
 import uuid
+from tempfile import mkdtemp
 
 import oracledb
 
@@ -157,6 +162,65 @@ def load_database_matches(cur: oracledb.Cursor, partition: str, filepath: str):
         WITH TABLE INTERPRO.TOAD_MATCH_TMP
         """
     )
+
+
+def process_matches(filepath: str, tmpdir: str | None,
+                    buffersize: int = 1000000):
+    if tmpdir is None:
+        tmpdir = mkdtemp()
+        delete_dir = True
+    else:
+        delete_dir = False
+
+    os.makedirs(tmpdir, exist_ok=True)
+    files = []
+    proteins = {}
+    i = 0
+    for uniprot_acc, method_acc, fragments, score in iter_matches(filepath):
+        try:
+            matches = proteins[uniprot_acc]
+        except KeyError:
+            matches = proteins[uniprot_acc] = {}
+
+        try:
+            hits = matches[method_acc]
+        except KeyError:
+            hits = matches[method_acc] = []
+
+        if len(fragments) > 1:
+            group_uuid = str(uuid.uuid4())
+        else:
+            group_uuid = None
+
+        for pos_from, pos_to in fragments:
+            hits.append((
+                pos_from,
+                pos_to,
+                group_uuid,
+                score
+            ))
+
+        i += 1
+        if i % buffersize == 0:
+            file = os.path.join(tmpdir, f"{len(files):010}.dat")
+            dump(proteins, file)
+            proteins.clear()
+            files.append(file)
+
+    if proteins:
+        file = os.path.join(tmpdir, f"{len(files):010}.dat")
+        dump(proteins, file)
+        proteins.clear()
+        files.append(file)
+
+    # if delete_dir:
+    #     shutil.rmtree(tmpdir)
+
+
+def dump(data: dict, dst: str):
+    with open(dst, "wb") as fh:
+        for key in sorted(data):
+            pickle.dump((key, data[key]), fh)
 
 
 def iter_matches(filepath: str):
