@@ -182,12 +182,7 @@ def parse_matches(filepath: str, outdir: str | None,
         try:
             matches = proteins[uniprot_acc]
         except KeyError:
-            matches = proteins[uniprot_acc] = {}
-
-        try:
-            hits = matches[method_acc]
-        except KeyError:
-            hits = matches[method_acc] = []
+            matches = proteins[uniprot_acc] = []
 
         if len(fragments) > 1:
             group_uuid = str(uuid.uuid4())
@@ -195,7 +190,8 @@ def parse_matches(filepath: str, outdir: str | None,
             group_uuid = None
 
         for pos_from, pos_to in fragments:
-            hits.append((
+            matches.append((
+                method_acc,
                 pos_from,
                 pos_to,
                 group_uuid,
