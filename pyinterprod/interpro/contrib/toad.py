@@ -164,7 +164,7 @@ def load_database_matches(cur: oracledb.Cursor, partition: str, filepath: str):
     )
 
 
-def process_matches(filepath: str, tmpdir: str | None, **kwargs):
+def process_tarfile(filepath: str, tmpdir: str | None, **kwargs):
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
