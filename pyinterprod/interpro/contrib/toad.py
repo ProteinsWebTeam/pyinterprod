@@ -1,6 +1,5 @@
 import heapq
 import os
-import pickle
 import shutil
 import tarfile
 import uuid
@@ -10,6 +9,7 @@ import oracledb
 
 from pyinterprod import logger
 from pyinterprod.utils import Table
+from pyinterprod.utils.io import dump
 from pyinterprod.utils.oracle import drop_table, get_partitions
 
 
@@ -164,15 +164,17 @@ def load_database_matches(cur: oracledb.Cursor, partition: str, filepath: str):
     )
 
 
-def process_matches(filepath: str, tmpdir: str | None,
-                    buffersize: int = 1000000):
-    if tmpdir is None:
-        tmpdir = mkdtemp()
-        delete_dir = True
-    else:
-        delete_dir = False
+def process_matches(filepath: str, tmpdir: str | None, **kwargs):
+    if tmpdir:
+        os.makedirs(tmpdir, exist_ok=True)
 
-    os.makedirs(tmpdir, exist_ok=True)
+    outdir = mkdtemp(dir=tmpdir)
+    files = parse_matches(filepath, outdir, **kwargs)
+    # shutil.rmtree(outdir)
+
+
+def parse_matches(filepath: str, outdir: str,
+                  buffersize: int = 1000000) -> list[str]:
     files = []
     proteins = {}
     i = 0
@@ -202,25 +204,18 @@ def process_matches(filepath: str, tmpdir: str | None,
 
         i += 1
         if i % buffersize == 0:
-            file = os.path.join(tmpdir, f"{len(files):010}.dat")
+            file = os.path.join(outdir, f"{len(files):010}.dat")
             dump(proteins, file)
             proteins.clear()
             files.append(file)
 
     if proteins:
-        file = os.path.join(tmpdir, f"{len(files):010}.dat")
+        file = os.path.join(outdir, f"{len(files):010}.dat")
         dump(proteins, file)
         proteins.clear()
         files.append(file)
 
-    # if delete_dir:
-    #     shutil.rmtree(tmpdir)
-
-
-def dump(data: dict, dst: str):
-    with open(dst, "wb") as fh:
-        for key in sorted(data):
-            pickle.dump((key, data[key]), fh)
+    return files
 
 
 def iter_matches(filepath: str):
