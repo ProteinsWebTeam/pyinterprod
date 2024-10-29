@@ -129,7 +129,7 @@ def _export_matches(url: str, cachesize: int,
 
         i += 1
         if i % cachesize == 0:
-            files.append(_dump(cache, tmpdir))
+            files.append(dump(cache, tmpdir, compresslevel=6))
 
         if i % 1e8 == 0:
             logger.info(f"{i:>15,}")
@@ -137,14 +137,14 @@ def _export_matches(url: str, cachesize: int,
     cur.close()
     con.close()
 
-    files.append(_dump(cache, tmpdir))
+    files.append(dump(cache, tmpdir, compresslevel=6))
     logger.info(f"{i:>15,}")
 
     return files
 
 
 def _merge_matches(files: list[str]):
-    iterable = [iter_util_eof(file, compressed=True) for file in files]
+    iterable = [iter_util_eof(file) for file in files]
     protein_acc = is_reviewed = is_complete = left_number = None
     matches = {}
     for key, value in heapq.merge(*iterable, key=lambda x: x[0]):
