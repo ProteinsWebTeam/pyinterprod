@@ -9,7 +9,7 @@ import oracledb
 
 from pyinterprod import logger
 from pyinterprod.utils import Table
-from pyinterprod.utils.io import dump
+from pyinterprod.utils.io import dump, iter_until_eof
 from pyinterprod.utils.oracle import drop_table, get_partitions
 
 
@@ -170,7 +170,14 @@ def process_tarfile(filepath: str, tmpdir: str | None, **kwargs):
 
     outdir = mkdtemp(dir=tmpdir)
     files = parse_matches(filepath, outdir, **kwargs)
-    # shutil.rmtree(outdir)
+
+    for protein_acc, matches in process_matches(files):
+        for signature_acc, locations in matches.items():
+            for pos_from, pos_to, fragments, score in locations:
+                yield (protein_acc, signature_acc, pos_from, pos_to,
+                       fragments, score)
+
+    shutil.rmtree(outdir)
 
 
 def parse_matches(filepath: str, outdir: str | None,
@@ -198,6 +205,83 @@ def parse_matches(filepath: str, outdir: str | None,
         proteins.clear()
 
     return files
+
+
+def process_matches(files: list[str]):
+    iterable = [iter_until_eof(f) for f in files]
+    protein_acc = None
+    matches = []
+    for key, value in heapq.merge(*iterable, key=lambda x: x[0]):
+        if key != protein_acc:
+            if matches:
+                yield protein_acc, filter_matches(matches)
+
+            protein_acc = key
+            matches.clear()
+
+        matches += value
+
+    if matches:
+        yield protein_acc, filter_matches(matches)
+
+
+def filter_matches(matches: list[tuple]) -> dict[str, list[tuple]]:
+    profiles = {}
+    for acc, fragments, score in matches:
+        try:
+            hits = profiles[acc]
+        except KeyError:
+            hits = profiles[acc] = []
+
+        hits.append((fragments, score))
+
+    for acc, hits in profiles.items():
+        locations = []
+        for fragments, score in hits:
+            pos_from, pos_to, fragments = process_fragments(fragments)
+            locations.append((pos_from, pos_to, fragments, score))
+
+        # Sort by score (descending)
+        locations.sort(key=lambda x: -x[3])
+
+        filtered_locations = []
+        for loc in sorted(locations, key=lambda x: -x[3]):
+            for other in filtered_locations:
+                overlap = min(loc[1], other[1]) - max(loc[0], other[0])
+                if overlap >= 0:
+                    # Do not keep (overlaps with one having a better score)
+                    break
+            else:
+                filtered_locations.append(loc)
+
+        profiles[acc] = filtered_locations
+
+    return profiles
+
+
+def process_fragments(frags: list[tuple[int, int]]) -> tuple[int, int, str]:
+    pos_from = frags[0][0]
+
+    if len(frags) == 1:
+        pos_to = frags[0][1]
+        return pos_from, pos_to, f"{pos_from}-{pos_to}-S"
+
+    pos_to = -1
+    _frags = []
+    for i, (start, end) in enumerate(frags):
+        if end > pos_to:
+            pos_to = end
+
+        if i == 0:
+            code = "C"
+        elif i + 1 < len(frags):
+            code = "NC"
+        else:
+            code = "N"
+
+        _frags.append(f"{start}-{end}-{code}")
+
+    return pos_from, pos_to, ",".join(_frags)
 
 
 def iter_matches(filepath: str):
