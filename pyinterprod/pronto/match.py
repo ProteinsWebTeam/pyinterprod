@@ -14,7 +14,7 @@ import psycopg
 from pyinterprod import logger
 from pyinterprod.pdbe import get_sifts_mapping
 from pyinterprod.utils import pg
-from pyinterprod.utils.io import KVdb, dump, iter_util_eof
+from pyinterprod.utils.io import KVdb, dump, iter_until_eof
 
 
 # Domain org.: introduce a gap when distance between two positions > 20 aa
@@ -144,7 +144,7 @@ def _export_matches(url: str, cachesize: int,
 
 
 def _merge_matches(files: list[str]):
-    iterable = [iter_util_eof(file) for file in files]
+    iterable = [iter_until_eof(file) for file in files]
     protein_acc = is_reviewed = is_complete = left_number = None
     matches = {}
     for key, value in heapq.merge(*iterable, key=lambda x: x[0]):

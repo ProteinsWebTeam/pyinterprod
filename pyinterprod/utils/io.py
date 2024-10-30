@@ -16,7 +16,7 @@ def dump(data: dict, tmpdir: str | None = None, compresslevel: int = 0) -> str:
     return file
 
 
-def iter_util_eof(file: str):
+def iter_until_eof(file: str):
     with gzip.open(file, "rb") as fh:
         while True:
             try:
