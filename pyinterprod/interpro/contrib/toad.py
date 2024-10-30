@@ -184,19 +184,7 @@ def parse_matches(filepath: str, outdir: str | None,
         except KeyError:
             matches = proteins[uniprot_acc] = []
 
-        if len(fragments) > 1:
-            group_uuid = str(uuid.uuid4())
-        else:
-            group_uuid = None
-
-        for pos_from, pos_to in fragments:
-            matches.append((
-                method_acc,
-                pos_from,
-                pos_to,
-                group_uuid,
-                score
-            ))
+        matches.append((method_acc, fragments, score))
 
         i += 1
         if i % buffersize == 0:
