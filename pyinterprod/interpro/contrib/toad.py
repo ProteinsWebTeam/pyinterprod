@@ -2,7 +2,6 @@ import heapq
 import os
 import shutil
 import tarfile
-import uuid
 from tempfile import mkdtemp
 
 import oracledb
@@ -13,7 +12,7 @@ from pyinterprod.utils.io import dump, iter_until_eof
 from pyinterprod.utils.oracle import drop_table, get_partitions
 
 
-def load_matches(uri: str, databases: dict[str, str]):
+def load_matches(uri: str, databases: dict[str, str], **kwargs):
     con = oracledb.connect(uri)
     cur = con.cursor()
 
@@ -23,7 +22,7 @@ def load_matches(uri: str, databases: dict[str, str]):
         dbcode = p["value"][1:-1]  # 'X' -> X
         partitions[dbcode] = name
 
-    for dbshort, filepath in databases.items():
+    for i, (dbshort, filepath) in enumerate(databases.items()):
         sql = "SELECT DBCODE FROM INTERPRO.CV_DATABASE WHERE DBSHORT = :1"
         cur.execute(sql, [dbshort.upper()])
         row = cur.fetchone()
@@ -42,15 +41,20 @@ def load_matches(uri: str, databases: dict[str, str]):
             err = f"No partition in TOAD_MATCH for database {dbshort}"
             raise KeyError(err)
 
-        load_database_matches(cur, partition, filepath)
+        last = i + 1 == len(databases)
+        load_database_matches(cur, partition, filepath,
+                              tmpdir=kwargs.get("tmpdir"),
+                              purge=last)
 
     cur.close()
     con.close()
 
 
-def load_database_matches(cur: oracledb.Cursor, partition: str, filepath: str):
+def load_database_matches(cur: oracledb.Cursor, partition: str, filepath: str,
+                          tmpdir: str | None = None, purge: bool = False):
+    logger.info(f"\tloading matches from {filepath}")
     # Insert "raw" matches (as provided by DeepMind)
-    drop_table(cur, "INTERPRO.TOAD_MATCH_NEW", purge=True)
+    drop_table(cur, "INTERPRO.TOAD_MATCH_NEW", purge=purge)
     cur.execute(
         """
         CREATE TABLE INTERPRO.TOAD_MATCH_NEW NOLOGGING
@@ -61,27 +65,25 @@ def load_database_matches(cur: oracledb.Cursor, partition: str, filepath: str):
     query = """
         INSERT /*+ APPEND */ 
         INTO INTERPRO.TOAD_MATCH_NEW 
-        VALUES (:1, :2, :3, :4, :5, :6)
+        VALUES (:1, :2, :3, :4, :5, :6, :7)
     """
     with Table(con=cur.connection, query=query, autocommit=True) as table:
-        for uniprot_acc, method_acc, frags, score in iter_matches(filepath):
-            if len(frags) > 1:
-                group_uuid = str(uuid.uuid4())
-            else:
-                group_uuid = None
+        for item in process_tarfile(filepath, tmpdir=tmpdir):
+            uniprot_acc, method_acc, pos_from, pos_to, group_id, score = item
+            table.insert((
+                uniprot_acc,
+                method_acc,
+                '-',  # DBCODE (cannot be null but value isn't important)
+                pos_from,
+                pos_to,
+                group_id,
+                score
+            ))
+    logger.info(f"\t{table.count:,} matches inserted")
 
-            for pos_from, pos_to in frags:
-                table.insert((
-                    uniprot_acc,
-                    method_acc,
-                    pos_from,
-                    pos_to,
-                    group_uuid,
-                    score
-                ))
-
+    logger.info("\tremoving out-of-bounds matches")
     # Filter matches (deleted proteins/signatures or out-of-bounds)
-    drop_table(cur, "INTERPRO.TOAD_MATCH_TMP", purge=True)
+    drop_table(cur, "INTERPRO.TOAD_MATCH_TMP", purge=purge)
     cur.execute(
         """
         CREATE TABLE INTERPRO.TOAD_MATCH_TMP NOLOGGING
@@ -101,7 +103,7 @@ def load_database_matches(cur: oracledb.Cursor, partition: str, filepath: str):
                         THEN T.POS_TO 
                         ELSE P.LEN 
                         END POS_TO,
-                   T.UUID,
+                   T.GROUP_ID,
                    T.SCORE 
             FROM INTERPRO.TOAD_MATCH_NEW T
             INNER JOIN INTERPRO.PROTEIN P ON T.PROTEIN_AC = P.PROTEIN_AC
@@ -110,8 +112,13 @@ def load_database_matches(cur: oracledb.Cursor, partition: str, filepath: str):
         WHERE POS_FROM <= POS_TO
         """,
     )
+    cnt = cur.rowcount
     cur.connection.commit()
 
+    drop_table(cur, "INTERPRO.TOAD_MATCH_NEW", purge=purge)
+    logger.info(f"\t{cnt:,} matches kept")
+
+    logger.info("\tcreating indexes and constraints")
     cur.execute(
         """
         ALTER TABLE INTERPRO.TOAD_MATCH_TMP
@@ -155,6 +162,7 @@ def load_database_matches(cur: oracledb.Cursor, partition: str, filepath: str):
         """
     )
 
+    logger.info("\texchanging partition")
     cur.execute(
         f"""
         ALTER TABLE INTERPRO.TOAD_MATCH
@@ -162,6 +170,8 @@ def load_database_matches(cur: oracledb.Cursor, partition: str, filepath: str):
         WITH TABLE INTERPRO.TOAD_MATCH_TMP
         """
     )
+
+    drop_table(cur, "INTERPRO.TOAD_MATCH_TMP", purge=purge)
 
 
 def process_tarfile(filepath: str, tmpdir: str | None, **kwargs):
@@ -173,9 +183,16 @@ def process_tarfile(filepath: str, tmpdir: str | None, **kwargs):
 
     for protein_acc, matches in process_matches(files):
         for signature_acc, locations in matches.items():
-            for pos_from, pos_to, fragments, score in locations:
-                yield (protein_acc, signature_acc, pos_from, pos_to,
-                       fragments, score)
+            for i, (_, _, fragments, score) in enumerate(locations):
+                for pos_from, pos_to in fragments:
+                    yield (
+                        protein_acc,
+                        signature_acc,
+                        pos_from,
+                        pos_to,
+                        i + 1,
+                        score
+                    )
 
     shutil.rmtree(outdir)
 
@@ -238,7 +255,8 @@ def filter_matches(matches: list[tuple]) -> dict[str, list[tuple]]:
     for acc, hits in profiles.items():
         locations = []
         for fragments, score in hits:
-            pos_from, pos_to, fragments = process_fragments(fragments)
+            pos_from = fragments[0][0]
+            pos_to = max(end for start, end in fragments)
             locations.append((pos_from, pos_to, fragments, score))
 
         # Sort by score (descending)
@@ -257,31 +275,6 @@ def filter_matches(matches: list[tuple]) -> dict[str, list[tuple]]:
         profiles[acc] = filtered_locations
 
     return profiles
-
-
-def process_fragments(frags: list[tuple[int, int]]) -> tuple[int, int, str]:
-    pos_from = frags[0][0]
-
-    if len(frags) == 1:
-        pos_to = frags[0][1]
-        return pos_from, pos_to, f"{pos_from}-{pos_to}-S"
-
-    pos_to = -1
-    _frags = []
-    for i, (start, end) in enumerate(frags):
-        if end > pos_to:
-            pos_to = end
-
-        if i == 0:
-            code = "C"
-        elif i + 1 < len(frags):
-            code = "NC"
-        else:
-            code = "N"
-
-        _frags.append(f"{start}-{end}-{code}")
-
-    return pos_from, pos_to, ",".join(_frags)
 
 
 def iter_matches(filepath: str):
