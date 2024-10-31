@@ -23,15 +23,21 @@ def load_matches(uri: str, databases: dict[str, str], **kwargs):
         partitions[dbcode] = name
 
     for i, (dbshort, filepath) in enumerate(databases.items()):
-        sql = "SELECT DBCODE FROM INTERPRO.CV_DATABASE WHERE DBSHORT = :1"
-        cur.execute(sql, [dbshort.upper()])
+        cur.execute(
+            """
+            SELECT DBCODE, DBNAME 
+            FROM INTERPRO.CV_DATABASE 
+            WHERE DBSHORT = :1
+            """,
+            [dbshort.upper()]
+        )
         row = cur.fetchone()
         if row is None:
             cur.close()
             con.close()
             raise ValueError(f"No database found for {dbshort}")
 
-        dbcode, = row
+        dbcode, dbname = row
 
         try:
             partition = partitions[dbcode]
@@ -41,6 +47,7 @@ def load_matches(uri: str, databases: dict[str, str], **kwargs):
             err = f"No partition in TOAD_MATCH for database {dbshort}"
             raise KeyError(err)
 
+        logger.info(f"loading {dbname} matches")
         last = i + 1 == len(databases)
         load_database_matches(cur, partition, filepath,
                               tmpdir=kwargs.get("tmpdir"),
@@ -81,8 +88,8 @@ def load_database_matches(cur: oracledb.Cursor, partition: str, filepath: str,
             ))
     logger.info(f"\t{table.count:,} matches inserted")
 
-    logger.info("\tremoving out-of-bounds matches")
     # Filter matches (deleted proteins/signatures or out-of-bounds)
+    logger.info("\tfiltering matches")
     drop_table(cur, "INTERPRO.TOAD_MATCH_TMP", purge=purge)
     cur.execute(
         """
