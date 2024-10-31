@@ -150,7 +150,7 @@ def load_database_matches(cur: oracledb.Cursor, partition: str, filepath: str,
     cur.execute(
         """
         ALTER TABLE INTERPRO.TOAD_MATCH_TMP
-        ADD CONSTRAINT FK_TOAD_MATCH_TMP$PROTEIN 
+        ADD CONSTRAINT FK_TOAD_MATCH_TMP$METHOD 
         FOREIGN KEY (METHOD_AC) REFERENCES INTERPRO.METHOD (METHOD_AC)
         """
     )
