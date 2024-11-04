@@ -473,7 +473,7 @@ def run_member_db_update():
                         fn=interpro.signature.contrib.pfam.persist_pfam_a,
                         args=(ora_interpro_uri, props["seed"], props["full"]),
                         name="persist-pfam-a",
-                        scheduler=dict(type=scheduler, queue=queue, mem=4000,
+                        scheduler=dict(type=scheduler, queue=queue, mem=16000,
                                        hours=6),
                         requires=ipm_dependencies + ["update-signatures"]
                     ),
