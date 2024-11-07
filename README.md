@@ -82,21 +82,20 @@ signatures =
 
 Supported properties are:
 
-| Name         | Description                                                                                            |
-|--------------|--------------------------------------------------------------------------------------------------------|
-| `signatures` | Path to the source of database signatures.                                                             |
+| Name         | Description                                                                                               |
+|--------------|-----------------------------------------------------------------------------------------------------------|
+| `signatures` | Path to the source of database signatures.                                                                |
 | `hmm`        | Path to an HMM file, used for databases that employ HMMER3-based models. Required when running `ipr-hmm`. |
-| `fasta`      | Path to sequences used by models, in the FASTA format.                                                 |
-| `members`    | Path to file containing the clan-signature mapping.                                                    |
-| `go-terms`   | Path to file or directory of GO annotations. PANTHER and NCBIfam only.                                 |
-| `triage`     | Path to file containing the signatures/models to include in InterPro. NCBIfam only.                    |       
-| `summary`    | Path to file of summary information. CDD only.                                                         |
-| `seed`       | Path to file of SEED alignments. Pfam only.                                                            |
-| `full`       | Path to file of full alignments. Pfam only.                                                            |
-| `clans`      | Path to file of clan information. Pfam only.                                                           |
-| `mapping`    | Path to file of model-signature mapping. CATH-Gene3D only.                                             |
-| `classes`    | Path to file of information about classes. ELM only.                                                   |
-| `instances`  | Path to file of information about instances. ELM only.                                                 |
+| `fasta`      | Path to sequences used by models, in the FASTA format.                                                    |
+| `members`    | Path to file containing the clan-signature mapping.                                                       |
+| `go-terms`   | Path to file or directory of GO annotations. PANTHER and NCBIfam only.                                    |
+| `summary`    | Path to file of summary information. CDD only.                                                            |
+| `seed`       | Path to file of SEED alignments. Pfam only.                                                               |
+| `full`       | Path to file of full alignments. Pfam only.                                                               |
+| `clans`      | Path to file of clan information. Pfam only.                                                              |
+| `mapping`    | Path to file of model-signature mapping. CATH-Gene3D only.                                                |
+| `classes`    | Path to file of information about classes. ELM only.                                                      |
+| `instances`  | Path to file of information about instances. ELM only.                                                    |
 
 
 ### analyses.conf

@@ -85,7 +85,7 @@ def add_staging(uri: str, update: list[tuple[Database, dict[str, str]]]):
             elif db.identifier == 'N':
                 # NCBIFam
                 signatures = contrib.ncbifam.get_signatures(
-                    cur, db_props["signatures"], db_props["triage"]
+                    db_props["signatures"], cur
                 )
             elif db.identifier == 'P':
                 # PROSITE patterns
