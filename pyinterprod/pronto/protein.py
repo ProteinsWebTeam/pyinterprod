@@ -7,7 +7,7 @@ import oracledb
 import psycopg
 
 from pyinterprod import logger
-from pyinterprod.utils.kvdb import KVdb
+from pyinterprod.utils.io import KVdb
 from pyinterprod.utils.pg import url2dict
 
 
