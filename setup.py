@@ -37,7 +37,8 @@ setup(
             "ipr-clans = pyinterprod.cli:run_clan_update",
             "ipr-hmms = pyinterprod.cli:run_hmm_update",
             "ipr-pronto = pyinterprod.cli:run_pronto_update",
-            "ipr-calc = pyinterprod.cli:run_interproscan_manager"
+            "ipr-calc = pyinterprod.cli:run_interproscan_manager",
+            "ipr-xml = pyinterprod.cli:generate_match_complete_xml"
         ]
     }
 )

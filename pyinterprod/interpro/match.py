@@ -5,6 +5,7 @@ import oracledb
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
+import xml.etree.ElementTree as ET
 
 
 FILE_ENTRY_PROT_COUNTS = "entries.prot.counts.pickle"
@@ -1058,6 +1059,193 @@ def get_sig_protein_counts(cur: oracledb.Cursor,
 
     return counts
 
+
+def generate_match_complete_xml(uri: str, out: str):
+
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+
+    protein_data = cur.execute(
+        f"""
+
+        WITH 
+
+        proteins AS (
+            SELECT PROTEIN_AC, NAME, DBCODE, CRC64, LEN, TO_CHAR(TIMESTAMP, 'YYYY-MM-DD') AS TIMESTAMP, FRAGMENT, TO_CHAR(TAX_ID) AS TAX_ID
+            FROM INTERPRO.PROTEIN
+            WHERE ROWNUM <= 100
+            ORDER BY PROTEIN_AC
+        ),
+
+        matches AS (
+            SELECT  PROTEIN_AC, METHOD_AC, MODEL_AC, POS_FROM, POS_TO, FRAGMENTS, SCORE, DBCODE, EVIDENCE, STATUS
+                    FROM INTERPRO.MATCH
+        )
+
+        SELECT  P.PROTEIN_AC, P.NAME, M.DBCODE, P.CRC64, P.LEN, P.TIMESTAMP, P.FRAGMENT, P.TAX_ID,
+                M.METHOD_AC, M.MODEL_AC, M.POS_FROM, M.POS_TO, M.FRAGMENTS, M.SCORE, MN.DESCRIPTION, M.STATUS,
+                DB.DBSHORT, CE.ABBREV, CT.ABBREV
+
+        FROM proteins P
+        LEFT OUTER JOIN matches M
+        ON P.PROTEIN_AC = M.PROTEIN_AC
+
+        LEFT OUTER JOIN INTERPRO.METHOD MN
+        ON M.METHOD_AC = MN.METHOD_AC
+
+        LEFT OUTER JOIN INTERPRO.CV_DATABASE DB
+        ON M.DBCODE = DB.DBCODE
+
+        LEFT OUTER JOIN CV_EVIDENCE CE
+        ON M.EVIDENCE = CE.CODE
+
+        LEFT OUTER JOIN CV_ENTRY_TYPE CT
+        ON MN.SIG_TYPE = CT.CODE
+
+        ORDER BY P.PROTEIN_AC
+        
+    """)
+
+    columns=['protein_id', 'name', 'dbcode', 'crc64', 'length', 'timestamp', 'fragment', 'tax_id',
+        'method_ac', 'model_ac', 'pos_from', 'pos_to', 'fragments', 'score', 'method_desc', 
+        'status', 'dbname', 'evd', 'sig_type']
+    
+    protein_data = [
+        {col: (str(value) if value is not None else '') for col, value in zip(columns, row)}
+        for row in protein_data
+    ]
+
+    # Group by protein_id and method_ac, then create a nested dictionary
+    grouped = {}
+
+    # Iterate over each row and populate the nested dictionary
+    for row in protein_data:
+
+        protein_id = row['protein_id']
+
+        if (not(protein_id in grouped.keys())):
+            grouped[protein_id] = {
+                "info": {
+                "id": row["protein_id"],
+                "name": row["name"],
+                "length": row["length"],
+                "crc64": row["crc64"],
+                }
+        }
+            
+        match_id = row['method_ac']
+        match_id = match_id + "||" + row["model_ac"] if row["model_ac"] else match_id
+
+        location = {
+            'start': row['pos_from'],
+            'end': row['pos_to'],
+            'fragments': row['fragments'],
+            'score': int(float(row["score"])) if row["score"][-2:] == ".0" else row["score"]
+        }
+
+        if (match_id != ""):
+
+            # Add the match_id and its location under the protein_id
+            if (not(match_id in grouped[protein_id].keys())):
+                grouped[protein_id][match_id] = {
+                    "id": match_id,
+                    "name": row["method_desc"],
+                    "dbname": row["dbname"],
+                    "status": row["status"],
+                    "model": row["model_ac"],
+                    "evd": row["evd"], 
+                    "type": row["sig_type"],
+                    "locations": [location]
+                }
+            else:
+                grouped[protein_id][match_id]["locations"].append(location)
+
+    # Create the root element for XML
+    root = ET.Element("proteins")
+
+    # Iterate through the grouped data to create XML structure
+    for protein_id, protein_data in grouped.items():
+        # Extract the info for the protein
+        info = protein_data["info"]
+        
+        # Create a protein element
+        protein_elem = ET.SubElement(root, "protein", 
+                                     id=info["id"], 
+                                     name=info["name"], 
+                                     length=str(info["length"]), 
+                                     crc64=info["crc64"])
+        
+        # Iterate over matches under this protein
+        for match_id, match_data in protein_data.items():
+            if match_id == "info":
+                continue  # Skip the info entry
+            
+            # Create a match element under the protein
+            match_elem = ET.SubElement(protein_elem, "match", 
+                                       id=match_data["id"].split("||")[0], 
+                                       name=match_data["name"], 
+                                       dbname=match_data["dbname"],
+                                       status=match_data["status"], 
+                                       model=match_data["model"],
+                                       type=match_data["type"],
+                                       evd=match_data["evd"])
+            
+            # Create lcn elements for each location in the match
+            for loc in match_data["locations"]:
+                
+                frag_str = ""
+
+                if (loc["fragments"]):
+
+                    # Sort the fragment list to match the original.xml
+                    frag_list = sorted(loc['fragments'].split(","), key=lambda x: (x.split("-")[2]))
+                    frag_list = sorted(loc['fragments'].split(","), key=lambda x: (int(x.split("-")[0])))
+                    frag_str = ','.join(frag_list)
+
+                else:
+                     frag_str = '-'.join([loc["start"], loc["end"], "S"])
+
+                lcn_elem = ET.SubElement(match_elem, "lcn", 
+                                         start=str(loc['start']), 
+                                         end=str(loc['end']),
+                                         fragments=frag_str,
+                                         score=str(loc['score']))
+
+    
+    # Iterate over each protein and sort its matches
+    for protein in root.findall('protein'):
+        
+        # Get all match elements
+        matches = list(protein.findall('match'))
+
+        # Clear the original match elements from the protein
+        for match in matches:
+
+            locations = list(match.findall('lcn'))
+            sorted_lcsn = sorted(locations, key=lambda x: int(x.get('start')))
+
+            # Clear the original match elements from the protein
+            for lcn in locations:
+                match.remove(lcn)
+
+            # Append the sorted match elements back to the protein
+            for lcn in sorted_lcsn:
+                match.append(lcn)
+
+
+        # Sort matches by the 'score' attribute (convert score to integer for sorting)
+        matches = sorted(matches, key=lambda x: int(x.find("lcn").get("start")))
+        sorted_matches = sorted(matches, key=lambda x: x.get('id'))
+
+        for match in matches:
+            protein.remove(match)
+        
+        # Append the sorted match elements back to the protein
+        for match in sorted_matches:
+            protein.append(match)
+
+    tree = ET.ElementTree(root)
+    tree.write(os.path.join(out, "match_complete.xml"), encoding="utf-8", xml_declaration=True)
 
 # def _get_databases_matches_count(cur: oracledb.Cursor) -> dict[str, int]:
 #     """
