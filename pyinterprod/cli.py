@@ -184,6 +184,22 @@ def check_ispro():
 
     ora_iprscan_uri = config["oracle"]["ipro-iprscan"]
     interpro.iprscan.check_ispro(ora_iprscan_uri, args.type, args.status)
+    
+
+def generate_match_complete_xml():
+    parser = ArgumentParser(description="Create match_complete.xml file upon member DB update")
+    parser.add_argument("config",
+                        metavar="main.conf",
+                        help="configuration file")
+    args = parser.parse_args()
+
+    config = ConfigParser()
+    config.read(args.config)
+
+    uri = config["oracle"]["ipro-interpro"]
+    out_dir = config["misc"]["data_dir"]
+
+    interpro.match.generate_match_complete_xml(uri, out_dir)
 
 
 def run_clan_update():
