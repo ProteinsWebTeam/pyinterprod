@@ -1073,7 +1073,6 @@ def generate_match_complete_xml(uri: str, out: str):
         proteins AS (
             SELECT PROTEIN_AC, NAME, DBCODE, CRC64, LEN, TO_CHAR(TIMESTAMP, 'YYYY-MM-DD') AS TIMESTAMP, FRAGMENT, TO_CHAR(TAX_ID) AS TAX_ID
             FROM INTERPRO.PROTEIN
-            WHERE ROWNUM <= 100
             ORDER BY PROTEIN_AC
         ),
 
