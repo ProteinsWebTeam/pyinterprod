@@ -27,6 +27,7 @@ ipr-pronto = "pyinterprod.cli:run_pronto_update"
 ipr-calc = "pyinterprod.cli:run_interproscan_manager"
 
 [tool.setuptools]
+packages = ["pyinterprod"]
 ext-modules = [
-  {name = "pyinterprod.uniprot.sprot", sources = ["pyinterprod/uniprot/sprotmodule.c"], extra_link_args = ["-lsqlite3"]}
+  {name = "pyinterprod.uniprot.sprot", sources = ["pyinterprod/uniprot/sprotmodule.c"], extra-link-args = ["-lsqlite3"]}
 ]
