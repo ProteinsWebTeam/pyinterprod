@@ -44,7 +44,7 @@ def create_aa_alignment(uri: str):
         """
         INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
         SELECT M.UPI, UPPER(TRANSLATE(DB.DBNAME, ' ', '_')), 
-               M.METHOD_AC, M.SEQ_START, M.SEQ_END, NULL, NULL, ALIGNMENT
+               M.METHOD_AC, M.SEQ_START, M.SEQ_END, ALIGNMENT
         FROM INTERPRO.CV_DATABASE DB
         INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
             ON DB.DBCODE = I2D.DBCODE
@@ -54,19 +54,6 @@ def create_aa_alignment(uri: str):
         """
     )
     con.commit()
-
-        if rows:
-            cur2.executemany(
-                f"""
-                INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
-                VALUES (:1, :2, :3, :4, :5, :6, :7, :8)
-                """,
-                rows
-            )
-            con.commit()
-            rows.clear()
-
-    cur2.close()
 
     logger.info("indexing")
     for col in ("UPI", "SIGNATURE"):
