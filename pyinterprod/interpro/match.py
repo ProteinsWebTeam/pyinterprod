@@ -1080,7 +1080,7 @@ def generate_match_complete_xml(uri: str, out: str):
     # Keep going until iterator hasn't stop generating results
     while True:
 
-        accessions_list = accessions_cur.fetchmany(1000)
+        accessions_list = accessions_cur.fetchmany(10000)
         start_protein_acc = accessions_list[0][0]
         stop_protein_acc = accessions_list[-1][0]
 
