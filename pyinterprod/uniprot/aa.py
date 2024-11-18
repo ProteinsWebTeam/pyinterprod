@@ -19,11 +19,6 @@ def create_aa_alignment(uri: str):
 
     con = oracledb.connect(uri)
     cur = con.cursor()
-
-    analyses = {}
-    for analysis in iprscan.get_analyses(cur, type="matches"):
-        analyses[analysis.name] = (analysis.id, analysis.table)
-
     oracle.drop_table(cur, "IPRSCAN.AA_ALIGNMENT", purge=True)
     cur.execute(
         """
@@ -39,12 +34,11 @@ def create_aa_alignment(uri: str):
         """
     )
 
-    logger.info("inserting alignments for HAMAP and PROSITE")
     cur.execute(
         """
         INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
         SELECT M.UPI, UPPER(TRANSLATE(DB.DBNAME, ' ', '_')), 
-               M.METHOD_AC, M.SEQ_START, M.SEQ_END, ALIGNMENT
+               M.METHOD_AC, M.SEQ_START, M.SEQ_END, M.ALIGNMENT
         FROM INTERPRO.CV_DATABASE DB
         INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
             ON DB.DBCODE = I2D.DBCODE
