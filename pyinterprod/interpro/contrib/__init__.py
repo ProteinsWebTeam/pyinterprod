@@ -9,4 +9,4 @@ from . import pfam
 from . import pirsf
 from . import prosite
 from . import smart
-
+from . import toad

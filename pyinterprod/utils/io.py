@@ -1,7 +1,28 @@
-# -*- coding: utf-8 -*-
-
+import gzip
+import os
 import pickle
 import sqlite3
+from tempfile import mkstemp
+
+
+def dump(data: dict, tmpdir: str | None = None, compresslevel: int = 0) -> str:
+    fd, file = mkstemp(dir=tmpdir)
+    os.close(fd)
+    with gzip.open(file, "wb", compresslevel=compresslevel) as fh:
+        for key in sorted(data):
+            pickle.dump((key, data[key]), fh)
+
+    data.clear()
+    return file
+
+
+def iter_until_eof(file: str):
+    with gzip.open(file, "rb") as fh:
+        while True:
+            try:
+                yield pickle.load(fh)
+            except EOFError:
+                break
 
 
 class KVdb:

@@ -57,7 +57,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             args=(ora_swp_uri, pg_ipr_uri, names_db),
             kwargs=dict(tmpdir=temp_dir),
             name="proteins-names",
-            scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=12)
+            scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=24)
         ),
         Task(
             fn=pronto.protein.import_protein_pubmed,
@@ -353,7 +353,7 @@ def run_member_db_update():
             # We usually need a source for signatures
             if dbname in options:
                 props = options[dbname]
-            elif dbname == "coils":
+            elif dbname in ("coils", "mobidblt"):
                 # Exception for feature databases without data files
                 pass
             else:
@@ -440,6 +440,13 @@ def run_member_db_update():
                 requires=ipm_dependencies + ["update-signatures"]
             ),
             Task(
+                fn=interpro.match.rebuild_indexes,
+                args=(ora_interpro_uri, "MATCH"),
+                name="index-matches",
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12),
+                requires=["update-matches"]
+            ),
+            Task(
                 fn=interpro.match.update_variant_matches,
                 args=(ora_interpro_uri,),
                 name="update-varsplic",
@@ -456,7 +463,7 @@ def run_member_db_update():
                         fn=interpro.signature.contrib.pfam.persist_pfam_a,
                         args=(ora_interpro_uri, props["seed"], props["full"]),
                         name="persist-pfam-a",
-                        scheduler=dict(type=scheduler, queue=queue, mem=4000,
+                        scheduler=dict(type=scheduler, queue=queue, mem=24000,
                                        hours=6),
                         requires=ipm_dependencies + ["update-signatures"]
                     ),
@@ -488,6 +495,13 @@ def run_member_db_update():
                 name="update-fmatches",
                 scheduler=dict(type=scheduler, queue=queue, mem=500, hours=4),
                 requires=["update-features"]
+            ),
+            Task(
+                fn=interpro.match.rebuild_indexes,
+                args=(ora_interpro_uri, "FEATURE_MATCH"),
+                name="index-fmatches",
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12),
+                requires=["update-fmatches"]
             )
         ]
 
@@ -511,6 +525,13 @@ def run_member_db_update():
                 name="update-sites",
                 scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12),
                 requires=req
+            ),
+            Task(
+                fn=interpro.match.rebuild_indexes,
+                args=(ora_interpro_uri, "SITE_MATCH"),
+                name="index-sites",
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12),
+                requires=["update-sites"]
             )
         ]
 
@@ -942,6 +963,8 @@ def run_interproscan_manager():
                                              "(default: all)")
 
     parser_search = subparsers.add_parser("search", help="search sequences")
+    parser_search.add_argument("--debug", action="store_true", default=False,
+                               help="show debug messages (default: off)")
     parser_search.add_argument("--dry-run", action="store_true", default=False,
                                help="show the number of jobs to run and exit "
                                     "(default: off)")
@@ -986,16 +1009,16 @@ def run_interproscan_manager():
     unpr_uniparc_uri = config["oracle"]["unpr-uapro"]
 
     if args.mode == "import":
-        interproscan.database.import_uniparc(ispro_uri=iscn_uniparc_uri,
-                                             uniparc_uri=unpr_uniparc_uri,
-                                             top_up=args.top_up,
-                                             max_upi=args.max_upi)
+        interproscan.uniparc.import_sequences(ispro_uri=iscn_uniparc_uri,
+                                              uniparc_uri=unpr_uniparc_uri,
+                                              top_up=args.top_up,
+                                              max_upi=args.max_upi)
     elif args.mode == "clean":
-        interproscan.database.clean_tables(iscn_iprscan_uri, args.analyses)
+        interproscan.utils.clean_tables(iscn_iprscan_uri, args.analyses)
 
     elif args.mode == "search":
         if args.list:
-            analyses = interproscan.database.get_analyses(iscn_iprscan_uri)
+            analyses = interproscan.analyses.get_analyses(iscn_iprscan_uri)
             for analysis_id in sorted(analyses,
                                       key=lambda k: (analyses[k]["name"], k)):
                 name = analyses[analysis_id]["name"]
@@ -1005,8 +1028,8 @@ def run_interproscan_manager():
             return
 
         if not args.dry_run:
-            interproscan.database.rebuild_indexes(uri=iscn_iprscan_uri,
-                                                  analysis_ids=args.analyses)
+            interproscan.utils.rebuild_indexes(uri=iscn_iprscan_uri,
+                                               analysis_ids=args.analyses)
 
         analyses_config = ConfigParser()
         analyses_config.read(config["misc"]["analyses"])
@@ -1055,7 +1078,8 @@ def run_interproscan_manager():
                                  # Analyses to exclude
                                  exclude=args.exclude,
                                  # Debug options
-                                 keep_files=args.keep)
+                                 keep_files=args.keep,
+                                 debug=args.debug)
 
 
 def parse_scheduler(value: str) -> tuple[str, str | None]:

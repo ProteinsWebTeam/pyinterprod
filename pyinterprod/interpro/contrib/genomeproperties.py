@@ -50,5 +50,6 @@ def update_xrefs(uri: str, file_path: str):
 
 
 if __name__ == "__main__":
+    # Latest version: https://github.com/ebi-pf-team/genome-properties/blob/master/flatfiles/genomeProperties.txt
     gp_file = sys.argv[1]
     update_xrefs(os.environ["INTERPRO_CONNECTION_URL"], gp_file)

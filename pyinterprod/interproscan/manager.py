@@ -1,10 +1,9 @@
 import os
-import random
 import shutil
-import subprocess
-import sys
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Callable
+from logging import DEBUG
 
 import oracledb
 from mundone import Pool, Task
@@ -13,7 +12,7 @@ from mundone.states import PENDING, RUNNING
 from pyinterprod import logger
 from pyinterprod.uniprot.uniparc import int_to_upi, upi_to_int, range_upi
 from pyinterprod.utils import oracle
-from . import database, persistence
+from . import analyses, jobs
 
 
 """
@@ -24,40 +23,40 @@ Value -> tuple of three items
             - persistence function for sites (.tsv-pro.sites)
 """
 _DB_TO_I5 = {
-    "AntiFam": ("AntiFam", persistence.hmmer3_matches, None),
-    "CATH-Gene3D": ("Gene3D", persistence.hmmer3_matches, None),
-    "CDD": ("CDD", persistence.cdd_matches, persistence.sites),
-    "COILS": ("Coils", persistence.coils_phobius_matches, None),
-    "FunFam": ("FunFam", persistence.funfam_matches, None),
-    "HAMAP": ("Hamap", persistence.hamap_matches, None),
-    "MobiDB Lite": ("MobiDBLite", persistence.mobidb_lite_matches, None),
-    "NCBIfam": ("NCBIfam", persistence.hmmer3_matches, None),
-    "PANTHER": ("PANTHER", persistence.panther_matches, None),
-    "Pfam": ("Pfam", persistence.hmmer3_matches, None),
-    "Phobius": ("Phobius", persistence.coils_phobius_matches, None),
-    "PIRSF": ("PIRSF", persistence.hmmer3_matches, None),
-    "PIRSR": ("PIRSR", persistence.pirsr_matches, persistence.sites),
-    "PRINTS": ("PRINTS", persistence.prints_matches, None),
+    "AntiFam": ("AntiFam", analyses.hmmer3_matches, None),
+    "CATH-Gene3D": ("Gene3D", analyses.hmmer3_matches, None),
+    "CDD": ("CDD", analyses.cdd_matches, analyses.sites),
+    "COILS": ("Coils", analyses.coils_phobius_matches, None),
+    "FunFam": ("FunFam", analyses.funfam_matches, None),
+    "HAMAP": ("Hamap", analyses.hamap_matches, None),
+    "MobiDB Lite": ("MobiDBLite", analyses.mobidb_lite_matches, None),
+    "NCBIfam": ("NCBIfam", analyses.hmmer3_matches, None),
+    "PANTHER": ("PANTHER", analyses.panther_matches, None),
+    "Pfam": ("Pfam", analyses.hmmer3_matches, None),
+    "Phobius": ("Phobius", analyses.coils_phobius_matches, None),
+    "PIRSF": ("PIRSF", analyses.hmmer3_matches, None),
+    "PIRSR": ("PIRSR", analyses.pirsr_matches, analyses.sites),
+    "PRINTS": ("PRINTS", analyses.prints_matches, None),
     "PROSITE patterns": ("ProSitePatterns",
-                         persistence.prosite_patterns_matches, None),
+                         analyses.prosite_patterns_matches, None),
     "PROSITE profiles": ("ProSiteProfiles",
-                         persistence.prosite_profiles_matches, None),
-    "SFLD": ("SFLD", persistence.sfld_matches, persistence.sites),
-    "SignalP_Euk": ("SignalP_EUK", persistence.signalp_matches, None),
+                         analyses.prosite_profiles_matches, None),
+    "SFLD": ("SFLD", analyses.sfld_matches, analyses.sites),
+    "SignalP_Euk": ("SignalP_EUK", analyses.signalp_matches, None),
     "SignalP_Gram_positive": ("SignalP_GRAM_POSITIVE",
-                              persistence.signalp_matches, None),
+                              analyses.signalp_matches, None),
     "SignalP_Gram_negative": ("SignalP_GRAM_NEGATIVE",
-                              persistence.signalp_matches, None),
-    "SMART": ("SMART", persistence.smart_matches, None),
-    "SUPERFAMILY": ("SUPERFAMILY", persistence.superfamily_matches, None),
-    "TIGRFAMs": ("TIGRFAM", persistence.hmmer3_matches, None),
-    "TMHMM": ("TMHMM", persistence.tmhmm_matches, None),
+                              analyses.signalp_matches, None),
+    "SMART": ("SMART", analyses.smart_matches, None),
+    "SUPERFAMILY": ("SUPERFAMILY", analyses.superfamily_matches, None),
+    "TIGRFAMs": ("TIGRFAM", analyses.hmmer3_matches, None),
+    "TMHMM": ("TMHMM", analyses.tmhmm_matches, None),
 }
 
-# String printed by I5 on successful completion
-_I5_SUCCESS = "100% done:  InterProScan analyses completed"
-
-_JOB_PREFIX = "IPM_"
+# Input/output file names
+_INPUT_FASTA = "input.fa"
+_OUTPUT_MATCHES = "output.tsv-pro"
+_OUTPUT_SITES = f"{_OUTPUT_MATCHES}.sites"
 
 
 def sanitize_name(string: str) -> str:
@@ -69,40 +68,40 @@ def sanitize_name(string: str) -> str:
 
 @dataclass
 class TaskFactory:
-    uri: str
     i5_dir: str
+    work_dir: str
     appl: str
     version: str
-    work_dir: str
-    analysis_id: int
     config: dict
-    match_table: str
-    persist_matches: Callable
-    site_table: str | None = None
-    persist_sites: Callable | None = None
-    keep_files: str | None = None
+    has_sites: bool
     scheduler: str | None = None
     queue: str | None = None
 
     def make(self, upi_from: str, upi_to: str) -> Task:
+        run_dir = self.get_run_dir(upi_from, upi_to)
+
+        if self.has_sites:
+            sites_path = self.get_sites_path(run_dir)
+        else:
+            sites_path = None
+
         return Task(
-            fn=run_job,
+            fn=jobs.run_job,
             args=(
-                self.uri,
-                upi_from,
-                upi_to,
                 self.i5_dir,
                 self.appl,
-                os.path.join(self.work_dir, f"{upi_from}_{upi_to}"),
-                self.analysis_id,
-                self.match_table,
-                self.persist_matches,
-                self.site_table,
-                self.persist_sites
+                self.get_fasta_path(upi_from, upi_to),
+                self.get_matches_path(run_dir),
+                sites_path
             ),
-            kwargs=dict(cpu=self.config["job_cpu"],
-                        keep_files=self.keep_files),
-            name=self.make_name(upi_from, upi_to),
+            kwargs=dict(cpu=self.config["job_cpu"]),
+            name="_".join([
+                "IPM",
+                self.appl,
+                self.version,
+                upi_from,
+                upi_to
+            ]),
             scheduler=dict(type=self.scheduler,
                            queue=self.queue,
                            cpu=self.config["job_cpu"],
@@ -111,8 +110,31 @@ class TaskFactory:
             random_suffix=False
         )
 
-    def make_name(self, upi_from: str, upi_to: str) -> str:
-        return f"{_JOB_PREFIX}{self.appl}_{self.version}_{upi_from}_{upi_to}"
+    def get_run_dir(self, upi_from: str, upi_to: str,
+                    mkdir: bool = False) -> str:
+        name = f"{upi_from}_{upi_to}"
+        path = os.path.join(self.work_dir, self.appl, self.version, name)
+
+        if mkdir:
+            try:
+                shutil.rmtree(path)
+            except FileNotFoundError:
+                pass
+
+            os.makedirs(path)
+
+        return path
+
+    def get_fasta_path(self, upi_from: str, upi_to: str) -> str:
+        return os.path.join(self.get_run_dir(upi_from, upi_to), _INPUT_FASTA)
+
+    @staticmethod
+    def get_matches_path(run_dir: str) -> str:
+        return os.path.join(run_dir, _OUTPUT_MATCHES)
+
+    @staticmethod
+    def get_sites_path(run_dir: str) -> str:
+        return os.path.join(run_dir, _OUTPUT_SITES)
 
 
 def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
@@ -123,6 +145,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         "job_timeout": kwargs.get("job_timeout", 12),  # Hours
     }
     custom_configs = kwargs.get("config", {})
+    debug = kwargs.get("debug", False)
     dry_run = kwargs.get("dry_run", False)
     auto_retry = kwargs.get("auto_retry", False)
     keep_files = kwargs.get("keep_files", None)
@@ -136,16 +159,19 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     to_run = kwargs.get("analyses", [])
     to_exclude = kwargs.get("exclude", [])
 
+    if debug:
+        logger.setLevel(DEBUG)
+
     logger.info("starting")
     con = oracledb.connect(uri)
     cur = con.cursor()
 
     # Find analyses to run
-    analyses = {}
+    analyses_info = {}
     configs = {}
     name2id = {}
 
-    for analysis_id, analysis in database.get_analyses(cur).items():
+    for analysis_id, analysis in analyses.get_analyses(cur).items():
         name = sanitize_name(analysis["name"])
         try:
             name2id[name].append(analysis_id)
@@ -160,12 +186,12 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             continue
 
         # Either not list of analyses (i.e. run all), or part of this list
-        analyses[analysis_id] = analysis
+        analyses_info[analysis_id] = analysis
 
         # Apply default config
         configs[analysis_id] = base_config.copy()
 
-    if not analyses:
+    if not analyses_info:
         cur.close()
         con.close()
         logger.error("no analyses to process: exit")
@@ -184,153 +210,173 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 for key, value in custom_configs[name].items():
                     configs[analysis_id][key] = value
 
-    incomplete_jobs = database.get_incomplete_jobs(cur)
+    incomplete_jobs = jobs.get_incomplete_jobs(cur)
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     max_upi, = cur.fetchone()
 
     if scheduler.lower() == "lsf":
-        name2id = get_unfinished_lsf_jobs()
+        name2id = jobs.get_unfinished_lsf_jobs()
     elif scheduler.lower() == "slurm":
-        name2id = get_unfinished_slurm_jobs()
+        name2id = jobs.get_unfinished_slurm_jobs()
     else:
         raise ValueError(scheduler)
 
     with Pool(temp_dir, max_running_jobs,
               kill_on_exit=False,
               threads=pool_threads) as pool:
-        running_jobs = []
-        pending_jobs = []
-        for analysis_id, analysis in analyses.items():
-            name = analysis["name"]
-            version = analysis["version"]
+        tasks_info = {}
 
-            appl, persist_matches, persist_sites = _DB_TO_I5[name]
+        with ThreadPoolExecutor(max_workers=pool_threads) as executor:
+            fs = {}
 
-            analysis_work_dir = os.path.join(work_dir, appl, version)
-            os.makedirs(analysis_work_dir, exist_ok=True)
+            for analysis_id, analysis in analyses_info.items():
+                analysis_name = analysis["name"]
+                analysis_version = analysis["version"]
+                has_sites = analysis["tables"]["sites"] is not None
 
-            config = configs[analysis_id]
-            factory = TaskFactory(uri=uri, i5_dir=analysis["i5_dir"],
-                                  appl=appl, version=version,
-                                  work_dir=analysis_work_dir,
-                                  analysis_id=analysis_id,
-                                  config=config,
-                                  match_table=analysis["tables"]["matches"],
-                                  persist_matches=persist_matches,
-                                  site_table=analysis["tables"]["sites"],
-                                  persist_sites=persist_sites,
-                                  keep_files=keep_files,
-                                  scheduler=scheduler,
-                                  queue=queue)
+                appl, _, _ = _DB_TO_I5[analysis_name]
+                config = configs[analysis_id]
+                factory = TaskFactory(i5_dir=analysis["i5_dir"],
+                                      work_dir=work_dir,
+                                      appl=appl, version=analysis_version,
+                                      config=config,
+                                      has_sites=has_sites,
+                                      scheduler=scheduler, queue=queue)
 
-            n_tasks_analysis = 0
-            jobs = incomplete_jobs.pop(analysis_id, [])
-            for upi_from, upi_to, is_running in jobs:
-                if dry_run:
-                    """
-                    We're not monitoring/submitting tasks, so we don't need
-                    a real task object
-                    """
-                    if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
-                        break
-                    else:
-                        running_jobs.append(None)
-                        n_tasks_analysis += 1
-                        continue
+                n_tasks_analysis = 0
 
-                task = factory.make(upi_from, upi_to)
-                task.workdir = os.path.join(temp_dir, task.name)
+                # First, look at existing jobs marked as incomplete in the DB
+                for info in incomplete_jobs.pop(analysis_id, []):
+                    upi_from, upi_to, is_running, num_sequences = info
 
-                if is_running:
-                    # Flagged as running in the database
+                    if dry_run:
+                        if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
+                            break
+                        else:
+                            # Doesn't matter what is in tasks_info (dry run)
+                            tasks_info[(analysis_id, upi_from, upi_to)] = None
+                            n_tasks_analysis += 1
+                            continue
 
-                    # Assumes task is running
-                    task.status = RUNNING
+                    task = factory.make(upi_from, upi_to)
+                    task.workdir = os.path.join(temp_dir, task.name)
 
-                    # Checks if the associated job is running
-                    if task.name in name2id:
-                        # It is!
-                        task.executor.id = name2id.pop(task.name)
-                        running_jobs.append(task)
-                        n_tasks_analysis += 1
-                        continue
+                    if is_running:
+                        # Flagged as running (incomplete) in the database
 
-                    task.poll()  # Checks if output exists
-                    if task.is_done():
-                        """
-                        Completed or failed. Will be submitted to the pool
-                        which will send it back without restarting it.
-                        """
-                        running_jobs.append(task)
+                        # Assumes task is running
+                        task.status = RUNNING
+
+                        # Checks if the associated job is running
+                        if task.name in name2id:
+                            # It is!
+                            task.executor.id = name2id.pop(task.name)
+                            pool.submit(task)
+                            tasks_info[task.name] = (
+                                analysis_id, upi_from, upi_to, num_sequences,
+                                factory.get_run_dir(upi_from, upi_to)
+                            )
+                            n_tasks_analysis += 1
+                            continue
+
+                        task.poll()  # Checks if output exists
+                        if task.is_done():
+                            """
+                            Completed or failed. Submitted to the pool
+                            which will send it back without restarting it.
+                            """
+                            pool.submit(task)
+                            tasks_info[task.name] = (
+                                analysis_id, upi_from, upi_to, num_sequences,
+                                factory.get_run_dir(upi_from, upi_to)
+                            )
+                        elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
+                            break
+                        else:
+                            # Unknown fate: re-submit
+                            task.status = PENDING
+                            run_dir = factory.get_run_dir(upi_from, upi_to,
+                                                          mkdir=True)
+                            fasta = factory.get_fasta_path(upi_from, upi_to)
+                            f = executor.submit(export_sequences, uri, upi_from,
+                                                upi_to, fasta)
+                            fs[f] = (analysis_id, upi_from, upi_to, run_dir,
+                                     task)
+                            n_tasks_analysis += 1
                     elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
                         break
                     else:
+                        # Flagged as failed in the database: re-submit
                         task.status = PENDING
-                        running_jobs.append(task)
+                        run_dir = factory.get_run_dir(upi_from, upi_to,
+                                                      mkdir=True)
+                        fasta = factory.get_fasta_path(upi_from, upi_to)
+                        f = executor.submit(export_sequences, uri, upi_from,
+                                            upi_to, fasta)
+                        fs[f] = (analysis_id, upi_from, upi_to, run_dir, task)
+
                         n_tasks_analysis += 1
-                elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
-                    break
+
+                # Now submit new jobs
+                if analysis["max_upi"]:
+                    next_upi = int_to_upi(upi_to_int(analysis["max_upi"]) + 1)
                 else:
-                    # Flagged as failed in the database
+                    next_upi = int_to_upi(1)
 
-                    # Create new job in the database
-                    database.add_job(cur, analysis_id, upi_from, upi_to)
+                job_size = config["job_size"]
+                for upi_from, upi_to in range_upi(next_upi, max_upi, job_size):
+                    if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
+                        break
+                    elif dry_run:
+                        # Doesn't matter what is in tasks_info (dry run)
+                        tasks_info[(analysis_id, upi_from, upi_to)] = None
+                        n_tasks_analysis += 1
+                        continue
 
-                    # Add task to queue
-                    task.status = PENDING
-                    running_jobs.append(task)
+                    run_dir = factory.get_run_dir(upi_from, upi_to, mkdir=True)
+                    fasta = factory.get_fasta_path(upi_from, upi_to)
+                    task = factory.make(upi_from, upi_to)
+                    f = executor.submit(export_sequences, uri, upi_from,
+                                        upi_to, fasta)
+                    fs[f] = (analysis_id, upi_from, upi_to, run_dir, task)
                     n_tasks_analysis += 1
 
-            if analysis["max_upi"]:
-                next_upi = int_to_upi(upi_to_int(analysis["max_upi"]) + 1)
-            else:
-                next_upi = int_to_upi(1)
+                logger.debug(f"{analysis_name} {analysis_version}: "
+                             f"{n_tasks_analysis} tasks")
 
-            job_size = config["job_size"]
-            for upi_from, upi_to in range_upi(next_upi, max_upi, job_size):
-                if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
-                    break
-                elif dry_run:
-                    pending_jobs.append(None)
-                    n_tasks_analysis += 1
+            for f in as_completed(fs):
+                analysis_id, upi_from, upi_to, run_dir, task = fs[f]
+
+                try:
+                    num_sequences = f.result()
+                except Exception as exc:
+                    logger.error(f"{analysis_id} ({upi_from}-{upi_to}): {exc}")
                     continue
 
-                database.add_job(cur, analysis_id, upi_from, upi_to)
+                # Add a (placeholder/inactive) job
+                jobs.add_job(cur, analysis_id, upi_from, upi_to, num_sequences)
 
-                if count_sequences(cur, upi_from, upi_to) > 0:
-                    pending_jobs.append(factory.make(upi_from, upi_to))
-                    n_tasks_analysis += 1
+                if num_sequences > 0:
+                    # Submit the task
+                    pool.submit(task)
+                    tasks_info[task.name] = (analysis_id, upi_from, upi_to,
+                                             num_sequences, run_dir)
                 else:
-                    database.set_job_done(cur, analysis_id, upi_from, upi_to, 0)
-                    con.commit()
+                    # Empty job: flag it as successful
+                    jobs.update_job(cur, analysis_id, upi_from, upi_to,
+                                    success=True)
+                    try_rmtree(run_dir)
 
-            logger.debug(f"{name} {version}: {n_tasks_analysis} tasks")
+            del fs
 
         cur.close()
         con.close()
 
-        n_tasks = len(running_jobs) + len(pending_jobs)
+        n_tasks = len(tasks_info)
         logger.info(f"tasks: {n_tasks:,}")
 
         if dry_run:
             return
-
-        """
-        Tasks in the list are grouped by analysis, so if we submit them 
-        in order, tasks from the "first" analysis will start to run first, 
-        and tasks from other analyses will be pending for a while.
-        By randomly selecting tasks to submit, we hope that each analysis 
-        will rapidly have some tasks running.
-        We could use random.shuffle, but we do not need the entire list 
-        re-arranged, so we use random.randint to destructively iterate 
-        over the list.
-        """
-        for obj in [running_jobs, pending_jobs]:
-            # Take care of already submitted jobs first, then new ones
-            while obj:
-                i = random.randrange(len(obj))  # 0 <= i < len(obj)
-                task = obj.pop(i)
-                pool.submit(task)
 
         logger.info(f"monitoring")
         con = oracle.try_connect(uri)
@@ -341,18 +387,42 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         retries = {}
         while (n_completed + n_failed) < n_tasks:
             for task in pool.as_completed(wait=True):
-                upi_from = task.args[1]
-                upi_to = task.args[2]
-                analysis_id = task.args[6]
+                info = tasks_info[task.name]
+                analysis_id, upi_from, upi_to, num_sequences, run_dir = info
+                analysis = analyses_info[analysis_id]
+                analysis_name = analysis["name"]
+                matches_table = analysis["tables"]["matches"]
+                sites_table = analysis["tables"]["sites"]
 
-                # Check if job updated as completed in Oracle
-                ok = database.is_job_done(cur, analysis_id, upi_from, upi_to)
-
-                # Update job metadata
-                database.update_job(cur, analysis_id, upi_from, upi_to, task)
+                _, fn_matches, fn_sites = _DB_TO_I5[analysis_name]
 
                 logfile = os.path.join(temp_dir, f"{task.name}.log")
-                if ok:
+                if task.is_successful():
+                    logger.debug(f"Completed: {analysis_name} ({analysis_id})"
+                                 f" {upi_from}-{upi_to}")
+
+                    # Persist data
+                    cur2 = con.cursor()
+                    analyses.persist_results(
+                        cur2,
+                        analysis_id,
+                        fn_matches,
+                        factory.get_matches_path(run_dir),
+                        matches_table,
+                        fn_sites,
+                        factory.get_sites_path(run_dir),
+                        sites_table
+                    )
+                    cur2.close()
+
+                    # Update job in database
+                    jobs.update_job(
+                        cur, analysis_id, upi_from, upi_to,
+                        task.submit_time, task.start_time, task.end_time,
+                        task.maxmem, task.executor.memory,
+                        task.cputime, True
+                    )
+
                     if keep_files == "all":
                         with open(logfile, "wt") as fh:
                             fh.write(task.stdout)
@@ -364,8 +434,13 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         except FileNotFoundError:
                             pass
 
+                        try_rmtree(run_dir)
+
                     n_completed += 1
                 else:
+                    logger.debug(f"Failed: {analysis_name} ({analysis_id})"
+                                 f" {upi_from}-{upi_to}")
+
                     if keep_files in ("all", "failed"):
                         with open(logfile, "wt") as fh:
                             fh.write(task.stdout)
@@ -412,7 +487,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         pool.submit(task)
 
                         # Add new job
-                        database.add_job(cur, analysis_id, upi_from, upi_to)
+                        jobs.add_job(cur, analysis_id, upi_from, upi_to,
+                                     num_sequences)
 
                         # Increment retries counter
                         retries[task.name] = num_retries + 1
@@ -420,16 +496,15 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         # Max number of retries reached
                         n_failed += 1
 
+                        if keep_files not in ("all", "failed"):
+                            try_rmtree(run_dir)
+
                 progress = (n_completed + n_failed) * 100 / n_tasks
                 if progress >= milestone:
-                    """
-                    Skip intermediate milestones  (e.g. progress went 
-                    from 0 to 10%): we don't want to print 5%
-                    """
                     while progress >= milestone:
                         milestone += step
 
-                    logger.info(f"progress: {milestone - step:>3}%")
+                    logger.info(f"progress: {progress:>3.0f}%")
 
         if n_failed:
             logger.error(f"{n_failed} task(s) failed")
@@ -437,178 +512,42 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             logger.info("complete")
 
 
-def count_sequences(cur: oracledb.Cursor, upi_from: str, upi_to: str) -> int:
+def export_sequences(uri: str, upi_from: str, upi_to: str, output: str) -> int:
+    con = oracle.connect(uri)
+    cur = con.cursor()
     cur.execute(
         """
-        SELECT COUNT(*)
+        SELECT UPI, SEQ_SHORT, SEQ_LONG
         FROM UNIPARC.PROTEIN
         WHERE UPI BETWEEN :1 AND :2
         """,
         [upi_from, upi_to]
     )
-    cnt, = cur.fetchone()
-    return cnt
+    rows = cur.fetchall()
+    num_sequences = len(rows)
+    if num_sequences > 0:
+        with open(output, "wt") as fh:
+            for upi, seq_short, seq_long in rows:
+                sequence = seq_short or seq_long.read()
 
+                fh.write(f">{upi}\n")
+                for i in range(0, len(sequence), 60):
+                    fh.write(f"{sequence[i:i + 60]}\n")
 
-def export_fasta(uri: str, fasta_file: str, upi_from: str, upi_to: str) -> int:
-    num_sequences = 0
-    with open(fasta_file, "wt") as fh:
-        con = oracle.try_connect(uri)
-        cur = con.cursor()
-
-        cur.execute(
-            """
-            SELECT UPI, SEQ_SHORT, SEQ_LONG
-            FROM UNIPARC.PROTEIN
-            WHERE UPI BETWEEN :1 AND :2
-            """,
-            [upi_from, upi_to]
-        )
-
-        for upi, seq_short, seq_long in cur:
-            sequence = seq_short or seq_long.read()
-
-            fh.write(f">{upi}\n")
-            for i in range(0, len(sequence), 60):
-                fh.write(f"{sequence[i:i+60]}\n")
-
-            num_sequences += 1
-
-        cur.close()
-        con.close()
-
+    cur.close()
+    con.close()
     return num_sequences
 
 
-def run_i5(i5_dir: str, fasta_file: str, analysis_name: str, output: str,
-           cpu: int | None = None, temp_dir: str | None = None,
-           timeout: int | None = None) -> tuple[bool, str, str]:
-    args = [
-        os.path.join(i5_dir, "interproscan.sh"),
-        "-i", fasta_file,
-        "-appl", analysis_name,
-        "-dp",
-        "-f", "tsv-pro",
-        "-o", output
-    ]
-
-    if cpu is not None:
-        args += ["-cpu", str(cpu)]
-
-    if temp_dir is not None:
-        args += ["-T", temp_dir]
-
-    if isinstance(timeout, int) and timeout > 0:
-        # timeout in hours, but subprocess.run takes in seconds
-        _timeout = timeout * 3600
-    else:
-        _timeout = None
-
-    process = subprocess.run(args, capture_output=True, timeout=_timeout)
-    return (
-        process.returncode == 0,
-        process.stdout.decode("utf-8"),
-        process.stderr.decode("utf-8")
-    )
-
-
-def run_job(uri: str, upi_from: str, upi_to: str, i5_dir: str, appl: str,
-            outdir: str, analysis_id: int, match_table: str,
-            persist_matches: Callable, site_table: str | None,
-            persist_sites: Callable | None, cpu: int | None = None,
-            keep_files: str | None = None, timeout: int | None = None):
-    try:
-        shutil.rmtree(outdir)
-    except FileNotFoundError:
-        pass
-
-    os.makedirs(outdir)
-    fasta_file = os.path.join(outdir, "input.fasta")
-    matches_output = os.path.join(outdir, "output.tsv-pro")
-    sites_output = matches_output + ".sites"
-
-    ok = False
-    try:
-        num_sequences = export_fasta(uri, fasta_file, upi_from, upi_to)
-
-        if num_sequences > 0:
-            i5_ok, stdout, stderr = run_i5(i5_dir, fasta_file, appl,
-                                           matches_output, cpu=cpu,
-                                           temp_dir=outdir, timeout=timeout)
-
-            # Write captured streams
-            sys.stdout.write(stdout)
-            sys.stderr.write(stderr)
-
-            if not i5_ok or _I5_SUCCESS not in stdout:
-                raise RuntimeError("InterProScan error")
-            elif not os.path.isfile(matches_output):
-                raise RuntimeError(f"Cannot access output matches tsv-pro")
-            elif site_table and not os.path.isfile(sites_output):
-                raise RuntimeError(f"Cannot access output sites tsv-pro")
-
-            con = oracle.try_connect(uri)
-
-            """
-            Use a different cursor for persist functions
-            as they call cursor.setinputsizes()
-            """
-            cur = con.cursor()
-            persist_matches(cur, matches_output, analysis_id, match_table)
-            if site_table:
-                persist_sites(cur, sites_output, analysis_id, site_table)
-            cur.close()
-
-            cur = con.cursor()
-            database.set_job_done(cur, analysis_id, upi_from, upi_to,
-                                  num_sequences)
-
-            con.commit()
-            cur.close()
-            con.close()
+def try_rmtree(path: str, max_attempts: int = 3):
+    num_attempts = 1
+    while num_attempts <= max_attempts:
+        try:
+            shutil.rmtree(path)
+        except Exception as exc:
+            time.sleep(1)
+            num_attempts += 1
+            if num_attempts == max_attempts:
+                logger.error(exc)
         else:
-            con = oracle.try_connect(uri)
-            cur = con.cursor()
-            database.set_job_done(cur, analysis_id, upi_from, upi_to,
-                                  num_sequences)
-            con.commit()
-            cur.close()
-            con.close()
-    except Exception:
-        raise
-    else:
-        ok = True
-    finally:
-        if keep_files != "all" and (keep_files != "failed" or ok):
-            shutil.rmtree(outdir)
-
-
-def get_unfinished_lsf_jobs() -> dict[str, int]:
-    stdout = subprocess.run(["bjobs", "-o", "jobid name"],
-                            capture_output=True,
-                            encoding="utf-8").stdout
-    jobs = {}
-    if "No unfinished job found" in stdout:
-        return jobs
-
-    for line in stdout.split("\n")[1:]:
-        if line:
-            job_id, name = line.split(maxsplit=1)
-            jobs[name] = int(job_id)
-
-    return jobs
-
-
-def get_unfinished_slurm_jobs() -> dict[str, int]:
-    stdout = subprocess.run(["squeue", "-h" "-O", "JobId,Name",
-                             "-t", "pending,running"],
-                            capture_output=True,
-                            encoding="utf-8").stdout
-
-    jobs = {}
-    for line in stdout.split("\n")[1:]:
-        if line:
-            job_id, name = line.split(maxsplit=1)
-            jobs[name] = int(job_id)
-
-    return jobs
+            break

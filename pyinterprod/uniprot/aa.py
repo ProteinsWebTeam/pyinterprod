@@ -20,14 +20,9 @@ def create_aa_alignment(uri: str):
     con = oracledb.connect(uri)
     cur = con.cursor()
 
-    cur.execute(
-        """
-        SELECT IPRSCAN_SIG_LIB_REL_ID
-        FROM INTERPRO.IPRSCAN2DBCODE 
-        WHERE DBCODE = 'f'
-        """
-    )
-    funfam_id, = cur.fetchone()
+    analyses = {}
+    for analysis in iprscan.get_analyses(cur, type="matches"):
+        analyses[analysis.name] = (analysis.id, analysis.table)
 
     oracle.drop_table(cur, "IPRSCAN.AA_ALIGNMENT", purge=True)
     cur.execute(
@@ -39,8 +34,6 @@ def create_aa_alignment(uri: str):
             SIGNATURE VARCHAR2(255) NOT NULL,
             SEQ_START NUMBER(10) NOT NULL,
             SEQ_END NUMBER(10) NOT NULL,
-            HMMER_SEQ_START NUMBER(10),
-            HMMER_SEQ_END NUMBER(10),
             ALIGNMENT VARCHAR2(4000)
         ) COMPRESS NOLOGGING
         """
@@ -62,20 +55,18 @@ def create_aa_alignment(uri: str):
     )
     con.commit()
 
-    logger.info("inserting alignments for FunFam")
-    # FunFam has additional columns (HMMER sequence boundaries)
-    # that are not in MV_IPRSCAN: get them from ISPRO
-    cur.execute(
-        """
-        INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
-        SELECT UPI, 'FUNFAM', METHOD_AC, SEQ_START, SEQ_END, 
-               HMMER_SEQ_START, HMMER_SEQ_END, ALIGNMENT
-        FROM IPRSCAN.IPM_FUNFAM_MATCH@ISPRO
-        WHERE ANALYSIS_ID = :1
-        """,
-        [funfam_id]
-    )
-    con.commit()
+        if rows:
+            cur2.executemany(
+                f"""
+                INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
+                VALUES (:1, :2, :3, :4, :5, :6, :7, :8)
+                """,
+                rows
+            )
+            con.commit()
+            rows.clear()
+
+    cur2.close()
 
     logger.info("indexing")
     for col in ("UPI", "SIGNATURE"):
@@ -439,7 +430,7 @@ def create_xref_summary(uri: str):
 
     logger.info("inserting PANTHER subfamily matches")
     cur.execute(
-        """
+        r"""
         INSERT /*+ APPEND */ INTO INTERPRO.XREF_SUMMARY
         SELECT
             MA.DBCODE,
@@ -478,8 +469,7 @@ def create_xref_summary(uri: str):
             NULL,
             NULL,
             FM.METHOD_AC,
-            CASE WHEN ME.NAME IS NOT NULL AND FM.METHOD_AC != ME.NAME
-                THEN ME.NAME ELSE ME.DESCRIPTION END,
+            ME.DESCRIPTION,
             FM.POS_FROM,
             FM.POS_TO,
             'T',

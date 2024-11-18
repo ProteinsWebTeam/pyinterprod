@@ -215,18 +215,6 @@ def update_database_matches(uri: str, databases: list):
         # logger.info("\tgathering statistics")
         # oracle.gather_stats(cur, "INTERPRO", "MATCH", partition)
 
-    for index in oracle.get_indexes(cur, "INTERPRO", "MATCH"):
-        if index["is_unusable"]:
-            logger.info(f"rebuilding index {index['name']}")
-            oracle.rebuild_index(cur, index["name"])
-
-    for index in oracle.get_partitioned_indexes(cur, "INTERPRO", "MATCH"):
-        if index["is_unusable"]:
-            logger.info(f"rebuilding index {index['name']}, "
-                        f"partition {index['partition']}")
-            oracle.rebuild_index(cur, index["name"],
-                                 partition=index["partition"])
-
     cur.close()
     con.close()
 
@@ -374,19 +362,6 @@ def update_database_feature_matches(uri: str, databases: list):
         logger.info("\tgathering statistics")
         oracle.gather_stats(cur, "INTERPRO", "FEATURE_MATCH", partition)
 
-    for index in oracle.get_indexes(cur, "INTERPRO", "FEATURE_MATCH"):
-        if index["is_unusable"]:
-            logger.info(f"rebuilding index {index['name']}")
-            oracle.rebuild_index(cur, index["name"])
-
-    for index in oracle.get_partitioned_indexes(cur, "INTERPRO",
-                                                "FEATURE_MATCH"):
-        if index["is_unusable"]:
-            logger.info(f"rebuilding index {index['name']}, "
-                        f"partition {index['partition']}")
-            oracle.rebuild_index(cur, index["name"],
-                                 partition=index["partition"])
-
     cur.close()
     con.close()
 
@@ -503,12 +478,22 @@ def update_database_site_matches(uri: str, databases: list):
 
         oracle.drop_table(cur, "INTERPRO.SITE_MATCH_NEW", purge=True)
 
-    for index in oracle.get_indexes(cur, "INTERPRO", "SITE_MATCH"):
+    cur.close()
+    con.close()
+
+    logger.info("complete")
+
+
+def rebuild_indexes(uri: str, table: str):
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+
+    for index in oracle.get_indexes(cur, "INTERPRO", table):
         if index["is_unusable"]:
             logger.info(f"rebuilding index {index['name']}")
             oracle.rebuild_index(cur, index["name"])
 
-    for index in oracle.get_partitioned_indexes(cur, "INTERPRO", "SITE_MATCH"):
+    for index in oracle.get_partitioned_indexes(cur, "INTERPRO", table):
         if index["is_unusable"]:
             logger.info(f"rebuilding index {index['name']}, "
                         f"partition {index['partition']}")

@@ -51,7 +51,7 @@ def get_clans(cddid: str, fam2supfam: str) -> list[Clan]:
 
         if re.match(r"cl\d+", accession):
             superfamilies[accession] = Clan(accession, name, descr)
-        elif re.match(r"cd\d+", accession):
+        elif re.match(r"[cs]d\d+", accession):
             families.add(accession)
 
     fh.close()
