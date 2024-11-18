@@ -1075,7 +1075,7 @@ def generate_match_complete_xml(uri: str, out: str):
 
     # Retrieve all the protein accessions
     logger.info(f"Loading accessions..")
-    accessions_cur.execute("""SELECT PROTEIN_AC FROM INTERPRO.PROTEIN WHERE ROWNUM < 2000""")
+    accessions_cur.execute("""SELECT PROTEIN_AC FROM INTERPRO.PROTEIN ORDER BY PROTEIN_AC""")
 
     # Keep going until iterator hasn't stop generating results
     while True:
