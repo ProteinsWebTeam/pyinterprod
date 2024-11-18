@@ -1088,6 +1088,7 @@ def generate_match_complete_xml(uri: str, out: str):
         if not accessions_list:
             break  # No more accessions to fetch
         
+        logger.info(f"Retrievieng data")
         protein_data = proteins_cur.execute(f"""
             SELECT  P.PROTEIN_AC, 
             P.NAME, 
@@ -1136,6 +1137,8 @@ def generate_match_complete_xml(uri: str, out: str):
 
         proteins = []
         proteins_xml_str = []
+
+        logger.info(f"Writing XML")
         for row in protein_data:
 
             protein_id = row['protein_id']
