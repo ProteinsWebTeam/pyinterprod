@@ -1074,21 +1074,21 @@ def generate_match_complete_xml(uri: str, out: str):
     xml_file.write("<proteins>")
 
     # Retrieve all the protein accessions
-    logger.info(f"Loading accessions.")
+    logger.info(f"Loading accessions..")
     accessions_cur.execute("""SELECT PROTEIN_AC FROM INTERPRO.PROTEIN ORDER BY PROTEIN_AC""")
 
     # Keep going until iterator hasn't stop generating results
     while True:
 
-        accessions_list = accessions_cur.fetchmany(100)
+        accessions_list = accessions_cur.fetchmany(1000)
         start_protein_acc = accessions_list[0][0]
         stop_protein_acc = accessions_list[-1][0]
-        logger.info(f"FROM {start_protein_acc} TO {stop_protein_acc}")
+
 
         if not accessions_list:
             break  # No more accessions to fetch
         
-        logger.info(f"Retrievieng data")
+        logger.info(f"Retrieving data for [{start_protein_acc}, {stop_protein_acc}]")
         protein_data = proteins_cur.execute(f"""
             SELECT  P.PROTEIN_AC, 
             P.NAME, 
@@ -1138,7 +1138,7 @@ def generate_match_complete_xml(uri: str, out: str):
         proteins = []
         proteins_xml_str = []
 
-        logger.info(f"Writing XML")
+        logger.info(f"Writing XML for [{start_protein_acc}, {stop_protein_acc}]")
         for row in protein_data:
 
             protein_id = row['protein_id']
