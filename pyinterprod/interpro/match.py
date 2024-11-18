@@ -1075,7 +1075,7 @@ def generate_match_complete_xml(uri: str, out: str):
 
     # Retrieve all the protein accessions
     logger.info(f"Loading accessions..")
-    accessions_cur.execute("""SELECT PROTEIN_AC FROM INTERPRO.PROTEIN ORDER BY PROTEIN_AC""")
+    accessions_cur.execute("""SELECT PROTEIN_AC FROM INTERPRO.PROTEIN WHERE ROWNUM < 2000""")
 
     # Keep going until iterator hasn't stop generating results
     while True:
@@ -1089,7 +1089,7 @@ def generate_match_complete_xml(uri: str, out: str):
             break  # No more accessions to fetch
         
         logger.info(f"Retrieving data for [{start_protein_acc}, {stop_protein_acc}]")
-        protein_data = proteins_cur.execute(f"""
+        proteins = proteins_cur.execute(f"""
             SELECT  P.PROTEIN_AC, 
             P.NAME, 
             M.DBCODE, 
@@ -1127,19 +1127,20 @@ def generate_match_complete_xml(uri: str, out: str):
             'method_ac', 'model_ac', 'pos_from', 'pos_to', 'fragments', 'score', 'method_desc', 
             'status', 'dbname', 'evd', 'sig_type']
         
-        protein_data = [
+        proteins = [
             {col: (str(value) if value is not None else '') for col, value in zip(columns, row)}
-            for row in protein_data
+            for row in proteins
         ]
 
         # Group by protein_id and method_ac, then create a nested dictionary
         grouped = {}
 
-        proteins = []
+        proteins_elem = []
         proteins_xml_str = []
 
         logger.info(f"Writing XML for [{start_protein_acc}, {stop_protein_acc}]")
-        for row in protein_data:
+
+        for row in proteins:
 
             protein_id = row['protein_id']
 
@@ -1183,6 +1184,7 @@ def generate_match_complete_xml(uri: str, out: str):
 
         # Iterate through the grouped data to create XML structure
         for protein_id, protein_data in grouped.items():
+
             # Extract the info for the protein
             info = protein_data["info"]
             
@@ -1228,45 +1230,45 @@ def generate_match_complete_xml(uri: str, out: str):
                                             end=str(loc['end']),
                                             fragments=frag_str,
                                             score=str(loc['score']))
-            proteins.append(protein_elem)
+            proteins_elem.append(protein_elem)
 
-            # Iterate over each protein, sort its matches
-            for protein in proteins:
-                
-                # Get all match elements
-                matches = list(protein.findall('match'))
+        # Iterate over each protein, sort its matches
+        for protein in proteins_elem:
+            
+            # Get all match elements
+            matches = list(protein.findall('match'))
+
+            # Clear the original match elements from the protein
+            for match in matches:
+
+                locations = list(match.findall('lcn'))
+                sorted_lcsn = sorted(locations, key=lambda x: int(x.get('start')))
 
                 # Clear the original match elements from the protein
-                for match in matches:
+                for lcn in locations:
+                    match.remove(lcn)
 
-                    locations = list(match.findall('lcn'))
-                    sorted_lcsn = sorted(locations, key=lambda x: int(x.get('start')))
-
-                    # Clear the original match elements from the protein
-                    for lcn in locations:
-                        match.remove(lcn)
-
-                    # Append the sorted match elements back to the protein
-                    for lcn in sorted_lcsn:
-                        match.append(lcn)
-
-
-                # Sort matches by the 'score' attribute (convert score to integer for sorting)
-                matches = sorted(matches, key=lambda x: int(x.find("lcn").get("start")))
-                sorted_matches = sorted(matches, key=lambda x: x.get('id'))
-
-                for match in matches:
-                    protein.remove(match)
-                
                 # Append the sorted match elements back to the protein
-                for match in sorted_matches:
-                    protein.append(match)
+                for lcn in sorted_lcsn:
+                    match.append(lcn)
 
-                protein_bytes = ET.tostring(protein, encoding='utf-8', xml_declaration=False)
-                protein_str = protein_bytes.decode("utf-8")
-                protein_str_formatted = xml.dom.minidom.parseString(protein_str).toprettyxml()
-                protein_str_formatted = "\n".join(protein_str_formatted.split("\n")[1:]) # No XML declaration
-                proteins_xml_str.append(protein_str_formatted)
+
+            # Sort matches by the 'score' attribute (convert score to integer for sorting)
+            matches = sorted(matches, key=lambda x: int(x.find("lcn").get("start")))
+            sorted_matches = sorted(matches, key=lambda x: x.get('id'))
+
+            for match in matches:
+                protein.remove(match)
+            
+            # Append the sorted match elements back to the protein
+            for match in sorted_matches:
+                protein.append(match)
+
+            protein_bytes = ET.tostring(protein, encoding='utf-8', xml_declaration=False)
+            protein_str = protein_bytes.decode("utf-8")
+            protein_str_formatted = xml.dom.minidom.parseString(protein_str).toprettyxml()
+            protein_str_formatted = "\n".join(protein_str_formatted.split("\n")[1:]) # No XML declaration
+            proteins_xml_str.append(protein_str_formatted)
 
         xml_file.writelines(proteins_xml_str)
     xml_file.write("</proteins>")
