@@ -5,7 +5,6 @@ from configparser import ConfigParser
 
 from mundone import Task, Workflow
 
-from pyinterprod import __version__
 from pyinterprod import interpro, interproscan, pronto, uniprot
 from pyinterprod.interpro.clan import update_cdd_clans, update_hmm_clans
 
@@ -200,9 +199,6 @@ def run_clan_update():
                         help="number of alignment workers")
     parser.add_argument("-T", "--tempdir",
                         help="directory to use for temporary files")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -251,9 +247,6 @@ def run_hmm_update():
                         metavar="DATABASE",
                         nargs="+",
                         help="database(s) to update")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -301,9 +294,6 @@ def run_member_db_update():
     parser.add_argument("--detach",
                         action="store_true",
                         help="enqueue tasks to run and exit")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -613,9 +603,6 @@ def run_pronto_update():
     parser.add_argument("--detach",
                         action="store_true",
                         help="enqueue tasks to run and exit")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -664,9 +651,6 @@ def run_uniprot_update():
     parser.add_argument("--detach",
                         action="store_true",
                         help="enqueue tasks to run and exit")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):

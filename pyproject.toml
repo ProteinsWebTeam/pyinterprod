@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyinterprod"
+version = "2.13.1"
+description = "InterPro production procedures."
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.11"
+dependencies = [
+    "mundone~=0.8",
+    "mysqlclient~=2.2",
+    "oracledb~=2.4",
+    "psycopg[binary]~=3.1",
+]
+
+[project.scripts]
+ipr-ispro = "pyinterprod.cli:check_ispro"
+ipr-uniprot = "pyinterprod.cli:run_uniprot_update"
+ipr-pre-memdb = "pyinterprod.cli:update_database"
+ipr-memdb = "pyinterprod.cli:run_member_db_update"
+ipr-clans = "pyinterprod.cli:run_clan_update"
+ipr-hmms = "pyinterprod.cli:run_hmm_update"
+ipr-pronto = "pyinterprod.cli:run_pronto_update"
+ipr-calc = "pyinterprod.cli:run_interproscan_manager"
+
+[tool.setuptools]
+ext-modules = [
+  {name = "pyinterprod.uniprot.sprot", sources = ["pyinterprod/uniprot/sprotmodule.c"], extra_link_args = ["-lsqlite3"]}
+]
