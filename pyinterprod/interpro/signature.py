@@ -274,7 +274,7 @@ def track_signature_changes(
 
 
 def delete_from_table(uri: str, table: str, partition: str | None,
-                      column: str, step: int, stop: int) -> int:
+                      column: str, step: int = 1000) -> int:
     con = oracledb.connect(uri)
     cur = con.cursor()
 
@@ -293,12 +293,15 @@ def delete_from_table(uri: str, table: str, partition: str | None,
         )
         """
     )
-    (num_rows,) = cur.fetchone()
+    num_rows, = cur.fetchone()
 
     if not num_rows:
         cur.close()
         con.close()
         return num_rows
+
+    cur.execute("SELECT COUNT(*) FROM INTERPRO.METHOD_TO_DELETE")
+    stop, = cur.fetchone()
 
     for i in range(1, stop, step):
         cur.execute(
@@ -310,7 +313,7 @@ def delete_from_table(uri: str, table: str, partition: str | None,
               WHERE ID BETWEEN :1 and :2
             )
             """,
-            (i, i + step - 1),
+            [i, i + step - 1]
         )
 
     con.commit()
@@ -321,7 +324,6 @@ def delete_from_table(uri: str, table: str, partition: str | None,
 
 
 def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
-    step = kwargs.get("step", 1000)
     threads = kwargs.get("threads", 8)
     truncate_match_tables = kwargs.get("truncate_match_tables", True)
 
@@ -376,17 +378,6 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
         ON INTERPRO.METHOD_TO_DELETE (ID)
         """
     )
-
-    cur.execute("SELECT COUNT(*) FROM INTERPRO.METHOD_TO_DELETE")
-    (stop,) = cur.fetchone()
-
-    logger.info(f"{stop:,} signatures to delete")
-
-    if not stop:
-        # Nothing to delete
-        cur.close()
-        con.close()
-        return
 
     # Get tables with a FOREIGN KEY to INTERPRO.METHOD
     tables = []
@@ -446,15 +437,15 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
     cur.close()
     con.close()
 
+    num_errors = 0
     with ThreadPoolExecutor(max_workers=threads) as executor:
         fs = {}
 
         for table, partition, column in tasks:
-            args = (uri, table, partition, column, step, stop)
-            f = executor.submit(delete_from_table, *args)
+            f = executor.submit(delete_from_table,
+                                uri, table, partition, column)
             fs[f] = (table, partition)
 
-        num_errors = 0
         for f in as_completed(fs):
             table, partition = fs[f]
             if partition:
@@ -470,13 +461,11 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
             else:
                 logger.info(f"{name}: {num_rows:,} rows deleted")
 
-        if num_errors:
-            raise RuntimeError(f"{num_errors} tables failed")
+    logger.error(f"{num_errors} occurred")
 
     logger.info("enabling referential constraints")
     con = oracledb.connect(uri)
     cur = con.cursor()
-    num_errors = 0
     constraints = set()
     for table, constraint, column in tables:
         if not constraint or constraint in constraints:
