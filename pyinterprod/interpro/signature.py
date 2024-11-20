@@ -323,10 +323,7 @@ def delete_from_table(uri: str, table: str, partition: str | None,
     return num_rows
 
 
-def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
-    threads = kwargs.get("threads", 8)
-    truncate_match_tables = kwargs.get("truncate_match_tables", True)
-
+def delete_obsoletes(uri: str, databases: list[Database], threads: int = 8):
     con = oracledb.connect(uri)
     cur = con.cursor()
 
@@ -416,21 +413,24 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
         if table == "MATCH":
             for db in databases:
                 partition = MATCH_PARTITIONS[db.identifier]
+                logger.info(f"truncating {table} ({partition})")
+                ora.truncate_partition(cur, table, partition)
+        elif table == "TOAD_MATCH":
+            partitions = {}
+            for p in ora.get_partitions(cur, "INTERPRO", "TOAD_MATCH"):
+                name = p["name"]
+                dbcode = p["value"][1:-1]  # 'X' -> X
+                partitions[dbcode] = name
 
-                if truncate_match_tables:
-                    logger.info(f"truncating {table} ({partition})")
-                    ora.truncate_partition(cur, table, partition)
-                else:
-                    tasks.append((table, partition, column))
+            for db in databases:
+                partition = partitions[db.identifier]
+                logger.info(f"truncating {table} ({partition})")
+                ora.truncate_partition(cur, table, partition)
         elif table == "SITE_MATCH":
             for db in databases:
                 partition = SITE_PARTITIONS[db.identifier]
-
-                if truncate_match_tables:
-                    logger.info(f"truncating {table} ({partition})")
-                    ora.truncate_partition(cur, table, partition)
-                else:
-                    tasks.append((table, partition, column))
+                logger.info(f"truncating {table} ({partition})")
+                ora.truncate_partition(cur, table, partition)
         else:
             tasks.append((table, None, column))
 
