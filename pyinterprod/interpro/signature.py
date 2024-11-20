@@ -14,12 +14,7 @@ from pyinterprod.utils import oracle as ora
 from . import contrib
 from .contrib.common import Method
 from .database import Database
-from .match import (
-    FEATURE_MATCH_PARTITIONS,
-    MATCH_PARTITIONS,
-    SITE_PARTITIONS,
-    get_sig_protein_counts,
-)
+from .match import get_sig_protein_counts
 
 FILE_DB_SIG = "signatures.update.pickle"
 FILE_SIG_DESCR = "signatures.descr.pickle"
@@ -408,27 +403,26 @@ def delete_obsoletes(uri: str, databases: list[Database], threads: int = 8):
         con.close()
         raise RuntimeError(f"{num_errors} constraints could not be disabled")
 
+    match_partitions = {}
+    for p in ora.get_partitions(cur, "INTERPRO", "MATCH"):
+        dbcode = p["value"][1:-1]  # 'X' -> X
+        match_partitions[dbcode] = p["name"]
+
+    toad_partitions = {}
+    for p in ora.get_partitions(cur, "INTERPRO", "TOAD_MATCH"):
+        dbcode = p["value"][1:-1]
+        toad_partitions[dbcode] = p["name"]
+
     tasks = []
     for table, constraint, column in tables:
         if table == "MATCH":
             for db in databases:
-                partition = MATCH_PARTITIONS[db.identifier]
+                partition = match_partitions[db.identifier]
                 logger.info(f"truncating {table} ({partition})")
                 ora.truncate_partition(cur, table, partition)
         elif table == "TOAD_MATCH":
-            partitions = {}
-            for p in ora.get_partitions(cur, "INTERPRO", "TOAD_MATCH"):
-                name = p["name"]
-                dbcode = p["value"][1:-1]  # 'X' -> X
-                partitions[dbcode] = name
-
             for db in databases:
-                partition = partitions[db.identifier]
-                logger.info(f"truncating {table} ({partition})")
-                ora.truncate_partition(cur, table, partition)
-        elif table == "SITE_MATCH":
-            for db in databases:
-                partition = SITE_PARTITIONS[db.identifier]
+                partition = toad_partitions[db.identifier]
                 logger.info(f"truncating {table} ({partition})")
                 ora.truncate_partition(cur, table, partition)
         else:
@@ -567,9 +561,14 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
     con = oracledb.connect(uri)
     cur = con.cursor()
 
+    partitions = {}
+    for p in ora.get_partitions(cur, "INTERPRO", "FEATURE_MATCH"):
+        dbcode = p["value"][1:-1]  # 'X' -> X
+        partitions[dbcode] = p["name"]
+
     for db, db_props in update:
         try:
-            partition = FEATURE_MATCH_PARTITIONS[db.identifier]
+            partition = partitions[db.identifier]
         except KeyError:
             cur.close()
             con.close()

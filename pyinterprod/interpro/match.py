@@ -5,49 +5,10 @@ import oracledb
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
+from .database import Database
 
 
 FILE_ENTRY_PROT_COUNTS = "entries.prot.counts.pickle"
-
-"""
-To add a partition:
-SQL> ALTER TABLE <TABLE> 
-     ADD PARTITION <NAME> VALUES ('<DBCODE>');
-"""
-MATCH_PARTITIONS = {
-    "B": "MATCH_DBCODE_B",  # SFLD
-    "F": "MATCH_DBCODE_F",  # PRINTS
-    "H": "MATCH_DBCODE_H",  # Pfam
-    "J": "MATCH_DBCODE_J",  # CDD
-    "M": "MATCH_DBCODE_M",  # PROSITE profiles
-    "N": "MATCH_DBCODE_N",  # NCBIfam
-    "P": "MATCH_DBCODE_P",  # PROSITE patterns
-    "Q": "MATCH_DBCODE_Q",  # HAMAP
-    "R": "MATCH_DBCODE_R",  # SMART
-    "U": "MATCH_DBCODE_U",  # PIRSF
-    "V": "MATCH_DBCODE_V",  # PANTHER
-    "X": "MATCH_DBCODE_X",  # CATH-Gene3D
-    "Y": "MATCH_DBCODE_Y",  # SUPERFAMILY
-}
-FEATURE_MATCH_PARTITIONS = {
-    "a": "ANTIFAM",
-    "d": "PFAM_N",
-    "f": "FUNFAM",
-    "g": "MOBIDBLITE",
-    "j": "PHOBIUS",
-    "l": "ELM",
-    "n": "SIGNALP_E",
-    "q": "TMHMM",
-    "s": "SIGNALP_GP",
-    "v": "SIGNALP_GN",
-    "x": "COILS"
-}
-SITE_PARTITIONS = {
-    # DB identifier -> (str:partition, bool:check against MATCH table)
-    "B": ("SFLD", True),
-    "J": ("CDD", True),
-    "z": ("PIRSR", False)
-}
 
 
 def export_entries_protein_counts(cur: oracledb.Cursor, data_dir: str):
@@ -55,7 +16,7 @@ def export_entries_protein_counts(cur: oracledb.Cursor, data_dir: str):
         pickle.dump(_get_entries_protein_counts(cur), fh)
 
 
-def update_database_matches(uri: str, databases: list):
+def update_database_matches(uri: str, databases: list[Database]):
     """
 
     :param uri:
@@ -64,6 +25,11 @@ def update_database_matches(uri: str, databases: list):
     """
     con = oracledb.connect(uri)
     cur = con.cursor()
+
+    partitions = {}
+    for p in oracle.get_partitions(cur, "INTERPRO", "MATCH"):
+        dbcode = p["value"][1:-1]  # 'X' -> X
+        partitions[dbcode] = p["name"]
 
     for database in databases:
         logger.info(f"{database.name}")
@@ -202,7 +168,7 @@ def update_database_matches(uri: str, databases: list):
                                f"for analysis ID {database.analysis_id}")
 
         logger.info(f"\texchanging partition")
-        partition = MATCH_PARTITIONS[database.identifier]
+        partition = partitions[database.identifier]
         cur.execute(
             f"""
             ALTER TABLE INTERPRO.MATCH
@@ -221,7 +187,7 @@ def update_database_matches(uri: str, databases: list):
     logger.info("complete")
 
 
-def update_database_feature_matches(uri: str, databases: list):
+def update_database_feature_matches(uri: str, databases: list[Database]):
     """
 
     :param uri:
@@ -230,6 +196,11 @@ def update_database_feature_matches(uri: str, databases: list):
     """
     con = oracledb.connect(uri)
     cur = con.cursor()
+
+    partitions = {}
+    for p in oracle.get_partitions(cur, "INTERPRO", "FEATURE_MATCH"):
+        dbcode = p["value"][1:-1]  # 'X' -> X
+        partitions[dbcode] = p["name"]
 
     for database in databases:
         logger.info(f"{database.name}")
@@ -349,7 +320,7 @@ def update_database_feature_matches(uri: str, databases: list):
                                f"for analysis ID {database.analysis_id}")
 
         logger.info(f"\texchanging partition")
-        partition = FEATURE_MATCH_PARTITIONS[database.identifier]
+        partition = partitions[database.identifier]
         cur.execute(
             f"""
             ALTER TABLE INTERPRO.FEATURE_MATCH
@@ -368,7 +339,7 @@ def update_database_feature_matches(uri: str, databases: list):
     logger.info("complete")
 
 
-def update_database_site_matches(uri: str, databases: list):
+def update_database_site_matches(uri: str, databases: list[Database]):
     """
 
     :param uri:
@@ -378,15 +349,18 @@ def update_database_site_matches(uri: str, databases: list):
     con = oracledb.connect(uri)
     cur = con.cursor()
 
+    match_partitions = {}
+    for p in oracle.get_partitions(cur, "INTERPRO", "MATCH"):
+        dbcode = p["value"][1:-1]  # 'X' -> X
+        match_partitions[dbcode] = p["name"]
+
+    site_partitions = {}
+    for p in oracle.get_partitions(cur, "INTERPRO", "SITE_MATCH"):
+        dbcode = p["value"][1:-1]
+        site_partitions[dbcode] = p["name"]
+
     for database in databases:
         logger.info(database.name)
-
-        """
-        Same partition names in:
-            - IPRSCAN.SITE
-            - INTERPRO.SITE_MATCH
-        """
-        site_partition, ck_matches = SITE_PARTITIONS[database.identifier]
 
         oracle.drop_table(cur, "INTERPRO.SITE_MATCH_NEW", purge=True)
         cur.execute(
@@ -404,7 +378,7 @@ def update_database_site_matches(uri: str, databases: list):
                 X.AC, S.METHOD_AC, D.DBCODE, S.LOC_START, S.LOC_END, 
                 S.DESCRIPTION, S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END, 
                 S.NUM_SITES
-            FROM IPRSCAN.SITE PARTITION ({site_partition}) S
+            FROM IPRSCAN.SITE S
             INNER JOIN UNIPARC.XREF X
               ON S.UPI = X.UPI
             INNER JOIN INTERPRO.IPRSCAN2DBCODE D
@@ -412,7 +386,8 @@ def update_database_site_matches(uri: str, databases: list):
             WHERE S.ANALYSIS_ID = :1
             AND X.DBID IN (2, 3)  -- Swiss-Prot or TrEMBL
             AND X.DELETED = 'N'
-            """, (database.analysis_id,)
+            """,
+            [database.analysis_id]
         )
         con.commit()
 
@@ -428,9 +403,9 @@ def update_database_site_matches(uri: str, databases: list):
             """
         )
 
-        if ck_matches:
+        if database.identifier in match_partitions:
             logger.info(f"\tchecking matches")
-            match_partition = MATCH_PARTITIONS[database.identifier]
+            partition = match_partitions[database.identifier]
             cur.execute(
                 f"""
                 SELECT COUNT(*)
@@ -439,7 +414,7 @@ def update_database_site_matches(uri: str, databases: list):
                     FROM INTERPRO.SITE_MATCH_NEW
                     MINUS
                     SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
-                    FROM INTERPRO.MATCH PARTITION ({match_partition})
+                    FROM INTERPRO.MATCH PARTITION ({partition})
                 )
                 """
             )
@@ -468,10 +443,11 @@ def update_database_site_matches(uri: str, databases: list):
         )
 
         logger.info(f"\texchanging partition")
+        partition = site_partitions[database.identifier]
         cur.execute(
             f"""
             ALTER TABLE INTERPRO.SITE_MATCH
-            EXCHANGE PARTITION ({site_partition})
+            EXCHANGE PARTITION ({partition})
             WITH TABLE INTERPRO.SITE_MATCH_NEW
             """
         )
@@ -540,7 +516,10 @@ def update_feature_matches(uri: str):
     con.commit()
     logger.info(f"  {cur.rowcount} rows deleted")
 
-    for dbcode, partition in FEATURE_MATCH_PARTITIONS.items():
+    for p in oracle.get_partitions(cur, "INTERPRO", "FEATURE_MATCH"):
+        dbcode = p["value"][1:-1]  # 'X' -> X
+        partition = p["name"]
+
         logger.info(f"inserting matches ({partition})")
         cur.execute(
             """
@@ -595,7 +574,11 @@ def update_variant_matches(uri: str):
     logger.info("updating VARSPLIC_MATCH")
     oracle.truncate_table(cur, "INTERPRO.VARSPLIC_MATCH", reuse_storage=True)
 
-    dbcodes = list(MATCH_PARTITIONS.keys())
+    dbcodes = []
+    for p in oracle.get_partitions(cur, "INTERPRO", "MATCH"):
+        dbcode = p["value"][1:-1]  # 'X' -> X
+        dbcodes.append(dbcode)
+
     params = ",".join([f":{i+1}" for i in range(len(dbcodes))])
     cur.execute(
         f"""
@@ -667,18 +650,25 @@ def update_site_matches(uri: str):
     oracle.gather_stats(cur, "INTERPRO", "SITE_MATCH_NEW")
 
     logger.info("checking")
-    params = []
+    match_partitions = {}
+    for p in oracle.get_partitions(cur, "INTERPRO", "MATCH"):
+        dbcode = p["value"][1:-1]  # 'X' -> X
+        match_partitions[dbcode] = p["name"]
+
     queries = []
-    for identifier, (_, ck_matches) in SITE_PARTITIONS.items():
-        if ck_matches:
-            partition = MATCH_PARTITIONS[identifier]
-            params.append(identifier)
+    params = []
+    for p in oracle.get_partitions(cur, "INTERPRO", "SITE_MATCH"):
+        dbcode = p["value"][1:-1]
+
+        if dbcode in match_partitions:
+            partition = match_partitions[dbcode]
             queries.append(
                 f"""
                 SELECT DISTINCT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO
                 FROM INTERPRO.MATCH PARTITION ({partition})
                 """
             )
+            params.append(dbcode)
 
     if queries:
         in_cond = [f":{i+1}" for i in range(len(params))]
@@ -693,7 +683,8 @@ def update_site_matches(uri: str):
                   {' UNION ALL '.join(queries)}
                 )
             )
-            """, params
+            """,
+            params
         )
 
         cnt, = cur.fetchone()
@@ -750,8 +741,13 @@ def _prepare_matches(con: oracledb.Connection):
         """
     )
 
-    params = ",".join([":" + str(i + 1)
-                       for i in range(len(MATCH_PARTITIONS))])
+    binds = []
+    params = []
+    for p in oracle.get_partitions(cur, "INTERPRO", "MATCH"):
+        dbcode = p["value"][1:-1]  # 'X' -> X
+        binds.append(":1")
+        params.append(dbcode)
+
     cur.execute(
         f"""
         INSERT /*+ APPEND */ INTO INTERPRO.MATCH_NEW
@@ -766,10 +762,10 @@ def _prepare_matches(con: oracledb.Connection):
           ON P.UPI = M.UPI
         INNER JOIN INTERPRO.IPRSCAN2DBCODE D
           ON M.ANALYSIS_ID = D.IPRSCAN_SIG_LIB_REL_ID
-        WHERE D.DBCODE IN ({params})
+        WHERE D.DBCODE IN ({','.join(binds)})
         AND M.SEQ_START != M.SEQ_END
         """,
-        list(MATCH_PARTITIONS.keys())
+        params
     )
     con.commit()
 
@@ -1022,26 +1018,27 @@ def _get_entries_protein_counts(
 
 
 def get_sig_protein_counts(cur: oracledb.Cursor,
-                           dbid: str) -> dict[str, dict[str, int]]:
+                           dbcode: str) -> dict[str, dict[str, int]]:
     """
     Return the number of protein matches by each member database signature.
     Only complete sequences are considered
 
     :param cur: Oracle cursor object
-    :param dbid: member database identifier
+    :param dbcode: member database code
     :return: dictionary
     """
-    partition = MATCH_PARTITIONS[dbid]
     taxon2superkingdom = _get_taxon2superkingdom(cur)
     cur.execute(
         f"""
         SELECT M.METHOD_AC, P.TAX_ID, COUNT(DISTINCT P.PROTEIN_AC)
-        FROM INTERPRO.MATCH PARTITION ({partition}) M
+        FROM INTERPRO.MATCH M
         INNER JOIN INTERPRO.PROTEIN P
             ON P.PROTEIN_AC = M.PROTEIN_AC
-        WHERE P.FRAGMENT = 'N'
+        WHERE M.DBCODE = :1 
+          AND P.FRAGMENT = 'N'
         GROUP BY M.METHOD_AC, P.TAX_ID
-        """
+        """,
+        [dbcode]
     )
     counts = {}
     for sig_acc, tax_id, n_proteins in cur:
@@ -1057,51 +1054,3 @@ def get_sig_protein_counts(cur: oracledb.Cursor,
             sig[superkingdom] = n_proteins
 
     return counts
-
-
-# def _get_databases_matches_count(cur: oracledb.Cursor) -> dict[str, int]:
-#     """
-#     Return the number of matches per member database
-#     :param cur: Oracle cursor object
-#     :return: dictionary
-#     """
-#     cur.execute(
-#         """
-#         SELECT DBCODE, COUNT(*)
-#         FROM INTERPRO.MATCH
-#         GROUP BY DBCODE
-#         """
-#     )
-#     return dict(cur.fetchall())
-
-
-# def add_site_subpartitions(uri: str, owner: str, table: str, partition: str,
-#                            stop: str, prefix: str = ""):
-#     if len(stop) != 8 or stop[:3] != "UPI" or not stop[3:].isalnum():
-#         raise ValueError(f"Invalid range stop: {stop}. "
-#                          f"Expected format: UPIxxxxx, with x being digits")
-#
-#     con = oracledb.connect(uri)
-#     cur = con.cursor()
-#
-#     subpartitions = set()
-#     for subpart in oracle.get_subpartitions(cur, owner, table, partition):
-#         subpartitions.add(subpart["name"])
-#
-#     new_subpartitions = {}
-#     # range_upi yields start/stop, but since step = 1, start == stop
-#     for value, _ in range_upi("UPI00000", stop, 1):
-#         name = prefix + value
-#         if name not in subpartitions:
-#             new_subpartitions[name] = value
-#
-#     for name, value in new_subpartitions.items():
-#         cur.execute(
-#             f"""
-#             ALTER TABLE {table} MODIFY PARTITION {partition}
-#             ADD SUBPARTITION {name} VALUES ('{value}')
-#             """
-#         )
-#
-#     cur.close()
-#     con.close()
