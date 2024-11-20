@@ -335,6 +335,7 @@ def run_member_db_update():
     non_ipm_dbs = []
     site_dbs = []
     model_sources = {}
+    toad_sources = {}
     go_sources = []
     for dbname, db in databases.items():
         if db.is_member_db or db.is_feature_db:
@@ -351,6 +352,7 @@ def run_member_db_update():
                              f"missing database '{dbname}'")
 
             model_sources[db.identifier] = props
+            toad_sources[db.identifier] = options.get("toad", dbname)
 
             if db.analysis_id is None:
                 # No analysis ID in ISPRO
@@ -445,6 +447,13 @@ def run_member_db_update():
                 name="index-matches",
                 scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12),
                 requires=["update-matches"]
+            ),
+            Task(
+                fn=interpro.match.update_toad_matches,
+                args=(ora_interpro_uri, member_dbs, toad_sources),
+                name="update-toad-matches",
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
+                requires=["update-signatures"]
             ),
             Task(
                 fn=interpro.match.update_variant_matches,

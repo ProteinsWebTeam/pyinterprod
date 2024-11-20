@@ -5,6 +5,7 @@ import oracledb
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
+from .contrib import toad
 from .database import Database
 
 
@@ -1054,3 +1055,21 @@ def get_sig_protein_counts(cur: oracledb.Cursor,
             sig[superkingdom] = n_proteins
 
     return counts
+
+
+def update_toad_matches(uri: str,
+                        databases: list[Database],
+                        files: dict[str, str],
+                        tmpdir: str | None = None):
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+
+    _databases = {}
+    for db in databases:
+        _databases[db.identifier] = files[db.identifier]
+
+    try:
+        toad.load_matches(cur, _databases, tmpdir=tmpdir)
+    finally:
+        cur.close()
+        con.close()
