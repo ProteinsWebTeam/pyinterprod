@@ -377,9 +377,6 @@ def delete_obsoletes(uri: str, databases: list[Database], threads: int = 8):
     for table, constraint, column in child_tables:
         tables.append((table, constraint, column))
 
-    # Add INTERPRO.METHOD as we want also to delete rows in this table
-    tables.append(("METHOD", None, "METHOD_AC"))
-
     """
     Any row deleted in METHOD2PUB should be deleted from METHOD2PUB_STG
     (which does not have a FK to METHOD)
@@ -450,12 +447,20 @@ def delete_obsoletes(uri: str, databases: list[Database], threads: int = 8):
             try:
                 num_rows = f.result()
             except Exception as exc:
-                logger.info(f"{name}: failed ({exc})")
+                logger.error(f"{name}: failed ({exc})")
                 num_errors += 1
             else:
                 logger.info(f"{name}: {num_rows:,} rows deleted")
 
-    logger.error(f"{num_errors} occurred")
+    if num_errors:
+        raise RuntimeError(f"{num_errors} error(s) occurred")
+
+    """
+    At this point, all obsolete signatures should have been deleted from all
+    tables except METHOD: delete from this table
+    """
+    num_rows = delete_from_table(uri, "METHOD", None, "METHOD_AC")
+    logger.info(f"METHOD: {num_rows:,} rows deleted")
 
     logger.info("enabling referential constraints")
     con = oracledb.connect(uri)
