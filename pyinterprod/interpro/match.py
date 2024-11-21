@@ -1062,11 +1062,14 @@ def get_sig_protein_counts(cur: oracledb.Cursor,
 
     return counts
 
-def process_match_complete_chunk(start_protein_acc, stop_protein_acc, con):
+def process_match_complete_chunk(start_protein_acc, stop_protein_acc, pool):
 
     logger.info(f"Retrieving data for [{start_protein_acc}, {stop_protein_acc}]")
 
+    con = pool.acquire()
+
     proteins_cur = con.cursor()
+
     proteins = proteins_cur.execute(f"""
         SELECT  P.PROTEIN_AC, 
         P.NAME, 
@@ -1248,6 +1251,7 @@ def process_match_complete_chunk(start_protein_acc, stop_protein_acc, con):
         protein_str_formatted = "\n".join(protein_str_formatted.split("\n")[1:]) # No XML declaration
         proteins_xml_str.append(protein_str_formatted)
 
+    pool.release(con)  
     return proteins_xml_str
 
 
@@ -1256,7 +1260,9 @@ def generate_match_complete_xml(uri: str, out: str):
 # Thread lock for safe concurrent writing
     lock = threading.Lock()
 
-    con = oracledb.connect(uri)
+    pool = oracledb.create_pool(dsn=uri, min=1, max=8)
+    con = pool.acquire() 
+
     accessions_cur = con.cursor()
     
     xml_file = open(os.path.join(out, "match_complete.xml"), "w") # Clear file    
@@ -1279,27 +1285,25 @@ def generate_match_complete_xml(uri: str, out: str):
 
     # Retrieve and process the accessions in chunks of 10,000
     while True:
-        accessions_list = accessions_cur.fetchmany(50000)
+        accessions_list = accessions_cur.fetchmany(16000)
         if not accessions_list:
             break  # No more accessions to fetch
         
-        # Extract the accessions from the fetched rows
         accessions = [row[0] for row in accessions_list]
 
-        # Split the accessions into chunks of 2500 each (4 threads)
-        chunk_size = 12500
+        chunk_size = 2000
         ranges = [
         (accessions[i], accessions[min(i + chunk_size - 1, len(accessions) - 1)])
         for i in range(0, len(accessions), chunk_size)
         ]
 
         # Use ThreadPoolExecutor to process the chunks concurrently
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            futures = {executor.submit(process_match_complete_chunk, start, stop, con): (start, stop) for start, stop in ranges}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            futures = {executor.submit(process_match_complete_chunk, start, stop, pool): (start, stop) for start, stop in ranges}
 
             # Append the results to the XML file as they are processed
             with open(xml_file_path, "a") as xml_file:
-                for future in concurrent.futures:
+                for future in futures:
                     xml_chunk = future.result()
                     with lock:  # Ensure thread-safe writing
                         xml_file.writelines(xml_chunk)
