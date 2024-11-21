@@ -1253,6 +1253,9 @@ def process_match_complete_chunk(start_protein_acc, stop_protein_acc, con):
 
 def generate_match_complete_xml(uri: str, out: str):
 
+# Thread lock for safe concurrent writing
+    lock = threading.Lock()
+
     con = oracledb.connect(uri)
     accessions_cur = con.cursor()
     
@@ -1261,33 +1264,44 @@ def generate_match_complete_xml(uri: str, out: str):
 
     xml_file.write("<proteins>")
 
-    # Retrieve all the protein accessions
-    logger.info(f"Loading accessions..")
-    accessions_cur.execute("""SELECT PROTEIN_AC FROM INTERPRO.PROTEIN ORDER BY PROTEIN_AC FETCH FIRST 100000 ROWS ONLY""")
-
-    accessions = [row[0] for row in accessions_cur.fetchall()]
+# Retrieve only the first 100,000 accessions
+    accessions_cur.execute("""
+        SELECT PROTEIN_AC
+        FROM INTERPRO.PROTEIN
+        ORDER BY PROTEIN_AC
+        FETCH FIRST 100000 ROWS ONLY
+    """)
     
-    # Determine chunk size and create ranges
-    chunk_size = len(accessions) // 4
-    ranges = [
-        (accessions[i], accessions[min(i + chunk_size - 1, len(accessions) - 1)])
-        for i in range(0, len(accessions), chunk_size)
-    ]
-
-    # Prepare output file
+    # Initialize XML file and write the opening tag
     xml_file_path = os.path.join(out, "match_complete.xml")
     with open(xml_file_path, "w") as xml_file:
         xml_file.write("<proteins>\n")
 
-    # Multithreading
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        futures = {executor.submit(process_match_complete_chunk, start, stop, con): (start, stop) for start, stop in ranges}
+    # Retrieve and process the accessions in chunks of 10,000
+    while True:
+        accessions_list = accessions_cur.fetchmany(10000)
+        if not accessions_list:
+            break  # No more accessions to fetch
         
-        with open(xml_file_path, "a") as xml_file:
-            for future in concurrent.futures.as_completed(futures):
-                xml_chunk = future.result()
-                xml_file.writelines(xml_chunk)
+        # Extract the accessions from the fetched rows
+        accessions = [row[0] for row in accessions_list]
 
+        # Split the accessions into chunks of 2500 each (4 threads)
+        chunk_size = 2500
+        accessions_chunks = [accessions[i:i + chunk_size] for i in range(0, len(accessions), chunk_size)]
+
+        # Use ThreadPoolExecutor to process the chunks concurrently
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {executor.submit(process_match_complete_chunk, chunk, con): chunk for chunk in accessions_chunks}
+
+            # Append the results to the XML file as they are processed
+            with open(xml_file_path, "a") as xml_file:
+                for future in concurrent.futures.as_completed(futures):
+                    xml_chunk = future.result()
+                    with lock:  # Ensure thread-safe writing
+                        xml_file.write(xml_chunk)
+
+    # Finalize the XML by adding the closing tag
     with open(xml_file_path, "a") as xml_file:
         xml_file.write("</proteins>\n")
 
