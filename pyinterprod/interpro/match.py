@@ -1299,7 +1299,7 @@ def generate_match_complete_xml(uri: str, out: str):
 
             # Append the results to the XML file as they are processed
             with open(xml_file_path, "a") as xml_file:
-                for future in concurrent.futures.as_completed(futures):
+                for future in concurrent.futures:
                     xml_chunk = future.result()
                     with lock:  # Ensure thread-safe writing
                         xml_file.writelines(xml_chunk)
