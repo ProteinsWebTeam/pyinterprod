@@ -1288,11 +1288,14 @@ def generate_match_complete_xml(uri: str, out: str):
 
         # Split the accessions into chunks of 2500 each (4 threads)
         chunk_size = 2500
-        accessions_chunks = [accessions[i:i + chunk_size] for i in range(0, len(accessions), chunk_size)]
+        ranges = [
+        (accessions[i], accessions[min(i + chunk_size - 1, len(accessions) - 1)])
+        for i in range(0, len(accessions), chunk_size)
+        ]
 
         # Use ThreadPoolExecutor to process the chunks concurrently
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            futures = {executor.submit(process_match_complete_chunk, chunk, con): chunk for chunk in accessions_chunks}
+            futures = {executor.submit(process_match_complete_chunk, start, stop, con): (start, stop) for start, stop in ranges}
 
             # Append the results to the XML file as they are processed
             with open(xml_file_path, "a") as xml_file:
