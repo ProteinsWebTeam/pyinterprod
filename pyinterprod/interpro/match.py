@@ -1279,7 +1279,7 @@ def generate_match_complete_xml(uri: str, out: str):
 
     # Retrieve and process the accessions in chunks of 10,000
     while True:
-        accessions_list = accessions_cur.fetchmany(10000)
+        accessions_list = accessions_cur.fetchmany(100000)
         if not accessions_list:
             break  # No more accessions to fetch
         
@@ -1287,7 +1287,7 @@ def generate_match_complete_xml(uri: str, out: str):
         accessions = [row[0] for row in accessions_list]
 
         # Split the accessions into chunks of 2500 each (4 threads)
-        chunk_size = 2500
+        chunk_size = 25000
         ranges = [
         (accessions[i], accessions[min(i + chunk_size - 1, len(accessions) - 1)])
         for i in range(0, len(accessions), chunk_size)
@@ -1302,7 +1302,7 @@ def generate_match_complete_xml(uri: str, out: str):
                 for future in concurrent.futures.as_completed(futures):
                     xml_chunk = future.result()
                     with lock:  # Ensure thread-safe writing
-                        xml_file.write(xml_chunk)
+                        xml_file.writelines(xml_chunk)
 
     # Finalize the XML by adding the closing tag
     with open(xml_file_path, "a") as xml_file:
