@@ -1279,7 +1279,7 @@ def generate_match_complete_xml(uri: str, out: str):
 
     # Retrieve and process the accessions in chunks of 10,000
     while True:
-        accessions_list = accessions_cur.fetchmany(100000)
+        accessions_list = accessions_cur.fetchmany(50000)
         if not accessions_list:
             break  # No more accessions to fetch
         
@@ -1287,7 +1287,7 @@ def generate_match_complete_xml(uri: str, out: str):
         accessions = [row[0] for row in accessions_list]
 
         # Split the accessions into chunks of 2500 each (4 threads)
-        chunk_size = 25000
+        chunk_size = 12500
         ranges = [
         (accessions[i], accessions[min(i + chunk_size - 1, len(accessions) - 1)])
         for i in range(0, len(accessions), chunk_size)
