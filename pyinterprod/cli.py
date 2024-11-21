@@ -424,7 +424,7 @@ def run_member_db_update():
                 fn=interpro.signature.delete_obsoletes,
                 args=(ora_interpro_uri, member_dbs),
                 name="delete-obsoletes",
-                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=4),
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
                 requires=["track-changes"]
             ),
             Task(
