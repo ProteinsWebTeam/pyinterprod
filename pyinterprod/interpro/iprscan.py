@@ -8,7 +8,6 @@ from oracledb import Cursor
 from pyinterprod import logger
 from pyinterprod.utils import oracle
 
-PREFIX = "MV_"
 
 """
 Keys: analysis names in ISPRO
