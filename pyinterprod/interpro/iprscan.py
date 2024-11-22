@@ -1,5 +1,5 @@
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import oracledb
@@ -8,7 +8,6 @@ from oracledb import Cursor
 from pyinterprod import logger
 from pyinterprod.utils import oracle
 
-PREFIX = "MV_"
 
 """
 Keys: analysis names in ISPRO
@@ -334,20 +333,29 @@ def get_analyses(cur: Cursor, **kwargs) -> list[Analysis]:
     return analyses
 
 
-def import_tables(uri: str, data_type: str = "matches", **kwargs):
+def import_matches_or_sites(uri: str, data_type: str = "matches", **kwargs):
     databases = kwargs.get("databases", [])
     force = kwargs.get("force", True)
     threads = kwargs.get("threads", 1)
 
-    if data_type not in ("matches", "sites"):
+    if data_type == "matches":
+        partitions = MATCH_PARTITIONS
+        partitioned_table = "MV_IPRSCAN"
+    elif data_type == "sites":
+        partitions = SITE_PARITIONS
+        partitioned_table = "SITE"
+    else:
         raise ValueError(f"invalid data type '{data_type}'")
-    elif databases:  # expects a sequence of Database objects
+
+    if databases:  # expects a sequence of Database objects
         databases = {db.analysis_id for db in databases
                      if db.analysis_id is not None}
 
         if not databases:
             # Databases not in ISPRO (e.g. Pfam-N): nothing to import
             return
+
+    logger.info("starting")
 
     con = oracledb.connect(uri)
     cur = con.cursor()
@@ -357,10 +365,19 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
         if databases and analysis.id not in databases:
             continue
 
+        # adds partition information to pending analysis
         try:
-            pending[analysis.table].append(analysis)
+            obj = partitions[analysis.name]
         except KeyError:
-            pending[analysis.table] = [analysis]
+            logger.warning(f"ignoring {analysis.name} {analysis.version}")
+            continue
+
+        item = (analysis, obj["partition"], obj["columns"])
+
+        try:
+            pending[analysis.table].append(item)
+        except KeyError:
+            pending[analysis.table] = [item]
 
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     max_upi, = cur.fetchone()
@@ -402,7 +419,7 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
             tmp = {}
             for table, analyses in pending.items():
                 ready = []
-                for analysis in analyses:
+                for analysis, _, _ in analyses:
                     if analysis.is_ready(cur, max_upi):
                         ready.append(analysis)
 
@@ -411,9 +428,20 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
                     tmp[table] = analyses
                     continue
 
-                f = executor.submit(_import_table, uri, table, ready, force)
-                running.append((f, table, [f"{e.name} {e.version}"
-                                           for e in analyses]))
+                args = (
+                    uri,
+                    table,
+                    partitioned_table,
+                    [
+                        (analysis.id, partition, columns)
+                        for analysis, partition, columns in analyses
+                    ],
+                    force
+                )
+
+                f = executor.submit(_update_table, *args)
+                running.append((f, table, [f"{analysis.name} {analysis.version}"
+                                for analysis, _, _ in analyses]))
 
             pending = tmp
 
@@ -424,181 +452,6 @@ def import_tables(uri: str, data_type: str = "matches", **kwargs):
                 time.sleep(60)
             else:
                 break
-
-    if failed:
-        raise RuntimeError(f"{failed} errors")
-
-    logger.info("done")
-
-
-def _import_table(uri: str, remote_table: str, analyses: list[Analysis],
-                  force: bool = True):
-    con = oracledb.connect(uri)
-    cur = con.cursor()
-
-    local_table = PREFIX + remote_table
-
-    if not force:
-        # Check if the data is already up-to-date
-        up_to_date = 0
-
-        for analysis in analyses:
-            cur.execute(
-                f"""
-                SELECT MAX(UPI)
-                FROM IPRSCAN.{local_table}
-                WHERE ANALYSIS_ID = :1
-                """,
-                [analysis.id]
-            )
-            max_upi_1, = cur.fetchone()
-
-            cur.execute(
-                f"""
-                SELECT MAX(UPI)
-                FROM IPRSCAN.{remote_table}@ISPRO
-                WHERE ANALYSIS_ID = :1
-                """,
-                [analysis.id]
-            )
-            max_upi_2, = cur.fetchone()
-
-            if max_upi_1 == max_upi_2:
-                up_to_date += 1
-
-        if up_to_date == len(analyses):
-            # All analyses are up-to-date
-            cur.close()
-            con.close()
-            return
-
-    oracle.drop_table(cur, local_table, purge=True)
-
-    cur.execute(
-        f"""
-        CREATE TABLE IPRSCAN.{local_table} NOLOGGING
-        AS
-        SELECT *
-        FROM IPRSCAN.{remote_table}@ISPRO
-        WHERE 1 = 0
-        """
-    )
-
-    for analysis in analyses:
-        cur.execute(
-            f"""
-            INSERT /*+ APPEND */ INTO {local_table}
-            SELECT *
-            FROM IPRSCAN.{remote_table}@ISPRO
-            WHERE ANALYSIS_ID = :1
-            """,
-            [analysis.id]
-        )
-        con.commit()
-
-    """
-    Use remote table name to have fewer characters (no prefix)
-    as Oracle < 12.2 do not allow object names longer than 30 characters
-    """
-    for suffix, column in [("UPI", "UPI"), ("AC", "METHOD_AC")]:
-        cur.execute(
-            f"""
-            CREATE INDEX {remote_table}${suffix}
-            ON IPRSCAN.{local_table} ({column})
-            TABLESPACE IPRSCAN_IND
-            NOLOGGING
-            """
-        )
-
-    cur.close()
-    con.close()
-
-
-def update_partitions(uri: str, data_type: str = "matches", **kwargs):
-    databases = kwargs.get("databases", [])
-    force = kwargs.get("force", True)
-    threads = kwargs.get("threads", 1)
-
-    if data_type == "matches":
-        partitions = MATCH_PARTITIONS
-        partitioned_table = "MV_IPRSCAN"
-    elif data_type == "sites":
-        partitions = SITE_PARITIONS
-        partitioned_table = "SITE"
-    else:
-        raise ValueError(f"invalid data type '{data_type}'")
-
-    if databases:  # expects a sequence of Database objects
-        databases = {db.analysis_id for db in databases
-                     if db.analysis_id is not None}
-
-        if not databases:
-            # Databases not in ISPRO (e.g. Pfam-N): nothing to update
-            return
-
-    logger.info("starting")
-
-    con = oracledb.connect(uri)
-    cur = con.cursor()
-
-    tables = {}
-    for analysis in get_analyses(cur, type=data_type):
-        if databases and analysis.id not in databases:
-            continue
-
-        try:
-            obj = partitions[analysis.name]
-        except KeyError:
-            logger.warning(f"ignoring {analysis.name} {analysis.version}")
-            continue
-
-        item = (analysis, obj["partition"], obj["columns"])
-
-        try:
-            tables[analysis.table].append(item)
-        except KeyError:
-            tables[analysis.table] = [item]
-
-    cur.close()
-    con.close()
-
-    if not tables:
-        logger.info("No tables to update")
-        return
-    elif threads < 1:
-        threads = len(tables)
-
-    with ThreadPoolExecutor(max_workers=threads) as executor:
-        fs = {}
-        for table, analyses in tables.items():
-            args = (
-                uri,
-                PREFIX + table,
-                partitioned_table,
-                [
-                    (analysis.id, partition, columns)
-                    for analysis, partition, columns in analyses
-                ],
-                force
-            )
-
-            f = executor.submit(_update_partition, *args)
-            fs[f] = [f"{analysis.name} {analysis.version}"
-                     for analysis, _, _ in analyses]
-
-        failed = 0
-        for f in as_completed(fs):
-            names = fs[f]
-
-            try:
-                f.result()
-            except Exception as exc:
-                failed += 1
-                for name in names:
-                    logger.error(f"{name:<38} failed: {exc}")
-            else:
-                for name in names:
-                    logger.info(f"{name:<40} done")
 
     if failed:
         raise RuntimeError(f"{failed} errors")
@@ -626,13 +479,13 @@ def update_partitions(uri: str, data_type: str = "matches", **kwargs):
     logger.info("done")
 
 
-def _update_partition(uri: str, table: str, partitioned_table: str,
-                      analyses: list[tuple[int, str, list[str]]],
-                      force: bool = True):
+def _update_table(uri: str, remote_table: str, partitioned_table: str,
+                  analyses: list[tuple[int, str, list[str]]],
+                  force: bool = True):
     """
     Update partitioned table with matches
     :param uri: Oracle connection string
-    :param table: Match table
+    :param remote_table: Match table
     :param partitioned_table: Partitioned table
     :param analyses: list of analyses to update (analysis ID, partition name
                      in `partitioned_table`, columns to select from `table`)
@@ -644,12 +497,11 @@ def _update_partition(uri: str, table: str, partitioned_table: str,
     if not force:
         # Check if the data is already up-to-date
         up_to_date = 0
-
         for analysis_id, partition, columns in analyses:
             cur.execute(
                 f"""
                 SELECT MAX(UPI)
-                FROM IPRSCAN.{table}
+                FROM IPRSCAN.{remote_table}@ISPRO
                 """
             )
             max_upi_1, = cur.fetchone()
@@ -674,7 +526,7 @@ def _update_partition(uri: str, table: str, partitioned_table: str,
             con.close()
             return
 
-    tmp_table = f"IPRSCAN.{table}_TMP"
+    tmp_table = f"IPRSCAN.{remote_table}_TMP"
 
     for analysis_id, partition, columns in analyses:
         # Create temporary table for the partition exchange
@@ -687,7 +539,7 @@ def _update_partition(uri: str, table: str, partitioned_table: str,
 
         if subparts:
             """
-            The target table is sub-partitioned: the staging table needs
+            The target table is sub-partitioned: the temporary table needs
             to be partitioned
             """
             col = subparts[0]["column"]
@@ -713,7 +565,7 @@ def _update_partition(uri: str, table: str, partitioned_table: str,
             f"""
             INSERT /*+ APPEND */ INTO {tmp_table}
             SELECT {', '.join(columns)}
-            FROM IPRSCAN.{table}
+            FROM IPRSCAN.{remote_table}@ISPRO
             WHERE ANALYSIS_ID = :1
             """,
             [analysis_id]
