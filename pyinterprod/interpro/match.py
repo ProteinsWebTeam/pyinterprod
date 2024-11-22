@@ -1275,7 +1275,6 @@ def generate_match_complete_xml(uri: str, out: str):
         SELECT PROTEIN_AC
         FROM INTERPRO.PROTEIN
         ORDER BY PROTEIN_AC
-        FETCH FIRST 100000 ROWS ONLY
     """)
     
     # Initialize XML file and write the opening tag
