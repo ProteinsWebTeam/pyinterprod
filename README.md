@@ -13,7 +13,7 @@ A centralised Python implementation of InterPro production procedures.
 ### Installation
 
 ```bash
-python setup.py install
+pip install .
 ```
 
 ## Configuration

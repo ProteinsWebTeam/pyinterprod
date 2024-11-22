@@ -1,9 +1,6 @@
 import logging
 
 
-__version__ = "2.13.1"
-
-
 logger = logging.getLogger(__name__)
 
 if not logger.hasHandlers():

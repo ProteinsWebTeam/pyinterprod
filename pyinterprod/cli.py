@@ -5,7 +5,6 @@ from configparser import ConfigParser
 
 from mundone import Task, Workflow
 
-from pyinterprod import __version__
 from pyinterprod import interpro, interproscan, pronto, uniprot
 from pyinterprod.interpro.clan import update_cdd_clans, update_hmm_clans
 
@@ -200,9 +199,6 @@ def run_clan_update():
                         help="number of alignment workers")
     parser.add_argument("-T", "--tempdir",
                         help="directory to use for temporary files")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -251,9 +247,6 @@ def run_hmm_update():
                         metavar="DATABASE",
                         nargs="+",
                         help="database(s) to update")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -301,9 +294,6 @@ def run_member_db_update():
     parser.add_argument("--detach",
                         action="store_true",
                         help="enqueue tasks to run and exit")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -345,6 +335,7 @@ def run_member_db_update():
     non_ipm_dbs = []
     site_dbs = []
     model_sources = {}
+    toad_sources = {}
     go_sources = []
     for dbname, db in databases.items():
         if db.is_member_db or db.is_feature_db:
@@ -361,6 +352,7 @@ def run_member_db_update():
                              f"missing database '{dbname}'")
 
             model_sources[db.identifier] = props
+            toad_sources[db.identifier] = options.get("toad", dbname)
 
             if db.analysis_id is None:
                 # No analysis ID in ISPRO
@@ -432,7 +424,7 @@ def run_member_db_update():
                 fn=interpro.signature.delete_obsoletes,
                 args=(ora_interpro_uri, member_dbs),
                 name="delete-obsoletes",
-                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=4),
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
                 requires=["track-changes"]
             ),
             Task(
@@ -455,6 +447,13 @@ def run_member_db_update():
                 name="index-matches",
                 scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12),
                 requires=["update-matches"]
+            ),
+            Task(
+                fn=interpro.match.update_toad_matches,
+                args=(ora_interpro_uri, member_dbs, toad_sources),
+                name="update-toad-matches",
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
+                requires=["update-signatures"]
             ),
             Task(
                 fn=interpro.match.update_variant_matches,
@@ -613,9 +612,6 @@ def run_pronto_update():
     parser.add_argument("--detach",
                         action="store_true",
                         help="enqueue tasks to run and exit")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -664,9 +660,6 @@ def run_uniprot_update():
     parser.add_argument("--detach",
                         action="store_true",
                         help="enqueue tasks to run and exit")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
