@@ -14,12 +14,7 @@ from pyinterprod.utils import oracle as ora
 from . import contrib
 from .contrib.common import Method
 from .database import Database
-from .match import (
-    FEATURE_MATCH_PARTITIONS,
-    MATCH_PARTITIONS,
-    SITE_PARTITIONS,
-    get_sig_protein_counts,
-)
+from .match import get_sig_protein_counts
 
 FILE_DB_SIG = "signatures.update.pickle"
 FILE_SIG_DESCR = "signatures.descr.pickle"
@@ -274,7 +269,7 @@ def track_signature_changes(
 
 
 def delete_from_table(uri: str, table: str, partition: str | None,
-                      column: str, step: int, stop: int) -> int:
+                      column: str, step: int = 1000) -> int:
     con = oracledb.connect(uri)
     cur = con.cursor()
 
@@ -293,12 +288,15 @@ def delete_from_table(uri: str, table: str, partition: str | None,
         )
         """
     )
-    (num_rows,) = cur.fetchone()
+    num_rows, = cur.fetchone()
 
     if not num_rows:
         cur.close()
         con.close()
         return num_rows
+
+    cur.execute("SELECT COUNT(*) FROM INTERPRO.METHOD_TO_DELETE")
+    stop, = cur.fetchone()
 
     for i in range(1, stop, step):
         cur.execute(
@@ -310,7 +308,7 @@ def delete_from_table(uri: str, table: str, partition: str | None,
               WHERE ID BETWEEN :1 and :2
             )
             """,
-            (i, i + step - 1),
+            [i, i + step - 1]
         )
 
     con.commit()
@@ -320,11 +318,7 @@ def delete_from_table(uri: str, table: str, partition: str | None,
     return num_rows
 
 
-def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
-    step = kwargs.get("step", 1000)
-    threads = kwargs.get("threads", 8)
-    truncate_match_tables = kwargs.get("truncate_match_tables", True)
-
+def delete_obsoletes(uri: str, databases: list[Database], threads: int = 8):
     con = oracledb.connect(uri)
     cur = con.cursor()
 
@@ -377,25 +371,11 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
         """
     )
 
-    cur.execute("SELECT COUNT(*) FROM INTERPRO.METHOD_TO_DELETE")
-    (stop,) = cur.fetchone()
-
-    logger.info(f"{stop:,} signatures to delete")
-
-    if not stop:
-        # Nothing to delete
-        cur.close()
-        con.close()
-        return
-
     # Get tables with a FOREIGN KEY to INTERPRO.METHOD
     tables = []
     child_tables = ora.get_child_tables(cur, "INTERPRO", "METHOD")
     for table, constraint, column in child_tables:
         tables.append((table, constraint, column))
-
-    # Add INTERPRO.METHOD as we want also to delete rows in this table
-    tables.append(("METHOD", None, "METHOD_AC"))
 
     """
     Any row deleted in METHOD2PUB should be deleted from METHOD2PUB_STG
@@ -420,41 +400,43 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
         con.close()
         raise RuntimeError(f"{num_errors} constraints could not be disabled")
 
+    match_partitions = {}
+    for p in ora.get_partitions(cur, "INTERPRO", "MATCH"):
+        dbcode = p["value"][1:-1]  # 'X' -> X
+        match_partitions[dbcode] = p["name"]
+
+    toad_partitions = {}
+    for p in ora.get_partitions(cur, "INTERPRO", "TOAD_MATCH"):
+        dbcode = p["value"][1:-1]
+        toad_partitions[dbcode] = p["name"]
+
     tasks = []
     for table, constraint, column in tables:
         if table == "MATCH":
             for db in databases:
-                partition = MATCH_PARTITIONS[db.identifier]
-
-                if truncate_match_tables:
-                    logger.info(f"truncating {table} ({partition})")
-                    ora.truncate_partition(cur, table, partition)
-                else:
-                    tasks.append((table, partition, column))
-        elif table == "SITE_MATCH":
+                partition = match_partitions[db.identifier]
+                logger.info(f"truncating {table} ({partition})")
+                ora.truncate_partition(cur, table, partition)
+        elif table == "TOAD_MATCH":
             for db in databases:
-                partition = SITE_PARTITIONS[db.identifier]
-
-                if truncate_match_tables:
-                    logger.info(f"truncating {table} ({partition})")
-                    ora.truncate_partition(cur, table, partition)
-                else:
-                    tasks.append((table, partition, column))
+                partition = toad_partitions[db.identifier]
+                logger.info(f"truncating {table} ({partition})")
+                ora.truncate_partition(cur, table, partition)
         else:
             tasks.append((table, None, column))
 
     cur.close()
     con.close()
 
+    num_errors = 0
     with ThreadPoolExecutor(max_workers=threads) as executor:
         fs = {}
 
         for table, partition, column in tasks:
-            args = (uri, table, partition, column, step, stop)
-            f = executor.submit(delete_from_table, *args)
+            f = executor.submit(delete_from_table,
+                                uri, table, partition, column)
             fs[f] = (table, partition)
 
-        num_errors = 0
         for f in as_completed(fs):
             table, partition = fs[f]
             if partition:
@@ -465,18 +447,24 @@ def delete_obsoletes(uri: str, databases: list[Database], **kwargs):
             try:
                 num_rows = f.result()
             except Exception as exc:
-                logger.info(f"{name}: failed ({exc})")
+                logger.error(f"{name}: failed ({exc})")
                 num_errors += 1
             else:
                 logger.info(f"{name}: {num_rows:,} rows deleted")
 
-        if num_errors:
-            raise RuntimeError(f"{num_errors} tables failed")
+    if num_errors:
+        raise RuntimeError(f"{num_errors} error(s) occurred")
+
+    """
+    At this point, all obsolete signatures should have been deleted from all
+    tables except METHOD: delete from this table
+    """
+    num_rows = delete_from_table(uri, "METHOD", None, "METHOD_AC")
+    logger.info(f"METHOD: {num_rows:,} rows deleted")
 
     logger.info("enabling referential constraints")
     con = oracledb.connect(uri)
     cur = con.cursor()
-    num_errors = 0
     constraints = set()
     for table, constraint, column in tables:
         if not constraint or constraint in constraints:
@@ -578,9 +566,14 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
     con = oracledb.connect(uri)
     cur = con.cursor()
 
+    partitions = {}
+    for p in ora.get_partitions(cur, "INTERPRO", "FEATURE_MATCH"):
+        dbcode = p["value"][1:-1]  # 'X' -> X
+        partitions[dbcode] = p["name"]
+
     for db, db_props in update:
         try:
-            partition = FEATURE_MATCH_PARTITIONS[db.identifier]
+            partition = partitions[db.identifier]
         except KeyError:
             cur.close()
             con.close()

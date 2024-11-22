@@ -3,7 +3,7 @@ from datetime import datetime
 
 import oracledb
 
-from .match import MATCH_PARTITIONS, FEATURE_MATCH_PARTITIONS
+from pyinterprod.utils.oracle import get_partitions
 
 
 _NOT_IN_ISPRO = ["ELM", "Pfam-N"]
@@ -46,6 +46,16 @@ def get_databases(uri: str, names: list[str],
     )
     cnt_features = dict(cur.fetchall())
 
+    match_databases = set()
+    for p in get_partitions(cur, "INTERPRO", "MATCH"):
+        dbcode = p["value"][1:-1]  # 'X' -> X
+        match_databases.add(dbcode)
+
+    fmatch_databases = set()
+    for p in get_partitions(cur, "INTERPRO", "FEATURE_MATCH"):
+        dbcode = p["value"][1:-1]  # 'X' -> X
+        fmatch_databases.add(dbcode)
+
     args = [':' + str(i+1) for i in range(len(names))]
     cur.execute(
         f"""
@@ -76,9 +86,9 @@ def get_databases(uri: str, names: list[str],
                       analysis_id=row[5],
                       has_site_matches=row[7] is not None,
                       is_member_db=(cnt_signatures.get(row[0], 0) > 0
-                                    or row[0] in MATCH_PARTITIONS),
+                                    or row[0] in match_databases),
                       is_feature_db=(cnt_features.get(row[0], 0) > 0
-                                     or row[0] in FEATURE_MATCH_PARTITIONS))
+                                     or row[0] in fmatch_databases))
 
         databases[row[1]] = db
 
