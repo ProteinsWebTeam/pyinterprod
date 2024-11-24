@@ -1062,7 +1062,7 @@ def get_sig_protein_counts(cur: oracledb.Cursor,
 
     return counts
 
-def process_match_complete_chunk(start_protein_acc, stop_protein_acc, pool):
+def process_match_complete_chunk(start_protein_acc, stop_protein_acc, pool, out):
 
     logger.info(f"Retrieving data for [{start_protein_acc}, {stop_protein_acc}]")
 
@@ -1070,39 +1070,44 @@ def process_match_complete_chunk(start_protein_acc, stop_protein_acc, pool):
 
     proteins_cur = con.cursor()
 
-    proteins = proteins_cur.execute(f"""
-        SELECT  P.PROTEIN_AC, 
-        P.NAME, 
-        M.DBCODE, 
-        P.CRC64, 
-        P.LEN, 
-        P.TIMESTAMP, 
-        P.FRAGMENT, 
-        P.TAX_ID,
-        M.METHOD_AC, 
-        M.MODEL_AC, 
-        M.POS_FROM, 
-        M.POS_TO, 
-        M.FRAGMENTS, 
-        M.SCORE, 
-        MN.DESCRIPTION, 
-        M.STATUS,
-        DB.DBSHORT, 
-        CE.ABBREV, 
-        CT.ABBREV
-        FROM INTERPRO.PROTEIN P
-        LEFT OUTER JOIN INTERPRO.MATCH M
-            ON P.PROTEIN_AC = M.PROTEIN_AC
-        LEFT OUTER JOIN INTERPRO.METHOD MN
-            ON M.METHOD_AC = MN.METHOD_AC
-        LEFT OUTER JOIN INTERPRO.CV_DATABASE DB
-            ON M.DBCODE = DB.DBCODE
-        LEFT OUTER JOIN CV_EVIDENCE CE
-            ON M.EVIDENCE = CE.CODE
-        LEFT OUTER JOIN CV_ENTRY_TYPE CT
-            ON MN.SIG_TYPE = CT.CODE
-        WHERE P.PROTEIN_AC >= '{start_protein_acc}' AND P.PROTEIN_AC <= '{stop_protein_acc}'
-    """)
+    try:
+        proteins = proteins_cur.execute(f"""
+            SELECT  P.PROTEIN_AC, 
+            P.NAME, 
+            M.DBCODE, 
+            P.CRC64, 
+            P.LEN, 
+            P.TIMESTAMP, 
+            P.FRAGMENT, 
+            P.TAX_ID,
+            M.METHOD_AC, 
+            M.MODEL_AC, 
+            M.POS_FROM, 
+            M.POS_TO, 
+            M.FRAGMENTS, 
+            M.SCORE, 
+            MN.DESCRIPTION, 
+            M.STATUS,
+            DB.DBSHORT, 
+            CE.ABBREV, 
+            CT.ABBREV
+            FROM INTERPRO.PROTEIN P
+            LEFT OUTER JOIN INTERPRO.MATCH M
+                ON P.PROTEIN_AC = M.PROTEIN_AC
+            LEFT OUTER JOIN INTERPRO.METHOD MN
+                ON M.METHOD_AC = MN.METHOD_AC
+            LEFT OUTER JOIN INTERPRO.CV_DATABASE DB
+                ON M.DBCODE = DB.DBCODE
+            LEFT OUTER JOIN CV_EVIDENCE CE
+                ON M.EVIDENCE = CE.CODE
+            LEFT OUTER JOIN CV_ENTRY_TYPE CT
+                ON MN.SIG_TYPE = CT.CODE
+            WHERE P.PROTEIN_AC >= '{start_protein_acc}' AND P.PROTEIN_AC <= '{stop_protein_acc}'
+        """)
+    except Exception as e:
+        log_file = open(os.path.join(out, "errors.log"), "a")
+        log_file.write(e + "\n")
+        log_file.close()
 
     columns=['protein_id', 'name', 'dbcode', 'crc64', 'length', 'timestamp', 'fragment', 'tax_id',
         'method_ac', 'model_ac', 'pos_from', 'pos_to', 'fragments', 'score', 'method_desc', 
@@ -1257,7 +1262,7 @@ def process_match_complete_chunk(start_protein_acc, stop_protein_acc, pool):
 
 def generate_match_complete_xml(uri: str, out: str):
 
-# Thread lock for safe concurrent writing
+    # Thread lock for safe concurrent writing
     lock = threading.Lock()
 
     pool = oracledb.create_pool(dsn=uri, min=1, max=8)
@@ -1270,7 +1275,6 @@ def generate_match_complete_xml(uri: str, out: str):
 
     xml_file.write("<proteins>")
 
-# Retrieve only the first 100,000 accessions
     accessions_cur.execute("""
         SELECT PROTEIN_AC
         FROM INTERPRO.PROTEIN
@@ -1282,11 +1286,10 @@ def generate_match_complete_xml(uri: str, out: str):
     with open(xml_file_path, "w") as xml_file:
         xml_file.write("<proteins>\n")
 
-    # Retrieve and process the accessions in chunks of 10,000
     while True:
         accessions_list = accessions_cur.fetchmany(16000)
         if not accessions_list:
-            break  # No more accessions to fetch
+            break 
         
         accessions = [row[0] for row in accessions_list]
 
@@ -1298,13 +1301,12 @@ def generate_match_complete_xml(uri: str, out: str):
 
         # Use ThreadPoolExecutor to process the chunks concurrently
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-            futures = {executor.submit(process_match_complete_chunk, start, stop, pool): (start, stop) for start, stop in ranges}
+            futures = {executor.submit(process_match_complete_chunk, start, stop, pool, out): (start, stop) for start, stop in ranges}
 
-            # Append the results to the XML file as they are processed
             with open(xml_file_path, "a") as xml_file:
                 for future in futures:
                     xml_chunk = future.result()
-                    with lock:  # Ensure thread-safe writing
+                    with lock:  
                         xml_file.writelines(xml_chunk)
 
     # Finalize the XML by adding the closing tag
