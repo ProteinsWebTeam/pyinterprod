@@ -1106,7 +1106,7 @@ def process_match_complete_chunk(start_protein_acc, stop_protein_acc, pool, out)
         """)
     except Exception as e:
         log_file = open(os.path.join(out, "errors.log"), "a")
-        log_file.write(e + "\n")
+        log_file.write(','.join(e, start_protein_acc, stop_protein_acc, "\n"))
         log_file.close()
 
     columns=['protein_id', 'name', 'dbcode', 'crc64', 'length', 'timestamp', 'fragment', 'tax_id',
