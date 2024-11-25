@@ -2,8 +2,6 @@ import os
 import pickle
 
 import oracledb
-import concurrent.futures
-import threading
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
@@ -1062,256 +1060,203 @@ def get_sig_protein_counts(cur: oracledb.Cursor,
 
     return counts
 
-def process_match_complete_chunk(start_protein_acc, stop_protein_acc, pool, out):
-
-    logger.info(f"Retrieving data for [{start_protein_acc}, {stop_protein_acc}]")
-
-    con = pool.acquire()
-
-    proteins_cur = con.cursor()
-
-    try:
-        proteins = proteins_cur.execute(f"""
-            SELECT  P.PROTEIN_AC, 
-            P.NAME, 
-            M.DBCODE, 
-            P.CRC64, 
-            P.LEN, 
-            P.TIMESTAMP, 
-            P.FRAGMENT, 
-            P.TAX_ID,
-            M.METHOD_AC, 
-            M.MODEL_AC, 
-            M.POS_FROM, 
-            M.POS_TO, 
-            M.FRAGMENTS, 
-            M.SCORE, 
-            MN.DESCRIPTION, 
-            M.STATUS,
-            DB.DBSHORT, 
-            CE.ABBREV, 
-            CT.ABBREV
-            FROM INTERPRO.PROTEIN P
-            LEFT OUTER JOIN INTERPRO.MATCH M
-                ON P.PROTEIN_AC = M.PROTEIN_AC
-            LEFT OUTER JOIN INTERPRO.METHOD MN
-                ON M.METHOD_AC = MN.METHOD_AC
-            LEFT OUTER JOIN INTERPRO.CV_DATABASE DB
-                ON M.DBCODE = DB.DBCODE
-            LEFT OUTER JOIN CV_EVIDENCE CE
-                ON M.EVIDENCE = CE.CODE
-            LEFT OUTER JOIN CV_ENTRY_TYPE CT
-                ON MN.SIG_TYPE = CT.CODE
-            WHERE P.PROTEIN_AC >= '{start_protein_acc}' AND P.PROTEIN_AC <= '{stop_protein_acc}'
-        """)
-    except Exception as e:
-        log_file = open(os.path.join(out, "errors.log"), "a")
-        log_file.write(','.join(e, start_protein_acc, stop_protein_acc, "\n"))
-        log_file.close()
-
-    columns=['protein_id', 'name', 'dbcode', 'crc64', 'length', 'timestamp', 'fragment', 'tax_id',
-        'method_ac', 'model_ac', 'pos_from', 'pos_to', 'fragments', 'score', 'method_desc', 
-        'status', 'dbname', 'evd', 'sig_type']
-    
-    proteins = [
-        {col: (str(value) if value is not None else '') for col, value in zip(columns, row)}
-        for row in proteins
-    ]
-
-    # Group by protein_id and method_ac, then create a nested dictionary
-    grouped = {}
-
-    proteins_elem = []
-    proteins_xml_str = []
-
-    logger.info(f"Writing XML for [{start_protein_acc}, {stop_protein_acc}]")
-
-    for row in proteins:
-
-        protein_id = row['protein_id']
-
-        if (not(protein_id in grouped.keys())):
-            grouped[protein_id] = {
-                "info": {
-                "id": row["protein_id"],
-                "name": row["name"],
-                "length": row["length"],
-                "crc64": row["crc64"],
-                }
-        }
-            
-        match_id = row['method_ac']
-        match_id = match_id + "||" + row["model_ac"] if row["model_ac"] else match_id
-
-        location = {
-            'start': row['pos_from'],
-            'end': row['pos_to'],
-            'fragments': row['fragments'],
-            'score': int(float(row["score"])) if row["score"][-2:] == ".0" else row["score"]
-        }
-
-        if (match_id != ""):
-
-            # Add the match_id and its location under the protein_id
-            if (not(match_id in grouped[protein_id].keys())):
-                grouped[protein_id][match_id] = {
-                    "id": match_id,
-                    "name": row["method_desc"],
-                    "dbname": row["dbname"],
-                    "status": row["status"],
-                    "model": row["model_ac"],
-                    "evd": row["evd"], 
-                    "type": row["sig_type"],
-                    "locations": [location]
-                }
-            else:
-                grouped[protein_id][match_id]["locations"].append(location)
-
-
-    # Iterate through the grouped data to create XML structure
-    for protein_id, protein_data in grouped.items():
-
-        # Extract the info for the protein
-        info = protein_data["info"]
-        
-        # Create a protein element
-        protein_elem = ET.Element("protein", 
-                                    id=info["id"], 
-                                    name=info["name"], 
-                                    length=str(info["length"]), 
-                                    crc64=info["crc64"])
-        
-        # Iterate over matches under this protein
-        for match_id, match_data in protein_data.items():
-            if match_id == "info":
-                continue  # Skip the info entry
-            
-            # Create a match element under the protein
-            match_elem = ET.SubElement(protein_elem, "match", 
-                                    id=match_data["id"].split("||")[0], 
-                                    name=match_data["name"], 
-                                    dbname=match_data["dbname"],
-                                    status=match_data["status"], 
-                                    model=match_data["model"],
-                                    type=match_data["type"],
-                                    evd=match_data["evd"])
-            
-            # Create lcn elements for each location in the match
-            for loc in match_data["locations"]:
-                
-                frag_str = ""
-
-                if (loc["fragments"]):
-
-                    # Sort the fragment list to match the original.xml
-                    frag_list = sorted(loc['fragments'].split(","), key=lambda x: (x.split("-")[2]))
-                    frag_list = sorted(loc['fragments'].split(","), key=lambda x: (int(x.split("-")[0])))
-                    frag_str = ','.join(frag_list)
-
-                else:
-                    frag_str = '-'.join([loc["start"], loc["end"], "S"])
-
-                lcn_elem = ET.SubElement(match_elem, "lcn", 
-                                        start=str(loc['start']), 
-                                        end=str(loc['end']),
-                                        fragments=frag_str,
-                                        score=str(loc['score']))
-        proteins_elem.append(protein_elem)
-
-    # Iterate over each protein, sort its matches
-    for protein in proteins_elem:
-        
-        # Get all match elements
-        matches = list(protein.findall('match'))
-
-        # Clear the original match elements from the protein
-        for match in matches:
-
-            locations = list(match.findall('lcn'))
-            sorted_lcsn = sorted(locations, key=lambda x: int(x.get('start')))
-
-            # Clear the original match elements from the protein
-            for lcn in locations:
-                match.remove(lcn)
-
-            # Append the sorted match elements back to the protein
-            for lcn in sorted_lcsn:
-                match.append(lcn)
-
-
-        # Sort matches by the 'score' attribute (convert score to integer for sorting)
-        matches = sorted(matches, key=lambda x: int(x.find("lcn").get("start")))
-        sorted_matches = sorted(matches, key=lambda x: x.get('id'))
-
-        for match in matches:
-            protein.remove(match)
-        
-        # Append the sorted match elements back to the protein
-        for match in sorted_matches:
-            protein.append(match)
-
-        protein_bytes = ET.tostring(protein, encoding='utf-8', xml_declaration=False)
-        protein_str = protein_bytes.decode("utf-8")
-        protein_str_formatted = xml.dom.minidom.parseString(protein_str).toprettyxml()
-        protein_str_formatted = "\n".join(protein_str_formatted.split("\n")[1:]) # No XML declaration
-        proteins_xml_str.append(protein_str_formatted)
-
-    pool.release(con)  
-    return proteins_xml_str
-
 
 def generate_match_complete_xml(uri: str, out: str):
 
-    # Thread lock for safe concurrent writing
-    lock = threading.Lock()
+    con = oracledb.connect(uri)
+    cur = con.cursor()
 
-    pool = oracledb.create_pool(dsn=uri, min=1, max=8)
-    con = pool.acquire() 
-
-    accessions_cur = con.cursor()
-    
     xml_file = open(os.path.join(out, "match_complete.xml"), "w") # Clear file    
     xml_file = open(os.path.join(out, "match_complete.xml"), "a")
 
     xml_file.write("<proteins>")
 
-    accessions_cur.execute("""
-        SELECT PROTEIN_AC
-        FROM INTERPRO.PROTEIN
-        ORDER BY PROTEIN_AC
+    proteins = cur.execute(f"""
+        SELECT  P.PROTEIN_AC, 
+        P.NAME, 
+        M.DBCODE, 
+        P.CRC64, 
+        P.LEN, 
+        P.TIMESTAMP, 
+        P.FRAGMENT, 
+        P.TAX_ID,
+        M.METHOD_AC, 
+        M.MODEL_AC, 
+        M.POS_FROM, 
+        M.POS_TO, 
+        M.FRAGMENTS, 
+        M.SCORE, 
+        MN.DESCRIPTION, 
+        M.STATUS,
+        DB.DBSHORT, 
+        CE.ABBREV, 
+        CT.ABBREV
+        FROM INTERPRO.PROTEIN P
+        LEFT OUTER JOIN INTERPRO.MATCH M
+            ON P.PROTEIN_AC = M.PROTEIN_AC
+        LEFT OUTER JOIN INTERPRO.METHOD MN
+            ON M.METHOD_AC = MN.METHOD_AC
+        LEFT OUTER JOIN INTERPRO.CV_DATABASE DB
+            ON M.DBCODE = DB.DBCODE
+        LEFT OUTER JOIN CV_EVIDENCE CE
+            ON M.EVIDENCE = CE.CODE
+        LEFT OUTER JOIN CV_ENTRY_TYPE CT
+            ON MN.SIG_TYPE = CT.CODE
     """)
-    
-    # Initialize XML file and write the opening tag
-    xml_file_path = os.path.join(out, "match_complete.xml")
-    with open(xml_file_path, "w") as xml_file:
-        xml_file.write("<proteins>\n")
 
-    while True:
-        accessions_list = accessions_cur.fetchmany(16000)
-        if not accessions_list:
-            break 
+    while True: 
+
+        protein_batch = proteins.fetchmany(10000)
+
+        if (not(protein_batch)):
+            break
+
+        columns=['protein_id', 'name', 'dbcode', 'crc64', 'length', 'timestamp', 'fragment', 'tax_id',
+            'method_ac', 'model_ac', 'pos_from', 'pos_to', 'fragments', 'score', 'method_desc', 
+            'status', 'dbname', 'evd', 'sig_type']
         
-        accessions = [row[0] for row in accessions_list]
-
-        chunk_size = 2000
-        ranges = [
-        (accessions[i], accessions[min(i + chunk_size - 1, len(accessions) - 1)])
-        for i in range(0, len(accessions), chunk_size)
+        
+        protein_batch_data = [
+            {col: (str(value) if value is not None else '') for col, value in zip(columns, row)}
+            for row in protein_batch
         ]
+        
+        grouped = {}
+        # Group by protein_id and method_ac, then create a nested dictionary
+        for row in protein_batch_data:
 
-        # Use ThreadPoolExecutor to process the chunks concurrently
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-            futures = {executor.submit(process_match_complete_chunk, start, stop, pool, out): (start, stop) for start, stop in ranges}
+            protein_id = row['protein_id']
 
-            with open(xml_file_path, "a") as xml_file:
-                for future in futures:
-                    xml_chunk = future.result()
-                    with lock:  
-                        xml_file.writelines(xml_chunk)
+            if (not(protein_id in grouped.keys())):
+                grouped[protein_id] = {
+                    "info": {
+                    "id": row["protein_id"],
+                    "name": row["name"],
+                    "length": row["length"],
+                    "crc64": row["crc64"],
+                    }
+            }
+                
+            match_id = row['method_ac']
+            match_id = match_id + "||" + row["model_ac"] if row["model_ac"] else match_id
 
-    # Finalize the XML by adding the closing tag
-    with open(xml_file_path, "a") as xml_file:
-        xml_file.write("</proteins>\n")
+            location = {
+                'start': row['pos_from'],
+                'end': row['pos_to'],
+                'fragments': row['fragments'],
+                'score': int(float(row["score"])) if row["score"][-2:] == ".0" else row["score"]
+            }
+
+            if (match_id != ""):
+
+                # Add the match_id and its location under the protein_id
+                if (not(match_id in grouped[protein_id].keys())):
+                    grouped[protein_id][match_id] = {
+                        "id": match_id,
+                        "name": row["method_desc"],
+                        "dbname": row["dbname"],
+                        "status": row["status"],
+                        "model": row["model_ac"],
+                        "evd": row["evd"], 
+                        "type": row["sig_type"],
+                        "locations": [location]
+                    }
+                else:
+                    grouped[protein_id][match_id]["locations"].append(location)
+
+
+        # Iterate through the grouped data to create XML structures
+        protein_elems = []
+        for protein_id, protein_batch_data in grouped.items():
+            # Extract the info for the protein
+            info = protein_batch_data["info"]
+            
+            # Create a protein element
+            protein_elem = ET.Element("protein", 
+                                        id=info["id"], 
+                                        name=info["name"], 
+                                        length=str(info["length"]), 
+                                        crc64=info["crc64"])
+            
+            # Iterate over matches under this protein
+            for match_id, match_data in protein_batch_data.items():
+                if match_id == "info":
+                    continue  # Skip the info entry
+                
+                # Create a match element under the protein
+                match_elem = ET.SubElement(protein_elem, "match", 
+                                        id=match_data["id"].split("||")[0], 
+                                        name=match_data["name"], 
+                                        dbname=match_data["dbname"],
+                                        status=match_data["status"], 
+                                        model=match_data["model"],
+                                        type=match_data["type"],
+                                        evd=match_data["evd"])
+                
+                # Create lcn elements for each location in the match
+                for loc in match_data["locations"]:
+                    
+                    frag_str = ""
+
+                    if (loc["fragments"]):
+
+                        # Sort the fragment list to match the original.xml
+                        frag_list = sorted(loc['fragments'].split(","), key=lambda x: (x.split("-")[2]))
+                        frag_list = sorted(loc['fragments'].split(","), key=lambda x: (int(x.split("-")[0])))
+                        frag_str = ','.join(frag_list)
+
+                    else:
+                        frag_str = '-'.join([loc["start"], loc["end"], "S"])
+
+                    lcn_elem = ET.SubElement(match_elem, "lcn", 
+                                            start=str(loc['start']), 
+                                            end=str(loc['end']),
+                                            fragments=frag_str,
+                                            score=str(loc['score']))
+                    
+            proteins.append(protein_elem)
+
+        # Iterate over each protein, sort its matches and write on file
+        proteins_xml_str = []
+        for protein in proteins:
+            
+            # Get all match elements
+            matches = list(protein.findall('match'))
+
+            # Clear the original match elements from the protein
+            for match in matches:
+
+                locations = list(match.findall('lcn'))
+                sorted_lcsn = sorted(locations, key=lambda x: int(x.get('start')))
+
+                # Clear the original match elements from the protein
+                for lcn in locations:
+                    match.remove(lcn)
+
+                # Append the sorted match elements back to the protein
+                for lcn in sorted_lcsn:
+                    match.append(lcn)
+
+            # Sort matches by the 'score' attribute (convert score to integer for sorting)
+            matches = sorted(matches, key=lambda x: int(x.find("lcn").get("start")))
+            sorted_matches = sorted(matches, key=lambda x: x.get('id'))
+
+            for match in matches:
+                protein.remove(match)
+            
+            # Append the sorted match elements back to the protein
+            for match in sorted_matches:
+                protein.append(match)
+
+            protein_bytes = ET.tostring(protein, encoding='utf-8', xml_declaration=False)
+            protein_str = protein_bytes.decode("utf-8")
+            protein_str_formatted = xml.dom.minidom.parseString(protein_str).toprettyxml()
+            protein_str_formatted = "\n".join(protein_str_formatted.split("\n")[1:]) # No XML declaration
+            proteins_xml_str.append(protein_str_formatted)
+
+        xml_file.writelines(proteins_xml_str)
+
+    xml_file.write("</proteins>")
 
 # def _get_databases_matches_count(cur: oracledb.Cursor) -> dict[str, int]:
 #     """
