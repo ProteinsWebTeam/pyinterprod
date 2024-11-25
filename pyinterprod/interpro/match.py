@@ -1173,9 +1173,9 @@ def generate_match_complete_xml(uri: str, out: str):
         # Iterate through the grouped data to create XML structures
         protein_elems = []
 
-        for protein_id, protein_batch_data in grouped.items():
+        for protein_id, protein_data in grouped.items():
             # Extract the info for the protein
-            info = protein_batch_data["info"]
+            info = protein_data["info"]
             
             # Create a protein element
             protein_elem = ET.Element("protein", 
@@ -1185,7 +1185,7 @@ def generate_match_complete_xml(uri: str, out: str):
                                         crc64=info["crc64"])
             
             # Iterate over matches under this protein
-            for match_id, match_data in protein_batch_data.items():
+            for match_id, match_data in protein_data.items():
                 if match_id == "info":
                     continue  # Skip the info entry
                 
