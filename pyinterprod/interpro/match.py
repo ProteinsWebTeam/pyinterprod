@@ -1066,12 +1066,15 @@ def generate_match_complete_xml(uri: str, out: str):
     con = oracledb.connect(uri)
     cur = con.cursor()
 
-    xml_file = open(os.path.join(out, "match_complete.xml"), "w") # Clear file    
+    # Clear existing file and open it in append mode   
+    xml_file = open(os.path.join(out, "match_complete.xml"), "w") 
+    xml_file.close() 
+
     xml_file = open(os.path.join(out, "match_complete.xml"), "a")
+    xml_file.write("<proteins>\n")
 
-    xml_file.write("<proteins>")
-
-    proteins = cur.execute(f"""
+    logger.info("Retrieving data...")
+    protein_data = cur.execute(f"""
         SELECT  P.PROTEIN_AC, 
         P.NAME, 
         M.DBCODE, 
@@ -1104,26 +1107,28 @@ def generate_match_complete_xml(uri: str, out: str):
             ON MN.SIG_TYPE = CT.CODE
     """)
 
+    nr_rows_processed = 0
+
     while True: 
 
-        protein_batch = proteins.fetchmany(10000)
+        protein_data_batch = protein_data.fetchmany(10000)
 
-        if (not(protein_batch)):
+        if (not(protein_data_batch)):
             break
 
         columns=['protein_id', 'name', 'dbcode', 'crc64', 'length', 'timestamp', 'fragment', 'tax_id',
             'method_ac', 'model_ac', 'pos_from', 'pos_to', 'fragments', 'score', 'method_desc', 
             'status', 'dbname', 'evd', 'sig_type']
         
-        
-        protein_batch_data = [
+        protein_data_batch = [
             {col: (str(value) if value is not None else '') for col, value in zip(columns, row)}
-            for row in protein_batch
+            for row in protein_data_batch
         ]
         
         grouped = {}
+
         # Group by protein_id and method_ac, then create a nested dictionary
-        for row in protein_batch_data:
+        for row in protein_data_batch:
 
             protein_id = row['protein_id']
 
@@ -1167,6 +1172,7 @@ def generate_match_complete_xml(uri: str, out: str):
 
         # Iterate through the grouped data to create XML structures
         protein_elems = []
+
         for protein_id, protein_batch_data in grouped.items():
             # Extract the info for the protein
             info = protein_batch_data["info"]
@@ -1214,11 +1220,12 @@ def generate_match_complete_xml(uri: str, out: str):
                                             fragments=frag_str,
                                             score=str(loc['score']))
                     
-            proteins.append(protein_elem)
+            protein_elems.append(protein_elem)
 
         # Iterate over each protein, sort its matches and write on file
         proteins_xml_str = []
-        for protein in proteins:
+
+        for protein in protein_elems:
             
             # Get all match elements
             matches = list(protein.findall('match'))
@@ -1256,7 +1263,13 @@ def generate_match_complete_xml(uri: str, out: str):
 
         xml_file.writelines(proteins_xml_str)
 
+        nr_rows_processed += 10000
+        
+        if (nr_rows_processed % 1000000 == 0):
+            logger.info(f"{nr_rows_processed} proteins processed.")
+
     xml_file.write("</proteins>")
+    xml_file.close()
 
 # def _get_databases_matches_count(cur: oracledb.Cursor) -> dict[str, int]:
 #     """
