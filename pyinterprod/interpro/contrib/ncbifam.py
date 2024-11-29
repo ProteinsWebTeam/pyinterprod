@@ -34,14 +34,14 @@ def get_signatures(tsvfile: str,
         _type = values[6]
         for_AMRFinder = values[9] == "Y"
 
-        if values[14]:
-            references = list(map(int, set(values[14].split(","))))
+        if values[15]:
+            references = list(map(int, set(values[15].split(","))))
         else:
             references = []
 
-        source = values[19]
-        hmm_name = values[21]
-        comment = values[22].strip()
+        source = values[20]
+        hmm_name = values[22]
+        comment = values[23].strip()
 
         if not comment or comment.lower() == "null":
             comment = None
@@ -151,8 +151,8 @@ def update_go_terms(uri: str, tsvfile: str):
     for values in parse_tsv(tsvfile):
         accession = values[0].split(".")[0]
 
-        if accession in signatures and values[13]:
-            for go_id in set(values[13].split(",")):
+        if accession in signatures and values[14]:
+            for go_id in set(values[14].split(",")):
                 records.append((accession, go_id))
 
     for i in range(0, len(records), 1000):
