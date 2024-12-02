@@ -1075,48 +1075,71 @@ def generate_match_complete_xml(uri: str, out: str):
 
     logger.info("Retrieving data...")
     protein_data = cur.execute(f"""
-        SELECT  P.PROTEIN_AC, 
-        P.NAME, 
-        M.DBCODE, 
-        P.CRC64, 
-        P.LEN, 
-        P.TIMESTAMP, 
-        P.FRAGMENT, 
-        P.TAX_ID,
-        M.METHOD_AC, 
-        M.MODEL_AC, 
-        M.POS_FROM, 
-        M.POS_TO, 
-        M.FRAGMENTS, 
-        M.SCORE, 
-        MN.DESCRIPTION, 
-        M.STATUS,
-        DB.DBSHORT, 
-        CE.ABBREV, 
-        CT.ABBREV
-        FROM INTERPRO.PROTEIN P
-        LEFT OUTER JOIN INTERPRO.MATCH M
+        SELECT 
+            P.PROTEIN_AC, 
+            P.NAME, 
+            P.CRC64, 
+            P.LEN, 
+            P.FRAGMENT, 
+            P.TAX_ID,
+            M.METHOD_AC, 
+            M.MODEL_AC, 
+            M.POS_FROM, 
+            M.POS_TO, 
+            M.FRAGMENTS, 
+            M.SCORE, 
+            MN.DESCRIPTION, 
+            M.STATUS,
+            M.DBSHORT, 
+            CE.ABBREV, 
+            MN.ABBREV
+        FROM (
+            SELECT *
+            FROM INTERPRO.PROTEIN
+            WHERE ROWNUM <= 5000
+        ) P
+        LEFT JOIN (
+            SELECT * 
+            FROM INTERPRO.MATCH
+            INNER JOIN INTERPRO.CV_DATABASE DB
+                ON INTERPRO.MATCH.DBCODE = DB.DBCODE
+            WHERE ROWNUM <= 1000000
+        ) M
             ON P.PROTEIN_AC = M.PROTEIN_AC
-        LEFT OUTER JOIN INTERPRO.METHOD MN
+        LEFT JOIN (
+            SELECT * 
+            FROM INTERPRO.METHOD
+            INNER JOIN CV_ENTRY_TYPE CT
+                ON INTERPRO.METHOD.SIG_TYPE = CT.CODE
+        ) MN
             ON M.METHOD_AC = MN.METHOD_AC
-        LEFT OUTER JOIN INTERPRO.CV_DATABASE DB
-            ON M.DBCODE = DB.DBCODE
-        LEFT OUTER JOIN CV_EVIDENCE CE
+        LEFT JOIN CV_EVIDENCE CE
             ON M.EVIDENCE = CE.CODE
-        LEFT OUTER JOIN CV_ENTRY_TYPE CT
-            ON MN.SIG_TYPE = CT.CODE
+        LEFT JOIN INTERPRO.METHOD MN
+            ON M.METHOD_AC = MN.METHOD_AC
+                               
+        ORDER BY PROTEIN_AC
+
     """)
+    logger.info("Query executed.")
 
     nr_rows_processed = 0
+    batch_size = 50
 
     while True: 
 
-        protein_data_batch = protein_data.fetchmany(10000)
+        protein_data_batch = protein_data.fetchmany(batch_size)
+
+        nr_rows_processed += batch_size
+        
+        if (nr_rows_processed % 10000000 == 0):
+            logger.info(f"{nr_rows_processed} proteins processed.")
+
 
         if (not(protein_data_batch)):
             break
 
-        columns=['protein_id', 'name', 'dbcode', 'crc64', 'length', 'timestamp', 'fragment', 'tax_id',
+        columns=['protein_id', 'name', 'crc64', 'length', 'fragment', 'tax_id',
             'method_ac', 'model_ac', 'pos_from', 'pos_to', 'fragments', 'score', 'method_desc', 
             'status', 'dbname', 'evd', 'sig_type']
         
@@ -1263,10 +1286,6 @@ def generate_match_complete_xml(uri: str, out: str):
 
         xml_file.writelines(proteins_xml_str)
 
-        nr_rows_processed += 10000
-        
-        if (nr_rows_processed % 1000000 == 0):
-            logger.info(f"{nr_rows_processed} proteins processed.")
 
     xml_file.write("</proteins>")
     xml_file.close()
