@@ -1096,14 +1096,12 @@ def generate_match_complete_xml(uri: str, out: str):
         FROM (
             SELECT *
             FROM INTERPRO.PROTEIN
-            WHERE ROWNUM <= 5000
         ) P
         LEFT JOIN (
             SELECT * 
             FROM INTERPRO.MATCH
             INNER JOIN INTERPRO.CV_DATABASE DB
                 ON INTERPRO.MATCH.DBCODE = DB.DBCODE
-            WHERE ROWNUM <= 1000000
         ) M
             ON P.PROTEIN_AC = M.PROTEIN_AC
         LEFT JOIN (
