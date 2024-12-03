@@ -98,7 +98,8 @@ def get_signatures(pfam_seed_file: str) -> list[Method]:
 def _repl_references(acc: str, text: str, references: dict[int, int]):
     def _repl(match: re.Match) -> str:
         refs = []
-        for ref_num in map(int, map(str.strip, match.group(1).split(','))):
+
+        for ref_num in map(int, map(str.strip, _expand_range(match.group(1)).split(','))):
             try:
                 pmid = references[ref_num]
             except KeyError:
@@ -109,7 +110,18 @@ def _repl_references(acc: str, text: str, references: dict[int, int]):
 
         return f"[{','.join(refs)}]"
 
-    return re.sub(r"\[([\d\s,]+)]", _repl, text)
+    return re.sub(r"\[([\d\s,-]+)]", _repl, text)
+
+
+def _expand_range(s):
+    r = []
+    for i in s.split(','):
+        if '-' not in i:
+            r.append(int(i))
+        else:
+            l,h = map(int, i.split('-'))
+            r+= range(l,h+1)
+    return f"{','.join(str(item) for item in r)}"
 
 
 class StockholdMSA:
@@ -391,10 +403,15 @@ def persist_pfam_c(uri: str, pfam_c: str):
         for author in entry.features["AU"]:
             authors += [e.strip() for e in author.split(",")]
 
+        comment = entry.features.get("CC")
+
+        rn2pmid = {}
         references = []
-        for ref_dict in entry.features.get("RN", []):
+        for i, ref_dict in enumerate(entry.features.get("RN", [])):
+            pmid = int(" ".join(ref_dict["RM"]))
+            rn2pmid[i+1] = pmid
             references.append({
-                "PMID": int(" ".join(ref_dict["RM"])),
+                "PMID": pmid,
                 "title": " ".join(ref_dict["RT"]),
                 "authors": list(
                     map(
@@ -404,6 +421,7 @@ def persist_pfam_c(uri: str, pfam_c: str):
                 ),
                 "journal": " ".join(ref_dict["RL"])
             })
+        abstract = _repl_references(accession, comment, rn2pmid)
 
         cur.execute(
             """
@@ -414,7 +432,7 @@ def persist_pfam_c(uri: str, pfam_c: str):
                 accession,
                 name,
                 description,
-                entry.features.get("CC"),
+                abstract,
                 json.dumps(authors),
                 json.dumps(references)
             ]
