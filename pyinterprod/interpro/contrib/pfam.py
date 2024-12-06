@@ -98,8 +98,7 @@ def get_signatures(pfam_seed_file: str) -> list[Method]:
 def _repl_references(acc: str, text: str, references: dict[int, int]):
     def _repl(match: re.Match) -> str:
         refs = []
-
-        for ref_num in map(int, map(str.strip, _expand_range(match.group(1)).split(','))):
+        for ref_num in _expand_range(match.group(1)):
             try:
                 pmid = references[ref_num]
             except KeyError:
@@ -113,15 +112,18 @@ def _repl_references(acc: str, text: str, references: dict[int, int]):
     return re.sub(r"\[([\d\s,-]+)]", _repl, text)
 
 
-def _expand_range(s):
+def _expand_range(s: str) -> list[int]:
     r = []
     for i in s.split(','):
-        if '-' not in i:
+        values = i.split("-")
+        if len(values) == 1:
+            # single reference number
             r.append(int(i))
         else:
-            l,h = map(int, i.split('-'))
-            r+= range(l,h+1)
-    return f"{','.join(str(item) for item in r)}"
+            # range of reference numbers, e.g. 1-4
+            low, high = map(int, values)
+            r += list(range(low, high + 1))
+    return(r)
 
 
 class StockholdMSA:
