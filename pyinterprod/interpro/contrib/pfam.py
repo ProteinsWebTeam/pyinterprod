@@ -406,8 +406,6 @@ def persist_pfam_c(uri: str, pfam_c: str):
         for author in entry.features["AU"]:
             authors += [e.strip() for e in author.split(",")]
 
-        comment = entry.features.get("CC")
-
         rn2pmid = {}
         references = []
         for i, ref_dict in enumerate(entry.features.get("RN", [])):
@@ -424,7 +422,10 @@ def persist_pfam_c(uri: str, pfam_c: str):
                 ),
                 "journal": " ".join(ref_dict["RL"])
             })
-        abstract = _repl_references(accession, comment, rn2pmid)
+
+        comment = entry.features.get("CC")
+        if comment:
+            comment = _repl_references(accession, comment, rn2pmid)
 
         cur.execute(
             """
@@ -435,7 +436,7 @@ def persist_pfam_c(uri: str, pfam_c: str):
                 accession,
                 name,
                 description,
-                abstract,
+                comment,
                 json.dumps(authors),
                 json.dumps(references)
             ]
