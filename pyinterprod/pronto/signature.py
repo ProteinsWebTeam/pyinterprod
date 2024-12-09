@@ -437,28 +437,24 @@ def _iter_predictions(comps: dict[str, dict[str, list[int, int, int, int]]],
                 yield acc2, acc1, collocts, prot_overlaps, res_overlaps
 
 
-def get_swissprot_descriptions(pg_url: str) -> dict[str, dict[str, set[str]]]:
+def get_swissprot_descriptions(pg_url: str) -> dict[str, list[tuple[str, str]]]:
     con = psycopg.connect(**url2dict(pg_url))
     with con.cursor() as cur:
         cur.execute(
             """
-            SELECT
-                signature_acc,
-                text,
-                ARRAY_AGG(DISTINCT protein_acc)
+            SELECT signature_acc, protein_acc, text
             FROM INTERPRO.signature2protein s2p
             INNER JOIN INTERPRO.protein_name pn ON s2p.name_id = pn.name_id
             WHERE s2p.is_reviewed
-            GROUP BY signature_acc, text
             """
         )
 
         signatures = {}
-        for signature_acc, text, proteins in cur:
+        for signature_acc, protein_acc, description in cur:
             try:
-                signatures[signature_acc][text] = set(proteins)
+                signatures[signature_acc].append((protein_acc, description))
             except KeyError:
-                signatures[signature_acc] = {text: set(proteins)}
+                signatures[signature_acc] = [(protein_acc, description)]
 
     con.close()
 

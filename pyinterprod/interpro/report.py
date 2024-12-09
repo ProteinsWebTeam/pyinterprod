@@ -21,7 +21,7 @@ MIN_SIGNATURE_CHANGE = 0.1
 def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                           data_dir: str, pronto_link: str, emails: dict):
     # Get Swiss-Prot descriptions (after the update)
-    all_sig2descrs = get_swissprot_descriptions(pg_url)
+    all_sig2swiss_new = get_swissprot_descriptions(pg_url)
 
     pronto_link = pronto_link.rstrip('/')
 
@@ -121,45 +121,51 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 fh.write(f"{acc}\t{entry_acc}\t{link}\t{old_val}"
                          f"\t{new_val}\n")
 
-        # Swiss-Prot descriptions
-        sigs_then = data["descriptions"]
-        sigs_now = {}
-        sig2prots = {}
-        for acc in all_sig2descrs:
+        # Swiss-Prot descriptions before the update
+        sig2swiss = {}
+        for acc, proteins in data["descriptions"].items():
+            sig2swiss[acc] = {}
+
+            for protein_acc, description in proteins:
+                # List: descr before, descr after
+                sig2swiss[acc][protein_acc] = [description, None]
+
+        # Add Swiss-Prot descriptions after the update
+        for acc in all_sig2swiss_new:
             try:
                 dbcode, _, _, _, _ = integrated[acc]
             except KeyError:
                 continue
 
             if db_id == dbcode:
-                sigs_now[acc] = all_sig2descrs[acc]
-                sig2prots[acc] = set()
+                proteins = all_sig2swiss_new[acc]
+                try:
+                    sig_swiss = sig2swiss[acc]
+                except KeyError:
+                    # First time we have matches for this signature
+                    sig_swiss = sig2swiss[acc] = {}
 
-                for proteins in sigs_now[acc].values():
-                    sig2prots[acc] |= proteins
+                for protein_acc, description in proteins:
+                    try:
+                        sig_swiss[protein_acc][1] = description
+                    except KeyError:
+                        sig_swiss[protein_acc] = [None, description]
 
-        changes = {}
-        for acc in (set(sigs_then.keys()) | set(sigs_now.keys())):
+        files = {}  # file objects
+        sig_changes = set()
+        for acc in sorted(sig2swiss):
             try:
                 _, entry_acc, type_code, entry_name, origin = integrated[acc]
             except KeyError:
                 continue
 
-            descrs_then = set(sigs_then.get(acc, {}).keys())
-            descrs_now = set(sigs_now.get(acc, {}).keys())
-            if descrs_then != descrs_now:
-                changes[acc] = (
-                    entry_acc, entry_name, type_code, origin,
-                    descrs_then - descrs_now,
-                    descrs_now - descrs_then
-                )
-
-        files = {}  # file objects
-        for acc, obj in sorted(changes.items(), key=lambda x: x[0]):
-            entry_acc, entry_name, type_code, origin, lost, gained = obj
-            if type_code == 'F':
+            proteins = sig2swiss[acc]
+            lost, gained = compare_descriptions(proteins)
+            if not lost and not gained:
+                continue
+            elif type_code == "F":
                 filename = "swiss_de_families.tsv"
-            elif type_code == 'D':
+            elif type_code == "D":
                 filename = "swiss_de_domains.tsv"
             else:
                 filename = "swiss_de_others.tsv"
@@ -173,29 +179,19 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                          f"Source origin\t# Swiss-Prot\tName\t"
                          f"# Lost\t# Gained\tLost\tGained\n")
 
+            cnt_protein = sum(1 for _, descr in proteins.values() if descr)
             link = f"{pronto_link}/signatures/{acc}/descriptions/?reviewed"
-
-            lost_descrs = []
-            for descr in sorted(lost):
-                ex_acc = next(iter(sigs_then[acc][descr]))
-                lost_descrs.append(f"{descr} ({ex_acc})")
-
-            gained_descrs = []
-            for descr in sorted(gained):
-                ex_acc = next(iter(sigs_now[acc][descr]))
-                gained_descrs.append(f"{descr} ({ex_acc})")
-
             fh.write(f"{acc}\t{link}\t{entry_acc}\t{types[type_code]}\t"
-                     f"{origin}\t{len(sig2prots.get(acc, []))}\t{entry_name}\t"
+                     f"{origin}\t{cnt_protein}\t{entry_name}\t"
                      f"{len(lost)}\t{len(gained)}\t"
-                     f"{' | '.join(lost_descrs)}\t"
-                     f"{' | '.join(gained_descrs)}\n")
+                     f"{' | '.join(lost)}\t"
+                     f"{' | '.join(gained)}\n")
+
+            # Keep track of signatures with Swiss-Prot description changes
+            sig_changes.add(acc)
 
         for fh in files.values():
             fh.close()
-
-        # Keep track of signatures with Swiss-Prot description changes
-        sig_changes = set(changes.keys())
 
         # Protein count changes (total + per superkingdom)
         old_counts = data["proteins"]
@@ -370,75 +366,61 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
     release, = cur.fetchone()
 
-    # Load entry -> descriptions BEFORE UniProt update
-    entries_then = {}
+    # Swiss-Prot descriptions before the update
+    entry2swiss = {}
     with open(os.path.join(data_dir, FILE_SIG_DESCR), "rb") as fh:
-        for signature_acc, descriptions in pickle.load(fh).items():
+        for signature_acc, proteins in pickle.load(fh).items():
             try:
                 entry_acc = integrated[signature_acc]
             except KeyError:
                 continue
 
-            try:
-                entry_descrs = entries_then[entry_acc]
-            except KeyError:
-                entry_descrs = entries_then[entry_acc] = {}
+            entry2swiss[entry_acc] = {}
+            for protein_acc, description in proteins:
+                # List: descr before, descr after
+                entry2swiss[entry_acc][protein_acc] = [description, None]
 
-            for description, proteins in descriptions.items():
-                try:
-                    entry_descrs[description] |= proteins
-                except KeyError:
-                    entry_descrs[description] = set(proteins)
-
-    # Load entry -> descriptions AFTER UniProt update
-    signatures_now = get_swissprot_descriptions(pg_url)
-    entries_now = {}
-    entry2prots = {}
-    for signature_acc, descriptions in signatures_now.items():
+    # Add Swiss-Prot descriptions after the update
+    for signature_acc, proteins in get_swissprot_descriptions(pg_url).items():
         try:
             entry_acc = integrated[signature_acc]
         except KeyError:
             continue
 
         try:
-            entry_descrs = entries_now[entry_acc]
+            entry_swiss = entry2swiss[entry_acc]
         except KeyError:
-            entry_descrs = entries_now[entry_acc] = {}
-            entry2prots[entry_acc] = set()
+            # First time we have matches for this entry
+            # (created during the updated?)
+            entry_swiss = entry2swiss[entry_acc] = {}
 
-        for description, proteins in descriptions.items():
-            entry2prots[entry_acc] |= proteins
-
+        for protein_acc, description in proteins:
             try:
-                entry_descrs[description] |= proteins
+                entry_swiss[protein_acc][1] = description
             except KeyError:
-                entry_descrs[description] = set(proteins)
-
-    changes = {}  # key: entry accession, value: (lost, gained)
-    for entry_acc in (set(entries_then.keys()) | set(entries_now.keys())):
-        descrs_then = set(entries_then.get(entry_acc, {}).keys())
-        descrs_now = set(entries_now.get(entry_acc, {}).keys())
-        if descrs_then != descrs_now:
-            changes[entry_acc] = (
-                descrs_then - descrs_now,
-                descrs_now - descrs_then
-            )
+                entry_swiss[protein_acc] = [None, description]
 
     # Write entries with changes (by entry type: families, domains, others)
     tmpdir = mkdtemp()
     files = {}
+    entries_changes = set()
     header = ("Accession\tLink\tName\tChecked\tSource origin\t# Swiss-Prot"
               "\t# Lost\t# Gained\tLost\tGained\n")
-    for entry_acc in sorted(changes):
+    for entry_acc in sorted(entry2swiss):
         try:
             type_code, name, is_checked, origin = entries[entry_acc]
         except KeyError:
             # Entry does not exist anymore
+            # (deleted while this function is running)
             continue
 
-        if type_code == 'F':
+        proteins = entry2swiss[entry_acc]
+        lost, gained = compare_descriptions(proteins)
+        if not lost and not gained:
+            continue
+        elif type_code == "F":
             filename = "swiss_de_families.tsv"
-        elif type_code == 'D':
+        elif type_code == "D":
             filename = "swiss_de_domains.tsv"
         else:
             filename = "swiss_de_others.tsv"
@@ -450,29 +432,36 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             fh = files[filename] = open(filepath, "wt")
             fh.write(header)
 
-        lost, gained = changes[entry_acc]
-        lost_descrs = []
-        for descr in sorted(lost):
-            ex_acc = next(iter(entries_then[entry_acc][descr]))
-            lost_descrs.append(f"{descr} ({ex_acc})")
-
-        gained_descrs = []
-        for descr in sorted(gained):
-            ex_acc = next(iter(entries_now[entry_acc][descr]))
-            gained_descrs.append(f"{descr} ({ex_acc})")
-
+        cnt_protein = sum(1 for _, descr in proteins.values() if descr)
         fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
                  f"{name}\t{'Yes' if is_checked else 'No'}\t{origin}\t"
-                 f"{len(entry2prots.get(entry_acc, []))}\t"
+                 f"{cnt_protein}\t"
                  f"{len(lost)}\t{len(gained)}\t"
-                 f"{' | '.join(lost_descrs)}\t"
-                 f"{' | '.join(gained_descrs)}\n")
+                 f"{' | '.join(lost)}\t"
+                 f"{' | '.join(gained)}\n")
+
+        # Write a "slim" version, with renamed proteins ignored
+        slim_filename = f"slim_{filename}"
+
+        try:
+            fh = files[slim_filename]
+        except KeyError:
+            filepath = os.path.join(tmpdir, slim_filename)
+            fh = files[slim_filename] = open(filepath, "wt")
+            fh.write(header)
+
+        lost, gained = compare_descriptions(proteins, ignore_renamed=True)
+        fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
+                 f"{name}\t{'Yes' if is_checked else 'No'}\t{origin}\t"
+                 f"{cnt_protein}\t"
+                 f"{len(lost)}\t{len(gained)}\t"
+                 f"{' | '.join(lost)}\t"
+                 f"{' | '.join(gained)}\n")
+
+        entries_changes.add(entry_acc)
 
     for fh in files.values():
         fh.close()
-
-    # Keep track of entries with Swiss-Prot description changes
-    entries_changes = set(changes.keys())
 
     # Write entries with protein count changes (total + per superkingdom)
     with open(os.path.join(tmpdir, "entries_count_changes.tsv"), "wt") as fh:
@@ -553,3 +542,52 @@ The InterPro Production Team
 """,
         attachments=[filename]
     )
+
+
+def compare_descriptions(
+        proteins: dict[str, list[str | None]],
+        ignore_renamed: bool = False
+) -> tuple[list[str], list[str]]:
+    descrs_old = {}
+    descrs_new = {}
+    # Never ignore proteins whose name contained or contains these strings:
+    never_ignore = [
+        "unknown",
+        "putative",
+        "uncharacterized",
+        "hypothetical",
+        "fragment",
+        "predicted"
+    ]
+
+    for protein_acc in sorted(proteins):
+        descr_old, descr_new = proteins[protein_acc]
+
+        if (ignore_renamed and
+                descr_old and
+                descr_new and
+                descr_old != descrs_new):
+            for s in never_ignore:
+                if s in descr_old.lower() or s in descr_new.lower():
+                    break
+            else:
+                # We can safely ignore protein being renamed
+                continue
+
+        if descr_old and descr_old in descrs_old:
+            descrs_old[descr_old] = protein_acc
+
+        if descr_new and descr_new in descrs_new:
+            descrs_new[descr_new] = protein_acc
+
+    lost = []
+    for descr in sorted(set(descrs_old.keys()) - set(descrs_new.keys())):
+        protein_acc = descrs_old[descr]
+        lost.append(f"{descr} ({protein_acc})")
+
+    gained = []
+    for descr in sorted(set(descrs_new.keys()) - set(descrs_old.keys())):
+        protein_acc = descrs_new[descr]
+        gained.append(f"{descr} ({protein_acc})")
+
+    return lost, gained
