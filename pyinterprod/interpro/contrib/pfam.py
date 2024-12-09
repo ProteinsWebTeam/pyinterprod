@@ -123,7 +123,8 @@ def _expand_range(s: str) -> list[int]:
             # range of reference numbers, e.g. 1-4
             low, high = map(int, values)
             r += list(range(low, high + 1))
-    return(r)
+
+    return r
 
 
 class StockholdMSA:
