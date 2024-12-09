@@ -78,6 +78,8 @@ def get_signatures(pfam_seed_file: str) -> list[Method]:
                 rn2pmid[i+1] = int(" ".join(obj["RM"]))
 
             abstract = _repl_references(accession, comment, rn2pmid)
+
+            abstract = _repl_xreferences(abstract)
         else:
             abstract = None
 
@@ -125,6 +127,19 @@ def _expand_range(s: str) -> list[int]:
             r += list(range(low, high + 1))
 
     return r
+
+
+def _repl_xreferences(text: str) -> str:
+    # EC number
+    text = re.sub(r"EC:(\d+\.\d+\.\d+\.(\d+|-))", r"[ec:\1]", text)
+
+    # Pfam
+    text = re.sub(r"Pfam:(PF\d{5})", r"[pfam:\1]", text)
+
+    # Swiss-Prot
+    text = re.sub(r"Swiss:([A-Z0-9]+)", r"[swissprot:\1]", text)
+
+    return text
 
 
 class StockholdMSA:
@@ -426,6 +441,7 @@ def persist_pfam_c(uri: str, pfam_c: str):
         comment = entry.features.get("CC")
         if comment:
             comment = _repl_references(accession, comment, rn2pmid)
+            comment = _repl_xreferences(comment)
 
         cur.execute(
             """
