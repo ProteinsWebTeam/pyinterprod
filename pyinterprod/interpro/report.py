@@ -570,7 +570,7 @@ def compare_descriptions(
         if (ignore_renamed and
                 descr_old and
                 descr_new and
-                descr_old != descrs_new):
+                descr_old != descr_new):
             for s in never_ignore:
                 if s in descr_old.lower() or s in descr_new.lower():
                     break
