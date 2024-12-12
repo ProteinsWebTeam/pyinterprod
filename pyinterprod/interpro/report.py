@@ -444,6 +444,10 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                  f"{' | '.join(lost)}\t"
                  f"{' | '.join(gained)}\n")
 
+        lost, gained = compare_descriptions(proteins, ignore_renamed=True)
+        if not lost and not gained:
+            continue
+
         # Write a "slim" version, with renamed proteins ignored
         slim_filename = f"slim_{filename}"
 
@@ -454,7 +458,6 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             fh = files[slim_filename] = open(filepath, "wt")
             fh.write(header)
 
-        lost, gained = compare_descriptions(proteins, ignore_renamed=True)
         fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
                  f"{name}\t{'Yes' if is_checked else 'No'}\t{origin}\t"
                  f"{cnt_protein}\t"
