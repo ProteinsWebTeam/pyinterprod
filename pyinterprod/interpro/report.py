@@ -423,12 +423,13 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
         if not lost and not gained:
             continue
         elif type_code == "F":
-            filename = "swiss_de_families.tsv"
+            basename = "swiss_de_families.tsv"
         elif type_code == "D":
-            filename = "swiss_de_domains.tsv"
+            basename = "swiss_de_domains.tsv"
         else:
-            filename = "swiss_de_others.tsv"
+            basename = "swiss_de_others.tsv"
 
+        filename = f"full_{basename}"
         try:
             fh = files[filename]
         except KeyError:
@@ -449,13 +450,12 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             continue
 
         # Write a "slim" version, with renamed proteins ignored
-        slim_filename = f"slim_{filename}"
-
+        filename = f"slim_{basename}"
         try:
-            fh = files[slim_filename]
+            fh = files[filename]
         except KeyError:
-            filepath = os.path.join(tmpdir, slim_filename)
-            fh = files[slim_filename] = open(filepath, "wt")
+            filepath = os.path.join(tmpdir, filename)
+            fh = files[filename] = open(filepath, "wt")
             fh.write(header)
 
         fh.write(f"{entry_acc}\t{pronto_link}/entry/{entry_acc}/\t"
