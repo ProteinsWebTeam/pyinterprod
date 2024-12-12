@@ -574,10 +574,10 @@ def compare_descriptions(
                 # We can safely ignore protein being renamed
                 continue
 
-        if descr_old and descr_old in descrs_old:
+        if descr_old and descr_old not in descrs_old:
             descrs_old[descr_old] = protein_acc
 
-        if descr_new and descr_new in descrs_new:
+        if descr_new and descr_new not in descrs_new:
             descrs_new[descr_new] = protein_acc
 
     lost = []
