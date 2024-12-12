@@ -375,10 +375,14 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             except KeyError:
                 continue
 
-            entry2swiss[entry_acc] = {}
+            try:
+                entry_swiss = entry2swiss[entry_acc]
+            except KeyError:
+                entry_swiss = entry2swiss[entry_acc] = {}
+
             for protein_acc, description in proteins:
                 # List: descr before, descr after
-                entry2swiss[entry_acc][protein_acc] = [description, None]
+                entry_swiss[protein_acc] = [description, None]
 
     # Add Swiss-Prot descriptions after the update
     for signature_acc, proteins in get_swissprot_descriptions(pg_url).items():
