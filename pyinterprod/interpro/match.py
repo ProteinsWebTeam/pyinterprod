@@ -1104,8 +1104,6 @@ def protein_xml_from_obj(protein):
 
 
 def fetch_matches(pool, acc_start, acc_end):
-
-    logger.info(f"Retrieving data from {acc_start} to {acc_end}...")
     
     con = pool.acquire()
     cur = con.cursor()
@@ -1174,13 +1172,17 @@ def generate_match_complete_xml(uri: str, out: str):
 
     proteins_acc_con = pool.acquire()
     proteins_acc_cur = proteins_acc_con.cursor()
+
     proteins_acc_query = """
         SELECT PROTEIN_AC 
         FROM INTERPRO.PROTEIN 
         ORDER BY PROTEIN_AC 
     """
+
+    logger.info("Retrieving accessions..")
     proteins_acc_cur.execute(proteins_acc_query)
     proteins_acc_list = proteins_acc_cur.fetchall()
+    logger.info("Accessions retrieved.")
 
     columns = ['protein_id', 'name', 'crc64', 'length', 'fragment', 'tax_id',
             'method_ac', 'model_ac', 'pos_from', 'pos_to', 'fragments', 'score', 'method_desc', 
@@ -1217,7 +1219,8 @@ def generate_match_complete_xml(uri: str, out: str):
             protein_data_batch += rows
             nr_rows_processed += len(rows)
 
-        logger.info(f"{nr_rows_processed} processed")
+        if (nr_rows_processed % batch_size * nr_threads * 10 == 0):
+            logger.info(f"{nr_rows_processed} processed")
             
         protein_data_batch = [
             {col: (str(value) if value is not None else '') for col, value in zip(columns, row)}
