@@ -442,7 +442,7 @@ def run_member_db_update():
                 fn=interpro.match.update_toad_matches,
                 args=(ora_interpro_uri, member_dbs, toad_sources),
                 name="update-toad-matches",
-                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
+                scheduler=dict(type=scheduler, queue=queue, mem=24000, hours=24),
                 requires=["update-signatures"]
             ),
             Task(
@@ -516,7 +516,7 @@ def run_member_db_update():
                 args=(ora_iprscan_uri, "sites"),
                 kwargs=dict(databases=site_dbs, force=True, threads=2),
                 name="update-ipm-sites",
-                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=48),
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=72),
             ),
             Task(
                 fn=interpro.match.update_database_site_matches,
@@ -700,7 +700,7 @@ def run_uniprot_update():
             args=(ora_iprscan_uri, "matches"),
             kwargs=dict(force=True, threads=8),
             name="update-ipm-matches",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=48),
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=72),
             requires=["update-uniparc-proteins"]
         ),
         Task(
@@ -708,7 +708,7 @@ def run_uniprot_update():
             args=(ora_iprscan_uri, "sites"),
             kwargs=dict(force=True, threads=2),
             name="update-ipm-sites",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=48),
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=72),
             requires=["update-uniparc-proteins"]
         ),
 
