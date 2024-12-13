@@ -7,6 +7,10 @@ from pyinterprod import logger
 from pyinterprod.utils import oracle
 import xml.etree.ElementTree as ET
 import xml.dom.minidom
+import concurrent.futures
+import threading
+import concurrent.futures
+
 
 
 FILE_ENTRY_PROT_COUNTS = "entries.prot.counts.pickle"
@@ -1061,21 +1065,53 @@ def get_sig_protein_counts(cur: oracledb.Cursor,
     return counts
 
 
-def generate_match_complete_xml(uri: str, out: str):
+def protein_xml_from_obj(protein):
 
-    con = oracledb.connect(uri)
+    # Get all match elements
+    matches = list(protein.findall('match'))
+
+    # Clear the original match elements from the protein
+    for match in matches:
+
+        locations = list(match.findall('lcn'))
+        sorted_lcsn = sorted(locations, key=lambda x: int(x.get('start')))
+
+        # Clear the original match elements from the protein
+        for lcn in locations:
+            match.remove(lcn)
+
+        # Append the sorted match elements back to the protein
+        for lcn in sorted_lcsn:
+            match.append(lcn)
+
+    # Sort matches by the 'score' attribute (convert score to integer for sorting)
+    matches = sorted(matches, key=lambda x: int(x.find("lcn").get("start")))
+    sorted_matches = sorted(matches, key=lambda x: x.get('id'))
+
+    for match in matches:
+        protein.remove(match)
+    
+    # Append the sorted match elements back to the protein
+    for match in sorted_matches:
+        protein.append(match)
+
+    protein_bytes = ET.tostring(protein, encoding='utf-8', xml_declaration=False)
+    protein_str = protein_bytes.decode("utf-8")
+    protein_str_formatted = xml.dom.minidom.parseString(protein_str).toprettyxml()
+    protein_str_formatted = "\n".join(protein_str_formatted.split("\n")[1:]) # No XML declaration
+    
+    return protein_str_formatted
+
+
+def fetch_matches(pool, acc_start, acc_end):
+
+    logger.info(f"Retrieving data from {acc_start} to {acc_end}...")
+    
+    con = pool.acquire()
     cur = con.cursor()
 
-    # Clear existing file and open it in append mode   
-    xml_file = open(os.path.join(out, "match_complete.xml"), "w") 
-    xml_file.close() 
-
-    xml_file = open(os.path.join(out, "match_complete.xml"), "a")
-    xml_file.write("<proteins>\n")
-
-    logger.info("Retrieving data...")
-    protein_data = cur.execute(f"""
-        SELECT 
+    cur.execute(f"""
+            SELECT 
             P.PROTEIN_AC, 
             P.NAME, 
             P.CRC64, 
@@ -1090,12 +1126,13 @@ def generate_match_complete_xml(uri: str, out: str):
             M.SCORE, 
             MN.DESCRIPTION, 
             M.STATUS,
-            M.DBSHORT, 
+            M.DBSHORT,
             CE.ABBREV, 
             MN.ABBREV
         FROM (
             SELECT *
             FROM INTERPRO.PROTEIN
+            WHERE PROTEIN_AC >= '{acc_start}' AND PROTEIN_AC <= '{acc_end}'
         ) P
         LEFT JOIN (
             SELECT * 
@@ -1115,40 +1152,73 @@ def generate_match_complete_xml(uri: str, out: str):
             ON M.EVIDENCE = CE.CODE
         LEFT JOIN INTERPRO.METHOD MN
             ON M.METHOD_AC = MN.METHOD_AC
-                               
-        ORDER BY PROTEIN_AC
-
+        ORDER BY P.PROTEIN_AC
     """)
-    logger.info("Query executed.")
 
+    res = cur.fetchall()
+    return res
+
+def generate_match_complete_xml(uri: str, out: str):
+
+    pool = oracledb.create_pool(uri, min=8, increment=1)
+
+    # Clear existing file and open it in append mode   
+    xml_file = open(os.path.join(out, "match_complete.xml"), "w") 
+    xml_file.close() 
+
+    xml_file = open(os.path.join(out, "match_complete.xml"), "a")
+    xml_file.write("<proteins>\n")
+    
+    protein_accessions = ['A0A000',
+                        'A0A009NJG6',
+                        'A0A009TAK4',
+                        'A0A010QUZ4',
+                        'A0A010SGM7',
+                        'A0A011N6V0',
+                        'A0A011PZ65',
+                        'A0A011TTS7',
+                        'A0A013SI19',
+                        'A0A014LCI1',
+                        'A0A014NHE2',
+                        'A0A015J331',
+                        'A0A015LBI2',
+                        'A0A015V8F1',
+                        'A0A016AQA8',
+                        'A0A016S5E4',
+                        'A0A016TJF7']
+    acc_indices = [0, 1]
     nr_rows_processed = 0
-    batch_size = 50
 
-    while True: 
-
-        protein_data_batch = protein_data.fetchmany(batch_size)
-
-        nr_rows_processed += batch_size
-        
-        if (nr_rows_processed % 10000000 == 0):
-            logger.info(f"{nr_rows_processed} proteins processed.")
-
-
-        if (not(protein_data_batch)):
-            break
-
-        columns=['protein_id', 'name', 'crc64', 'length', 'fragment', 'tax_id',
+    columns = ['protein_id', 'name', 'crc64', 'length', 'fragment', 'tax_id',
             'method_ac', 'model_ac', 'pos_from', 'pos_to', 'fragments', 'score', 'method_desc', 
             'status', 'dbname', 'evd', 'sig_type']
+
+    while True: 
         
+        protein_data_batch = []
+
+        futures = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+            futures = executor.map(fetch_matches, [pool] * 16, protein_accessions[:-1], protein_accessions[1:])
+
+        # Iterate over results in the order they were submitted
+        for rows in futures:
+            protein_data_batch += rows
+            nr_rows_processed += len(rows)
+
+        logger.info(f"{nr_rows_processed} processed")
+            
         protein_data_batch = [
             {col: (str(value) if value is not None else '') for col, value in zip(columns, row)}
             for row in protein_data_batch
         ]
+
+        print(protein_data_batch[0:3])
         
         grouped = {}
 
-        # Group by protein_id and method_ac, then create a nested dictionary
+        logger.info(f"Writing..")
+
         for row in protein_data_batch:
 
             protein_id = row['protein_id']
@@ -1265,8 +1335,6 @@ def generate_match_complete_xml(uri: str, out: str):
                 for lcn in sorted_lcsn:
                     match.append(lcn)
 
-            # Sort matches by the 'score' attribute (convert score to integer for sorting)
-            matches = sorted(matches, key=lambda x: int(x.find("lcn").get("start")))
             sorted_matches = sorted(matches, key=lambda x: x.get('id'))
 
             for match in matches:
@@ -1284,9 +1352,12 @@ def generate_match_complete_xml(uri: str, out: str):
 
         xml_file.writelines(proteins_xml_str)
 
+        logger.info(f"Wrote on XML file.")
+        break
 
     xml_file.write("</proteins>")
     xml_file.close()
+    
 
 # def _get_databases_matches_count(cur: oracledb.Cursor) -> dict[str, int]:
 #     """
