@@ -38,7 +38,7 @@ def create_aa_alignment(uri: str):
         """
         INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
         SELECT M.UPI, UPPER(TRANSLATE(DB.DBNAME, ' ', '_')), 
-               M.METHOD_AC, M.SEQ_START, M.SEQ_END, M.ALIGNMENT
+               M.METHOD_AC, M.SEQ_START, M.SEQ_END, M.SEQ_FEATURE
         FROM INTERPRO.CV_DATABASE DB
         INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
             ON DB.DBCODE = I2D.DBCODE

@@ -156,24 +156,14 @@ The optional arguments are:
     <td></td>
 </tr>
 <tr>
-    <td>import-ipm-matches</td>
-    <td>Import protein matches from ISPRO</td>
-    <td>update-uniparc</td>
-</tr>
-<tr>
     <td>update-ipm-matches</td>
-    <td>Update partitioned table with matches</td>
-    <td>import-ipm-matches</td>
-</tr>
-<tr>
-    <td>import-ipm-sites</td>
-    <td>Import residue annotations from ISPRO</td>
+    <td>Update protein matches from ISPRO</td>
     <td></td>
 </tr>
 <tr>
     <td>update-ipm-sites</td>
-    <td>Update partitioned table with site matches</td>
-    <td>import-ipm-sites</td>
+    <td>Update protein site matches from ISPRO</td>
+    <td></td>
 </tr>
 <tr>
     <td>update-proteins</td>
@@ -303,14 +293,9 @@ The optional arguments are:
 </thead>
 <tbody>
 <tr>
-    <td>import-ipm-matches</td>
-    <td>Import protein matches from ISPRO</td>
-    <td>update-uniparc</td>
-</tr>
-<tr>
     <td>update-ipm-matches</td>
-    <td>Update partitioned table with matches</td>
-    <td>import-ipm-matches</td>
+    <td>Update protein matches from ISPRO</td>
+    <td></td>
 </tr>
 <tr>
     <td>load-signatures</td>
@@ -363,14 +348,9 @@ The optional arguments are:
     <td>update-features</td>
 </tr>
 <tr>
-    <td>import-ipm-sites</td>
-    <td>Import residue annotations from ISPRO</td>
-    <td></td>
-</tr>
-<tr>
     <td>update-ipm-sites</td>
-    <td>Update partitioned table with site matches</td>
-    <td>import-ipm-sites</td>
+    <td>Update protein site matches from ISPRO</td>
+    <td></td>
 </tr>
 <tr>
     <td>update-sites</td>
