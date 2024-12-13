@@ -1218,9 +1218,6 @@ def generate_match_complete_xml(uri: str, out: str):
             rows = future.result()
             protein_data_batch += rows
             nr_rows_processed += len(rows)
-
-        if (nr_rows_processed % batch_size * nr_threads * 10 == 0):
-            logger.info(f"{nr_rows_processed} processed")
             
         protein_data_batch = [
             {col: (str(value) if value is not None else '') for col, value in zip(columns, row)}
@@ -1228,8 +1225,6 @@ def generate_match_complete_xml(uri: str, out: str):
         ]
         
         grouped = {}
-
-        logger.info(f"Writing..")
 
         for row in protein_data_batch:
 
@@ -1364,7 +1359,7 @@ def generate_match_complete_xml(uri: str, out: str):
 
         xml_file.writelines(proteins_xml_str)
 
-        logger.info(f"Wrote processed proteins on XML file.")
+        logger.info(f"{nr_rows_processed} processed")
 
     xml_file.write("</proteins>")
     xml_file.close()
