@@ -1156,11 +1156,14 @@ def fetch_matches(pool, acc_start, acc_end):
     """)
 
     res = cur.fetchall()
+    pool.drop(con)
     return res
 
 def generate_match_complete_xml(uri: str, out: str):
 
     pool = oracledb.create_pool(uri, min=8, increment=1)
+    batch_size = 10000
+    nr_threads = 16
 
     # Clear existing file and open it in append mode   
     xml_file = open(os.path.join(out, "match_complete.xml"), "w") 
@@ -1168,41 +1171,49 @@ def generate_match_complete_xml(uri: str, out: str):
 
     xml_file = open(os.path.join(out, "match_complete.xml"), "a")
     xml_file.write("<proteins>\n")
-    
-    protein_accessions = ['A0A000',
-                        'A0A009NJG6',
-                        'A0A009TAK4',
-                        'A0A010QUZ4',
-                        'A0A010SGM7',
-                        'A0A011N6V0',
-                        'A0A011PZ65',
-                        'A0A011TTS7',
-                        'A0A013SI19',
-                        'A0A014LCI1',
-                        'A0A014NHE2',
-                        'A0A015J331',
-                        'A0A015LBI2',
-                        'A0A015V8F1',
-                        'A0A016AQA8',
-                        'A0A016S5E4',
-                        'A0A016TJF7']
-    acc_indices = [0, 1]
-    nr_rows_processed = 0
+
+    proteins_acc_con = pool.acquire()
+    proteins_acc_cur = proteins_acc_con.cursor()
+    proteins_acc_query = """
+        SELECT PROTEIN_AC 
+        FROM INTERPRO.PROTEIN 
+        ORDER BY PROTEIN_AC 
+    """
+    proteins_acc_cur.execute(proteins_acc_query)
+    proteins_acc_list = proteins_acc_cur.fetchall()
 
     columns = ['protein_id', 'name', 'crc64', 'length', 'fragment', 'tax_id',
             'method_ac', 'model_ac', 'pos_from', 'pos_to', 'fragments', 'score', 'method_desc', 
             'status', 'dbname', 'evd', 'sig_type']
+    
+    nr_rows_processed = 0
+    accession_batch = 0
+    out_of_range = False
 
-    while True: 
+    while not(out_of_range): 
         
         protein_data_batch = []
-
         futures = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
-            futures = executor.map(fetch_matches, [pool] * 16, protein_accessions[:-1], protein_accessions[1:])
+        with concurrent.futures.ThreadPoolExecutor(max_workers=nr_threads) as executor:
 
-        # Iterate over results in the order they were submitted
-        for rows in futures:
+            for _ in range(nr_threads):
+
+                acc_start_idx = accession_batch * batch_size
+                acc_end_idx = (accession_batch * batch_size) + batch_size - 1
+
+                if (acc_end_idx >= len(proteins_acc_list) - 1):
+                    acc_end_idx = len(proteins_acc_list) - 1
+                    out_of_range = True
+
+                futures.append((executor.submit(fetch_matches, pool, proteins_acc_list[acc_start_idx][0], proteins_acc_list[acc_end_idx][0])))
+                accession_batch += 1
+                
+                if (out_of_range):
+                    break    
+
+        # Gather results in submission orderx
+        for future in futures:
+            rows = future.result()
             protein_data_batch += rows
             nr_rows_processed += len(rows)
 
@@ -1212,8 +1223,6 @@ def generate_match_complete_xml(uri: str, out: str):
             {col: (str(value) if value is not None else '') for col, value in zip(columns, row)}
             for row in protein_data_batch
         ]
-
-        print(protein_data_batch[0:3])
         
         grouped = {}
 
@@ -1298,8 +1307,8 @@ def generate_match_complete_xml(uri: str, out: str):
                     if (loc["fragments"]):
 
                         # Sort the fragment list to match the original.xml
-                        frag_list = sorted(loc['fragments'].split(","), key=lambda x: (x.split("-")[2]))
-                        frag_list = sorted(loc['fragments'].split(","), key=lambda x: (int(x.split("-")[0])))
+                        frag_list = sorted(loc['fragments'].split(","), key=lambda x: (x.split("-")[2])) # letter
+                        frag_list = sorted(loc['fragments'].split(","), key=lambda x: (int(x.split("-")[0]))) # start
                         frag_str = ','.join(frag_list)
 
                     else:
@@ -1352,12 +1361,11 @@ def generate_match_complete_xml(uri: str, out: str):
 
         xml_file.writelines(proteins_xml_str)
 
-        logger.info(f"Wrote on XML file.")
-        break
+        logger.info(f"Wrote processed proteins on XML file.")
 
     xml_file.write("</proteins>")
     xml_file.close()
-    
+
 
 # def _get_databases_matches_count(cur: oracledb.Cursor) -> dict[str, int]:
 #     """
