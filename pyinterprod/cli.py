@@ -198,8 +198,9 @@ def generate_match_complete_xml():
 
     uri = config["oracle"]["ipro-interpro"]
     out_dir = config["misc"]["data_dir"]
+    nr_processes = config["misc"]["nr_processes"]
 
-    interpro.match.generate_match_complete_xml(uri, out_dir)
+    interpro.match.generate_match_complete_xml(uri, out_dir, nr_processes)
 
 
 def run_clan_update():

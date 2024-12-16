@@ -7,10 +7,7 @@ from pyinterprod import logger
 from pyinterprod.utils import oracle
 import xml.etree.ElementTree as ET
 import xml.dom.minidom
-import concurrent.futures
-import threading
-import concurrent.futures
-
+from multiprocessing import Process, Manager
 
 
 FILE_ENTRY_PROT_COUNTS = "entries.prot.counts.pickle"
@@ -1103,9 +1100,9 @@ def protein_xml_from_obj(protein):
     return protein_str_formatted
 
 
-def fetch_matches(pool, acc_start, acc_end):
+def fetch_matches(uri, acc_start, acc_end, protein_data_batch):
     
-    con = pool.acquire()
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     cur.execute(f"""
@@ -1154,14 +1151,12 @@ def fetch_matches(pool, acc_start, acc_end):
     """)
 
     res = cur.fetchall()
-    pool.drop(con)
-    return res
+    protein_data_batch += res
 
-def generate_match_complete_xml(uri: str, out: str):
+def generate_match_complete_xml(uri: str, out: str, nr_processes: int):
 
-    pool = oracledb.create_pool(uri, min=8, increment=1)
-    batch_size = 10000
-    nr_threads = 16
+    con = oracledb.connect(uri)
+    batch_size = 5000
 
     # Clear existing file and open it in append mode   
     xml_file = open(os.path.join(out, "match_complete.xml"), "w") 
@@ -1170,13 +1165,13 @@ def generate_match_complete_xml(uri: str, out: str):
     xml_file = open(os.path.join(out, "match_complete.xml"), "a")
     xml_file.write("<proteins>\n")
 
-    proteins_acc_con = pool.acquire()
-    proteins_acc_cur = proteins_acc_con.cursor()
+    proteins_acc_cur = con.cursor()
 
     proteins_acc_query = """
         SELECT PROTEIN_AC 
         FROM INTERPRO.PROTEIN 
         ORDER BY PROTEIN_AC 
+        FETCH FIRST 220000 ROWS ONLY
     """
 
     logger.info("Retrieving accessions..")
@@ -1191,34 +1186,39 @@ def generate_match_complete_xml(uri: str, out: str):
     nr_rows_processed = 0
     accession_batch = 0
     out_of_range = False
+    manager = Manager()
 
     while not(out_of_range): 
         
-        protein_data_batch = []
-        futures = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=nr_threads) as executor:
+        protein_data_batch = manager.list()
+        procs = []
 
-            for _ in range(nr_threads):
+        for _ in range(nr_processes):
 
-                acc_start_idx = accession_batch * batch_size
-                acc_end_idx = (accession_batch * batch_size) + batch_size - 1
+            acc_start_idx = accession_batch * batch_size
+            acc_end_idx = (accession_batch * batch_size) + batch_size - 1
 
-                if (acc_end_idx >= len(proteins_acc_list) - 1):
-                    acc_end_idx = len(proteins_acc_list) - 1
-                    out_of_range = True
+            if (acc_end_idx >= len(proteins_acc_list) - 1):
+                acc_end_idx = len(proteins_acc_list) - 1
+                out_of_range = True
 
-                futures.append((executor.submit(fetch_matches, pool, proteins_acc_list[acc_start_idx][0], proteins_acc_list[acc_end_idx][0])))
-                accession_batch += 1
-                
-                if (out_of_range):
-                    break    
+            proc = Process(target=fetch_matches, args=(uri, proteins_acc_list[acc_start_idx][0], proteins_acc_list[acc_end_idx][0], protein_data_batch))
+            procs.append(proc)
+            proc.start()
+
+            accession_batch += 1
+            
+            if (out_of_range):
+                break    
 
         # Gather results in submission orderx
-        for future in futures:
-            rows = future.result()
-            protein_data_batch += rows
-            nr_rows_processed += len(rows)
-            
+        for proc in procs:
+            proc.join()
+
+        nr_rows_processed += batch_size * nr_processes
+
+        logger.info(f"Processed {nr_rows_processed}")
+
         protein_data_batch = [
             {col: (str(value) if value is not None else '') for col, value in zip(columns, row)}
             for row in protein_data_batch
