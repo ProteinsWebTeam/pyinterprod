@@ -198,7 +198,7 @@ def generate_match_complete_xml():
 
     uri = config["oracle"]["ipro-interpro"]
     out_dir = config["misc"]["data_dir"]
-    nr_processes = config["misc"]["nr_processes"]
+    nr_processes = int(config["misc"]["nr_processes"])
 
     interpro.match.generate_match_complete_xml(uri, out_dir, nr_processes)
 
