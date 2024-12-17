@@ -208,6 +208,10 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
     logger.info("loading signatures")
     con = oracledb.connect(ora_uri)
     cur = con.cursor()
+
+    cur.execute("SELECT METHOD_AC FROM INTERPRO.NCBIFAM_AMR")
+    amr_models = {signature_acc for signature_acc, in cur.fetchall()}
+
     cur.outputtypehandler = clob_as_str
     cur.execute(
         r"""
@@ -254,13 +258,14 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
             values.append((
                 signature_acc,
                 signature_db_id,
-                row[2],             # name
-                row[3],             # llm name
-                row[4],             # description
-                row[5],             # llm description
-                row[6],             # type
-                row[7] or row[8],   # abstract
-                row[9],             # llm abstract
+                row[2],                         # name
+                row[3],                         # llm name
+                row[4],                         # description
+                row[5],                         # llm description
+                row[6],                         # type
+                row[7] or row[8],               # abstract
+                row[9],                         # llm abstract
+                signature_acc in amr_models,    # is_amr
                 *signatures.get(signature_acc, [0] * 6)
             ))
 
@@ -278,6 +283,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 type VARCHAR(25) NOT NULL,
                 abstract TEXT,
                 llm_abstract TEXT,
+                is_amr BOOLEAN NOT NULL,
                 num_sequences INTEGER NOT NULL,
                 num_reviewed_sequences INTEGER NOT NULL,
                 num_complete_sequences INTEGER NOT NULL,
@@ -290,7 +296,8 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
 
         sql = """
             INSERT INTO signature
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s)
         """
 
         records = []
@@ -430,28 +437,24 @@ def _iter_predictions(comps: dict[str, dict[str, list[int, int, int, int]]],
                 yield acc2, acc1, collocts, prot_overlaps, res_overlaps
 
 
-def get_swissprot_descriptions(pg_url: str) -> dict[str, dict[str, set[str]]]:
+def get_swissprot_descriptions(pg_url: str) -> dict[str, list[tuple[str, str]]]:
     con = psycopg.connect(**url2dict(pg_url))
     with con.cursor() as cur:
         cur.execute(
             """
-            SELECT
-                signature_acc,
-                text,
-                ARRAY_AGG(DISTINCT protein_acc)
+            SELECT signature_acc, protein_acc, text
             FROM INTERPRO.signature2protein s2p
             INNER JOIN INTERPRO.protein_name pn ON s2p.name_id = pn.name_id
             WHERE s2p.is_reviewed
-            GROUP BY signature_acc, text
             """
         )
 
         signatures = {}
-        for signature_acc, text, proteins in cur:
+        for signature_acc, protein_acc, description in cur:
             try:
-                signatures[signature_acc][text] = set(proteins)
+                signatures[signature_acc].append((protein_acc, description))
             except KeyError:
-                signatures[signature_acc] = {text: set(proteins)}
+                signatures[signature_acc] = [(protein_acc, description)]
 
     con.close()
 

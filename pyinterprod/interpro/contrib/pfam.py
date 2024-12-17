@@ -78,6 +78,8 @@ def get_signatures(pfam_seed_file: str) -> list[Method]:
                 rn2pmid[i+1] = int(" ".join(obj["RM"]))
 
             abstract = _repl_references(accession, comment, rn2pmid)
+
+            abstract = _repl_xreferences(abstract)
         else:
             abstract = None
 
@@ -98,7 +100,7 @@ def get_signatures(pfam_seed_file: str) -> list[Method]:
 def _repl_references(acc: str, text: str, references: dict[int, int]):
     def _repl(match: re.Match) -> str:
         refs = []
-        for ref_num in map(int, map(str.strip, match.group(1).split(','))):
+        for ref_num in _expand_range(match.group(1)):
             try:
                 pmid = references[ref_num]
             except KeyError:
@@ -109,7 +111,35 @@ def _repl_references(acc: str, text: str, references: dict[int, int]):
 
         return f"[{','.join(refs)}]"
 
-    return re.sub(r"\[([\d\s,]+)]", _repl, text)
+    return re.sub(r"\[([\d\s,-]+)]", _repl, text)
+
+
+def _expand_range(s: str) -> list[int]:
+    r = []
+    for i in s.split(','):
+        values = i.split("-")
+        if len(values) == 1:
+            # single reference number
+            r.append(int(i))
+        else:
+            # range of reference numbers, e.g. 1-4
+            low, high = map(int, values)
+            r += list(range(low, high + 1))
+
+    return r
+
+
+def _repl_xreferences(text: str) -> str:
+    # EC number
+    text = re.sub(r"EC:(\d+\.\d+\.\d+\.(\d+|-))", r"[ec:\1]", text)
+
+    # Pfam
+    text = re.sub(r"Pfam:(PF\d{5})", r"[pfam:\1]", text)
+
+    # Swiss-Prot
+    text = re.sub(r"Swiss:([A-Z0-9]+)", r"[swissprot:\1]", text)
+
+    return text
 
 
 class StockholdMSA:
@@ -391,10 +421,13 @@ def persist_pfam_c(uri: str, pfam_c: str):
         for author in entry.features["AU"]:
             authors += [e.strip() for e in author.split(",")]
 
+        rn2pmid = {}
         references = []
-        for ref_dict in entry.features.get("RN", []):
+        for i, ref_dict in enumerate(entry.features.get("RN", [])):
+            pmid = int(" ".join(ref_dict["RM"]))
+            rn2pmid[i+1] = pmid
             references.append({
-                "PMID": int(" ".join(ref_dict["RM"])),
+                "PMID": pmid,
                 "title": " ".join(ref_dict["RT"]),
                 "authors": list(
                     map(
@@ -405,6 +438,11 @@ def persist_pfam_c(uri: str, pfam_c: str):
                 "journal": " ".join(ref_dict["RL"])
             })
 
+        comment = entry.features.get("CC")
+        if comment:
+            comment = _repl_references(accession, comment, rn2pmid)
+            comment = _repl_xreferences(comment)
+
         cur.execute(
             """
             INSERT /*+ APPEND */  INTO INTERPRO.PFAM_C
@@ -414,7 +452,7 @@ def persist_pfam_c(uri: str, pfam_c: str):
                 accession,
                 name,
                 description,
-                entry.features.get("CC"),
+                comment,
                 json.dumps(authors),
                 json.dumps(references)
             ]

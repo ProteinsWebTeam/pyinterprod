@@ -19,11 +19,6 @@ def create_aa_alignment(uri: str):
 
     con = oracledb.connect(uri)
     cur = con.cursor()
-
-    analyses = {}
-    for analysis in iprscan.get_analyses(cur, type="matches"):
-        analyses[analysis.name] = (analysis.id, analysis.table)
-
     oracle.drop_table(cur, "IPRSCAN.AA_ALIGNMENT", purge=True)
     cur.execute(
         """
@@ -39,49 +34,20 @@ def create_aa_alignment(uri: str):
         """
     )
 
-    # Open second cursor for INSERT statements (first used for SELECT)
-    cur2 = con.cursor()
-
-    for name in ["HAMAP", "PROSITE patterns", "PROSITE profiles"]:
-        logger.info(f"inserting data from {name}")
-        analysis_id, table = analyses[name]
-        cur.execute(
-            f"""
-            SELECT UPI, METHOD_AC, SEQ_START, SEQ_END, ALIGNMENT
-            FROM IPRSCAN.{iprscan.PREFIX}{table}
-            WHERE ANALYSIS_ID = :1
-           """,
-            [analysis_id]
-        )
-
-        rows = []
-        library = name.replace(" ", "_").upper()
-        for row in cur:
-            rows.append((row[0], library, row[1], row[2], row[3], row[4]))
-
-            if len(rows) == 1000:
-                cur2.executemany(
-                    f"""
-                    INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
-                    VALUES (:1, :2, :3, :4, :5, :6)
-                    """,
-                    rows
-                )
-                con.commit()
-                rows.clear()
-
-        if rows:
-            cur2.executemany(
-                f"""
-                INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
-                VALUES (:1, :2, :3, :4, :5, :6)
-                """,
-                rows
-            )
-            con.commit()
-            rows.clear()
-
-    cur2.close()
+    cur.execute(
+        """
+        INSERT /*+ APPEND */ INTO IPRSCAN.AA_ALIGNMENT
+        SELECT M.UPI, UPPER(TRANSLATE(DB.DBNAME, ' ', '_')), 
+               M.METHOD_AC, M.SEQ_START, M.SEQ_END, M.SEQ_FEATURE
+        FROM INTERPRO.CV_DATABASE DB
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
+            ON DB.DBCODE = I2D.DBCODE
+        INNER JOIN IPRSCAN.MV_IPRSCAN M 
+            ON I2D.IPRSCAN_SIG_LIB_REL_ID = M.ANALYSIS_ID
+        WHERE DB.DBCODE IN ('Q', 'P', 'M')
+        """
+    )
+    con.commit()
 
     logger.info("indexing")
     for col in ("UPI", "SIGNATURE"):
