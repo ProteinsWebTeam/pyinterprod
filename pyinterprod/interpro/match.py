@@ -1253,7 +1253,7 @@ def generate_match_complete_xml(uri: str, out: str, nr_processes: int):
         (not rows, which are generated based on match and locations quantity)
     """
     
-    batch_size = 1000
+    batch_size = 3000
     nr_proteins_processed = 0
     accessions_batch = 0
     out_of_range = False
