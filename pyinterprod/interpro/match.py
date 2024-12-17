@@ -1244,6 +1244,7 @@ def generate_match_complete_xml(uri: str, out: str, nr_processes: int):
     proteins_acc_cur.execute(proteins_acc_query)
     proteins_acc_list = proteins_acc_cur.fetchall()
     logger.info("Accessions retrieved.")
+    proteins_acc_cur.close()
     
     """
         Loop through accessions, with each cycle having <nr_processes> and with each 
@@ -1256,6 +1257,7 @@ def generate_match_complete_xml(uri: str, out: str, nr_processes: int):
     nr_proteins_processed = 0
     accessions_batch = 0
     out_of_range = False
+
 
     manager = Manager()
 
