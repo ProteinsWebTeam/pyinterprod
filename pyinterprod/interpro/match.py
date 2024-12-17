@@ -1238,6 +1238,7 @@ def generate_match_complete_xml(uri: str, out: str, nr_processes: int):
         SELECT PROTEIN_AC 
         FROM INTERPRO.PROTEIN 
         ORDER BY PROTEIN_AC 
+        FETCH FIRST 288000 ROWS ONLY
     """
 
     logger.info("Retrieving accessions..")
@@ -1287,6 +1288,8 @@ def generate_match_complete_xml(uri: str, out: str, nr_processes: int):
             proc.join()
 
         xml_proteins_str = []
+
+        logger.info("Writing..")
         
         # Results out of multiprocessing queue to sort them based on xml objs attributes
         protein_xml_objs = sorted(protein_xml_objs, key=lambda x: x.get("id"))
