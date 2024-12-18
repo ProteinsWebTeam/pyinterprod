@@ -1067,6 +1067,8 @@ def get_protein_xml_objs(uri, acc_start, acc_end, protein_xml_objs):
     con = oracledb.connect(uri)
     cur = con.cursor()
 
+    logger.info(f"Retrieving from {acc_start} to {acc_end}..")
+
     cur.execute(f"""
             SELECT 
             P.PROTEIN_AC, 
@@ -1287,7 +1289,8 @@ def generate_match_complete_xml(uri: str, out: str, nr_processes: int):
         # Get results
         for proc in processes:
             proc.join()
-
+            logger.info("Joining result.")
+        
         xml_proteins_str = []
 
         logger.info("Writing..")
