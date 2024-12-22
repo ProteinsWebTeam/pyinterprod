@@ -140,42 +140,17 @@ def rebuild_indexes(uri: str, analysis_ids: list[int] | None = None):
         if analysis["tables"]["sites"]:
             tables.add(analysis["tables"]["sites"])
 
-    to_rebuild = set()
     for table in tables:
         for index in oracle.get_indexes(cur, "IPRSCAN", table):
             if index["is_unusable"]:
-                to_rebuild.add(index["name"])
+                logger.info(f"rebuilding {index['name']}")
 
-    cur.close()
-    con.close()
+                try:
+                    oracle.rebuild_index(cur, index["name"])
+                except Exception as exc:
+                    cur.close()
+                    con.close()
+                    raise
 
-    errors = 0
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        fs = {}
-
-        for index in to_rebuild:
-            f = executor.submit(_rebuild_index, uri, index)
-            fs[f] = index
-
-        for f in as_completed(fs):
-            index = fs[f]
-
-            try:
-                f.result()
-            except Exception as exc:
-                logger.error(f"{index} rebuild failed: {exc}")
-                errors += 1
-            else:
-                logger.info(f"{index} rebuilt")
-
-    if errors > 0:
-        raise RuntimeError(f"{errors} errors occurred")
-
-
-def _rebuild_index(uri: str, name: str):
-    logger.info(f"rebuilding {name}")
-    con = oracledb.connect(uri)
-    cur = con.cursor()
-    oracle.rebuild_index(cur, name)
     cur.close()
     con.close()
