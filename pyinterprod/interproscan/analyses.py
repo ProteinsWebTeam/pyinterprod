@@ -2,6 +2,7 @@ from decimal import Decimal
 from typing import Callable
 
 import oracledb
+from oracledb.exceptions import IntegrityError
 
 from pyinterprod import logger
 
@@ -61,7 +62,7 @@ def persist_results(cur: oracledb.Cursor,
 
         if sites_fn is not None:
             sites_fn(cur, sites_file, analysis_id, sites_table)
-    except oracledb.exceptions.IntegrityError:
+    except IntegrityError:
         cur.connection.rollback()
         return False
     else:
