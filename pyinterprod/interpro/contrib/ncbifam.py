@@ -75,11 +75,7 @@ def get_signatures(tsvfile: str,
             CREATE TABLE INTERPRO.NCBIFAM_AMR
             (
                 METHOD_AC VARCHAR2(25) NOT NULL
-                    CONSTRAINT PK_NCBIFAM_AMR
-                        PRIMARY KEY
-                    CONSTRAINT FK_NCBIFAM_AMR
-                        REFERENCES INTERPRO.METHOD (METHOD_AC) 
-                        ON DELETE CASCADE
+                CONSTRAINT PK_NCBIFAM_AMR PRIMARY KEY
             )
             """
         )
