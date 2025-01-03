@@ -1,7 +1,7 @@
 import os
 import sys
 from argparse import ArgumentParser
-from configparser import ConfigParser
+from configparser import ConfigParser, NoOptionError
 
 from mundone import Task, Workflow
 
@@ -352,7 +352,10 @@ def run_member_db_update():
                              f"missing database '{dbname}'")
 
             model_sources[db.identifier] = props
-            toad_sources[db.identifier] = options.get("toad", dbname)
+            try:
+                toad_sources[db.identifier] = options.get("toad", dbname)
+            except NoOptionError:
+                pass
 
             if db.analysis_id is None:
                 # No analysis ID in ISPRO
