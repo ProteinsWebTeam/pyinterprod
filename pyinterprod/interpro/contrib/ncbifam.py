@@ -66,7 +66,7 @@ def get_signatures(tsvfile: str,
         methods.append(m)
 
         if for_AMRFinder:
-            amr_models.append(signature_acc)
+            amr_models.append((signature_acc,))
 
     if cur:
         drop_table(cur, "INTERPRO.NCBIFAM_AMR", purge=True)
