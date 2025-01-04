@@ -296,8 +296,9 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
 
         sql = """
             INSERT INTO signature
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s)
+            VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
         """
 
         records = []
