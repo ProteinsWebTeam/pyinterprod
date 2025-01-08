@@ -406,6 +406,7 @@ def persist_pfam_c(uri: str, pfam_c: str):
             ABSTRACT VARCHAR2(4000),
             AUTHORS VARCHAR2(255) NOT NULL,
             REFERENCES VARCHAR2(4000) NOT NULL,
+            WIKIPEDIA VARCHAR2(255) NOT NULL,
             CONSTRAINT PK_PFAM_C PRIMARY KEY (ACCESSION)
         ) NOLOGGING
         """
@@ -446,7 +447,7 @@ def persist_pfam_c(uri: str, pfam_c: str):
         cur.execute(
             """
             INSERT /*+ APPEND */  INTO INTERPRO.PFAM_C
-            VALUES (:1, :2, :3, :4, :5, :6)
+            VALUES (:1, :2, :3, :4, :5, :6, :7)
             """,
             [
                 accession,
@@ -454,7 +455,8 @@ def persist_pfam_c(uri: str, pfam_c: str):
                 description,
                 comment,
                 json.dumps(authors),
-                json.dumps(references)
+                json.dumps(references),
+                json.dumps(entry.features.get("WK", []))
             ]
         )
 
