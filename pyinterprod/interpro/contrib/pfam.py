@@ -463,3 +463,5 @@ def persist_pfam_c(uri: str, pfam_c: str):
     con.commit()
     cur.close()
     con.close()
+
+    logger.info("done")
