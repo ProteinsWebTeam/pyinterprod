@@ -490,7 +490,6 @@ The available commands (and their optional arguments) are:
 - `clean`: delete obsolete data
   - `-a, --analyses`: IDs of analyses to clean (default: all)
 - `search`: scan sequences using InterProScan
-  - `--dry-run`: show the number of jobs to run and exit
   - `-l, --list`: list active analyses and exit
   - `-a, --analyses`: IDs of analyses to run (default: all)
   - `-t, --threads`: number of monitoring threads (default: 8)

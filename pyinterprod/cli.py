@@ -961,9 +961,6 @@ def run_interproscan_manager():
     parser_search = subparsers.add_parser("search", help="search sequences")
     parser_search.add_argument("--debug", action="store_true", default=False,
                                help="show debug messages (default: off)")
-    parser_search.add_argument("--dry-run", action="store_true", default=False,
-                               help="show the number of jobs to run and exit "
-                                    "(default: off)")
     parser_search.add_argument("-l", "--list", action="store_true",
                                default=False, help="list active analyses "
                                                    "and exit (default: off)")
@@ -1023,9 +1020,8 @@ def run_interproscan_manager():
 
             return
 
-        if not args.dry_run:
-            interproscan.utils.rebuild_indexes(uri=iscn_iprscan_uri,
-                                               analysis_ids=args.analyses)
+        interproscan.utils.rebuild_indexes(uri=iscn_iprscan_uri,
+                                           analysis_ids=args.analyses)
 
         analyses_config = ConfigParser()
         analyses_config.read(config["misc"]["analyses"])
@@ -1054,8 +1050,6 @@ def run_interproscan_manager():
                                  job_timeout=job_timeout,
                                  # Custom configs
                                  config=analyses_configs,
-                                 # Performs a dry run
-                                 dry_run=args.dry_run,
                                  # Job scheduler/queue
                                  scheduler=scheduler,
                                  queue=queue,

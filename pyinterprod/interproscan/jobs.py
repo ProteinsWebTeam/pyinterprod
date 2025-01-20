@@ -16,32 +16,27 @@ _I5_SUCCESS = "100% done:  InterProScan analyses completed"
 def get_incomplete_jobs(cur: oracledb.Cursor) -> dict[int, tuple]:
     cur.execute(
         """
-        SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME, SEQUENCES
-        FROM IPRSCAN.ANALYSIS_JOBS
-        WHERE END_TIME IS NULL AND SUCCESS = 'N'
-        UNION 
-        SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME, SEQUENCES
+        SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, SEQUENCES
         FROM (
-            SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, END_TIME, SEQUENCES, SUCCESS, 
+            SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, SEQUENCES, SUCCESS, 
                    ROW_NUMBER() OVER (
                        PARTITION BY ANALYSIS_ID, UPI_FROM, UPI_TO 
-                       ORDER BY END_TIME DESC
+                       ORDER BY CREATED_TIME DESC
                    ) RN
             FROM ANALYSIS_JOBS
         )
-        WHERE SUCCESS = 'N' AND RN = 1
+        WHERE RN = 1 AND (SUCCESS IS NULL OR SUCCESS = 'N')
         """
     )
 
     incomplete_jobs = {}
-    for analysis_id, upi_from, upi_to, end_time, sequences in cur:
-        is_running = end_time is None
+    for analysis_id, upi_from, upi_to, sequences in cur:
         try:
             analysis_jobs = incomplete_jobs[analysis_id]
         except KeyError:
             analysis_jobs = incomplete_jobs[analysis_id] = []
         finally:
-            analysis_jobs.append((upi_from, upi_to, is_running, sequences))
+            analysis_jobs.append((upi_from, upi_to, sequences))
 
     return incomplete_jobs
 
@@ -74,7 +69,6 @@ def update_job(cur: oracledb.Cursor,
                analysis_id: int,
                upi_from: str,
                upi_to: str,
-               submit_time: datetime | None = None,
                start_time: datetime | None = None,
                end_time: datetime | None = None,
                max_mem: int | None = None,
@@ -83,9 +77,6 @@ def update_job(cur: oracledb.Cursor,
                success: bool | None = None):
     columns = []
     params = []
-    if submit_time is not None:
-        columns.append("SUBMIT_TIME = :sbmtm")
-        params.append(submit_time)
     if start_time is not None:
         columns.append("START_TIME = :strtm")
         params.append(start_time)

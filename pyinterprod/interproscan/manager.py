@@ -67,7 +67,10 @@ def sanitize_name(string: str) -> str:
 
 
 @dataclass
-class TaskFactory:
+class InterProScanTask(Task):
+    analysis_id: int
+    upi_from: str
+    upi_to: str
     i5_dir: str
     work_dir: str
     appl: str
@@ -77,30 +80,24 @@ class TaskFactory:
     scheduler: str | None = None
     queue: str | None = None
 
-    def make(self, upi_from: str, upi_to: str) -> Task:
-        run_dir = self.get_run_dir(upi_from, upi_to)
-
-        if self.has_sites:
-            sites_path = self.get_sites_path(run_dir)
-        else:
-            sites_path = None
-
-        return Task(
+    def __post_init__(self):
+        # Call the parent class's initializer
+        super().__init__(
             fn=jobs.run_job,
             args=(
                 self.i5_dir,
                 self.appl,
-                self.get_fasta_path(upi_from, upi_to),
-                self.get_matches_path(run_dir),
-                sites_path
+                self.get_fasta_path(),
+                self.get_matches_path(),
+                self.get_sites_path()
             ),
             kwargs=dict(cpu=self.config["job_cpu"]),
             name="_".join([
                 "IPM",
                 self.appl,
                 self.version,
-                upi_from,
-                upi_to
+                self.upi_from,
+                self.upi_to
             ]),
             scheduler=dict(type=self.scheduler,
                            queue=self.queue,
@@ -110,31 +107,31 @@ class TaskFactory:
             random_suffix=False
         )
 
-    def get_run_dir(self, upi_from: str, upi_to: str,
-                    mkdir: bool = False) -> str:
-        name = f"{upi_from}_{upi_to}"
-        path = os.path.join(self.work_dir, self.appl, self.version, name)
+    def mkdir(self):
+        path = self.get_run_dir()
 
-        if mkdir:
-            try:
-                shutil.rmtree(path)
-            except FileNotFoundError:
-                pass
+        try:
+            shutil.rmtree(path)
+        except FileNotFoundError:
+            pass
 
-            os.makedirs(path)
+        os.makedirs(path)
 
-        return path
+    def get_run_dir(self) -> str:
+        name = f"{self.upi_from}_{self.upi_to}"
+        return os.path.join(self.work_dir, self.appl, self.version, name)
 
-    def get_fasta_path(self, upi_from: str, upi_to: str) -> str:
-        return os.path.join(self.get_run_dir(upi_from, upi_to), _INPUT_FASTA)
+    def get_fasta_path(self) -> str:
+        return os.path.join(self.get_run_dir(), _INPUT_FASTA)
 
-    @staticmethod
-    def get_matches_path(run_dir: str) -> str:
-        return os.path.join(run_dir, _OUTPUT_MATCHES)
+    def get_matches_path(self) -> str:
+        return os.path.join(self.get_run_dir(), _OUTPUT_MATCHES)
 
-    @staticmethod
-    def get_sites_path(run_dir: str) -> str:
-        return os.path.join(run_dir, _OUTPUT_SITES)
+    def get_sites_path(self) -> str | None:
+        if self.has_sites:
+            return os.path.join(self.get_run_dir(), _OUTPUT_SITES)
+        else:
+            return None
 
 
 def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
@@ -146,7 +143,6 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     }
     custom_configs = kwargs.get("config", {})
     debug = kwargs.get("debug", False)
-    dry_run = kwargs.get("dry_run", False)
     auto_retry = kwargs.get("auto_retry", False)
     keep_files = kwargs.get("keep_files", None)
     max_retries = kwargs.get("max_retries", 0)
@@ -210,10 +206,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 for key, value in custom_configs[name].items():
                     configs[analysis_id][key] = value
 
-    incomplete_jobs = jobs.get_incomplete_jobs(cur)
-    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
-    max_upi, = cur.fetchone()
-
+    # Find unfinished (pending + running) jobs
     if scheduler.lower() == "lsf":
         name2id = jobs.get_unfinished_lsf_jobs()
     elif scheduler.lower() == "slurm":
@@ -221,210 +214,191 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     else:
         raise ValueError(scheduler)
 
-    with Pool(temp_dir, max_running_jobs,
-              kill_on_exit=False,
-              threads=pool_threads) as pool:
-        tasks_info = {}
+    """
+    Find (in the database) jobs that are either:
+        - flagged as failed 
+        - flagged as incomplete
+    """
+    incomplete_jobs = jobs.get_incomplete_jobs(cur)
+
+    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
+    max_upi, = cur.fetchone()
+    cur.close()
+    con.close()
+
+    task_queue = []  # list of tuple (task, is_new, num_sequences)
+    num_jobs_per_analysis = {}
+
+    for analysis_id, analysis in analyses_info.items():
+        analysis_name = analysis["name"]
+        analysis_version = analysis["version"]
+        has_sites = analysis["tables"]["sites"] is not None
+        num_jobs_per_analysis[analysis_id] = 0
+
+        appl, _, _ = _DB_TO_I5[analysis_name]
+        config = configs[analysis_id]
+
+        # Check jobs that were already submitted
+        for upi_from, upi_to, num_sequences in incomplete_jobs.pop(analysis_id, []):
+            task = InterProScanTask(analysis_id=analysis_id,
+                                    upi_from=upi_from,
+                                    upi_to=upi_to,
+                                    i5_dir=analysis["i5_dir"],
+                                    work_dir=work_dir,
+                                    appl=appl,
+                                    version=analysis_version,
+                                    config=config,
+                                    has_sites=has_sites,
+                                    scheduler=scheduler,
+                                    queue=queue)
+
+            task.workdir = os.path.join(temp_dir, task.name)
+
+            # Assumes task is running
+            task.status = RUNNING
+
+            if task.name in name2id:
+                # There is an associated job running on the cluster
+                task.executor.id = name2id.pop(task.name)
+                task_queue.append((task, False, num_sequences))
+                continue
+
+            # Checks if output exists
+            task.poll()
+            if task.is_done():
+                # Completed, failed, or cancelled, but at least it ran
+                task_queue.append((task, False, num_sequences))
+            else:
+                # Unknown fate: resubmit
+                task.status = PENDING
+                task_queue.append((task, True, num_sequences))
+
+        # Submit new jobs
+        if analysis["max_upi"]:
+            next_upi = int_to_upi(upi_to_int(analysis["max_upi"]) + 1)
+        else:
+            next_upi = int_to_upi(1)
+
+        job_size = config["job_size"]
+        for upi_from, upi_to in range_upi(next_upi, max_upi, job_size):
+            task = InterProScanTask(analysis_id=analysis_id,
+                                    upi_from=upi_from,
+                                    upi_to=upi_to,
+                                    i5_dir=analysis["i5_dir"],
+                                    work_dir=work_dir,
+                                    appl=appl,
+                                    version=analysis_version,
+                                    config=config,
+                                    has_sites=has_sites,
+                                    scheduler=scheduler,
+                                    queue=queue)
+            task_queue.append((task, True, 0))
+
+    tasks = {}
+    if max_running_jobs > 0:
+        logger.info("exporting sequences")
 
         with ThreadPoolExecutor(max_workers=pool_threads) as executor:
+            # First, export sequences for tasks to (re-)submit
             fs = {}
+            for task, is_new, num_sequences in task_queue:
+                if is_new:
+                    if num_jobs_per_analysis[task.analysis_id] < max_jobs_per_analysis:
+                        num_jobs_per_analysis[task.analysis_id] += 1
 
-            for analysis_id, analysis in analyses_info.items():
-                analysis_name = analysis["name"]
-                analysis_version = analysis["version"]
-                has_sites = analysis["tables"]["sites"] is not None
+                        task.mkdir()
+                        fasta_path = task.get_fasta_path()
 
-                appl, _, _ = _DB_TO_I5[analysis_name]
-                config = configs[analysis_id]
-                factory = TaskFactory(i5_dir=analysis["i5_dir"],
-                                      work_dir=work_dir,
-                                      appl=appl, version=analysis_version,
-                                      config=config,
-                                      has_sites=has_sites,
-                                      scheduler=scheduler, queue=queue)
+                        args = (uri, task.upi_from, task.upi_to, fasta_path)
+                        f = executor.submit(export_sequences, *args)
 
-                n_tasks_analysis = 0
-
-                # First, look at existing jobs marked as incomplete in the DB
-                for info in incomplete_jobs.pop(analysis_id, []):
-                    upi_from, upi_to, is_running, num_sequences = info
-
-                    if dry_run:
-                        if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
-                            break
-                        else:
-                            # Doesn't matter what is in tasks_info (dry run)
-                            tasks_info[(analysis_id, upi_from, upi_to)] = None
-                            n_tasks_analysis += 1
-                            continue
-
-                    task = factory.make(upi_from, upi_to)
-                    task.workdir = os.path.join(temp_dir, task.name)
-
-                    if is_running:
-                        # Flagged as running (incomplete) in the database
-
-                        # Assumes task is running
-                        task.status = RUNNING
-
-                        # Checks if the associated job is running
-                        if task.name in name2id:
-                            # It is!
-                            task.executor.id = name2id.pop(task.name)
-                            pool.submit(task)
-                            tasks_info[task.name] = (
-                                analysis_id, upi_from, upi_to, num_sequences,
-                                factory.get_run_dir(upi_from, upi_to)
-                            )
-                            n_tasks_analysis += 1
-                            continue
-
-                        task.poll()  # Checks if output exists
-                        if task.is_done():
-                            """
-                            Completed or failed. Submitted to the pool
-                            which will send it back without restarting it.
-                            """
-                            pool.submit(task)
-                            tasks_info[task.name] = (
-                                analysis_id, upi_from, upi_to, num_sequences,
-                                factory.get_run_dir(upi_from, upi_to)
-                            )
-                        elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
-                            break
-                        else:
-                            # Unknown fate: re-submit
-                            task.status = PENDING
-                            run_dir = factory.get_run_dir(upi_from, upi_to,
-                                                          mkdir=True)
-                            fasta = factory.get_fasta_path(upi_from, upi_to)
-                            f = executor.submit(export_sequences, uri, upi_from,
-                                                upi_to, fasta)
-                            fs[f] = (analysis_id, upi_from, upi_to, run_dir,
-                                     task)
-                            n_tasks_analysis += 1
-                    elif 0 <= max_jobs_per_analysis <= n_tasks_analysis:
-                        break
-                    else:
-                        # Flagged as failed in the database: re-submit
-                        task.status = PENDING
-                        run_dir = factory.get_run_dir(upi_from, upi_to,
-                                                      mkdir=True)
-                        fasta = factory.get_fasta_path(upi_from, upi_to)
-                        f = executor.submit(export_sequences, uri, upi_from,
-                                            upi_to, fasta)
-                        fs[f] = (analysis_id, upi_from, upi_to, run_dir, task)
-
-                        n_tasks_analysis += 1
-
-                # Now submit new jobs
-                if analysis["max_upi"]:
-                    next_upi = int_to_upi(upi_to_int(analysis["max_upi"]) + 1)
+                        fs[f] = task
                 else:
-                    next_upi = int_to_upi(1)
+                    tasks[task.name] = (task, num_sequences)
 
-                job_size = config["job_size"]
-                for upi_from, upi_to in range_upi(next_upi, max_upi, job_size):
-                    if 0 <= max_jobs_per_analysis <= n_tasks_analysis:
-                        break
-                    elif dry_run:
-                        # Doesn't matter what is in tasks_info (dry run)
-                        tasks_info[(analysis_id, upi_from, upi_to)] = None
-                        n_tasks_analysis += 1
-                        continue
-
-                    run_dir = factory.get_run_dir(upi_from, upi_to, mkdir=True)
-                    fasta = factory.get_fasta_path(upi_from, upi_to)
-                    task = factory.make(upi_from, upi_to)
-                    f = executor.submit(export_sequences, uri, upi_from,
-                                        upi_to, fasta)
-                    fs[f] = (analysis_id, upi_from, upi_to, run_dir, task)
-                    n_tasks_analysis += 1
-
-                logger.debug(f"{analysis_name} {analysis_version}: "
-                             f"{n_tasks_analysis} tasks")
+            con = oracledb.connect(uri)
+            cur = con.cursor()
 
             for f in as_completed(fs):
-                analysis_id, upi_from, upi_to, run_dir, task = fs[f]
+                task = fs[f]
 
                 try:
                     num_sequences = f.result()
                 except Exception as exc:
-                    logger.error(f"{analysis_id} ({upi_from}-{upi_to}): {exc}")
+                    logger.error(f"{task.analysis_id} "
+                                 f"({task.upi_from}-{task.upi_to}): {exc}")
                     continue
 
                 # Add a (placeholder/inactive) job
-                jobs.add_job(cur, analysis_id, upi_from, upi_to, num_sequences)
+                jobs.add_job(cur, task.analysis_id, task.upi_from, task.upi_to,
+                             num_sequences)
 
                 if num_sequences > 0:
-                    # Submit the task
-                    pool.submit(task)
-                    tasks_info[task.name] = (analysis_id, upi_from, upi_to,
-                                             num_sequences, run_dir)
+                    tasks[task.name] = (task, num_sequences)
                 else:
                     # Empty job: flag it as successful
-                    jobs.update_job(cur, analysis_id, upi_from, upi_to,
-                                    success=True)
-                    try_rmtree(run_dir)
+                    jobs.update_job(cur, task.analysis_id, task.upi_from,
+                                    task.upi_to, success=True)
+                    try_rmtree(task.get_run_dir())
 
-            del fs
+            cur.close()
+            con.close()
 
-        cur.close()
-        con.close()
+    # Now submit tasks to the pool, so they are monitored
+    with Pool(path=temp_dir, max_running=max_running_jobs,
+              kill_on_exit=False, threads=pool_threads) as pool:
+        for task, num_sequences in tasks.values():
+            pool.submit(task)
 
-        n_tasks = len(tasks_info)
-        logger.info(f"tasks: {n_tasks:,}")
+        num_tasks = len(tasks)
+        logger.info(f"tasks: {num_tasks}")
 
-        if dry_run:
-            return
-
-        logger.info(f"monitoring")
-        con = oracle.try_connect(uri)
-        cur = con.cursor()
-
-        n_completed = n_failed = 0
+        num_completed = num_failed = 0
         milestone = step = 5
         retries = {}
-        while (n_completed + n_failed) < n_tasks:
-            for task in pool.as_completed(wait=True):
-                info = tasks_info[task.name]
-                analysis_id, upi_from, upi_to, num_sequences, run_dir = info
-                analysis = analyses_info[analysis_id]
-                analysis_name = analysis["name"]
-                matches_table = analysis["tables"]["matches"]
-                sites_table = analysis["tables"]["sites"]
 
-                _, fn_matches, fn_sites = _DB_TO_I5[analysis_name]
+        con = oracledb.connect(uri)
+        cur = con.cursor()
+
+        while (num_completed + num_failed) < num_tasks:
+            for task in pool.as_completed(wait=True):
+                task: InterProScanTask
 
                 logfile = os.path.join(temp_dir, f"{task.name}.log")
                 if task.is_successful():
-                    logger.debug(f"Completed: {analysis_name} ({analysis_id})"
-                                 f" {upi_from}-{upi_to}")
+                    analysis = analyses_info[task.analysis_id]
+                    analysis_name = analysis["name"]
+                    matches_table = analysis["tables"]["matches"]
+                    sites_table = analysis["tables"]["sites"]
+                    _, fn_matches, fn_sites = _DB_TO_I5[analysis_name]
 
                     # Persist data
                     cur2 = con.cursor()
                     ok = analyses.persist_results(
                         cur2,
-                        analysis_id,
+                        task.analysis_id,
                         fn_matches,
-                        factory.get_matches_path(run_dir),
+                        task.get_matches_path(),
                         matches_table,
                         fn_sites,
-                        factory.get_sites_path(run_dir),
+                        task.get_sites_path(),
                         sites_table
                     )
                     cur2.close()
 
-                    # Update job in database
-                    jobs.update_job(
-                        cur, analysis_id, upi_from, upi_to,
-                        task.submit_time, task.start_time, task.end_time,
-                        task.maxmem, task.executor.memory,
-                        task.cputime, ok
-                    )
-
                     if ok:
                         # Data persisted successfully
+                        jobs.update_job(cur,
+                                        task.analysis_id,
+                                        task.upi_from,
+                                        task.upi_to,
+                                        task.start_time,
+                                        task.end_time,
+                                        task.maxmem,
+                                        task.executor.memory,
+                                        task.cputime,
+                                        success=True)
+
                         if keep_files == "all":
                             with open(logfile, "wt") as fh:
                                 fh.write(task.stdout)
@@ -436,42 +410,13 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                             except FileNotFoundError:
                                 pass
 
-                            try_rmtree(run_dir)
+                            try_rmtree(task.get_run_dir())
 
-                        n_completed += 1
+                        num_completed += 1
                     else:
-                        try:
-                            os.unlink(logfile)
-                        except FileNotFoundError:
-                            pass
-
-                        try_rmtree(run_dir)
-
-                        # Number of times the task was re-submitted
-                        num_retries = retries.get(task.name, 0)
-
-                        if num_retries < max_retries:
-                            # Task allowed to be re-submitted
-                            # Resubmit task
-                            task.status = PENDING
-                            pool.submit(task)
-
-                            # Add new job
-                            jobs.add_job(cur, analysis_id, upi_from, upi_to,
-                                         num_sequences)
-
-                            # Increment retries counter
-                            retries[task.name] = num_retries + 1
-                        else:
-                            # Max number of retries reached
-                            n_failed += 1
-
-                            if keep_files not in ("all", "failed"):
-                                try_rmtree(run_dir)
+                        logger.warning(f"Persistence error for {task.name}")
+                        # TODO: clean run directory or re-submit?
                 else:
-                    logger.debug(f"Failed: {analysis_name} ({analysis_id})"
-                                 f" {upi_from}-{upi_to}")
-
                     if keep_files in ("all", "failed"):
                         with open(logfile, "wt") as fh:
                             fh.write(task.stdout)
@@ -518,29 +463,32 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         pool.submit(task)
 
                         # Add new job
-                        jobs.add_job(cur, analysis_id, upi_from, upi_to,
-                                     num_sequences)
+                        jobs.add_job(cur, task.analysis_id, task.upi_from,
+                                     task.upi_to, num_sequences)
 
                         # Increment retries counter
                         retries[task.name] = num_retries + 1
                     else:
                         # Max number of retries reached
-                        n_failed += 1
+                        num_failed += 1
 
                         if keep_files not in ("all", "failed"):
-                            try_rmtree(run_dir)
+                            try_rmtree(task.get_run_dir())
 
-                progress = (n_completed + n_failed) * 100 / n_tasks
+                progress = (num_completed + num_failed) * 100 / num_tasks
                 if progress >= milestone:
                     while progress >= milestone:
                         milestone += step
 
                     logger.info(f"progress: {progress:>3.0f}%")
 
-        if n_failed:
-            logger.error(f"{n_failed} task(s) failed")
-        else:
-            logger.info("complete")
+        cur.close()
+        con.close()
+
+    if num_failed:
+        logger.error(f"{num_failed} task(s) failed")
+    else:
+        logger.info("complete")
 
 
 def export_sequences(uri: str, upi_from: str, upi_to: str, output: str) -> int:
