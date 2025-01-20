@@ -103,7 +103,7 @@ def update_job(cur: oracledb.Cursor,
         params.append(cpu_time)
     if success is not None:
         columns.append("SUCCESS = :success")
-        params.append("Y" if success else None)
+        params.append("Y" if success else "N")
 
     if columns:
         cur.execute(
