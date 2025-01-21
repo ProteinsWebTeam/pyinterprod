@@ -365,6 +365,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 task: InterProScanTask
 
                 logfile = os.path.join(temp_dir, f"{task.name}.log")
+                failed = False
                 if task.is_successful():
                     analysis = analyses_info[task.analysis_id]
                     analysis_name = analysis["name"]
@@ -414,9 +415,12 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
                         num_completed += 1
                     else:
-                        logger.warning(f"Persistence error for {task.name}")
-                        # TODO: clean run directory or re-submit?
+                        # Persistence error (duplicated matches in I5 output)
+                        failed = True
                 else:
+                    failed = True
+
+                if failed:
                     if keep_files in ("all", "failed"):
                         with open(logfile, "wt") as fh:
                             fh.write(task.stdout)
