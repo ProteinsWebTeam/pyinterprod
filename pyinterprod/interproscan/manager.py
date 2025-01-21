@@ -294,55 +294,57 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                                     queue=queue)
             task_queue.append((task, True, 0))
 
+    if max_running_jobs == 0:
+        logger.info(f"tasks: {len(task_queue)}")
+        return
+
     tasks = {}
-    if max_running_jobs > 0:
-        logger.info("exporting sequences")
+    logger.info("exporting sequences")
+    with ThreadPoolExecutor(max_workers=pool_threads) as executor:
+        # First, export sequences for tasks to (re-)submit
+        fs = {}
+        for task, is_new, num_sequences in task_queue:
+            if is_new:
+                if num_jobs_per_analysis[task.analysis_id] < max_jobs_per_analysis:
+                    num_jobs_per_analysis[task.analysis_id] += 1
 
-        with ThreadPoolExecutor(max_workers=pool_threads) as executor:
-            # First, export sequences for tasks to (re-)submit
-            fs = {}
-            for task, is_new, num_sequences in task_queue:
-                if is_new:
-                    if num_jobs_per_analysis[task.analysis_id] < max_jobs_per_analysis:
-                        num_jobs_per_analysis[task.analysis_id] += 1
+                    task.mkdir()
+                    fasta_path = task.get_fasta_path()
 
-                        task.mkdir()
-                        fasta_path = task.get_fasta_path()
+                    args = (uri, task.upi_from, task.upi_to, fasta_path)
+                    f = executor.submit(export_sequences, *args)
 
-                        args = (uri, task.upi_from, task.upi_to, fasta_path)
-                        f = executor.submit(export_sequences, *args)
+                    fs[f] = task
+            else:
+                tasks[task.name] = (task, num_sequences)
 
-                        fs[f] = task
-                else:
-                    tasks[task.name] = (task, num_sequences)
+        con = oracledb.connect(uri)
+        cur = con.cursor()
 
-            con = oracledb.connect(uri)
-            cur = con.cursor()
+        for f in as_completed(fs):
+            task = fs[f]
 
-            for f in as_completed(fs):
-                task = fs[f]
+            try:
+                num_sequences = f.result()
+            except Exception as exc:
+                logger.error(f"{task.analysis_id} "
+                             f"({task.upi_from}-{task.upi_to}): {exc}")
+                continue
 
-                try:
-                    num_sequences = f.result()
-                except Exception as exc:
-                    logger.error(f"{task.analysis_id} "
-                                 f"({task.upi_from}-{task.upi_to}): {exc}")
-                    continue
+            # Add a (placeholder/inactive) job
+            jobs.add_job(cur, task.analysis_id, task.upi_from, task.upi_to,
+                         num_sequences)
 
-                # Add a (placeholder/inactive) job
-                jobs.add_job(cur, task.analysis_id, task.upi_from, task.upi_to,
-                             num_sequences)
+            if num_sequences > 0:
+                tasks[task.name] = (task, num_sequences)
+            else:
+                # Empty job: flag it as successful
+                jobs.update_job(cur, task.analysis_id, task.upi_from,
+                                task.upi_to, success=True)
+                try_rmtree(task.get_run_dir())
 
-                if num_sequences > 0:
-                    tasks[task.name] = (task, num_sequences)
-                else:
-                    # Empty job: flag it as successful
-                    jobs.update_job(cur, task.analysis_id, task.upi_from,
-                                    task.upi_to, success=True)
-                    try_rmtree(task.get_run_dir())
-
-            cur.close()
-            con.close()
+        cur.close()
+        con.close()
 
     # Now submit tasks to the pool, so they are monitored
     with Pool(path=temp_dir, max_running=max_running_jobs,
