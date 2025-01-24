@@ -4,7 +4,7 @@ import shutil
 import tarfile
 from tempfile import mkdtemp
 
-import oracledb
+from oracledb import Cursor
 
 from pyinterprod import logger
 from pyinterprod.utils import Table
@@ -12,52 +12,36 @@ from pyinterprod.utils.io import dump, iter_until_eof
 from pyinterprod.utils.oracle import drop_table, get_partitions
 
 
-def load_matches(uri: str, databases: dict[str, str], **kwargs):
-    con = oracledb.connect(uri)
-    cur = con.cursor()
-
+def load_matches(cur: Cursor, databases: dict[str, str],
+                 tmpdir: str | None = None):
+    """
+    :param cur: Oracle cursor object
+    :param databases: dictionary of databases to update
+                      key -> dbcode
+                      value -> path to tar archive
+    :param tmpdir: directory for temporary files
+    """
     partitions = {}
     for p in get_partitions(cur, "INTERPRO", "TOAD_MATCH"):
         name = p["name"]
         dbcode = p["value"][1:-1]  # 'X' -> X
         partitions[dbcode] = name
 
-    for i, (dbshort, filepath) in enumerate(databases.items()):
-        cur.execute(
-            """
-            SELECT DBCODE, DBNAME 
-            FROM INTERPRO.CV_DATABASE 
-            WHERE DBSHORT = :1
-            """,
-            [dbshort.upper()]
-        )
-        row = cur.fetchone()
-        if row is None:
-            cur.close()
-            con.close()
-            raise ValueError(f"No database found for {dbshort}")
-
-        dbcode, dbname = row
-
+    for i, (dbcode, filepath) in enumerate(databases.items()):
         try:
             partition = partitions[dbcode]
         except KeyError:
-            cur.close()
-            con.close()
-            err = f"No partition in TOAD_MATCH for database {dbshort}"
+            err = f"No partition for database with dbcode '{dbcode}'"
             raise KeyError(err)
 
-        logger.info(f"loading {dbname} matches")
+        logger.info(f"updating partition: {partition}")
         last = i + 1 == len(databases)
         load_database_matches(cur, partition, filepath,
-                              tmpdir=kwargs.get("tmpdir"),
+                              tmpdir=tmpdir,
                               purge=last)
 
-    cur.close()
-    con.close()
 
-
-def load_database_matches(cur: oracledb.Cursor, partition: str, filepath: str,
+def load_database_matches(cur: Cursor, partition: str, filepath: str,
                           tmpdir: str | None = None, purge: bool = False):
     logger.info(f"\tloading matches from {filepath}")
     # Insert "raw" matches (as provided by DeepMind)

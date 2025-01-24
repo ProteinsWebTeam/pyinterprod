@@ -134,6 +134,7 @@ Dear UniProt team,
 You may refresh IPREADU with the snapshot of IPPRO from [DATE-TIME]
 
 The max UPI we processed up to in this update is {max_upi}.
+The InterProScan version for this update is 5.XX-YYY.Y.
 """
 
     if updates:

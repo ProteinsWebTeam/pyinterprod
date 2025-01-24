@@ -2,6 +2,7 @@ from decimal import Decimal
 from typing import Callable
 
 import oracledb
+from oracledb.exceptions import IntegrityError
 
 from pyinterprod import logger
 
@@ -55,13 +56,18 @@ def persist_results(cur: oracledb.Cursor,
                     matches_table: str,
                     sites_fn: Callable | None,
                     sites_file: str | None,
-                    sites_table: str | None):
-    matches_fn(cur, matches_file, analysis_id, matches_table)
+                    sites_table: str | None) -> bool:
+    try:
+        matches_fn(cur, matches_file, analysis_id, matches_table)
 
-    if sites_fn is not None:
-        sites_fn(cur, sites_file, analysis_id, sites_table)
-
-    cur.connection.commit()
+        if sites_fn is not None:
+            sites_fn(cur, sites_file, analysis_id, sites_table)
+    except IntegrityError:
+        cur.connection.rollback()
+        return False
+    else:
+        cur.connection.commit()
+        return True
 
 
 def cdd_matches(cur: oracledb.Cursor, file: str, analysis_id: int, table: str):

@@ -351,6 +351,13 @@ def delete_obsoletes(url: str, truncate: bool = False, threads: int = 8,
         con.close()
         raise RuntimeError(f"{num_errors} constraints could not be disabled")
 
+    # Rebuild indexes (DELETE fails if an index is unusable)
+    for table, constraint, column in tables:
+        for index in ora.get_indexes(cur, "INTERPRO", table):
+            if index["is_unusable"]:
+                logger.info(f"rebuilding index {index['name']}")
+                ora.rebuild_index(cur, index["name"])
+
     # Find partitions to run a DELETE statement for each partition
     tasks = []
     for table, constraint, column in tables:

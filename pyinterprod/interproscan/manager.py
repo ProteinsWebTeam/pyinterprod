@@ -403,7 +403,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
                     # Persist data
                     cur2 = con.cursor()
-                    analyses.persist_results(
+                    ok = analyses.persist_results(
                         cur2,
                         analysis_id,
                         fn_matches,
@@ -420,15 +420,26 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         cur, analysis_id, upi_from, upi_to,
                         task.submit_time, task.start_time, task.end_time,
                         task.maxmem, task.executor.memory,
-                        task.cputime, True
+                        task.cputime, ok
                     )
 
-                    if keep_files == "all":
-                        with open(logfile, "wt") as fh:
-                            fh.write(task.stdout)
-                            fh.write(task.stderr)
+                    if ok:
+                        # Data persisted successfully
+                        if keep_files == "all":
+                            with open(logfile, "wt") as fh:
+                                fh.write(task.stdout)
+                                fh.write(task.stderr)
+                        else:
+                            # Remove the log file
+                            try:
+                                os.unlink(logfile)
+                            except FileNotFoundError:
+                                pass
+
+                            try_rmtree(run_dir)
+
+                        n_completed += 1
                     else:
-                        # Remove the log file (exists if a previous run failed)
                         try:
                             os.unlink(logfile)
                         except FileNotFoundError:
@@ -436,7 +447,27 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
                         try_rmtree(run_dir)
 
-                    n_completed += 1
+                        # Number of times the task was re-submitted
+                        num_retries = retries.get(task.name, 0)
+
+                        if num_retries < max_retries:
+                            # Task allowed to be re-submitted
+                            # Resubmit task
+                            task.status = PENDING
+                            pool.submit(task)
+
+                            # Add new job
+                            jobs.add_job(cur, analysis_id, upi_from, upi_to,
+                                         num_sequences)
+
+                            # Increment retries counter
+                            retries[task.name] = num_retries + 1
+                        else:
+                            # Max number of retries reached
+                            n_failed += 1
+
+                            if keep_files not in ("all", "failed"):
+                                try_rmtree(run_dir)
                 else:
                     logger.debug(f"Failed: {analysis_name} ({analysis_id})"
                                  f" {upi_from}-{upi_to}")

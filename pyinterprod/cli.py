@@ -1,11 +1,10 @@
 import os
 import sys
 from argparse import ArgumentParser
-from configparser import ConfigParser
+from configparser import ConfigParser, NoOptionError
 
 from mundone import Task, Workflow
 
-from pyinterprod import __version__
 from pyinterprod import interpro, interproscan, pronto, uniprot
 from pyinterprod.interpro.clan import update_cdd_clans, update_hmm_clans
 
@@ -63,7 +62,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             fn=pronto.protein.import_protein_pubmed,
             args=(ora_swp_uri, pg_ipr_uri),
             name="proteins-pubmed",
-            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=1)
+            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=3)
         ),
         Task(
             fn=pronto.proteome.import_proteomes,
@@ -96,7 +95,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             fn=pronto.match.insert_fmatches,
             args=(ora_ipr_uri, pg_ipr_uri),
             name="insert-fmatches",
-            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=1),
+            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=3),
             requires=["databases", "init-matches"]
         ),
         Task(
@@ -137,7 +136,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             kwargs=dict(processes=8),
             name="signatures",
             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=16000,
-                           hours=5),
+                           hours=6),
             requires=["databases", "export-matches"]
         ),
         Task(
@@ -200,9 +199,6 @@ def run_clan_update():
                         help="number of alignment workers")
     parser.add_argument("-T", "--tempdir",
                         help="directory to use for temporary files")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -251,9 +247,6 @@ def run_hmm_update():
                         metavar="DATABASE",
                         nargs="+",
                         help="database(s) to update")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -301,9 +294,6 @@ def run_member_db_update():
     parser.add_argument("--detach",
                         action="store_true",
                         help="enqueue tasks to run and exit")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -345,6 +335,7 @@ def run_member_db_update():
     non_ipm_dbs = []
     site_dbs = []
     model_sources = {}
+    toad_sources = {}
     go_sources = []
     for dbname, db in databases.items():
         if db.is_member_db or db.is_feature_db:
@@ -361,6 +352,10 @@ def run_member_db_update():
                              f"missing database '{dbname}'")
 
             model_sources[db.identifier] = props
+            try:
+                toad_sources[db.identifier] = options.get("toad", dbname)
+            except NoOptionError:
+                pass
 
             if db.analysis_id is None:
                 # No analysis ID in ISPRO
@@ -389,24 +384,14 @@ def run_member_db_update():
     if member_dbs or feature_dbs or site_dbs:
         tasks += [
             Task(
-                fn=interpro.iprscan.import_tables,
+                fn=interpro.iprscan.import_matches_or_sites,
                 args=(ora_iprscan_uri, "matches"),
                 kwargs=dict(databases=member_dbs + feature_dbs + site_dbs,
                             force=True,
                             threads=8),
-                name="import-ipm-matches",
-                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24)
-            ),
-            Task(
-                fn=interpro.iprscan.update_partitions,
-                args=(ora_iprscan_uri, "matches"),
-                kwargs=dict(databases=member_dbs + feature_dbs + site_dbs,
-                            force=True,
-                            threads=4),
                 name="update-ipm-matches",
-                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
-                requires=["import-ipm-matches"]
-            ),
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=48)
+            )
         ]
         ipm_dependencies = ["update-ipm-matches"]
     else:
@@ -432,7 +417,7 @@ def run_member_db_update():
                 fn=interpro.signature.delete_obsoletes,
                 args=(ora_interpro_uri, member_dbs),
                 name="delete-obsoletes",
-                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=4),
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
                 requires=["track-changes"]
             ),
             Task(
@@ -455,6 +440,13 @@ def run_member_db_update():
                 name="index-matches",
                 scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12),
                 requires=["update-matches"]
+            ),
+            Task(
+                fn=interpro.match.update_toad_matches,
+                args=(ora_interpro_uri, member_dbs, toad_sources),
+                name="update-toad-matches",
+                scheduler=dict(type=scheduler, queue=queue, mem=24000, hours=24),
+                requires=["update-signatures"]
             ),
             Task(
                 fn=interpro.match.update_variant_matches,
@@ -523,19 +515,11 @@ def run_member_db_update():
 
         tasks += [
             Task(
-                fn=interpro.iprscan.import_tables,
-                args=(ora_iprscan_uri, "sites"),
-                kwargs=dict(databases=site_dbs, force=True, threads=2),
-                name="import-ipm-sites",
-                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
-            ),
-            Task(
-                fn=interpro.iprscan.update_partitions,
+                fn=interpro.iprscan.import_matches_or_sites,
                 args=(ora_iprscan_uri, "sites"),
                 kwargs=dict(databases=site_dbs, force=True, threads=2),
                 name="update-ipm-sites",
-                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
-                requires=["import-ipm-sites"]
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=72),
             ),
             Task(
                 fn=interpro.match.update_database_site_matches,
@@ -613,9 +597,6 @@ def run_pronto_update():
     parser.add_argument("--detach",
                         action="store_true",
                         help="enqueue tasks to run and exit")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -664,9 +645,6 @@ def run_uniprot_update():
     parser.add_argument("--detach",
                         action="store_true",
                         help="enqueue tasks to run and exit")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -721,36 +699,20 @@ def run_uniprot_update():
 
         # Data from ISPRO
         Task(
-            fn=interpro.iprscan.import_tables,
+            fn=interpro.iprscan.import_matches_or_sites,
             args=(ora_iprscan_uri, "matches"),
             kwargs=dict(force=True, threads=8),
-            name="import-ipm-matches",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
-            requires=["update-uniparc-proteins"]
-        ),
-        Task(
-            fn=interpro.iprscan.update_partitions,
-            args=(ora_iprscan_uri, "matches"),
-            kwargs=dict(force=True, threads=4),
             name="update-ipm-matches",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
-            requires=["import-ipm-matches"]
-        ),
-        Task(
-            fn=interpro.iprscan.import_tables,
-            args=(ora_iprscan_uri, "sites"),
-            kwargs=dict(force=True, threads=2),
-            name="import-ipm-sites",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=72),
             requires=["update-uniparc-proteins"]
         ),
         Task(
-            fn=interpro.iprscan.update_partitions,
+            fn=interpro.iprscan.import_matches_or_sites,
             args=(ora_iprscan_uri, "sites"),
             kwargs=dict(force=True, threads=2),
             name="update-ipm-sites",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
-            requires=["import-ipm-sites"]
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=72),
+            requires=["update-uniparc-proteins"]
         ),
 
         # Data from flat files
