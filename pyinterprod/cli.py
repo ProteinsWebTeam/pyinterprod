@@ -1058,8 +1058,6 @@ def run_interproscan_manager():
                                  max_running_jobs=args.concurrent_jobs,
                                  # Max jobs submitted per analysis
                                  max_jobs_per_analysis=args.max_jobs,
-                                 # Number of monitoring threads
-                                 pool_threads=args.threads,
                                  # Analyses to perform
                                  analyses=args.analyses,
                                  # Analyses to exclude
