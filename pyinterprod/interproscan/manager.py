@@ -185,7 +185,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             # Analysis not in the list of analyses to run
             continue
 
-        # Either not list of analyses (i.e. run all), or part of this list
+        # Either we want to run all analyses (default),
+        # or we explicitly specified the current analysis
         analyses_info[analysis_id] = analysis
 
         # Apply default config
