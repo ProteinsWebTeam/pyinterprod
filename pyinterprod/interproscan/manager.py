@@ -118,8 +118,13 @@ class InterProScanTask(Task):
         os.makedirs(path)
 
     def get_run_dir(self) -> str:
-        name = f"{self.upi_from}_{self.upi_to}"
-        return os.path.join(self.work_dir, self.appl, self.version, name)
+        # use a subdirectory based on upi_from (e.g. UPI00072D6701 -> UPI00072)
+        # to prevent having too many directories in <work_dir>/<appl>/<version>
+        return os.path.join(self.work_dir,
+                            self.appl,
+                            self.version,
+                            self.upi_from[:8],
+                            f"{self.upi_from}_{self.upi_to}")
 
     def get_fasta_path(self) -> str:
         return os.path.join(self.get_run_dir(), _INPUT_FASTA)
