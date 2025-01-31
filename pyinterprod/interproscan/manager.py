@@ -324,10 +324,12 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             else:
                 tasks[task.name] = (task, num_sequences)
 
+        logger.info(f"\t{len(fs)} FASTA files to create")
         con = oracledb.connect(uri)
         cur = con.cursor()
 
-        for f in as_completed(fs):
+        milestone = step = 10
+        for i, f in enumerate(as_completed(fs)):
             task = fs[f]
 
             try:
@@ -335,19 +337,30 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             except Exception as exc:
                 logger.error(f"{task.analysis_id} "
                              f"({task.upi_from}-{task.upi_to}): {exc}")
-                continue
-
-            # Add a (placeholder/inactive) job
-            jobs.add_job(cur, task.analysis_id, task.upi_from, task.upi_to,
-                         num_sequences)
-
-            if num_sequences > 0:
-                tasks[task.name] = (task, num_sequences)
-            else:
-                # Empty job: flag it as successful
+                # Add a failed job (for a future run)
+                jobs.add_job(cur, task.analysis_id, task.upi_from, task.upi_to,
+                             0)
                 jobs.update_job(cur, task.analysis_id, task.upi_from,
-                                task.upi_to, success=True)
-                try_rmtree(task.get_run_dir())
+                                task.upi_to, success=False)
+            else:
+                # Add a (placeholder/inactive) job
+                jobs.add_job(cur, task.analysis_id, task.upi_from, task.upi_to,
+                             num_sequences)
+
+                if num_sequences > 0:
+                    tasks[task.name] = (task, num_sequences)
+                else:
+                    # Empty job: flag it as successful
+                    jobs.update_job(cur, task.analysis_id, task.upi_from,
+                                    task.upi_to, success=True)
+                    try_rmtree(task.get_run_dir())
+
+            progress = (i + 1) * 100 / len(fs)
+            if progress >= milestone:
+                while progress >= milestone:
+                    milestone += step
+
+                logger.info(f"progress: {progress:>3.0f}%")
 
         cur.close()
         con.close()
@@ -477,6 +490,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         pool.submit(task)
 
                         # Add new job
+                        _, num_sequences = tasks[task.name]
                         jobs.add_job(cur, task.analysis_id, task.upi_from,
                                      task.upi_to, num_sequences)
 
