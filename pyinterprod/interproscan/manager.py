@@ -365,11 +365,10 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
         while (num_completed + num_failed) < num_tasks:
             for task in pool.as_completed(wait=True):
-                task: InterProScanTask
-
                 logfile = os.path.join(temp_dir, f"{task.name}.log")
                 failed = False
                 if task.is_successful():
+                    logger.debug(f"{task.name}: completed")
                     analysis = analyses_info[task.analysis_id]
                     analysis_name = analysis["name"]
                     matches_table = analysis["tables"]["matches"]
@@ -392,6 +391,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
                     if ok:
                         # Data persisted successfully
+                        logger.debug(f"{task.name}: persisted")
                         jobs.update_job(cur,
                                         task.analysis_id,
                                         task.upi_from,
@@ -419,8 +419,10 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                         num_completed += 1
                     else:
                         # Persistence error (duplicated matches in I5 output)
+                        logger.debug(f"{task.name}: not persisted")
                         failed = True
                 else:
+                    logger.debug(f"{task.name}: failed")
                     failed = True
 
                 if failed:
@@ -475,6 +477,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
                         # Increment retries counter
                         retries[task.name] = num_retries + 1
+                        logger.debug(f"{task.name}: re-submitted")
                     else:
                         # Max number of retries reached
                         num_failed += 1
