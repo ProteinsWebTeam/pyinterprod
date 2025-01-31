@@ -305,7 +305,8 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         fs = {}
         for task, is_new, num_sequences in task_queue:
             if is_new:
-                if num_jobs_per_analysis[task.analysis_id] < max_jobs_per_analysis:
+                if (max_jobs_per_analysis < 0 or
+                        num_jobs_per_analysis[task.analysis_id] < max_jobs_per_analysis):
                     num_jobs_per_analysis[task.analysis_id] += 1
 
                     task.mkdir()
