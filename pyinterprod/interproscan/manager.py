@@ -1,7 +1,7 @@
 import os
 import shutil
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from logging import DEBUG
 
@@ -305,7 +305,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
     tasks = {}
     logger.info("exporting sequences")
-    with ThreadPoolExecutor(max_workers=pool_threads) as executor:
+    with ProcessPoolExecutor(max_workers=pool_threads) as executor:
         # First, export sequences for tasks to (re-)submit
         fs = {}
         for task, is_new, num_sequences in task_queue:
