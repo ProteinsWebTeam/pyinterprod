@@ -969,9 +969,6 @@ def run_interproscan_manager():
                                               "(default: all)")
     parser_search.add_argument("-e", "--exclude", nargs="*", default=[],
                                type=int, help="ID of analyses to exclude")
-    parser_search.add_argument("-t", "--threads", type=int, default=8,
-                               help="number of job monitoring threads "
-                                    "(default: 8)")
     parser_search.add_argument("--concurrent-jobs", type=int, default=1000,
                                help="maximum number of concurrent "
                                     "running jobs (default: 1000)")

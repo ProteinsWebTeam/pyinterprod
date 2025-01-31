@@ -492,7 +492,6 @@ The available commands (and their optional arguments) are:
 - `search`: scan sequences using InterProScan
   - `-l, --list`: list active analyses and exit
   - `-a, --analyses`: IDs of analyses to run (default: all)
-  - `-t, --threads`: number of monitoring threads (default: 8)
   - `--concurrent-jobs`: maximum number of concurrently running InterProScan jobs (default: 1000)
   - `--max-jobs`: maximum number of jobs to run per analysis before exiting (default: disabled)
   - `--max-retries`: number of times a failed job is resubmitted (default: disabled)
