@@ -367,6 +367,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         and all tasks have been submitted to the pool.
         We can now monitor tasks.
         """
+        logger.info("monitoring")
         num_tasks = len(tasks)
         num_completed = num_failed = 0
         milestone = step = 5
