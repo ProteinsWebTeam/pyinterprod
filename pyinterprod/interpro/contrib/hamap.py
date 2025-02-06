@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
-
 import re
 from datetime import datetime
 
 from .common import Method
 
-_TYPE = 'F'
+_TYPE = "F"
 
 
 def parse_signatures(filepath: str) -> list[Method]:
@@ -33,13 +31,14 @@ def parse_signatures(filepath: str) -> list[Method]:
                 except (AttributeError, ValueError):
                     date = None
 
-                signatures.append(Method(
-                    accession=reg_acc.search(profile).group(1),
-                    sig_type=_TYPE,
-                    name=reg_id.search(profile).group(1),
-                    description=reg_de.search(profile).group(1),
-                    date=date
-                ))
+                signatures.append(
+                    Method(
+                        accession=reg_acc.search(profile).group(1),
+                        sig_type=_TYPE,
+                        name=reg_id.search(profile).group(1),
+                        description=reg_de.search(profile).group(1),
+                    )
+                )
 
                 profile = ""
 
