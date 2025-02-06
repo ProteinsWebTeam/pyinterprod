@@ -13,12 +13,12 @@ from pyinterprod.utils.oracle import drop_table
 
 
 _TYPES = {
-    "Domain": 'D',
-    "Family": 'F',
-    "Repeat": 'R',
-    "Coiled-coil": 'I',
-    "Disordered": 'O',
-    "Motif": 'C'
+    "Domain": "D",
+    "Family": "F",
+    "Repeat": "R",
+    "Coiled-coil": "I",
+    "Disordered": "O",
+    "Motif": "C",
 }
 _STO_MAIN_FIELDS = {"AC", "ID", "DE", "AU", "BM", "SM", "GA", "TC", "TP", "SQ"}
 _STO_OTHER_FIELDS = {"DR", "CC", "WK", "CL", "MB"}
@@ -26,8 +26,7 @@ _STO_REFERENCE_FIELDS = {"RC", "RM", "RT", "RA", "RL"}
 
 
 def iter_interpro_n_matches(file: str):
-    """Iterate Pfam inferences from the InterPro-N archive
-    """
+    """Iterate Pfam inferences from the InterPro-N archive"""
     with tarfile.open(file, mode="r") as tar:
         for member in tar:
             if member.name.endswith(".tsv"):
@@ -75,7 +74,7 @@ def get_signatures(pfam_seed_file: str) -> list[Method]:
         rn2pmid = {}
         if comment:
             for i, obj in enumerate(entry.features.get("RN", [])):
-                rn2pmid[i+1] = int(" ".join(obj["RM"]))
+                rn2pmid[i + 1] = int(" ".join(obj["RM"]))
 
             abstract = _repl_references(accession, comment, rn2pmid)
 
@@ -85,12 +84,12 @@ def get_signatures(pfam_seed_file: str) -> list[Method]:
 
         methods.append(
             Method(
-                accession,
-                _TYPES[entry.features["TP"]],
-                entry.features["ID"],
-                entry.features["DE"],
-                abstract,
-                list(rn2pmid.values())
+                accession=accession,
+                sig_type=_TYPES[entry.features["TP"]],
+                name=entry.features["ID"],
+                description=ntry.features["DE"],
+                abstract=abstract,
+                references=list(rn2pmid.values()),
             )
         )
 
@@ -104,8 +103,7 @@ def _repl_references(acc: str, text: str, references: dict[int, int]):
             try:
                 pmid = references[ref_num]
             except KeyError:
-                logger.warning(f"{acc}: missing PubMed ID "
-                               f"for reference #{ref_num}")
+                logger.warning(f"{acc}: missing PubMed ID " f"for reference #{ref_num}")
             else:
                 refs.append(f"PMID:{pmid}")
 
@@ -116,7 +114,7 @@ def _repl_references(acc: str, text: str, references: dict[int, int]):
 
 def _expand_range(s: str) -> list[int]:
     r = []
-    for i in s.split(','):
+    for i in s.split(","):
         values = i.split("-")
         if len(values) == 1:
             # single reference number
@@ -202,16 +200,17 @@ class StockholdMSA:
                 pass
             elif len(values) != 1:
                 # Other fields should have one value only
-                raise ValueError(f"more than one value "
-                                 f"for field {key}: {values}")
+                raise ValueError(f"more than one value " f"for field {key}: {values}")
             elif key == "SQ":
                 num_sequences = int(values.pop())
                 if num_sequences == len(self.sequences):
                     self.features[key] = num_sequences
                 else:
-                    raise ValueError(f"inconsistent number of sequences: "
-                                     f"{num_sequences} != {len(self.sequences)}"
-                                     f" ({self.features})")
+                    raise ValueError(
+                        f"inconsistent number of sequences: "
+                        f"{num_sequences} != {len(self.sequences)}"
+                        f" ({self.features})"
+                    )
             else:
                 self.features[key] = values.pop()
 
@@ -311,10 +310,7 @@ def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
         authors = []
         for author in full_entry.features["AU"]:
             name, orcid = author.split(";")
-            authors.append({
-                "author": author,
-                "orcid": orcid or None
-            })
+            authors.append({"author": author, "orcid": orcid or None})
 
         cur.execute(
             """
@@ -334,8 +330,8 @@ def persist_pfam_a(uri: str, pfama_seed: str, pfama_full: str):
                 full_entry.features["SQ"],
                 gzip.compress(full_raw.encode("utf-8"), compresslevel=6),
                 json.dumps(authors),
-                json.dumps(full_entry.features.get("WK", []))
-            ]
+                json.dumps(full_entry.features.get("WK", [])),
+            ],
         )
         progress += 1
         if progress % 100 == 0:
@@ -380,10 +376,12 @@ def get_clans(pfam_c: str, pfama_full: str) -> list[Clan]:
 
         clans.append(Clan(accession, name, description))
         for member in members:
-            clans[-1].members.append({
-                "accession": member,
-                "score": num_full.get(member, 0) / total if total > 0 else 0
-            })
+            clans[-1].members.append(
+                {
+                    "accession": member,
+                    "score": num_full.get(member, 0) / total if total > 0 else 0,
+                }
+            )
 
     return clans
 
@@ -426,18 +424,17 @@ def persist_pfam_c(uri: str, pfam_c: str):
         references = []
         for i, ref_dict in enumerate(entry.features.get("RN", [])):
             pmid = int(" ".join(ref_dict["RM"]))
-            rn2pmid[i+1] = pmid
-            references.append({
-                "PMID": pmid,
-                "title": " ".join(ref_dict["RT"]),
-                "authors": list(
-                    map(
-                        str.strip,
-                        " ".join(ref_dict["RA"]).rstrip(";").split(",")
-                    )
-                ),
-                "journal": " ".join(ref_dict["RL"])
-            })
+            rn2pmid[i + 1] = pmid
+            references.append(
+                {
+                    "PMID": pmid,
+                    "title": " ".join(ref_dict["RT"]),
+                    "authors": list(
+                        map(str.strip, " ".join(ref_dict["RA"]).rstrip(";").split(","))
+                    ),
+                    "journal": " ".join(ref_dict["RL"]),
+                }
+            )
 
         comment = entry.features.get("CC")
         if comment:
@@ -456,8 +453,8 @@ def persist_pfam_c(uri: str, pfam_c: str):
                 comment,
                 json.dumps(authors),
                 json.dumps(references),
-                json.dumps(entry.features.get("WK", []))
-            ]
+                json.dumps(entry.features.get("WK", [])),
+            ],
         )
 
     con.commit()
