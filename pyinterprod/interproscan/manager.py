@@ -311,7 +311,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
     num_tasks = len(tasks)
     logger.info(f"tasks: {num_tasks}")
-    if max_running_jobs == 0:
+    if max_running_jobs == 0 or num_tasks == 0:
         return
 
     # Create pool of FASTA export workers
