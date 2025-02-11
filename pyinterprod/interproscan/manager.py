@@ -325,9 +325,11 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         t.start()
         fasta_workers.append(t)
 
+    task_sequences = {}
     while tasks:
         task, is_new, num_sequences = tasks.pop(0)
         fasta_queue.put((task, is_new, num_sequences))
+        task_sequences[task.name] = num_sequences
 
     # Add sentinel value to terminate pool when all FASTA have been exported
     for _ in fasta_workers:
@@ -471,7 +473,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 submit_queue.put((task, num_sequences))
 
                 # Add new job
-                _, num_sequences = tasks[task.name]
+                num_sequences = task_sequences[task.name]
                 jobs.add_job(
                     cur,
                     task.analysis_id,
