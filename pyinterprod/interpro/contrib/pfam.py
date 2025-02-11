@@ -87,7 +87,7 @@ def get_signatures(pfam_seed_file: str) -> list[Method]:
                 accession=accession,
                 sig_type=_TYPES[entry.features["TP"]],
                 name=entry.features["ID"],
-                description=ntry.features["DE"],
+                description=entry.features["DE"],
                 abstract=abstract,
                 references=list(rn2pmid.values()),
             )
