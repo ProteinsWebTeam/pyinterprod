@@ -107,7 +107,7 @@ def get_pronto_tasks(ora_ipr_uri: str,
             fn=pronto.protein.import_proteins,
             args=(ora_ipr_uri, pg_ipr_uri),
             name="proteins",
-            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=3)
+            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=6)
         ),
         Task(
             fn=pronto.match.export,
