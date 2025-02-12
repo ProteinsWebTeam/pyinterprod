@@ -268,6 +268,7 @@ def import_proteins(ora_url: str, pg_url: str):
         ora_cur.close()
         ora_con.close()
 
+        logger.info("indexing")
         pg_cur.execute(
             """
             CREATE UNIQUE INDEX protein_identifier_uidx
