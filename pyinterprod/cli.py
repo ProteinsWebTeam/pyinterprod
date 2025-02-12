@@ -146,10 +146,10 @@ def get_pronto_tasks(ora_ipr_uri: str,
             name="insert-signature2proteins",
             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=4000,
                            hours=12),
-            # if not importing data from Swiss-Prot, we don't run proteins-names
-            # but we still need the names DB to be available
+            # We only need proteins-names if importing data from Swiss-Prot
+            # However, we always need the latest matches file
             requires=(["export-matches"] +
-                      ["proteins-names"] if ora_swp_uri else [])
+                      (["proteins-names"] if ora_swp_uri else []))
         ),
         Task(
             fn=pronto.match.finalize_signature2protein,
