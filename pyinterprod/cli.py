@@ -9,12 +9,30 @@ from pyinterprod import interpro, interproscan, pronto, uniprot
 from pyinterprod.interpro.clan import update_cdd_clans, update_hmm_clans
 
 
-def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
-                     ora_pdbe_uri: str, pg_ipr_uri: str, data_dir: str,
-                     temp_dir: str, scheduler: str, queue: str) -> list[Task]:
+def get_pronto_tasks(ora_ipr_uri: str,
+                     ora_swp_uri: str | None,
+                     ora_goa_uri: str,
+                     ora_pdbe_uri: str,
+                     pg_ipr_uri: str,
+                     data_dir: str,
+                     temp_dir: str,
+                     scheduler: str,
+                     queue: str) -> list[Task]:
+    """
+    Create the list of tasks to update the Pronto database
+    :param ora_ipr_uri: connection string of InterPro Oracle database
+    :param ora_swp_uri: connection string of Swiss-Prot Oracle database
+    :param ora_goa_uri: connection string of GOA Oracle database
+    :param ora_pdbe_uri: connection string of PDBe Oracle database
+    :param pg_ipr_uri: connection string of Pronto PostgreSQL database
+    :param data_dir: path to directory to store/load data files
+    :param temp_dir: path to temporary directory for transient files
+    :param scheduler: job scheduler
+    :param queue: job queue/partition
+    """
     names_db = os.path.join(data_dir, "names.sqlite")
     matches_file = os.path.join(data_dir, "matches")
-    return [
+    tasks = [
         Task(
             fn=pronto.match.create_match_table,
             args=(pg_ipr_uri,),
@@ -43,34 +61,41 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             name="structures",
             scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=6)
         ),
+    ]
 
-        # Data from SWPREAD
-        Task(
-            fn=pronto.protein.import_similarity_comments,
-            args=(ora_swp_uri, pg_ipr_uri),
-            name="proteins-similarities",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=3)
-        ),
-        Task(
-            fn=pronto.protein.import_protein_names,
-            args=(ora_swp_uri, pg_ipr_uri, names_db),
-            kwargs=dict(tmpdir=temp_dir),
-            name="proteins-names",
-            scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=24)
-        ),
-        Task(
-            fn=pronto.protein.import_protein_pubmed,
-            args=(ora_swp_uri, pg_ipr_uri),
-            name="proteins-pubmed",
-            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=3)
-        ),
-        Task(
-            fn=pronto.proteome.import_proteomes,
-            args=(ora_swp_uri, pg_ipr_uri),
-            name="proteomes",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=6)
-        ),
+    if ora_swp_uri:
+        # Import data from Swiss-Prot database
+        swp_tasks = [
+            Task(
+                fn=pronto.protein.import_similarity_comments,
+                args=(ora_swp_uri, pg_ipr_uri),
+                name="proteins-similarities",
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=3)
+            ),
+            Task(
+                fn=pronto.protein.import_protein_names,
+                args=(ora_swp_uri, pg_ipr_uri, names_db),
+                kwargs=dict(tmpdir=temp_dir),
+                name="proteins-names",
+                scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=24)
+            ),
+            Task(
+                fn=pronto.protein.import_protein_pubmed,
+                args=(ora_swp_uri, pg_ipr_uri),
+                name="proteins-pubmed",
+                scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=3)
+            ),
+            Task(
+                fn=pronto.proteome.import_proteomes,
+                args=(ora_swp_uri, pg_ipr_uri),
+                name="proteomes",
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=6)
+            ),
+        ]
+    else:
+        swp_tasks = []
 
+    return tasks + swp_tasks + [
         # Data from IPPRO
         Task(
             fn=pronto.database.import_databases,
@@ -109,7 +134,7 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
         ),
         Task(
             fn=pronto.match.finalize_match_table,
-            args=(pg_ipr_uri, ),
+            args=(pg_ipr_uri,),
             name="index-matches",
             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=18),
             requires=["insert-fmatches", "insert-matches"]
@@ -121,7 +146,10 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             name="insert-signature2proteins",
             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=4000,
                            hours=12),
-            requires=["export-matches", "proteins-names"]
+            # if not importing data from Swiss-Prot, we don't run proteins-names
+            # but we still need the names DB to be available
+            requires=(["export-matches"] +
+                      ["proteins-names"] if ora_swp_uri else [])
         ),
         Task(
             fn=pronto.match.finalize_signature2protein,
@@ -151,9 +179,8 @@ def get_pronto_tasks(ora_ipr_uri: str, ora_swp_uri: str, ora_goa_uri: str,
             name="ready",
             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1),
             requires=["taxonomy", "index-signature2proteins", "index-matches",
-                      "proteins", "proteins-similarities", "proteins-pubmed",
-                      "proteomes", "go-terms", "go-constraints", "signatures",
-                      "structures"]
+                      "proteins",  "go-terms", "go-constraints", "signatures",
+                      "structures"] + [t.name for t in swp_tasks]
         ),
     ]
 
@@ -315,7 +342,6 @@ def run_member_db_update():
     ora_interpro_uri = config["oracle"]["ipro-interpro"]
     ora_iprscan_uri = config["oracle"]["ipro-iprscan"]
     ora_goa_uri = config["oracle"]["unpr-goapro"]
-    ora_swpread_uri = config["oracle"]["unpr-swpread"]
     ora_pdbe_uri = config["oracle"]["pdbe"]
     pg_uri = config["postgresql"]["pronto"]
 
@@ -540,7 +566,7 @@ def run_member_db_update():
     if member_dbs:
         # Adding Pronto tasks
         after_pronto = []
-        for t in get_pronto_tasks(ora_interpro_uri, ora_swpread_uri,
+        for t in get_pronto_tasks(ora_interpro_uri, None,
                                   ora_goa_uri, ora_pdbe_uri, pg_uri,
                                   data_dir, temp_dir, scheduler, queue):
             # Adding 'pronto-' prefix
