@@ -196,7 +196,7 @@ class StockholdMSA:
         for key, values in self.features.items():
             if key in ("BM", "SM", "CC", "DE"):
                 self.features[key] = " ".join(values)
-            elif key in ("AU", "WK", "RN", "DR", "MB"):
+            elif key in ("AU", "WK", "RN", "DR", "MB", "NE"):
                 pass
             elif len(values) != 1:
                 # Other fields should have one value only
