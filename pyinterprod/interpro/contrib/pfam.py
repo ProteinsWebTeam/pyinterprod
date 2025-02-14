@@ -21,7 +21,7 @@ _TYPES = {
     "Motif": "C",
 }
 _STO_MAIN_FIELDS = {"AC", "ID", "DE", "AU", "BM", "SM", "GA", "TC", "TP", "SQ"}
-_STO_OTHER_FIELDS = {"DR", "CC", "WK", "CL", "MB"}
+_STO_OTHER_FIELDS = {"DR", "CC", "WK", "CL", "MB", "NE"}
 _STO_REFERENCE_FIELDS = {"RC", "RM", "RT", "RA", "RL"}
 
 
