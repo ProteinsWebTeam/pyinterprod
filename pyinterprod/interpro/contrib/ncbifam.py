@@ -17,7 +17,7 @@ def parse_tsv(tsvfile: str):
 
 def get_signatures(tsvfile: str,
                    cur: oracledb.Cursor | None = None) -> list[Method]:
-    """Parse NCBIfam TSV file
+    """Parse NCBIFAM TSV file
     https://ftp.ncbi.nlm.nih.gov/hmm/current/hmm_PGAP.tsv
     and returns signatures to be imported in InterPro
     :param tsvfile: Path to TSV file
@@ -161,7 +161,7 @@ def update_go_terms(uri: str, tsvfile: str):
 
 
 def main():
-    parser = ArgumentParser(description="create a custom NCBIfam "
+    parser = ArgumentParser(description="create a custom NCBIFAM "
                                         "HMM file for InterProScan")
     parser.add_argument("tsv", metavar="hmm_PGAP.tsv",
                         help="signatures information, in TSV format")

@@ -198,7 +198,7 @@ MATCH_PARTITIONS = {
         ],
         "partition": "SUPERFAMILY"
     },
-    "NCBIfam": {
+    "NCBIFAM": {
         "columns": [
             'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
             'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',

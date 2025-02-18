@@ -943,7 +943,7 @@ def update_database():
     parser.add_argument("--by-name", action="store_true",
                         help="Query ISPRO using the database name instead of "
                              "the analysis ID. Useful if a database has been "
-                             "renamed in IPPRO (e.g. TIGRFAMs -> NCBIfam).")
+                             "renamed in IPPRO (e.g. TIGRFAMs -> NCBIFAM).")
     parser.add_argument("-y", "--yes", dest="confirm", action="store_false",
                         help="Do not ask for confirmation.")
     args = parser.parse_args()

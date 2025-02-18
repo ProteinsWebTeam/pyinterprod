@@ -88,7 +88,7 @@ Supported properties are:
 | `hmm`        | Path to an HMM file, used for databases that employ HMMER3-based models. Required when running `ipr-hmm`. |
 | `fasta`      | Path to sequences used by models, in the FASTA format.                                                    |
 | `members`    | Path to file containing the clan-signature mapping.                                                       |
-| `go-terms`   | Path to file or directory of GO annotations. PANTHER and NCBIfam only.                                    |
+| `go-terms`   | Path to file or directory of GO annotations. PANTHER and NCBIFAM only.                                    |
 | `summary`    | Path to file of summary information. CDD only.                                                            |
 | `seed`       | Path to file of SEED alignments. Pfam only.                                                               |
 | `full`       | Path to file of full alignments. Pfam only.                                                               |

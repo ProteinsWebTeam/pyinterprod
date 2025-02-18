@@ -12,7 +12,7 @@ DATABASES = [
     'I',    # InterPro
     'J',    # CDD
     'M',    # PROSITE profiles
-    'N',    # NCBIfam
+    'N',    # NCBIFAM
     'P',    # PROSITE patterns
     'Q',    # HAMAP
     'R',    # SMART
@@ -22,7 +22,7 @@ DATABASES = [
     'Y',    # SUPERFAMILY
     'a',    # AntiFam
     'd',    # Pfam-N
-    'f',    # FunFam
+    'f',    # CATH-FunFam
     'g',    # MobiDB
     'l',    # ELM
     'u',    # UniProtKB
