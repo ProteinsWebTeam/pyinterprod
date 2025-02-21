@@ -175,9 +175,8 @@ def get_pronto_tasks(ora_ipr_uri: str,
         ),
         Task(
             fn=pronto.database.set_ready,
-            args=(pg_ipr_uri,),
+            args=(ora_ipr_uri,),
             name="ready",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1),
             requires=["taxonomy", "index-signature2proteins", "index-matches",
                       "proteins",  "go-terms", "go-constraints", "signatures",
                       "structures"] + [t.name for t in swp_tasks]

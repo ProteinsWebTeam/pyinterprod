@@ -42,14 +42,22 @@ def import_databases(ora_url: str, pg_url: str):
                 name VARCHAR(50) NOT NULL,
                 name_long VARCHAR(50) NOT NULL,
                 version VARCHAR(50) NOT NULL,
-                updated DATE NOT NULL,
-                ready BOOLEAN DEFAULT FALSE NOT NULL
+                updated DATE NOT NULL
             )
             """
         )
 
         ora_con = oracledb.connect(ora_url)
         ora_cur = ora_con.cursor()
+        ora_cur.execute(
+            """
+            UPDATE INTERPRO.PRONTO_STATES
+            SET ACTIVE = 'Y'
+            WHERE NAME = 'UPDATING'
+            """
+        )
+        ora_con.commit()
+
         ora_cur.execute(
             f"""
             SELECT D.DBCODE, LOWER(D.DBSHORT), D.DBNAME, V.VERSION, V.FILE_DATE
@@ -83,18 +91,18 @@ def import_databases(ora_url: str, pg_url: str):
     logger.info("complete")
 
 
-def set_ready(pg_url: str):
+def set_ready(ora_url: str):
     logger.info("updating status")
-    pg_con = psycopg.connect(**url2dict(pg_url))
-    with pg_con.cursor() as pg_cur:
-        pg_cur.execute(
-            f"""
-                UPDATE database 
-                SET ready = 'true'
-                WHERE NAME = 'interpro'
-            """
-        )
-        pg_con.commit()
-
-    pg_con.close()
+    ora_con = oracledb.connect(ora_url)
+    ora_cur = ora_con.cursor()
+    ora_cur.execute(
+        """
+        UPDATE INTERPRO.PRONTO_STATES
+        SET ACTIVE = 'N'
+        WHERE NAME = 'UPDATING'
+        """
+    )
+    ora_con.commit()
+    ora_cur.close()
+    ora_con.close()
     logger.info("complete")
