@@ -10,7 +10,7 @@ from pyinterprod.utils import email, oracle, Table
 
 MAX_DOM_BY_GROUP = 20
 DOM_OVERLAP_THRESHOLD = 0.3
-# Pfam, CDD, PROSITE profiles, SMART, NCBIfam
+# Pfam, CDD, PROSITE profiles, SMART, NCBIFAM
 REPR_DOM_DATABASES = ["H", "J", "M", "R", "N"]
 
 
@@ -440,7 +440,7 @@ def create_xref_summary(uri: str):
     )
     con.commit()
 
-    logger.info("inserting AntiFam and FunFam matches")
+    logger.info("inserting AntiFam and CATH-FunFam matches")
     cur.execute(
         """
         INSERT /*+ APPEND */ INTO INTERPRO.XREF_SUMMARY

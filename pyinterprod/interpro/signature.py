@@ -78,7 +78,7 @@ def add_staging(uri: str, update: list[tuple[Database, dict[str, str]]]):
                     db_props["signatures"]
                 )
             elif db.identifier == 'N':
-                # NCBIFam
+                # NCBIFAM
                 signatures = contrib.ncbifam.get_signatures(
                     db_props["signatures"], cur
                 )
@@ -590,7 +590,7 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
             file = db_props["signatures"]
             features = contrib.pfam.get_pfam_n_entries(cur, file)
         elif db.identifier == 'f':
-            # FunFams
+            # CATH-FunFams
             file = db_props["signatures"]
             features = contrib.cath.parse_functional_families(file)
         elif db.identifier == 'l':

@@ -24,13 +24,13 @@ Value -> tuple of three items
 """
 _DB_TO_I5 = {
     "AntiFam": ("AntiFam", analyses.hmmer3_matches, None),
+    "CATH-FunFam": ("FunFam", analyses.funfam_matches, None),
     "CATH-Gene3D": ("Gene3D", analyses.hmmer3_matches, None),
     "CDD": ("CDD", analyses.cdd_matches, analyses.sites),
     "COILS": ("Coils", analyses.coils_phobius_matches, None),
-    "FunFam": ("FunFam", analyses.funfam_matches, None),
     "HAMAP": ("Hamap", analyses.hamap_matches, None),
     "MobiDB Lite": ("MobiDBLite", analyses.mobidb_lite_matches, None),
-    "NCBIfam": ("NCBIfam", analyses.hmmer3_matches, None),
+    "NCBIFAM": ("NCBIFAM", analyses.hmmer3_matches, None),
     "PANTHER": ("PANTHER", analyses.panther_matches, None),
     "Pfam": ("Pfam", analyses.hmmer3_matches, None),
     "Phobius": ("Phobius", analyses.coils_phobius_matches, None),

@@ -24,6 +24,15 @@ MATCH_PARTITIONS = {
         ],
         "partition": "ANTIFAM"
     },
+    "CATH-FunFam": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
+            'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
+            'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "FUNFAM"
+    },
     "CATH-Gene3D": {
         "columns": [
             'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
@@ -51,15 +60,6 @@ MATCH_PARTITIONS = {
         ],
         "partition": "COILS"
     },
-    "FunFam": {
-        "columns": [
-            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-            'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
-            'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
-            'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-        ],
-        "partition": "FUNFAM"
-    },
     "HAMAP": {
         "columns": [
             'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'SUBSTR(RELNO_MAJOR', '1', '4)',
@@ -78,6 +78,15 @@ MATCH_PARTITIONS = {
             '0', '0', 'MODEL_AC', 'SEQ_FEATURE', 'FRAGMENTS'
         ],
         "partition": "MOBIDBLITE"
+    },
+    "NCBIFAM": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
+            'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
+            'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
+            'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "NCBIFAM"
     },
     "PANTHER": {
         "columns": [
@@ -197,15 +206,6 @@ MATCH_PARTITIONS = {
             '0', '0', 'MODEL_AC', 'NULL', 'FRAGMENTS'
         ],
         "partition": "SUPERFAMILY"
-    },
-    "NCBIfam": {
-        "columns": [
-            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-            'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
-            'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
-            'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
-        ],
-        "partition": "NCBIFAM"
     },
     "TMHMM": {
         "columns": [
@@ -441,7 +441,7 @@ def import_matches_or_sites(uri: str, data_type: str = "matches", **kwargs):
 
                 f = executor.submit(_update_table, *args)
                 running.append((f, table, [f"{analysis.name} {analysis.version}"
-                                for analysis, _, _ in analyses]))
+                                           for analysis, _, _ in analyses]))
 
             pending = tmp
 
