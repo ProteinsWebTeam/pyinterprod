@@ -10,8 +10,10 @@ from pyinterprod.utils import email, oracle, Table
 
 MAX_DOM_BY_GROUP = 20
 DOM_OVERLAP_THRESHOLD = 0.3
-# Pfam, CDD, PROSITE profiles, SMART, NCBIFAM
-REPR_DOM_DATABASES = ["H", "J", "M", "R", "N"]
+# Pfam, CDD, PROSITE profiles, SMART, NCBIFAM, CATH-Gene3D, SUPERFAMILY
+REPR_DOM_DATABASES = ["H", "J", "M", "R", "N", "X", "Y"]
+# Domain, Repeat, Homologous superfamily
+REPR_DOM_TYPES = ["D", "R", "H"]
 
 
 def create_aa_alignment(uri: str):
@@ -492,19 +494,20 @@ def export_repr_domains(ora_url: str, output: str, emails: dict):
     con = oracledb.connect(ora_url)
     cur = con.cursor()
 
-    placeholders = ','.join(':' + str(i + 1)
-                            for i in range(len(REPR_DOM_DATABASES)))
+    params_dbcode = ",".join(":1" for _ in REPR_DOM_DATABASES)
+    params_types = ",".join(":1" for _ in REPR_DOM_TYPES)
+
     cur.execute(
         f"""
         SELECT PROTEIN_AC, H.METHOD_AC, H.DBCODE, POS_FROM, POS_TO, FRAGMENTS
         FROM INTERPRO.MATCH H
         INNER JOIN INTERPRO.METHOD D
         ON H.METHOD_AC = D.METHOD_AC
-        WHERE H.DBCODE in ({placeholders})
-        AND (D.SIG_TYPE = 'D' OR D.SIG_TYPE = 'R')
+        WHERE H.DBCODE IN ({params_dbcode})
+          AND D.SIG_TYPE IN ({params_types})
         ORDER BY PROTEIN_AC
         """,
-        REPR_DOM_DATABASES
+        REPR_DOM_DATABASES + REPR_DOM_TYPES
     )
 
     previous_protein_acc = None
