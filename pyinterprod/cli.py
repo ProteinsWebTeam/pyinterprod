@@ -813,7 +813,7 @@ def run_uniprot_update():
             fn=uniprot.aa.create_aa_iprscan,
             args=(ora_iprscan_uri,),
             name="aa-iprscan",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=15),
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=36),
             # Actually depends on update-ipm-matches
             requires=["update-matches"]
         ),
