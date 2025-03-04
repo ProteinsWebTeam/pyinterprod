@@ -496,18 +496,23 @@ def export_repr_domains(ora_url: str, output: str, emails: dict):
 
     params_dbcode = ",".join(":1" for _ in REPR_DOM_DATABASES)
     params_types = ",".join(":1" for _ in REPR_DOM_TYPES)
+    cur.execute(
+        f"""
+        SELECT METHOD_AC
+        FROM INTERPRO.METHOD
+        WHERE DBCODE in ({params_dbcode})
+          AND SIG_TYPE IN ({params_types})
+        """,
+        REPR_DOM_DATABASES + REPR_DOM_TYPES
+    )
+    domain_signatures = {acc for acc, in cur.fetchall()}
 
     cur.execute(
         f"""
-        SELECT PROTEIN_AC, H.METHOD_AC, H.DBCODE, POS_FROM, POS_TO, FRAGMENTS
-        FROM INTERPRO.MATCH H
-        INNER JOIN INTERPRO.METHOD D
-        ON H.METHOD_AC = D.METHOD_AC
-        WHERE H.DBCODE IN ({params_dbcode})
-          AND D.SIG_TYPE IN ({params_types})
+        SELECT PROTEIN_AC, METHOD_AC, DBCODE, POS_FROM, POS_TO, FRAGMENTS
+        FROM INTERPRO.MATCH
         ORDER BY PROTEIN_AC
-        """,
-        REPR_DOM_DATABASES + REPR_DOM_TYPES
+        """
     )
 
     previous_protein_acc = None
@@ -531,15 +536,15 @@ def export_repr_domains(ora_url: str, output: str, emails: dict):
 
                 if cnt > 0 and cnt % 1e7 == 0:
                     logger.info(f"{cnt:>12,}")
-
-            domains.append({
-                "signature": signature_acc,
-                "start": pos_start,
-                "end": pos_end,
-                "frag": frags_str,
-                "fragments": _get_fragments(pos_start, pos_end, frags_str),
-                "rank": REPR_DOM_DATABASES.index(dbcode)
-            })
+            elif signature_acc in domain_signatures:
+                domains.append({
+                    "signature": signature_acc,
+                    "start": pos_start,
+                    "end": pos_end,
+                    "frag": frags_str,
+                    "fragments": _get_fragments(pos_start, pos_end, frags_str),
+                    "rank": REPR_DOM_DATABASES.index(dbcode)
+                })
 
         if domains:
             repr_domains = _select_repr_domains(domains)
