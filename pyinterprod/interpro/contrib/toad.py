@@ -163,6 +163,7 @@ def load_database_matches(cur: Cursor, partition: str, filepath: str,
     )
 
     drop_table(cur, "INTERPRO.TOAD_MATCH_TMP", purge=purge)
+    logger.info("\tdone")
 
 
 def process_tarfile(filepath: str, tmpdir: str | None, **kwargs):

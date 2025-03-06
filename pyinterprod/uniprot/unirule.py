@@ -116,7 +116,10 @@ def ask_to_snapshot(uri: str, emails: dict):
     content = f"""\
 All tables for UniProt are ready.
 
-Please, take a snapshot of IPPRO, and inform UniProt they can refresh IPREADU.
+Take a snapshot of IPPRO, and inform UniProt they can refresh IPREADU.
+
+In the body of the email below, replace DATE/TIME by the date and time of the snapshot of IPPRO, \
+and 5.XX-YYY.Y by the InterProScan version to be published with the next release of InterPro.
 
 Recipients
 ----------
@@ -127,11 +130,11 @@ Subject
 -------
 Protein update {release} completed: please refresh IPREADU
 
-Body (replace [DATE-TIME] by snapshot date/time)
-------------------------------------------------
+Body
+----
 Dear UniProt team,
 
-You may refresh IPREADU with the snapshot of IPPRO from [DATE-TIME]
+You may refresh IPREADU with the snapshot of IPPRO from DATE/TIME
 
 The max UPI we processed up to in this update is {max_upi}.
 The InterProScan version for this update is 5.XX-YYY.Y.

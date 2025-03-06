@@ -10,8 +10,10 @@ from pyinterprod.utils import email, oracle, Table
 
 MAX_DOM_BY_GROUP = 20
 DOM_OVERLAP_THRESHOLD = 0.3
-# Pfam, CDD, PROSITE profiles, SMART, NCBIFAM
-REPR_DOM_DATABASES = ["H", "J", "M", "R", "N"]
+# Pfam, CDD, PROSITE profiles, SMART, NCBIFAM, CATH-Gene3D, SUPERFAMILY
+REPR_DOM_DATABASES = ["H", "J", "M", "R", "N", "X", "Y"]
+# Domain, Repeat, Homologous superfamily
+REPR_DOM_TYPES = ["D", "R", "H"]
 
 
 def create_aa_alignment(uri: str):
@@ -492,19 +494,25 @@ def export_repr_domains(ora_url: str, output: str, emails: dict):
     con = oracledb.connect(ora_url)
     cur = con.cursor()
 
-    placeholders = ','.join(':' + str(i + 1)
-                            for i in range(len(REPR_DOM_DATABASES)))
+    params_dbcode = ",".join(":1" for _ in REPR_DOM_DATABASES)
+    params_types = ",".join(":1" for _ in REPR_DOM_TYPES)
     cur.execute(
         f"""
-        SELECT PROTEIN_AC, H.METHOD_AC, H.DBCODE, POS_FROM, POS_TO, FRAGMENTS
-        FROM INTERPRO.MATCH H
-        INNER JOIN INTERPRO.METHOD D
-        ON H.METHOD_AC = D.METHOD_AC
-        WHERE H.DBCODE in ({placeholders})
-        AND (D.SIG_TYPE = 'D' OR D.SIG_TYPE = 'R')
-        ORDER BY PROTEIN_AC
+        SELECT METHOD_AC
+        FROM INTERPRO.METHOD
+        WHERE DBCODE in ({params_dbcode})
+          AND SIG_TYPE IN ({params_types})
         """,
-        REPR_DOM_DATABASES
+        REPR_DOM_DATABASES + REPR_DOM_TYPES
+    )
+    domain_signatures = {acc for acc, in cur.fetchall()}
+
+    cur.execute(
+        f"""
+        SELECT PROTEIN_AC, METHOD_AC, DBCODE, POS_FROM, POS_TO, FRAGMENTS
+        FROM INTERPRO.MATCH
+        ORDER BY PROTEIN_AC
+        """
     )
 
     previous_protein_acc = None
@@ -528,15 +536,15 @@ def export_repr_domains(ora_url: str, output: str, emails: dict):
 
                 if cnt > 0 and cnt % 1e7 == 0:
                     logger.info(f"{cnt:>12,}")
-
-            domains.append({
-                "signature": signature_acc,
-                "start": pos_start,
-                "end": pos_end,
-                "frag": frags_str,
-                "fragments": _get_fragments(pos_start, pos_end, frags_str),
-                "rank": REPR_DOM_DATABASES.index(dbcode)
-            })
+            elif signature_acc in domain_signatures:
+                domains.append({
+                    "signature": signature_acc,
+                    "start": pos_start,
+                    "end": pos_end,
+                    "frag": frags_str,
+                    "fragments": _get_fragments(pos_start, pos_end, frags_str),
+                    "rank": REPR_DOM_DATABASES.index(dbcode)
+                })
 
         if domains:
             repr_domains = _select_repr_domains(domains)
