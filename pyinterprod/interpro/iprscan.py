@@ -124,6 +124,16 @@ MATCH_PARTITIONS = {
         ],
         "partition": "PIRSF"
     },
+    "PIRSR": {
+        "columns": [
+            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'SUBSTR(RELNO_MAJOR', '1', '4)',
+            'SUBSTR(RELNO_MAJOR', '6', '7)',
+            'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
+            'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
+            'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+        ],
+        "partition": "PIRSR"
+    },
     "PRINTS": {
         "columns": [
             'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
