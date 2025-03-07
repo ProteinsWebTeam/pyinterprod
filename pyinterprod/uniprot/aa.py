@@ -561,13 +561,16 @@ def export_repr_domains(
     index = load_index(matches_file)
     tasks_per_worker = math.ceil(len(index) / num_workers)
 
-    inqueue = Queue()
     outqueue = Queue()
     workers = []
     i = total = 0
     for _ in range(num_workers):
         fd, tmpfile = mkstemp()
         os.close(fd)
+
+        # Create one queue per worker to keep proteins in order
+        inqueue = Queue()
+
         p = Process(
             target=_repr_domains_worker,
             args=(matches_file, inqueue, outqueue, domain_signatures, tmpfile),
@@ -575,22 +578,16 @@ def export_repr_domains(
         p.start()
         workers.append(tmpfile)
 
-        # Enqueue all tasks for the worker, so they are continuous and proteins
-        # will be sorted by accession
-        tasks = []
         for _ in range(tasks_per_worker):
             try:
                 offset, count = index[i]
             except IndexError:
                 break
             else:
-                tasks.append((offset, count))
+                inqueue.put((offset, count))
                 total += count
                 i += 1
 
-        inqueue.put(tasks)
-
-    for _ in workers:
         inqueue.put(None)
 
     done = 0
