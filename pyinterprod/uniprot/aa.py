@@ -96,9 +96,17 @@ def create_aa_iprscan(uri: str):
     # Open second cursor for INSERT statements (first used for SELECT)
     cur2 = con.cursor()
 
-    for db in ["COILS", "MobiDB Lite", "Phobius", "PROSITE patterns",
-               "PROSITE profiles", "SignalP_Euk", "SignalP_Gram_positive",
-               "SignalP_Gram_negative", "TMHMM"]:
+    for db in [
+        "COILS",
+        "MobiDB Lite",
+        "Phobius",
+        "PROSITE patterns",
+        "PROSITE profiles",
+        "SignalP_Euk",
+        "SignalP_Gram_positive",
+        "SignalP_Gram_negative",
+        "TMHMM",
+    ]:
         logger.info(f"inserting data from {db}")
         partition = iprscan.MATCH_PARTITIONS[db]["partition"]
 
@@ -125,7 +133,7 @@ def create_aa_iprscan(uri: str):
                     INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
                     VALUES (:1, :2, :3, :4, :5, :6)
                     """,
-                    rows
+                    rows,
                 )
                 con.commit()
                 rows.clear()
@@ -136,7 +144,7 @@ def create_aa_iprscan(uri: str):
                 INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
                 VALUES (:1, :2, :3, :4, :5, :6)
                 """,
-                rows
+                rows,
             )
             con.commit()
             rows.clear()
@@ -233,14 +241,16 @@ def create_xref_condensed(uri: str):
                     for entry_acc, entry_matches in matches.items():
                         entry_type, entry_name = entries[entry_acc]
                         for pos_from, pos_end in entry_matches:
-                            table.insert((
-                                prev_acc,
-                                entry_acc,
-                                entry_type,
-                                entry_name,
-                                pos_from,
-                                pos_end
-                            ))
+                            table.insert(
+                                (
+                                    prev_acc,
+                                    entry_acc,
+                                    entry_type,
+                                    entry_name,
+                                    pos_from,
+                                    pos_end,
+                                )
+                            )
 
                 matches = {}
                 prev_acc = protein_acc
@@ -280,14 +290,9 @@ def create_xref_condensed(uri: str):
             entry_type, entry_name = entries[entry_acc]
 
             for pos_from, pos_end in entry_matches:
-                table.insert((
-                    prev_acc,
-                    entry_acc,
-                    entry_type,
-                    entry_name,
-                    pos_from,
-                    pos_end
-                ))
+                table.insert(
+                    (prev_acc, entry_acc, entry_type, entry_name, pos_from, pos_end)
+                )
 
     logger.info("indexing")
     for col in ("PROTEIN_AC", "ENTRY_AC"):
@@ -487,11 +492,13 @@ def create_xref_summary(uri: str):
     logger.info("XREF_SUMMARY ready")
 
 
-def _repr_domains_worker(matches_file: str,
-                         inqueue: Queue,
-                         outqueue: Queue,
-                         domain_signatures: dict[str: str],
-                         output: str):
+def _repr_domains_worker(
+    matches_file: str,
+    inqueue: Queue,
+    outqueue: Queue,
+    domain_signatures: dict[str:str],
+    output: str,
+):
     with open(output, "wt") as fh:
         for prot_acc, _, _, _, matches in iter_matches(matches_file, inqueue, outqueue):
             domains = []
@@ -506,14 +513,16 @@ def _repr_domains_worker(matches_file: str,
                         fragments = _parse_fragments(fragments_as_str)
                         pos_start = fragments[0]["start"]
                         pos_end = max(f["end"] for f in fragments)
-                        domains.append({
-                            "signature": signature_acc,
-                            "start": pos_start,
-                            "end": pos_end,
-                            "frag": fragments_as_str,
-                            "fragments": fragments,
-                            "rank": REPR_DOM_DATABASES.index(dbcode)
-                        })
+                        domains.append(
+                            {
+                                "signature": signature_acc,
+                                "start": pos_start,
+                                "end": pos_end,
+                                "frag": fragments_as_str,
+                                "fragments": fragments,
+                                "rank": REPR_DOM_DATABASES.index(dbcode),
+                            }
+                        )
 
             if domains:
                 for domain in _select_repr_domains(domains):
@@ -524,7 +533,9 @@ def _repr_domains_worker(matches_file: str,
                     )
 
 
-def export_repr_domains(ora_url: str, matches_file: str, output: str, emails: dict, processes: int = 8):
+def export_repr_domains(
+    ora_url: str, matches_file: str, output: str, emails: dict, processes: int = 8
+):
     logger.info("starting")
 
     con = oracledb.connect(ora_url)
@@ -538,11 +549,11 @@ def export_repr_domains(ora_url: str, matches_file: str, output: str, emails: di
         WHERE DBCODE in ({params_dbcode})
           AND SIG_TYPE IN ({params_types})
         """,
-        REPR_DOM_DATABASES + REPR_DOM_TYPES
+        REPR_DOM_DATABASES + REPR_DOM_TYPES,
     )
     domain_signatures = dict(cur.fetchall())
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
-    release, = cur.fetchone()
+    (release,) = cur.fetchone()
     cur.close()
     con.close()
 
@@ -597,7 +608,7 @@ def export_repr_domains(ora_url: str, matches_file: str, output: str, emails: di
             p.join()
 
             with open(tmpfile, "rt") as fh2:
-                while (block := fh2.read(1024)) != '':
+                while (block := fh2.read(1024)) != "":
                     fh.write(block)
 
     os.chmod(output, 0o664)
@@ -616,7 +627,7 @@ available at the following path:
 
 Kind regards,
 The InterPro Production Team
-"""
+""",
     )
     logger.info("done")
 
@@ -625,8 +636,7 @@ def _select_repr_domains(domains: list[dict]) -> list[dict]:
     repr_domains = []
 
     # Sort by boundaries
-    domains.sort(key=lambda d: (d["fragments"][0]["start"],
-                                d["fragments"][-1]["end"]))
+    domains.sort(key=lambda d: (d["fragments"][0]["start"], d["fragments"][-1]["end"]))
 
     # Group overlapping domains together
     domain = domains[0]
@@ -652,13 +662,13 @@ def _select_repr_domains(domains: list[dict]) -> list[dict]:
     # Select representative domain in each group
     for group in groups:
         """
-        Only consider the "best" N domains of the group, 
-        otherwise the number of possible combinations/sets is too high 
+        Only consider the "best" N domains of the group,
+        otherwise the number of possible combinations/sets is too high
         (if M domains, max number of combinations is `2 ^ M`)
         """
-        group = sorted(group,
-                       key=lambda d: (-len(d["residues"]), d["rank"])
-                       )[:MAX_DOM_BY_GROUP]
+        group = sorted(group, key=lambda d: (-len(d["residues"]), d["rank"]))[
+            :MAX_DOM_BY_GROUP
+        ]
 
         nodes = set(range(len(group)))
         graph = {i: nodes - {i} for i in nodes}
@@ -745,19 +755,17 @@ def _resolve_domains(graph: dict[int, set[int]]) -> list[set[int]]:
 
 def _eval_overlap(dom_a: dict, dom_b: dict, threshold: float) -> bool:
     overlap = len(dom_a["residues"] & dom_b["residues"])
-    return overlap and overlap / min(len(dom_a["residues"]),
-                                     len(dom_b["residues"])) >= threshold
+    return (
+        overlap
+        and overlap / min(len(dom_a["residues"]), len(dom_b["residues"])) >= threshold
+    )
 
 
 def _parse_fragments(fragments_as_str: str) -> list[dict]:
     fragments = []
-    for frag in fragments_as_str.split(','):
+    for frag in fragments_as_str.split(","):
         # Format: START-END-STATUS
-        s, e, t = frag.split('-')
-        fragments.append({
-            "start": int(s),
-            "end": int(e),
-            "dc-status": t
-        })
+        s, e, t = frag.split("-")
+        fragments.append({"start": int(s), "end": int(e), "dc-status": t})
 
     return sorted(fragments, key=lambda x: (x["start"], x["end"]))
