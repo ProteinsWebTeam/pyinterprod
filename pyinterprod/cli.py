@@ -714,11 +714,24 @@ def run_uniprot_update():
             scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=36),
         ),
 
-        # Data from SWPREAD
+        # Data from UniProt
         Task(
             fn=interpro.taxonomy.refresh_taxonomy,
             args=(ora_interpro_uri, ora_swpread_uri),
             name="taxonomy",
+            scheduler=dict(type=scheduler, queue=queue, mem=500, hours=1),
+        ),
+        Task(
+            fn=interpro.signature.export_swissprot_descriptions,
+            args=(pg_uri, data_dir),
+            name="swissprot-de",
+            # TODO: review and update
+            scheduler=dict(type=scheduler, queue=queue, mem=10000, hours=3),
+        ),
+        Task(
+            fn=uniprot.unirule.update_signatures,
+            args=(config["uniprot"]["unirule"], ora_interpro_uri),
+            name="unirule",
             scheduler=dict(type=scheduler, queue=queue, mem=500, hours=1),
         ),
 
@@ -785,95 +798,6 @@ def run_uniprot_update():
             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=3),
             requires=["update-matches"]
         ),
-
-        # Data for UniProt/SIB
-        Task(
-            fn=uniprot.sib.export,
-            args=(ora_interpro_uri, emails),
-            name="export-sib",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=3),
-            requires=["xref-condensed"]
-        ),
-        Task(
-            fn=uniprot.unirule.report_integration_changes,
-            args=(ora_interpro_uri, emails),
-            name="report-changes",
-            scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=1),
-            requires=["update-matches"]
-        ),
-        Task(
-            fn=uniprot.aa.create_aa_alignment,
-            args=(ora_iprscan_uri,),
-            name="aa-alignment",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=8),
-            # Actually depends on update-ipm-matches
-            requires=["update-matches"]
-        ),
-        Task(
-            fn=uniprot.aa.create_aa_iprscan,
-            args=(ora_iprscan_uri,),
-            name="aa-iprscan",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=36),
-            # Actually depends on update-ipm-matches
-            requires=["update-matches"]
-        ),
-        Task(
-            fn=uniprot.aa.create_xref_condensed,
-            args=(ora_interpro_uri,),
-            name="xref-condensed",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12),
-            requires=["update-matches"]
-        ),
-        Task(
-            fn=uniprot.aa.create_xref_summary,
-            args=(ora_interpro_uri,),
-            name="xref-summary",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=8),
-            # `report-changes` uses XREF_SUMMARY, so we need to wait
-            # until it completes before re-creating the table
-            requires=["report-changes"]
-        ),
-        Task(
-            fn=uniprot.aa.export_repr_domains,
-            args=(ora_interpro_uri,
-                  os.path.join(xrefs_dir, "representative-domains.tsv"),
-                  emails),
-            name="repr-domains",
-            scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=48),
-            requires=["update-matches"]
-        ),
-        Task(
-            fn=uniprot.xrefs.export,
-            args=(ora_interpro_uri, xrefs_dir, emails),
-            name="export-xrefs",
-            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=6),
-            requires=["xref-summary"]
-        ),
-        Task(
-            fn=uniprot.unirule.ask_to_snapshot,
-            args=(ora_interpro_uri, emails),
-            name="notify-interpro",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1),
-            requires=["aa-alignment", "aa-iprscan", "xref-condensed",
-                      "xref-summary", "update-fmatches"]
-        ),
-
-        # Copy SwissProt descriptions
-        Task(
-            fn=interpro.signature.export_swissprot_descriptions,
-            args=(pg_uri, data_dir),
-            name="swissprot-de",
-            # TODO: review and update
-            scheduler=dict(type=scheduler, queue=queue, mem=10000, hours=3),
-        ),
-
-        # Update signatures used by UniRule
-        Task(
-            fn=uniprot.unirule.update_signatures,
-            args=(config["uniprot"]["unirule"], ora_interpro_uri),
-            name="unirule",
-            scheduler=dict(type=scheduler, queue=queue, mem=500, hours=1),
-        )
     ]
 
     # Adding Pronto tasks
@@ -902,6 +826,83 @@ def run_uniprot_update():
             name="send-report",
             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=4),
             requires=after_pronto
+        ),
+
+        # Data for UniProt
+        Task(
+            fn=uniprot.unirule.report_integration_changes,
+            args=(ora_interpro_uri, emails),
+            name="report-changes",
+            scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=1),
+            requires=["update-matches"]
+        ),
+        Task(
+            fn=uniprot.aa.create_aa_alignment,
+            args=(ora_iprscan_uri,),
+            name="aa-alignment",
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=8),
+            # Actually depends on update-ipm-matches
+            requires=["update-matches"]
+        ),
+        Task(
+            fn=uniprot.aa.create_aa_iprscan,
+            args=(ora_iprscan_uri,),
+            name="aa-iprscan",
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=36),
+            # Actually depends on update-ipm-matches, but better to wait
+            # until update-matches is over
+            requires=["update-matches"]
+        ),
+        Task(
+            fn=uniprot.aa.create_xref_summary,
+            args=(ora_interpro_uri,),
+            name="xref-summary",
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=8),
+            # `report-changes` uses XREF_SUMMARY, so we need to wait
+            # until it completes before re-creating the table
+            requires=["report-changes"]
+        ),
+        Task(
+            fn=uniprot.xrefs.export,
+            args=(ora_interpro_uri, xrefs_dir, emails),
+            name="export-xrefs",
+            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=6),
+            requires=["xref-summary"]
+        ),
+        Task(
+            fn=uniprot.aa.create_xref_condensed,
+            args=(ora_interpro_uri,),
+            name="xref-condensed",
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12),
+            requires=["update-matches"]
+        ),
+        Task(
+            fn=uniprot.sib.export,
+            args=(ora_interpro_uri, emails),
+            name="export-sib",
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=3),
+            requires=["xref-condensed"]
+        ),
+        Task(
+            fn=uniprot.aa.export_repr_domains,
+            args=(ora_interpro_uri,
+                  # File created during the Pronto update
+                  os.path.join(data_dir, "matches"),
+                  os.path.join(xrefs_dir, "representative-domains.tsv"),
+                  emails),
+            kwargs=dict(processes=8),
+            name="repr-domains",
+            # TODO: update
+            scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=20000, hours=48),
+            requires=["pronto-export-matches"]
+        ),
+        Task(
+            fn=uniprot.unirule.ask_to_snapshot,
+            args=(ora_interpro_uri, emails),
+            name="notify-interpro",
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1),
+            requires=["aa-alignment", "aa-iprscan", "xref-condensed",
+                      "xref-summary", "update-fmatches"]
         ),
 
         # Not urgent tasks (can be run after everything else)
