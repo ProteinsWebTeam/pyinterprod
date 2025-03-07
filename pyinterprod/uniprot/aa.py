@@ -604,6 +604,7 @@ def export_repr_domains(
             logger.info(f"{progress}%")
             milestone += step
 
+    logger.info("writing final file")
     with open(output, "wt") as fh:
         for p, tmpfile in workers:
             p.join()
@@ -611,6 +612,8 @@ def export_repr_domains(
             with open(tmpfile, "rt") as fh2:
                 while (block := fh2.read(1024)) != "":
                     fh.write(block)
+
+            os.unlink(tmpfile)
 
     os.chmod(output, 0o664)
 
