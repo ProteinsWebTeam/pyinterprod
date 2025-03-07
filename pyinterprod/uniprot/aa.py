@@ -559,12 +559,12 @@ def export_repr_domains(
 
     num_workers = max(1, processes - 1)
     index = load_index(matches_file)
-    tasks_per_worker = math.ceil(len(index) / num_workers)
+    tasks_per_worker = math.floor(len(index) / num_workers)
 
     outqueue = Queue()
     workers = []
     i = total = 0
-    for _ in range(num_workers):
+    for j in range(num_workers):
         fd, tmpfile = mkstemp()
         os.close(fd)
 
@@ -579,11 +579,15 @@ def export_repr_domains(
         workers.append(tmpfile)
 
         for _ in range(tasks_per_worker):
-            try:
+            offset, count = index[i]
+            inqueue.put((offset, count))
+            total += count
+            i += 1
+
+        if (j + 1) == num_workers:
+            # Last worker: add remaining tasks
+            while i < len(index):
                 offset, count = index[i]
-            except IndexError:
-                break
-            else:
                 inqueue.put((offset, count))
                 total += count
                 i += 1
