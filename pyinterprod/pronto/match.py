@@ -642,6 +642,13 @@ def iter_matches(matches_file: str, inqueue: Queue, outqueue: Queue):
             outqueue.put(count)
 
 
+def load_index(matches_file: str):
+    with open(f"{matches_file}{INDEX_SUFFIX}", "rb") as fh:
+        index = pickle.load(fh)
+
+    return index
+
+
 def finalize_match_table(uri: str):
     con = psycopg.connect(**pg.url2dict(uri))
     with con.cursor() as cur:
