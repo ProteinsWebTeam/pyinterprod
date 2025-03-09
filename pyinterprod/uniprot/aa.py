@@ -576,7 +576,7 @@ def export_repr_domains(
             args=(matches_file, inqueue, outqueue, domain_signatures, tmpfile),
         )
         p.start()
-        workers.append(tmpfile)
+        workers.append((p, tmpfile))
 
         for _ in range(tasks_per_worker):
             offset, count = index[i]
