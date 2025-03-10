@@ -892,8 +892,7 @@ def run_uniprot_update():
                   emails),
             kwargs=dict(processes=8),
             name="repr-domains",
-            # TODO: update
-            scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=20000, hours=48),
+            scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=4000, hours=48),
             requires=["pronto-export-matches"]
         ),
         Task(
