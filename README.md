@@ -191,6 +191,11 @@ The optional arguments are:
     <td>update-matches</td>
 </tr>
 <tr>
+    <td>update-tmatches</td>
+    <td>Remove TOAD matches for recently changed sequences</td>
+    <td>update-matches</td>
+</tr>
+<tr>
     <td>export-sib</td>
     <td>Export Oracle tables required by the Swiss-Prot team</td>
     <td>update-matches</td>
@@ -321,6 +326,11 @@ The optional arguments are:
     <td>update-matches</td>
     <td>Update and check matches in production tables</td>
     <td>update-ipm-matches, update-signatures</td>
+</tr>
+<tr>
+    <td>update-tmatches</td>
+    <td>Update TOAD matches</td>
+    <td>update-signatures</td>
 </tr>
 <tr>
     <td>update-varsplic</td>

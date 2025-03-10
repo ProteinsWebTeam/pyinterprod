@@ -467,9 +467,9 @@ def run_member_db_update():
                 requires=["update-matches"]
             ),
             Task(
-                fn=interpro.match.update_toad_matches,
+                fn=interpro.match.insert_toad_matches,
                 args=(ora_interpro_uri, member_dbs, toad_sources),
-                name="update-toad-matches",
+                name="update-tmatches",
                 scheduler=dict(type=scheduler, queue=queue, mem=24000, hours=24),
                 requires=["update-signatures"]
             ),
@@ -782,6 +782,13 @@ def run_uniprot_update():
             fn=interpro.match.update_feature_matches,
             args=(ora_interpro_uri,),
             name="update-fmatches",
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=3),
+            requires=["update-matches"]
+        ),
+        Task(
+            fn=interpro.match.update_toad_matches,
+            args=(ora_interpro_uri,),
+            name="update-tmatches",
             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=3),
             requires=["update-matches"]
         ),

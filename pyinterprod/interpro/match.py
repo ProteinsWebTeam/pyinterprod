@@ -1057,10 +1057,17 @@ def get_sig_protein_counts(cur: oracledb.Cursor,
     return counts
 
 
-def update_toad_matches(uri: str,
+def insert_toad_matches(uri: str,
                         databases: list[Database],
                         files: dict[str, str],
                         tmpdir: str | None = None):
+    """
+    Update the TOAD matches table with matches extracted from TAR archives
+    :param uri: Oracle connection string
+    :param databases: list of Database objects of member databases to update
+    :param files: Dictionary of database name -> tar file path
+    :param tmpdir: Path to directory for temporary files
+    """
     con = oracledb.connect(uri)
     cur = con.cursor()
 
@@ -1073,3 +1080,31 @@ def update_toad_matches(uri: str,
     finally:
         cur.close()
         con.close()
+
+    rebuild_indexes(uri, "TOAD_MATCH")
+    logger.info("done")
+
+
+def update_toad_matches(uri: str):
+    """
+    Delete TOAD matches for proteins recently changed
+    :param uri: Oracle connection string
+    """
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+    logger.info("deleting matches")
+    cur.execute(
+        """
+        DELETE FROM INTERPRO.TOAD_MATCH
+        WHERE PROTEIN_AC IN (
+          SELECT PROTEIN_AC
+          FROM INTERPRO.PROTEIN_TO_SCAN
+        )
+        """
+    )
+    con.commit()
+    logger.info(f"  {cur.rowcount} rows deleted")
+
+    cur.close()
+    con.close()
+    logger.info("done")
