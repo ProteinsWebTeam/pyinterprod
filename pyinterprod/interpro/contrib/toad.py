@@ -63,6 +63,7 @@ def load_matches(
                     filepath,
                     tmpdir=tmpdir,
                     suffix=f"_{dbcode}",
+                    purge=True,
                 )
                 fs[f] = partition
 
