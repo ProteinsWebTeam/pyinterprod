@@ -46,13 +46,6 @@ def load_matches(
             tasks.append((dbcode, partition, filepath))
 
     if processes > 1:
-        logger.setLevel(DEBUG)
-
-        for i, (dbcode, partition, filepath) in enumerate(tasks):
-            logger.info(f"updating partition: {partition}")
-            last = i + 1 == len(databases)
-            load_database_matches(uri, partition, filepath, tmpdir=tmpdir, purge=last)
-    else:
         with ProcessPoolExecutor(max_workers=processes) as executor:
             fs = {}
             for dbcode, partition, filepath in tasks:
@@ -81,6 +74,13 @@ def load_matches(
 
             if errors:
                 raise RuntimeError(f"{errors} errors occurred")
+    else:
+        logger.setLevel(DEBUG)
+
+        for i, (dbcode, partition, filepath) in enumerate(tasks):
+            logger.info(f"updating partition: {partition}")
+            last = i + 1 == len(databases)
+            load_database_matches(uri, partition, filepath, tmpdir=tmpdir, purge=last)
 
 
 def load_database_matches(
