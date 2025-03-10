@@ -1068,19 +1068,11 @@ def insert_toad_matches(uri: str,
     :param files: Dictionary of database name -> tar file path
     :param tmpdir: Path to directory for temporary files
     """
-    con = oracledb.connect(uri)
-    cur = con.cursor()
-
     _databases = {}
     for db in databases:
         _databases[db.identifier] = files[db.identifier]
 
-    try:
-        toad.load_matches(cur, _databases, tmpdir=tmpdir)
-    finally:
-        cur.close()
-        con.close()
-
+    toad.load_matches(uri, _databases, tmpdir=tmpdir)
     rebuild_indexes(uri, "TOAD_MATCH")
     logger.info("done")
 

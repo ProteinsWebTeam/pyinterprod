@@ -2,6 +2,7 @@ import heapq
 import os
 import shutil
 import tarfile
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from logging import DEBUG
 from tempfile import mkdtemp
 
@@ -13,13 +14,16 @@ from pyinterprod.utils.io import dump, iter_until_eof
 from pyinterprod.utils.oracle import drop_table, get_partitions
 
 
-def load_matches(uri: str, databases: dict[str, str], tmpdir: str | None = None):
+def load_matches(
+    uri: str, databases: dict[str, str], tmpdir: str | None = None, processes: int = 1
+):
     """
     :param uri: Oracle database connection string
     :param databases: dictionary of databases to update
                       key -> dbcode
                       value -> path to tar archive
     :param tmpdir: directory for temporary files
+    :param processes: number of parallel processes
     """
     con = oracledb.connect(uri)
     cur = con.cursor()
@@ -32,20 +36,50 @@ def load_matches(uri: str, databases: dict[str, str], tmpdir: str | None = None)
     cur.close()
     con.close()
 
-    logger.setLevel(DEBUG)
-
-    for i, (dbcode, filepath) in enumerate(databases.items()):
+    tasks = []
+    for dbcode, filepath in databases.items():
         try:
             partition = partitions[dbcode]
         except KeyError:
-            err = f"No partition for database with dbcode '{dbcode}'"
-            raise KeyError(err)
+            raise KeyError(f"No partition for database with dbcode '{dbcode}'")
+        else:
+            tasks.append((dbcode, partition, filepath))
 
-        logger.info(f"updating partition: {partition}")
-        last = i + 1 == len(databases)
-        load_database_matches(uri, partition, filepath, tmpdir=tmpdir, purge=last)
+    if processes > 1:
+        logger.setLevel(DEBUG)
 
-    logger.info("done")
+        for i, (dbcode, partition, filepath) in enumerate(tasks):
+            logger.info(f"updating partition: {partition}")
+            last = i + 1 == len(databases)
+            load_database_matches(uri, partition, filepath, tmpdir=tmpdir, purge=last)
+    else:
+        with ProcessPoolExecutor(max_workers=processes) as executor:
+            fs = {}
+            for dbcode, partition, filepath in tasks:
+                f = executor.submit(
+                    load_database_matches,
+                    uri,
+                    partition,
+                    filepath,
+                    tmpdir=tmpdir,
+                    suffix=f"_{dbcode}",
+                )
+                fs[f] = partition
+
+            errors = 0
+            for f in as_completed(fs):
+                partition = fs[f]
+
+                try:
+                    f.result()
+                except Exception as exc:
+                    logger.error(f"{partition}: {exc}")
+                    errors += 1
+                else:
+                    logger.info(f"{partition}: done")
+
+            if errors:
+                raise RuntimeError(f"{errors} errors occurred")
 
 
 def load_database_matches(
@@ -83,7 +117,9 @@ def load_database_matches(
     with Table(
         con=cur.connection, query=query, autocommit=True, buffer_size=1000
     ) as table:
-        for uniprot_acc, method_acc, pos_from, pos_to, group_id, score in iter_matches(files):
+        for uniprot_acc, method_acc, pos_from, pos_to, group_id, score in iter_matches(
+            files
+        ):
             table.insert(
                 (
                     uniprot_acc,
