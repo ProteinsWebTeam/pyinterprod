@@ -8,7 +8,7 @@ import psycopg
 from pyinterprod import logger
 from pyinterprod.utils.oracle import clob_as_str
 from pyinterprod.utils.pg import url2dict
-from .match import INDEX_SUFFIX, merge_overlapping
+from .match import load_index, merge_overlapping
 
 
 """
@@ -141,8 +141,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
     logger.info("iterating proteins")
 
     # Load jobs to send to workers
-    with open(f"{matches_file}{INDEX_SUFFIX}", "rb") as fh:
-        index = pickle.load(fh)
+    index = load_index(matches_file)
 
     inqueue = Queue()
     outqueue = Queue()

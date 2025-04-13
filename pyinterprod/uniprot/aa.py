@@ -1,10 +1,13 @@
-import gzip
+import math
 import os
+from multiprocessing import Process, Queue
+from tempfile import mkstemp
 
 import oracledb
 
 from pyinterprod import logger
 from pyinterprod.interpro import iprscan
+from pyinterprod.pronto.match import load_index, iter_matches
 from pyinterprod.utils import email, oracle, Table
 
 
@@ -93,9 +96,17 @@ def create_aa_iprscan(uri: str):
     # Open second cursor for INSERT statements (first used for SELECT)
     cur2 = con.cursor()
 
-    for db in ["COILS", "MobiDB Lite", "Phobius", "PROSITE patterns",
-               "PROSITE profiles", "SignalP_Euk", "SignalP_Gram_positive",
-               "SignalP_Gram_negative", "TMHMM"]:
+    for db in [
+        "COILS",
+        "MobiDB Lite",
+        "Phobius",
+        "PROSITE patterns",
+        "PROSITE profiles",
+        "SignalP_Euk",
+        "SignalP_Gram_positive",
+        "SignalP_Gram_negative",
+        "TMHMM",
+    ]:
         logger.info(f"inserting data from {db}")
         partition = iprscan.MATCH_PARTITIONS[db]["partition"]
 
@@ -122,7 +133,7 @@ def create_aa_iprscan(uri: str):
                     INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
                     VALUES (:1, :2, :3, :4, :5, :6)
                     """,
-                    rows
+                    rows,
                 )
                 con.commit()
                 rows.clear()
@@ -133,7 +144,7 @@ def create_aa_iprscan(uri: str):
                 INSERT /*+ APPEND */ INTO IPRSCAN.AA_IPRSCAN
                 VALUES (:1, :2, :3, :4, :5, :6)
                 """,
-                rows
+                rows,
             )
             con.commit()
             rows.clear()
@@ -230,14 +241,16 @@ def create_xref_condensed(uri: str):
                     for entry_acc, entry_matches in matches.items():
                         entry_type, entry_name = entries[entry_acc]
                         for pos_from, pos_end in entry_matches:
-                            table.insert((
-                                prev_acc,
-                                entry_acc,
-                                entry_type,
-                                entry_name,
-                                pos_from,
-                                pos_end
-                            ))
+                            table.insert(
+                                (
+                                    prev_acc,
+                                    entry_acc,
+                                    entry_type,
+                                    entry_name,
+                                    pos_from,
+                                    pos_end,
+                                )
+                            )
 
                 matches = {}
                 prev_acc = protein_acc
@@ -277,14 +290,9 @@ def create_xref_condensed(uri: str):
             entry_type, entry_name = entries[entry_acc]
 
             for pos_from, pos_end in entry_matches:
-                table.insert((
-                    prev_acc,
-                    entry_acc,
-                    entry_type,
-                    entry_name,
-                    pos_from,
-                    pos_end
-                ))
+                table.insert(
+                    (prev_acc, entry_acc, entry_type, entry_name, pos_from, pos_end)
+                )
 
     logger.info("indexing")
     for col in ("PROTEIN_AC", "ENTRY_AC"):
@@ -484,83 +492,128 @@ def create_xref_summary(uri: str):
     logger.info("XREF_SUMMARY ready")
 
 
-def export_repr_domains(ora_url: str, output: str, emails: dict):
+def _repr_domains_worker(
+    matches_file: str,
+    inqueue: Queue,
+    outqueue: Queue,
+    domain_signatures: dict[str:str],
+    output: str,
+):
+    with open(output, "wt") as fh:
+        for prot_acc, _, _, _, matches in iter_matches(matches_file, inqueue, outqueue):
+            domains = []
+            for signature_acc, models in matches.items():
+                try:
+                    dbcode = domain_signatures[signature_acc]
+                except KeyError:
+                    continue
+
+                for _, locations in models.values():
+                    for fragments_as_str in locations:
+                        fragments = _parse_fragments(fragments_as_str)
+                        pos_start = fragments[0]["start"]
+                        pos_end = max(f["end"] for f in fragments)
+                        domains.append(
+                            {
+                                "signature": signature_acc,
+                                "start": pos_start,
+                                "end": pos_end,
+                                "frag": fragments_as_str,
+                                "fragments": fragments,
+                                "rank": REPR_DOM_DATABASES.index(dbcode),
+                            }
+                        )
+
+            if domains:
+                for domain in _select_repr_domains(domains):
+                    fh.write(
+                        f"{prot_acc}\t{domain['signature']}\t"
+                        f"{domain['start']}\t{domain['end']}\t"
+                        f"{domain['frag']}\n"
+                    )
+
+
+def export_repr_domains(
+    ora_url: str, matches_file: str, output: str, emails: dict, processes: int = 8
+):
     logger.info("starting")
-    if output.lower().endswith(".gz"):
-        _open = gzip.open
-    else:
-        _open = open
 
     con = oracledb.connect(ora_url)
     cur = con.cursor()
-
     params_dbcode = ",".join(":1" for _ in REPR_DOM_DATABASES)
     params_types = ",".join(":1" for _ in REPR_DOM_TYPES)
     cur.execute(
         f"""
-        SELECT METHOD_AC
+        SELECT METHOD_AC, DBCODE
         FROM INTERPRO.METHOD
         WHERE DBCODE in ({params_dbcode})
           AND SIG_TYPE IN ({params_types})
         """,
-        REPR_DOM_DATABASES + REPR_DOM_TYPES
+        REPR_DOM_DATABASES + REPR_DOM_TYPES,
     )
-    domain_signatures = {acc for acc, in cur.fetchall()}
-
-    cur.execute(
-        f"""
-        SELECT PROTEIN_AC, METHOD_AC, DBCODE, POS_FROM, POS_TO, FRAGMENTS
-        FROM INTERPRO.MATCH
-        ORDER BY PROTEIN_AC
-        """
-    )
-
-    previous_protein_acc = None
-    domains = []
-    cnt = -1
-    with _open(output, "wt") as fh:
-        for (protein_acc, signature_acc, dbcode,
-             pos_start, pos_end, frags_str) in cur:
-            if protein_acc != previous_protein_acc:
-                cnt += 1
-                if domains:
-                    for domain in _select_repr_domains(domains):
-                        fh.write(
-                            f"{previous_protein_acc}\t{domain['signature']}\t"
-                            f"{domain['start']}\t{domain['end']}\t"
-                            f"{domain['frag']}\n"
-                        )
-                    domains.clear()
-
-                previous_protein_acc = protein_acc
-
-                if cnt > 0 and cnt % 1e7 == 0:
-                    logger.info(f"{cnt:>12,}")
-            elif signature_acc in domain_signatures:
-                domains.append({
-                    "signature": signature_acc,
-                    "start": pos_start,
-                    "end": pos_end,
-                    "frag": frags_str,
-                    "fragments": _get_fragments(pos_start, pos_end, frags_str),
-                    "rank": REPR_DOM_DATABASES.index(dbcode)
-                })
-
-        if domains:
-            repr_domains = _select_repr_domains(domains)
-            for domain in repr_domains:
-                fh.write(
-                    f"{protein_acc}\t{domain['signature']}\t"
-                    f"{domain['start']}\t{domain['end']}\t"
-                    f"{domain['frag']}\n"
-                )
-
-        logger.info(f"{cnt:>12,}")
-
+    domain_signatures = dict(cur.fetchall())
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'u'")
-    release, = cur.fetchone()
+    (release,) = cur.fetchone()
     cur.close()
     con.close()
+
+    num_workers = max(1, processes - 1)
+    index = load_index(matches_file)
+    tasks_per_worker = math.floor(len(index) / num_workers)
+
+    outqueue = Queue()
+    workers = []
+    i = total = 0
+    for j in range(num_workers):
+        fd, tmpfile = mkstemp()
+        os.close(fd)
+
+        # Create one queue per worker to keep proteins in order
+        inqueue = Queue()
+
+        p = Process(
+            target=_repr_domains_worker,
+            args=(matches_file, inqueue, outqueue, domain_signatures, tmpfile),
+        )
+        p.start()
+        workers.append((p, tmpfile))
+
+        for _ in range(tasks_per_worker):
+            offset, count = index[i]
+            inqueue.put((offset, count))
+            total += count
+            i += 1
+
+        if (j + 1) == num_workers:
+            # Last worker: add remaining tasks
+            while i < len(index):
+                offset, count = index[i]
+                inqueue.put((offset, count))
+                total += count
+                i += 1
+
+        inqueue.put(None)
+
+    done = 0
+    milestone = step = 10
+    for _ in index:
+        count = outqueue.get()
+        done += count
+        progress = math.floor(done / total * 100)
+        if progress >= milestone:
+            logger.info(f"{progress}%")
+            milestone += step
+
+    logger.info("writing final file")
+    with open(output, "wt") as fh:
+        for p, tmpfile in workers:
+            p.join()
+
+            with open(tmpfile, "rt") as fh2:
+                while (block := fh2.read(1024)) != "":
+                    fh.write(block)
+
+            os.unlink(tmpfile)
 
     os.chmod(output, 0o664)
 
@@ -578,7 +631,7 @@ available at the following path:
 
 Kind regards,
 The InterPro Production Team
-"""
+""",
     )
     logger.info("done")
 
@@ -587,8 +640,7 @@ def _select_repr_domains(domains: list[dict]) -> list[dict]:
     repr_domains = []
 
     # Sort by boundaries
-    domains.sort(key=lambda d: (d["fragments"][0]["start"],
-                                d["fragments"][-1]["end"]))
+    domains.sort(key=lambda d: (d["fragments"][0]["start"], d["fragments"][-1]["end"]))
 
     # Group overlapping domains together
     domain = domains[0]
@@ -614,13 +666,13 @@ def _select_repr_domains(domains: list[dict]) -> list[dict]:
     # Select representative domain in each group
     for group in groups:
         """
-        Only consider the "best" N domains of the group, 
-        otherwise the number of possible combinations/sets is too high 
+        Only consider the "best" N domains of the group,
+        otherwise the number of possible combinations/sets is too high
         (if M domains, max number of combinations is `2 ^ M`)
         """
-        group = sorted(group,
-                       key=lambda d: (-len(d["residues"]), d["rank"])
-                       )[:MAX_DOM_BY_GROUP]
+        group = sorted(group, key=lambda d: (-len(d["residues"]), d["rank"]))[
+            :MAX_DOM_BY_GROUP
+        ]
 
         nodes = set(range(len(group)))
         graph = {i: nodes - {i} for i in nodes}
@@ -707,28 +759,17 @@ def _resolve_domains(graph: dict[int, set[int]]) -> list[set[int]]:
 
 def _eval_overlap(dom_a: dict, dom_b: dict, threshold: float) -> bool:
     overlap = len(dom_a["residues"] & dom_b["residues"])
-    return overlap and overlap / min(len(dom_a["residues"]),
-                                     len(dom_b["residues"])) >= threshold
+    return (
+        overlap
+        and overlap / min(len(dom_a["residues"]), len(dom_b["residues"])) >= threshold
+    )
 
 
-def _get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
-    if fragments:
-        result = []
-        for frag in fragments.split(','):
-            # Format: START-END-STATUS
-            s, e, t = frag.split('-')
-            result.append({
-                "start": int(s),
-                "end": int(e),
-                "dc-status": t
-            })
+def _parse_fragments(fragments_as_str: str) -> list[dict]:
+    fragments = []
+    for frag in fragments_as_str.split(","):
+        # Format: START-END-STATUS
+        s, e, t = frag.split("-")
+        fragments.append({"start": int(s), "end": int(e), "dc-status": t})
 
-        result.sort(key=lambda x: (x["start"], x["end"]))
-    else:
-        result = [{
-            "start": pos_start,
-            "end": pos_end,
-            "dc-status": "S"  # Continuous
-        }]
-
-    return result
+    return sorted(fragments, key=lambda x: (x["start"], x["end"]))

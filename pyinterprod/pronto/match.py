@@ -1,4 +1,3 @@
-import gzip
 import hashlib
 import heapq
 import math
@@ -23,8 +22,7 @@ _MAX_GAP = 20
 INDEX_SUFFIX = ".i"
 
 
-def export(url: str, output: str, cachesize: int = 10000000,
-           tmpdir: str | None = None):
+def export(url: str, output: str, cachesize: int = 10000000, tmpdir: str | None = None):
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
@@ -65,8 +63,7 @@ def export(url: str, output: str, cachesize: int = 10000000,
     logger.info("done")
 
 
-def _export_matches(url: str, cachesize: int,
-                    tmpdir: str | None = None) -> list[str]:
+def _export_matches(url: str, cachesize: int, tmpdir: str | None = None) -> list[str]:
     con = oracledb.connect(url)
     cur = con.cursor()
 
@@ -111,7 +108,7 @@ def _export_matches(url: str, cachesize: int,
                 row[1] == "S",  # is reviewed
                 row[2] == "N",  # is complete
                 taxonomy[row[3]],  # taxon left number
-                []  # matches
+                [],  # matches
             )
 
         if row[6]:
@@ -120,12 +117,14 @@ def _export_matches(url: str, cachesize: int,
             # Single/continuous fragment using match start/end positions
             fragments = f"{row[7]}-{row[8]}-S"
 
-        obj[3].append((
-            row[4],  # match accession
-            databases[row[5]],  # match DB
-            fragments,
-            row[9] if row[5] == 'V' else row[4]  # used for PANTHER subfamilies
-        ))
+        obj[3].append(
+            (
+                row[4],  # match accession
+                databases[row[5]],  # match DB
+                fragments,
+                row[9] if row[5] == "V" else row[4],  # used for PANTHER subfamilies
+            )
+        )
 
         i += 1
         if i % cachesize == 0:
@@ -150,8 +149,7 @@ def _merge_matches(files: list[str]):
     for key, value in heapq.merge(*iterable, key=lambda x: x[0]):
         if key != protein_acc:
             if protein_acc:
-                yield (protein_acc, is_reviewed, is_complete, left_number,
-                       matches)
+                yield (protein_acc, is_reviewed, is_complete, left_number, matches)
 
             protein_acc = key
             is_reviewed, is_complete, left_number, _ = value
@@ -171,8 +169,13 @@ def _merge_matches(files: list[str]):
     yield protein_acc, is_reviewed, is_complete, left_number, matches
 
 
-def insert_signature2protein(url: str, names_db: str, matches_file: str,
-                             processes: int = 1, tmpdir: str | None = None):
+def insert_signature2protein(
+    url: str,
+    names_db: str,
+    matches_file: str,
+    processes: int = 1,
+    tmpdir: str | None = None,
+):
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
@@ -211,8 +214,10 @@ def insert_signature2protein(url: str, names_db: str, matches_file: str,
     outqueue = Queue()
     workers = []
     for _ in range(max(1, processes - 1)):
-        p = Process(target=_populate_signature2protein,
-                    args=(url, tmp_db, matches_file, inqueue, outqueue))
+        p = Process(
+            target=_populate_signature2protein,
+            args=(url, tmp_db, matches_file, inqueue, outqueue),
+        )
         p.start()
         workers.append(p)
 
@@ -237,18 +242,18 @@ def insert_signature2protein(url: str, names_db: str, matches_file: str,
     for p in workers:
         p.join()
 
-    logger.info(f"temporary files: "
-                f"{os.path.getsize(tmp_db) / 1024 ** 2:.0f} MB")
+    logger.info(f"temporary files: " f"{os.path.getsize(tmp_db) / 1024 ** 2:.0f} MB")
     os.unlink(tmp_db)
 
     logger.info("done")
 
 
-def _populate_signature2protein(url: str, names_db: str, matches_file: str,
-                                src: Queue, dst: Queue):
+def _populate_signature2protein(
+    url: str, names_db: str, matches_file: str, inqueue: Queue, outqueue: Queue
+):
     con = psycopg.connect(**pg.url2dict(url))
     with con.cursor() as cur:
-        proteins = _iter_proteins(names_db, matches_file, src, dst)
+        proteins = _iter_proteins(names_db, matches_file, inqueue, outqueue)
 
         sql = """
             COPY signature2protein 
@@ -265,30 +270,37 @@ def _populate_signature2protein(url: str, names_db: str, matches_file: str,
     con.close()
 
 
-def _iter_proteins(names_db: str, matches_file: str, src: Queue, dst: Queue):
-    with KVdb(names_db) as names, open(matches_file, "rb") as fh:
-        for offset, count in iter(src.get, None):
-            fh.seek(offset)
-
-            for _ in range(count):
-                prot_acc, is_rev, is_comp, left_num, matches = pickle.load(fh)
-                if not is_comp:
-                    # Ignore fragmented proteins
-                    continue
-
+def _iter_proteins(names_db: str, matches_file: str, inqueue: Queue, outqueue: Queue):
+    with KVdb(names_db) as names:
+        for prot_acc, is_rev, is_comp, left_num, matches in iter_matches(
+            matches_file, inqueue, outqueue
+        ):
+            if is_comp:
                 name_id = names[prot_acc]
                 md5 = _hash_matches(matches)
 
                 for sig_acc in matches:
                     for model_acc in matches[sig_acc]:
-                        if matches[sig_acc][model_acc][0] == 'panther':
-                            yield (sig_acc, model_acc, prot_acc, is_rev, 
-                                   left_num, name_id, md5)
+                        if matches[sig_acc][model_acc][0] == "panther":
+                            yield (
+                                sig_acc,
+                                model_acc,
+                                prot_acc,
+                                is_rev,
+                                left_num,
+                                name_id,
+                                md5,
+                            )
                         else:
-                            yield (sig_acc, None, prot_acc, is_rev, 
-                                   left_num, name_id, md5)
-
-            dst.put(count)
+                            yield (
+                                sig_acc,
+                                None,
+                                prot_acc,
+                                is_rev,
+                                left_num,
+                                name_id,
+                                md5,
+                            )
 
 
 def _hash_matches(matches: dict[str, tuple[str, list[str]]]) -> str:
@@ -338,14 +350,14 @@ def _hash_matches(matches: dict[str, tuple[str, list[str]]]) -> str:
     for pos, signature_acc in positions:
         if pos - last_pos > _MAX_GAP:
             dom_org += loc_org
-            dom_org.append('')  # Add a gap
+            dom_org.append("")  # Add a gap
             loc_org.clear()
 
         loc_org.append(signature_acc)
 
     dom_org += loc_org
 
-    return hashlib.md5('/'.join(dom_org).encode("utf-8")).hexdigest()
+    return hashlib.md5("/".join(dom_org).encode("utf-8")).hexdigest()
 
 
 def merge_overlapping(hits: list[str]) -> list[tuple[int, int]]:
@@ -439,8 +451,9 @@ def finalize_signature2protein(uri: str):
         con.commit()
 
         logger.info("\tclustering")
-        cur.execute("CLUSTER signature2protein "
-                    "USING signature2protein_signature_idx")
+        cur.execute(
+            "CLUSTER signature2protein " "USING signature2protein_signature_idx"
+        )
         con.commit()
 
     con.close()
@@ -515,6 +528,12 @@ def _get_fmatches(uri: str, name2id: dict[str, int]):
 
 
 def insert_matches(uri: str, matches_file: str, processes: int = 1):
+    """
+    Create and populate the match table
+    :param uri: PostgreSQL connection string
+    :param matches_file: Path to file containing protein matches
+    :param processes: Number of parallel workers
+    """
     # Load jobs to send to workers
     with open(f"{matches_file}{INDEX_SUFFIX}", "rb") as fh:
         index = pickle.load(fh)
@@ -524,8 +543,9 @@ def insert_matches(uri: str, matches_file: str, processes: int = 1):
     outqueue = Queue()
     workers = []
     for _ in range(max(1, processes - 1)):
-        p = Process(target=_populate_matches,
-                    args=(uri, matches_file, inqueue, outqueue))
+        p = Process(
+            target=_populate_matches, args=(uri, matches_file, inqueue, outqueue)
+        )
         p.start()
         workers.append(p)
 
@@ -553,12 +573,19 @@ def insert_matches(uri: str, matches_file: str, processes: int = 1):
     logger.info("done")
 
 
-def _populate_matches(url: str, matches_file: str, src: Queue, dst: Queue):
-    con = psycopg.connect(**pg.url2dict(url))
+def _populate_matches(uri: str, matches_file: str, inqueue: Queue, outqueue: Queue):
+    """
+    Read matches from a file and insert them into the match table
+    :param uri: PostgreSQL connection string
+    :param matches_file: Path to file containing protein matches
+    :param inqueue: Input queue sending the file offsets to move to
+    :param outqueue: Output queue to return the number of proteins processed
+    """
+    con = psycopg.connect(**pg.url2dict(uri))
     with con.cursor() as cur:
         cur.execute("SELECT name, id FROM database")
         name2id = dict(cur.fetchall())
-        matches = _iter_matches(matches_file, name2id, src, dst)
+        matches = _prepare_matches(matches_file, name2id, inqueue, outqueue)
 
         sql = """
             COPY match 
@@ -574,23 +601,52 @@ def _populate_matches(url: str, matches_file: str, src: Queue, dst: Queue):
     con.close()
 
 
-def _iter_matches(matches_file: str, name2id: dict[str, int],
-                  src: Queue, dst: Queue):
+def _prepare_matches(
+    matches_file: str, name2id: dict[str, int], inqueue: Queue, outqueue: Queue
+):
+    """
+    Turn protein matches as read from the file into records ready to be inserted
+    into a table
+    :param matches_file: Path to file containing protein matches
+    :param name2id: Dictionary of database name -> database ID
+    :param inqueue: Input queue sending the file offsets to move to
+    :param outqueue: Output queue to return the number of proteins processed
+    """
+    for prot_acc, is_rev, is_comp, left_num, matches in iter_matches(
+        matches_file, inqueue, outqueue
+    ):
+        for sig_acc in matches:
+            for model_acc, (sig_db, hits) in matches[sig_acc].items():
+                sig_db_id = name2id[sig_db]
+
+                for fragments in hits:
+                    yield prot_acc, sig_acc, sig_db_id, fragments
+
+
+def iter_matches(matches_file: str, inqueue: Queue, outqueue: Queue):
+    """
+    Open the file of protein matches and load matches stored at the offsets
+    sent by a queue
+    :param matches_file: Path to file containing protein matches
+    :param inqueue: Input queue sending the file offsets to move to
+    :param outqueue: Output queue to return the number of proteins processed
+    """
     with open(matches_file, "rb") as fh:
-        for offset, count in iter(src.get, None):
+        for offset, count in iter(inqueue.get, None):
             fh.seek(offset)
 
             for _ in range(count):
-                prot_acc, is_rev, is_comp, left_num, matches = pickle.load(fh)
+                # prot_acc, is_rev, is_comp, left_num, matches
+                yield pickle.load(fh)
 
-                for sig_acc in matches:
-                    for model_acc, (sig_db, hits) in matches[sig_acc].items():
-                        sig_db_id = name2id[sig_db]
+            outqueue.put(count)
 
-                        for fragments in hits:
-                            yield prot_acc, sig_acc, sig_db_id, fragments
 
-            dst.put(count)
+def load_index(matches_file: str):
+    with open(f"{matches_file}{INDEX_SUFFIX}", "rb") as fh:
+        index = pickle.load(fh)
+
+    return index
 
 
 def finalize_match_table(uri: str):
