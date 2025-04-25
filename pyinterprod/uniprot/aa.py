@@ -15,8 +15,8 @@ MAX_DOM_BY_GROUP = 20
 DOM_OVERLAP_THRESHOLD = 0.3
 # Pfam, CDD, PROSITE profiles, SMART, NCBIFAM, CATH-Gene3D, SUPERFAMILY
 REPR_DOM_DATABASES = ["H", "J", "M", "R", "N", "X", "Y"]
-# Domain, Repeat, Homologous superfamily
-REPR_DOM_TYPES = ["D", "R", "H"]
+# Domain, Repeat, Conserved site, Homologous superfamily
+REPR_DOM_TYPES = ["D", "R", "C", "H"]
 
 
 def create_aa_alignment(uri: str):
