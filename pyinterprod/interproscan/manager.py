@@ -88,7 +88,16 @@ class InterProScanTask(Task):
                 self.get_sites_path(),
             ),
             kwargs=dict(cpu=self.config["job_cpu"]),
-            name="_".join(["IPM", self.appl, self.version, self.upi_from, self.upi_to]),
+            name="_".join(
+                [
+                    "IPM",
+                    self.appl,
+                    self.version,
+                    str(self.analysis_id),
+                    self.upi_from,
+                    self.upi_to,
+                ]
+            ),
             scheduler=dict(
                 type=self.scheduler,
                 queue=self.queue,
@@ -122,8 +131,7 @@ class InterProScanTask(Task):
             self.work_dir,
             self.appl,
             self.version,
-            str(self.analysis_id),
-            f"{self.upi_from}_{self.upi_to}",
+            f"{self.analysis_id}_{self.upi_from}_{self.upi_to}",
         )
 
     def get_fasta_path(self) -> str:
