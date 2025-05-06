@@ -119,7 +119,11 @@ class InterProScanTask(Task):
 
     def get_run_dir(self) -> str:
         return os.path.join(
-            self.work_dir, self.appl, self.version, f"{self.upi_from}_{self.upi_to}"
+            self.work_dir,
+            self.appl,
+            self.version,
+            str(self.analysis_id),
+            f"{self.upi_from}_{self.upi_to}",
         )
 
     def get_fasta_path(self) -> str:
