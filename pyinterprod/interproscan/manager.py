@@ -450,6 +450,20 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 task_limit = task.executor.limit.total_seconds() / 3600
                 time_err = runtime >= task_limit
 
+            # Update job
+            jobs.update_job(
+                cur,
+                task.analysis_id,
+                task.upi_from,
+                task.upi_to,
+                starttime,
+                endtime,
+                task.maxmem,
+                task.executor.memory,
+                task.cputime,
+                success=False,
+            )
+
             if (auto_retry and (mem_err or time_err)) or num_retries < max_retries:
                 # Task allowed to be re-submitted
 
