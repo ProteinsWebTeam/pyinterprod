@@ -88,7 +88,16 @@ class InterProScanTask(Task):
                 self.get_sites_path(),
             ),
             kwargs=dict(cpu=self.config["job_cpu"]),
-            name="_".join(["IPM", self.appl, self.version, self.upi_from, self.upi_to]),
+            name="_".join(
+                [
+                    "IPM",
+                    self.appl,
+                    self.version,
+                    str(self.analysis_id),
+                    self.upi_from,
+                    self.upi_to,
+                ]
+            ),
             scheduler=dict(
                 type=self.scheduler,
                 queue=self.queue,
@@ -119,7 +128,10 @@ class InterProScanTask(Task):
 
     def get_run_dir(self) -> str:
         return os.path.join(
-            self.work_dir, self.appl, self.version, f"{self.upi_from}_{self.upi_to}"
+            self.work_dir,
+            self.appl,
+            self.version,
+            f"{self.analysis_id}_{self.upi_from}_{self.upi_to}",
         )
 
     def get_fasta_path(self) -> str:
@@ -297,18 +309,17 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 scheduler=scheduler,
                 queue=queue,
             )
-            tasks.append((task, True, 0))
+            tasks.append((task, True, 0))  # 0 -> we don't know yet
 
-    if max_jobs_per_analysis >= 0:
-        tmp_tasks = []
-        for task, is_new, num_sequences in tasks:
-            analysis_id = task.analysis_id
-            if num_jobs_per_analysis[analysis_id] < max_jobs_per_analysis:
-                tmp_tasks.append((task, is_new, num_sequences))
-                num_jobs_per_analysis[analysis_id] += 1
+    tmp_tasks = []
+    for task, is_new, num_sequences in tasks:
+        analysis_id = task.analysis_id
+        if (max_jobs_per_analysis < 0 or
+                0 <= num_jobs_per_analysis[analysis_id] < max_jobs_per_analysis):
+            tmp_tasks.append((task, is_new, num_sequences))
+            num_jobs_per_analysis[analysis_id] += 1
 
-        tasks = tmp_tasks
-
+    tasks = tmp_tasks
     num_tasks = len(tasks)
     logger.info(f"tasks: {num_tasks}")
     if max_running_jobs == 0 or num_tasks == 0:
@@ -325,11 +336,9 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         t.start()
         fasta_workers.append(t)
 
-    task_sequences = {}
     while tasks:
         task, is_new, num_sequences = tasks.pop(0)
         fasta_queue.put((task, is_new, num_sequences))
-        task_sequences[task.name] = num_sequences
 
     # Add sentinel value to terminate pool when all FASTA have been exported
     for _ in fasta_workers:
@@ -487,7 +496,6 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 submit_queue.put((task, num_sequences))
 
                 # Add new job
-                num_sequences = task_sequences[task.name]
                 jobs.add_job(
                     cur,
                     task.analysis_id,
@@ -568,7 +576,6 @@ def export_sequences_worker(uri: str, inqueue: Queue, outqueue: Queue):
                             task.upi_to,
                             success=True,
                         )
-
                 else:
                     # Not new task: we assume the input file already exists
                     outqueue.put((task, num_sequences))
