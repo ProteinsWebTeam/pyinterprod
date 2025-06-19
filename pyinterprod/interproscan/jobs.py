@@ -24,6 +24,7 @@ def get_incomplete_jobs(cur: oracledb.Cursor) -> dict[int, tuple]:
                        ORDER BY CREATED_TIME DESC
                    ) RN
             FROM ANALYSIS_JOBS
+            WHERE ANALYSIS_ID IN (SELECT ID FROM ANALYSIS WHERE ACTIVE = 'Y')
         )
         WHERE RN = 1 AND (SUCCESS IS NULL OR SUCCESS = 'N')
         """
