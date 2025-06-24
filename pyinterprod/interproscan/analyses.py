@@ -26,6 +26,7 @@ def get_analyses(obj: str | oracledb.Cursor) -> dict:
         INNER JOIN IPRSCAN.ANALYSIS_TABLES T
             ON LOWER(A.NAME) = LOWER(T.NAME)
         WHERE A.ACTIVE = 'Y'
+            AND I5_DIR IS NOT NULL
         """
     )
 
