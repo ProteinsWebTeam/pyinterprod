@@ -1,8 +1,8 @@
-# -*- coding: utf-8 -*-
-
 import re
 
-from .common import Clan
+from oracledb import Cursor
+
+from .common import Clan, Method
 
 
 def get_clans(file: str) -> list[Clan]:
@@ -43,3 +43,32 @@ def get_clans(file: str) -> list[Clan]:
             })
 
     return list(clans.values())
+
+
+def get_signatures(cur: Cursor) -> list[Method]:
+    """
+    We don't expect to ever do an actual PIRSF update,
+    as PIR hasn't created new families in ages.
+    If we need to do a data (matches) updates, we simply get all existing
+    signatures.
+    """
+    cur.execute(
+        """
+        SELECT METHOD_AC, NAME, DESCRIPTION, SIG_TYPE, ABSTRACT, ABSTRACT_LONG
+        FROM INTERPRO.METHOD
+        WHERE DBCODE = 'U'
+        """
+    )
+
+    methods = []
+    for row in cur:
+        m = Method(
+            accession=row[0],
+            sig_type=row[3],
+            name=row[1],
+            description=row[2],
+            abstract=row[5].read() if row[5] else row[4]
+        )
+        methods.append(m)
+
+    return methods
