@@ -97,6 +97,9 @@ def add_staging(uri: str, update: list[tuple[Database, dict[str, str]]]):
                 signatures = contrib.smart.parse_signatures(
                     db_props["signatures"]
                 )
+            elif db.identifier == 'U':
+                # PIRSF
+                signatures = contrib.pirsf.get_signatures(cur)
             elif db.identifier == 'V':
                 # PANTHER
                 signatures = contrib.panther.parse_signatures(
