@@ -62,7 +62,9 @@ def add_staging(uri: str, update: list[tuple[Database, dict[str, str]]]):
     with Table(con, sql) as table:
         errors = 0
         for db, db_props in update:
-            if db.identifier == 'H':
+            if db.identifier == 'B':
+                signatures = contrib.sfld.get_signatures(cur)
+            elif db.identifier == 'H':
                 # Pfam
                 signatures = contrib.pfam.get_signatures(
                     db_props["seed"]
@@ -642,7 +644,7 @@ def update_features(uri: str, update: list[tuple[Database, dict[str, str]]]):
                     f.accession,
                     f.name or None,
                     db.identifier,
-                    datetime.now(),  # TODO: use date already in Oracle?
+                    datetime.now(),
                     f.description,
                     f.abstract[:4000] if f.abstract else None,
                 )

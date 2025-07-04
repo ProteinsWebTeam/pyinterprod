@@ -8,5 +8,6 @@ from . import panther
 from . import pfam
 from . import pirsf
 from . import prosite
+from . import sfld
 from . import smart
 from . import toad
