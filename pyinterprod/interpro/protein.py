@@ -463,6 +463,7 @@ def iterative_delete(url: str, table: str, partition: str | None,
         con.close()
         return num_rows
 
+    logger.debug(f"{_table}: {num_rows:,} rows to delete")
     for i in range(1, stop, step):
         cur.execute(
             f"""
@@ -476,7 +477,8 @@ def iterative_delete(url: str, table: str, partition: str | None,
             [i, i + step - 1]
         )
         con.commit()
-        logger.debug(f"{_table}: {i + step - 1:,} / {stop:,}")
+        if (i + step - 1) % 1e6 == 0:
+            logger.debug(f"{_table}: {i + step - 1:,} / {stop:,}")
 
     if gather_stats:
         ora.gather_stats(cur, "INTERPRO", table, partition)
