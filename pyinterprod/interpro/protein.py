@@ -436,7 +436,8 @@ def delete_obsoletes(url: str, truncate: bool = False, threads: int = 8,
 
 
 def iterative_delete(url: str, table: str, partition: str | None,
-                     column: str, step: int, stop: int) -> int:
+                     column: str, step: int, stop: int,
+                     gather_stats : bool = True) -> int:
     con = oracledb.connect(url)
     cur = con.cursor()
 
@@ -477,7 +478,9 @@ def iterative_delete(url: str, table: str, partition: str | None,
         con.commit()
         logger.debug(f"{_table}: {i + step - 1:,} / {stop:,}")
 
-    ora.gather_stats(cur, "INTERPRO", table, partition)
+    if gather_stats:
+        ora.gather_stats(cur, "INTERPRO", table, partition)
+
     cur.close()
     con.close()
     return num_rows
