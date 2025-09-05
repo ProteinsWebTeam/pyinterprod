@@ -471,10 +471,12 @@ def iterative_delete(url: str, table: str, partition: str | None,
               FROM INTERPRO.PROTEIN_TO_DELETE
               WHERE ID BETWEEN :1 and :2
             )
-            """, (i, i + step - 1)
+            """,
+            [i, i + step - 1]
         )
+        con.commit()
+        logger.debug(f"{_table}: {i + step - 1:,} / {stop:,}")
 
-    con.commit()
     ora.gather_stats(cur, "INTERPRO", table, partition)
     cur.close()
     con.close()
