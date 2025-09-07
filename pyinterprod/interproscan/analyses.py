@@ -404,6 +404,9 @@ def mobidb_lite_matches(cur: oracledb.Cursor, file: str, analysis_id: int,
                 seq_feature = cols[9].strip()
             except IndexError:
                 seq_feature = None
+            else:
+                if seq_feature == "-":
+                    seq_feature = None
 
             values.append({
                 "analysis_id": analysis_id,

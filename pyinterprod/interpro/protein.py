@@ -436,7 +436,8 @@ def delete_obsoletes(url: str, truncate: bool = False, threads: int = 8,
 
 
 def iterative_delete(url: str, table: str, partition: str | None,
-                     column: str, step: int, stop: int) -> int:
+                     column: str, step: int, stop: int,
+                     gather_stats: bool = True) -> int:
     con = oracledb.connect(url)
     cur = con.cursor()
 
@@ -462,6 +463,7 @@ def iterative_delete(url: str, table: str, partition: str | None,
         con.close()
         return num_rows
 
+    logger.debug(f"{_table}: {num_rows:,} rows to delete")
     for i in range(1, stop, step):
         cur.execute(
             f"""
@@ -471,11 +473,16 @@ def iterative_delete(url: str, table: str, partition: str | None,
               FROM INTERPRO.PROTEIN_TO_DELETE
               WHERE ID BETWEEN :1 and :2
             )
-            """, (i, i + step - 1)
+            """,
+            [i, i + step - 1]
         )
+        con.commit()
+        if (i + step - 1) % 1e6 == 0:
+            logger.debug(f"{_table}: {i + step - 1:,} / {stop:,}")
 
-    con.commit()
-    ora.gather_stats(cur, "INTERPRO", table, partition)
+    if gather_stats:
+        ora.gather_stats(cur, "INTERPRO", table, partition)
+
     cur.close()
     con.close()
     return num_rows
