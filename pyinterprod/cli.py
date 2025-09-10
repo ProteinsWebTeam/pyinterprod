@@ -795,14 +795,14 @@ def run_uniprot_update():
             fn=interpro.match.update_feature_matches,
             args=(ora_interpro_uri,),
             name="update-fmatches",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=3),
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
             requires=["update-matches"]
         ),
         Task(
             fn=interpro.match.update_toad_matches,
             args=(ora_interpro_uri,),
             name="update-tmatches",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=3),
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=24),
             requires=["update-matches"]
         ),
     ]
