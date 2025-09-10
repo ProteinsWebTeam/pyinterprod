@@ -536,9 +536,9 @@ def update_feature_matches(uri: str):
             """,
             [dbcode]
         )
+        con.commit()
         logger.info(f"  {cur.rowcount} rows inserted")
 
-    con.commit()
     cur.close()
     con.close()
     logger.info("complete")
