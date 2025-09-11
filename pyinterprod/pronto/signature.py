@@ -435,9 +435,9 @@ def _iter_predictions(comps: dict[str, dict[str, list[int, int, int, int, int]]]
             _, _, num_proteins2, num_reviewed2, _, num_residues2 = sigs[acc2]
 
             num_proteins = min(num_proteins1, num_proteins2)
-            if collocts / num_proteins >= _MIN_COLLOCATION:
-                yield acc1, acc2, collocts, prot_overlaps, res_overlaps
-                yield acc2, acc1, collocts, prot_overlaps, res_overlaps
+            if collocs / num_proteins >= _MIN_COLLOCATION:
+                yield acc1, acc2, collocs, prot_overlaps, res_overlaps
+                yield acc2, acc1, collocs, prot_overlaps, res_overlaps
 
 
 def get_swissprot_descriptions(pg_url: str) -> dict[str, list[tuple[str, str]]]:
