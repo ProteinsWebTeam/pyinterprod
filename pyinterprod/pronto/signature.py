@@ -423,8 +423,8 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
 def _iter_comparisons(comps: dict[str, dict[str, list[int, int, int, int, int]]]):
     for acc1, others in comps.items():
         for acc2, (collocs, rev_collocs, prot_ovrs, _, rev_res_ovrs) in others.items():
-            yield acc1, acc2, collocs, prot_ovrs, rev_res_ovrs
-            yield acc2, acc1, collocs, prot_ovrs, rev_res_ovrs
+            yield acc1, acc2, collocs, rev_collocs, prot_ovrs, rev_res_ovrs
+            yield acc2, acc1, collocs, rev_collocs, prot_ovrs, rev_res_ovrs
 
 
 def _iter_predictions(comps: dict[str, dict[str, list[int, int, int, int, int]]],
