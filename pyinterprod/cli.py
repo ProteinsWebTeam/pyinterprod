@@ -923,7 +923,7 @@ def run_uniprot_update():
             fn=interpro.match.update_site_matches,
             args=(ora_interpro_uri,),
             name="update-sites",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=6),
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=48),
             requires=["update-ipm-sites", "update-matches"]
         ),
     ]
