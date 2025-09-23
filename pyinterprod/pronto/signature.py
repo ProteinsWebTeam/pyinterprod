@@ -112,26 +112,30 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                             cmp = comparisons[signature_acc][other_acc]
                         except KeyError:
                             cmp = comparisons[signature_acc][other_acc] = [
-                                0,  # number of collocations (all proteins)
-                                0,  # number of collocations (reviewed proteins)
+                                0,  # number of shared proteins
+                                0,  # number of shared reviewed proteins
                                 0,  # number of proteins with overlaps
+                                0,  # number of reviewed proteins with overlaps
                                 0,  # number of overlapping residues
                                 0,  # number of overlapping reviewed residues
                             ]
 
                         cmp[0] += 1
+                        if is_rev:
+                            cmp[1] += 1
 
                         # Overlapping proteins
                         shortest = min(residues_1, residues_2)
                         if residues >= _MIN_OVERLAP * shortest:
                             cmp[2] += 1
 
-                        # Overlapping residues
-                        cmp[3] += residues
+                            if is_rev:
+                                cmp[3] += 1
 
+                        # Overlapping residues
+                        cmp[4] += residues
                         if is_rev:
-                            cmp[1] += 1
-                            cmp[4] += residues
+                            cmp[5] += residues
 
             dst.put(count)
 
@@ -334,16 +338,16 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 num_collocations INTEGER NOT NULL,
                 num_reviewed_collocations INTEGER NOT NULL,
                 num_overlaps INTEGER NOT NULL,
+                num_reviewed_overlaps INTEGER NOT NULL,
+                num_res_overlaps INTEGER NOT NULL,
                 num_reviewed_res_overlaps INTEGER NOT NULL
             )
             """
         )
 
         sql = """
-            INSERT INTO comparison (signature_acc_1, signature_acc_2, 
-                                    num_collocations, num_reviewed_collocations,
-                                    num_overlaps, num_reviewed_res_overlaps) 
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO comparison
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         records = []
@@ -385,10 +389,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
         )
 
         sql = """
-            INSERT INTO prediction (
-                signature_acc_1, signature_acc_2, num_collocations, 
-                num_protein_overlaps, num_residue_overlaps
-            ) 
+            INSERT INTO prediction
             VALUES (%s, %s, %s, %s, %s)
         """
 
@@ -420,24 +421,24 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
     logger.info("done")
 
 
-def _iter_comparisons(comps: dict[str, dict[str, list[int, int, int, int, int]]]):
+def _iter_comparisons(comps: dict[str, dict[str, list[int]]]):
     for acc1, others in comps.items():
-        for acc2, (collocs, rev_collocs, prot_ovrs, _, rev_res_ovrs) in others.items():
-            yield acc1, acc2, collocs, rev_collocs, prot_ovrs, rev_res_ovrs
-            yield acc2, acc1, collocs, rev_collocs, prot_ovrs, rev_res_ovrs
+        for acc2, values in others.items():
+            yield acc1, acc2, *values
+            yield acc2, acc1, *values
 
 
-def _iter_predictions(comps: dict[str, dict[str, list[int, int, int, int, int]]],
-                      sigs: dict[str, list[int, int, int, int, int]]):
+def _iter_predictions(comps: dict[str, dict[str, list[int]]],
+                      sigs: dict[str, list[int]]):
     for acc1, others in comps.items():
-        for acc2, (collocs, _, prot_overlaps, res_overlaps, _) in others.items():
+        for acc2, (prots, _, prot_overlaps, _, res_overlaps, _) in others.items():
             _, _, num_proteins1, num_reviewed1, _, num_residues1 = sigs[acc1]
             _, _, num_proteins2, num_reviewed2, _, num_residues2 = sigs[acc2]
 
             num_proteins = min(num_proteins1, num_proteins2)
-            if collocs / num_proteins >= _MIN_COLLOCATION:
-                yield acc1, acc2, collocs, prot_overlaps, res_overlaps
-                yield acc2, acc1, collocs, prot_overlaps, res_overlaps
+            if prots / num_proteins >= _MIN_COLLOCATION:
+                yield acc1, acc2, prots, prot_overlaps, res_overlaps
+                yield acc2, acc1, prots, prot_overlaps, res_overlaps
 
 
 def get_swissprot_descriptions(pg_url: str) -> dict[str, list[tuple[str, str]]]:
