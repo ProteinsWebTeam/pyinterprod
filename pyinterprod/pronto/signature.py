@@ -142,10 +142,10 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                             cmp[5] += residues
 
                 if has_overlap:
-                    sig[7] += 1
+                    sig[6] += 1
 
                     if is_rev:
-                        sig[8] += 1
+                        sig[7] += 1
 
             dst.put(count)
 
