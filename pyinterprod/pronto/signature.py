@@ -443,8 +443,8 @@ def _iter_predictions(comps: dict[str, dict[str, list[int]]],
                       sigs: dict[str, list[int]]):
     for acc1, others in comps.items():
         for acc2, (prots, _, prot_overlaps, _, res_overlaps, _) in others.items():
-            _, _, num_proteins1, num_reviewed1, _, num_residues1 = sigs[acc1]
-            _, _, num_proteins2, num_reviewed2, _, num_residues2 = sigs[acc2]
+            num_proteins1 = sigs[acc1][2]
+            num_proteins2 = sigs[acc2][2]
 
             num_proteins = min(num_proteins1, num_proteins2)
             if prots / num_proteins >= _MIN_COLLOCATION:
