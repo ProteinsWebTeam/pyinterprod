@@ -304,8 +304,8 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 num_complete_reviewed_sequences INTEGER NOT NULL,
                 num_complete_single_domain_sequences INTEGER NOT NULL,
                 num_residues BIGINT NOT NULL,
-                num_overlapped_sequences INTEGER NOT NULL,
-                num_overlapped_reviewed_sequences INTEGER NOT NULL
+                num_overlapped_complete_sequences INTEGER NOT NULL,
+                num_overlapped_complete_reviewed_sequences INTEGER NOT NULL
             )
             """
         )
