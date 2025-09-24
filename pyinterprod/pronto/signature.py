@@ -130,6 +130,7 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                         # Overlapping proteins
                         shortest = min(residues_1, residues_2)
                         if residues >= _MIN_OVERLAP * shortest:
+                            has_overlap = True
                             cmp[2] += 1
 
                             if is_rev:
