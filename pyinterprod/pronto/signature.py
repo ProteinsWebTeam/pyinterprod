@@ -52,12 +52,14 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                         sig = signatures[signature_acc]
                     except KeyError:
                         sig = signatures[signature_acc] = [
-                            0,  # number of proteins
-                            0,  # number of reviewed proteins
-                            0,  # number of complete proteins
-                            0,  # number of complete reviewed proteins
-                            0,  # number of complete single-domain proteins
-                            0,  # number of residues in complete proteins
+                            0,  # proteins
+                            0,  # reviewed proteins
+                            0,  # complete proteins
+                            0,  # complete reviewed proteins
+                            0,  # complete single-domain proteins
+                            0,  # residues in complete proteins
+                            0,  # complete proteins with an overlap
+                            0,  # complete reviewed proteins with an overlap
                         ]
                         comparisons[signature_acc] = {}
 
@@ -83,6 +85,7 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                         sig[4] += 1
                         continue
 
+                    has_overlap = False
                     for other_acc in matches:
                         if other_acc <= signature_acc:
                             continue
@@ -136,6 +139,12 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                         cmp[4] += residues
                         if is_rev:
                             cmp[5] += residues
+
+                if has_overlap:
+                    sig[7] += 1
+
+                    if is_rev:
+                        sig[8] += 1
 
             dst.put(count)
 
@@ -271,7 +280,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 row[7] or row[8],               # abstract
                 row[9],                         # llm abstract
                 signature_acc in amr_models,    # is_amr
-                *signatures.get(signature_acc, [0] * 6)
+                *signatures.get(signature_acc, [0] * 8)
             ))
 
         cur.execute("DROP TABLE IF EXISTS signature")
@@ -294,16 +303,17 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 num_complete_sequences INTEGER NOT NULL,
                 num_complete_reviewed_sequences INTEGER NOT NULL,
                 num_complete_single_domain_sequences INTEGER NOT NULL,
-                num_residues BIGINT NOT NULL
+                num_residues BIGINT NOT NULL,
+                num_overlapped_sequences INTEGER NOT NULL,
+                num_overlapped_reviewed_sequences INTEGER NOT NULL
             )
             """
         )
 
         sql = """
             INSERT INTO signature
-            VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+                    %s, %s, %s, %s)
         """
 
         records = []
