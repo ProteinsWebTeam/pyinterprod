@@ -79,7 +79,7 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                         sig[4] += 1
                         continue
 
-                    has_overlap = False
+                    overlaps_with = set()
                     for other_acc in matches:
                         if other_acc <= signature_acc:
                             continue
@@ -124,7 +124,7 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                         # Overlapping proteins
                         shortest = min(residues_1, residues_2)
                         if residues >= _MIN_OVERLAP * shortest:
-                            has_overlap = True
+                            overlaps_with.add(other_acc)
                             cmp[2] += 1
 
                             if is_rev:
@@ -135,13 +135,16 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                         if is_rev:
                             cmp[5] += residues
 
-                    if has_overlap:
+                    if overlaps_with:
                         sig[6] += 1
-                        signatures[other_acc][6] += 1
 
                         if is_rev:
                             sig[7] += 1
-                            signatures[other_acc][7] += 1
+
+                        for other_acc in overlaps_with:
+                            signatures[other_acc][6] += 1
+                            if is_rev:
+                                signatures[other_acc][7] += 1
 
             dst.put(count)
 
