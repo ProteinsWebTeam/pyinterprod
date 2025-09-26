@@ -43,15 +43,10 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                         hits = sorted(merge_overlapping(hits))
                         matches[signature_acc] = hits
 
+                # Make sure all signatures are initiated first
                 for signature_acc in matches:
-                    """
-                    Count the number of proteins,
-                    regardless of the sequence status
-                    """
-                    try:
-                        sig = signatures[signature_acc]
-                    except KeyError:
-                        sig = signatures[signature_acc] = [
+                    if signature_acc not in signatures:
+                        signatures[signature_acc] = [
                             0,  # proteins
                             0,  # reviewed proteins
                             0,  # complete proteins
@@ -63,6 +58,14 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                         ]
                         comparisons[signature_acc] = {}
 
+                """
+                Keep track of various stats for each signature, and compare
+                pairs of signatures. To save time, we only compare signatures
+                when accession_1 < accession_2 (half matrix), so we need to 
+                make sure to update the counters for accession_2 as well.
+                """
+                for signature_acc in matches:
+                    sig = signatures[signature_acc]
                     sig[0] += 1
                     if is_rev:
                         sig[1] += 1
@@ -143,9 +146,11 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
 
                     if has_overlap:
                         sig[6] += 1
+                        signatures[other_acc][6] += 1
 
                         if is_rev:
                             sig[7] += 1
+                            signatures[other_acc][7] += 1
 
             dst.put(count)
 
