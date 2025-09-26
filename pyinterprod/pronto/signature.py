@@ -346,6 +346,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
 
         logger.info("inserting comparisons")
         cur.execute("DROP TABLE IF EXISTS comparison")
+        cur.execute("DROP TABLE IF EXISTS prediction")
         cur.execute(
             """
             CREATE TABLE comparison (
@@ -390,49 +391,6 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
         cur.execute("CLUSTER comparison USING comparison_idx")
         con.commit()
 
-        logger.info("inserting predictions")
-        cur.execute("DROP TABLE IF EXISTS prediction")
-        cur.execute(
-            """
-            CREATE TABLE prediction (
-                signature_acc_1 VARCHAR(25) NOT NULL,
-                signature_acc_2 VARCHAR(25) NOT NULL,
-                num_collocations INTEGER NOT NULL,
-                num_protein_overlaps INTEGER NOT NULL,
-                num_residue_overlaps BIGINT NOT NULL
-            )
-            """
-        )
-
-        sql = """
-            INSERT INTO prediction
-            VALUES (%s, %s, %s, %s, %s)
-        """
-
-        records = []
-        for row in _iter_predictions(comparisons, signatures):
-            records.append(row)
-            if len(records) == 1000:
-                cur.executemany(sql, records)
-                con.commit()
-                records.clear()
-
-        if records:
-            cur.executemany(sql, records)
-            con.commit()
-            records.clear()
-
-        cur.execute(
-            """
-            CREATE INDEX prediction_idx
-            ON prediction (signature_acc_1)
-            """
-        )
-        con.commit()
-
-        cur.execute("CLUSTER prediction USING prediction_idx")
-        con.commit()
-
     con.close()
     logger.info("done")
 
@@ -442,19 +400,6 @@ def _iter_comparisons(comps: dict[str, dict[str, list[int]]]):
         for acc2, values in others.items():
             yield acc1, acc2, *values
             yield acc2, acc1, *values
-
-
-def _iter_predictions(comps: dict[str, dict[str, list[int]]],
-                      sigs: dict[str, list[int]]):
-    for acc1, others in comps.items():
-        for acc2, (prots, _, prot_overlaps, _, res_overlaps, _) in others.items():
-            num_proteins1 = sigs[acc1][2]
-            num_proteins2 = sigs[acc2][2]
-
-            num_proteins = min(num_proteins1, num_proteins2)
-            if prots / num_proteins >= _MIN_COLLOCATION:
-                yield acc1, acc2, prots, prot_overlaps, res_overlaps
-                yield acc2, acc1, prots, prot_overlaps, res_overlaps
 
 
 def get_swissprot_descriptions(pg_url: str) -> dict[str, list[tuple[str, str]]]:
