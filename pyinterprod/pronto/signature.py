@@ -16,15 +16,6 @@ At least 50% of the shortest match must overlap with the other match
 """
 _MIN_OVERLAP = 0.5
 
-"""
-One of the signatures must hit at least 50% of the proteins hit by the other
-signature
-"""
-_MIN_COLLOCATION = 0.5
-
-# Threshold for Jaccard index/coefficients
-_MIN_SIMILARITY = 0.75
-
 
 def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
     signatures = {}
