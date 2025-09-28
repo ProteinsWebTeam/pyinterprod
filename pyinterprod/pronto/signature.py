@@ -55,6 +55,7 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                 when accession_1 < accession_2 (half matrix), so we need to 
                 make sure to update the counters for accession_2 as well.
                 """
+                with_overlaps = set()
                 for signature_acc in matches:
                     sig = signatures[signature_acc]
                     sig[0] += 1
@@ -79,7 +80,6 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                         sig[4] += 1
                         continue
 
-                    overlaps_with = set()
                     for other_acc in matches:
                         if other_acc <= signature_acc:
                             continue
@@ -124,7 +124,8 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                         # Overlapping proteins
                         shortest = min(residues_1, residues_2)
                         if residues >= _MIN_OVERLAP * shortest:
-                            overlaps_with.add(other_acc)
+                            with_overlaps.add(signature_acc)
+                            with_overlaps.add(other_acc)
                             cmp[2] += 1
 
                             if is_rev:
@@ -135,16 +136,12 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                         if is_rev:
                             cmp[5] += residues
 
-                    if overlaps_with:
-                        sig[6] += 1
+                for signature_acc in with_overlaps:
+                    sig = signatures[signature_acc]
+                    sig[6] += 1
 
-                        if is_rev:
-                            sig[7] += 1
-
-                        for other_acc in overlaps_with:
-                            signatures[other_acc][6] += 1
-                            if is_rev:
-                                signatures[other_acc][7] += 1
+                    if is_rev:
+                        sig[7] += 1
 
             dst.put(count)
 
