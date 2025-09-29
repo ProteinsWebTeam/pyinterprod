@@ -752,6 +752,36 @@ def populate_method2pub_stg(cur: oracledb.Cursor, method2pub: dict[str, set]):
         )
 
 
+def update_llm_citations(uri: str) -> None:
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+    cur.execute("SELECT ABSTRACT FROM INTERPRO.METHOD_LLM WHERE ABSTRACT LIKE '%PMID%'")
+    new_citations = 0
+    for row in cur.fetchall():
+        abstract = row[0]
+        pmids = re.findall(r"PMID:\s*([0-9]+)", abstract)
+        if pmids:
+            placeholders = ",".join([f":{i+1}" for i in range(len(pmids))])
+            query = f"""
+                SELECT PUBMED_ID
+                FROM INTERPRO.CITATION
+                WHERE PUBMED_ID IN ({placeholders})
+            """
+            cur.execute(query, pmids)
+            existing_pmids = {str(row[0]) for row in cur.fetchall()}
+            missing_pmids = set([pmid for pmid in pmids if pmid not in existing_pmids])
+            for pmid in missing_pmids:
+                pub_id = update_citation(cur, int(pmid))
+                if not pub_id:
+                    logger.warning("No citation found with PubMed ID %s", pmid)
+                else:
+                    new_citations += 1
+    cur.close()
+    con.commit()
+    con.close()
+    logger.info("New citations added from LLM abstracts: %d", new_citations)
+
+
 def update_citation(cur: oracledb.Cursor, pmid: int) -> str | None:
     cur.execute(
         """
@@ -802,12 +832,12 @@ def update_citation(cur: oracledb.Cursor, pmid: int) -> str | None:
         cur.execute(
             """
             INSERT INTO INTERPRO.CITATION (
-              PUB_ID, PUB_TYPE, PUBMED_ID, VOLUME, ISSUE,
-              YEAR, TITLE, RAWPAGES, MEDLINE_JOURNAL,
-              ISO_JOURNAL, AUTHORS, DOI_URL
+            PUB_ID, PUB_TYPE, PUBMED_ID, VOLUME, ISSUE,
+            YEAR, TITLE, RAWPAGES, MEDLINE_JOURNAL,
+            ISO_JOURNAL, AUTHORS, DOI_URL
             ) VALUES (
-              INTERPRO.NEW_PUB_ID(), 'J', :1, :2, :3, :4, :5,
-              :6, :7, :8, :9, :10
+            INTERPRO.NEW_PUB_ID(), 'J', :1, :2, :3, :4, :5,
+            :6, :7, :8, :9, :10
             )
             RETURNING PUB_ID INTO :11
             """,

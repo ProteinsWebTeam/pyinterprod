@@ -969,6 +969,20 @@ def update_database():
                                       by_name=args.by_name,
                                       confirm=args.confirm)
 
+def update_llm_citations():
+    parser = ArgumentParser(description="Update LLM citations")
+    parser.add_argument("config", metavar="main.conf",
+                        help="Configuration file.")
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': no such file or directory")
+
+    config = ConfigParser()
+    config.read(args.config)
+
+    ora_interpro_uri = config["oracle"]["ipro-interpro"]
+    interpro.signature.update_llm_citations(ora_interpro_uri)   
 
 def run_interproscan_manager():
     parser = ArgumentParser(description="InterProScan matches calculation")
