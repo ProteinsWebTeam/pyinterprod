@@ -843,12 +843,12 @@ def update_citation(cur: oracledb.Cursor, pmid: int) -> str | None:
         cur.execute(
             """
             INSERT INTO INTERPRO.CITATION (
-            PUB_ID, PUB_TYPE, PUBMED_ID, VOLUME, ISSUE,
-            YEAR, TITLE, RAWPAGES, MEDLINE_JOURNAL,
-            ISO_JOURNAL, AUTHORS, DOI_URL
-            ) VALUES (
-            INTERPRO.NEW_PUB_ID(), 'J', :1, :2, :3, :4, :5,
-            :6, :7, :8, :9, :10
+                PUB_ID, PUB_TYPE, PUBMED_ID, VOLUME, ISSUE,
+                YEAR, TITLE, RAWPAGES, MEDLINE_JOURNAL,
+                ISO_JOURNAL, AUTHORS, DOI_URL
+                ) VALUES (
+                INTERPRO.NEW_PUB_ID(), 'J', :1, :2, :3, :4, :5,
+                :6, :7, :8, :9, :10
             )
             RETURNING PUB_ID INTO :11
             """,
