@@ -755,10 +755,14 @@ def populate_method2pub_stg(cur: oracledb.Cursor, method2pub: dict[str, set]):
 def update_llm_citations(uri: str) -> None:
     con = oracledb.connect(uri)
     cur = con.cursor()
-    cur.execute("SELECT ABSTRACT FROM INTERPRO.METHOD_LLM WHERE ABSTRACT LIKE '%PMID%'")
+    cur.execute("""
+        SELECT METHOD_AC,ABSTRACT
+        FROM INTERPRO.METHOD_LLM
+        WHERE REGEXP_LIKE(ABSTRACT, '\[PMID')
+    """)
     new_citations = 0
     for row in cur.fetchall():
-        abstract = row[0]
+        method_ac, abstract = row[0], row[1]
         pmids = re.findall(r"PMID:\s*([0-9]+)", abstract)
         if pmids:
             placeholders = ",".join([f":{i+1}" for i in range(len(pmids))])
@@ -775,6 +779,13 @@ def update_llm_citations(uri: str) -> None:
                 if not pub_id:
                     logger.warning("No citation found with PubMed ID %s", pmid)
                 else:
+                    cur.execute(
+                        """
+                        INSERT INTO INTERPRO.METHOD2PUB (PUB_ID, METHOD_AC)
+                        VALUES (:1, :2)
+                        """,
+                        [pub_id, method_ac]
+                    )
                     new_citations += 1
     cur.close()
     con.commit()
