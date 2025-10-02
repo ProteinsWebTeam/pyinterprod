@@ -761,8 +761,7 @@ def update_llm_citations(uri: str) -> None:
         WHERE REGEXP_LIKE(ABSTRACT, '\[PMID')
     """)
     new_citations = 0
-    for row in cur.fetchall():
-        method_ac, abstract = row[0], row[1]
+    for method_ac, abstract in cur.fetchall():
         pmids = re.findall(r"PMID:\s*([0-9]+)", abstract)
         if pmids:
             placeholders = ",".join([f":{i+1}" for i in range(len(pmids))])
