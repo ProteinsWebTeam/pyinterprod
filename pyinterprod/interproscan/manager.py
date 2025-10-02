@@ -329,9 +329,10 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     fasta_workers = []
     fasta_queue = Queue()
     submit_queue = Queue()
+    skip_queue = Queue()
     for _ in range(8):
         t = Thread(
-            target=export_sequences_worker, args=(uri, fasta_queue, submit_queue)
+            target=export_sequences_worker, args=(uri, fasta_queue, submit_queue, skip_queue)
         )
         t.start()
         fasta_workers.append(t)
@@ -363,11 +364,18 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     # Persist successful tasks
     con = oracledb.connect(uri)
     cur = con.cursor()
-    num_completed = num_failed = 0
+    num_completed = num_failed = num_skipped = 0
     milestone = step = 5
     retries = {}
 
     while (num_completed + num_failed) < num_tasks:
+        if not skip_queue.empty():
+            skip_queue.get()
+            skip_queue.task_done()
+            num_completed += 1
+            num_skipped += 1
+            continue
+
         task, num_sequences = collect_queue.get()
         collect_queue.task_done()
 
@@ -514,6 +522,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 if keep_files not in ("all", "failed"):
                     try_rmtree(task.get_run_dir())
 
+        logger.info(f"(num_completed + num_failed) < num_tasks: {num_completed} + {num_failed} < {num_tasks}. skipped: {num_skipped}")
         progress = (num_completed + num_failed) * 100 / num_tasks
         if progress >= milestone:
             while progress >= milestone:
@@ -537,7 +546,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         logger.info("complete")
 
 
-def export_sequences_worker(uri: str, inqueue: Queue, outqueue: Queue):
+def export_sequences_worker(uri: str, inqueue: Queue, outqueue: Queue, skipqueue: Queue):
     con = oracledb.connect(uri)
     cur = con.cursor()
 
@@ -576,6 +585,7 @@ def export_sequences_worker(uri: str, inqueue: Queue, outqueue: Queue):
                             task.upi_to,
                             success=True,
                         )
+                        skipqueue.put(task)
                 else:
                     # Not new task: we assume the input file already exists
                     outqueue.put((task, num_sequences))
