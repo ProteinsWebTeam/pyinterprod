@@ -969,7 +969,6 @@ def update_database():
                                       by_name=args.by_name,
                                       confirm=args.confirm)
 
-
 def run_interproscan_manager():
     parser = ArgumentParser(description="InterProScan matches calculation")
     parser.add_argument("config", metavar="main.conf",
