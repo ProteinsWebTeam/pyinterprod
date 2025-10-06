@@ -890,8 +890,12 @@ def _insert_matches(con: oracledb.Connection):
     cur.close()
 
 
-def track_entry_changes(cur: oracledb.Cursor, data_dir: str,
-                        threshold: float) -> list:
+def track_entry_changes(
+    cur: oracledb.Cursor,
+    uniprot_uri: str,
+    data_dir: str,
+    threshold: float
+) -> list:
     """
     Find entries with significant protein count changes
 
@@ -907,10 +911,13 @@ def track_entry_changes(cur: oracledb.Cursor, data_dir: str,
         old_counts = pickle.load(fh)
 
     new_counts = _get_entries_protein_counts(cur)
+    swissprots = _get_swissprots(uniprot_uri)
+    swissprot_counts = _get_entries_swissprot_counts(cur, swissprots)
     changes = []
     for acc in sorted(old_counts):
         entry_old_counts = old_counts[acc]
         entry_new_counts = new_counts.pop(acc, {})
+        entry_new_swissprot_counts = swissprot_counts[acc]
 
         # Total number of proteins matched
         entry_old_total = sum(entry_old_counts.values())
@@ -937,7 +944,8 @@ def track_entry_changes(cur: oracledb.Cursor, data_dir: str,
             entry_old_total,
             entry_new_total,
             change,
-            entry_superkingdoms
+            entry_superkingdoms,
+            entry_new_swissprot_counts
         ))
 
     return changes
@@ -1014,6 +1022,64 @@ def _get_entries_protein_counts(
             e[superkingdom] += n_proteins
         except KeyError:
             e[superkingdom] = n_proteins
+
+    return counts
+
+
+def _get_swissprots(uri: str) -> list[str]:
+    """
+    Return a list of Swiss-Prot protein accessions
+
+    :param uri: Oracle connection string
+    :return: list of Swiss-Prot accessions
+    """
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT DISTINCT E.ACCESSION
+        FROM SPTR.DBENTRY E
+        INNER JOIN SPTR.DBENTRY_2_DESC D
+          ON E.DBENTRY_ID = D.DBENTRY_ID
+        INNER JOIN SPTR.CV_DESC C
+          ON D.DESC_ID = C.DESC_ID
+        WHERE E.ENTRY_TYPE = 0            -- Swiss-Prot
+          AND E.MERGE_STATUS != 'R'       -- not 'Redundant'
+          AND E.DELETED = 'N'             -- not deleted
+          AND E.FIRST_PUBLIC IS NOT NULL  -- published
+        """
+    )
+    swissprots = [row[0] for row in cur]
+    cur.close()
+    con.close()
+    return swissprots
+
+
+def _get_entries_swissprot_counts(cur: oracledb.Cursor, swissprots: list[str]) -> dict[str, int]:
+    """
+    Return the number of Swiss-Prot proteins matched by each InterPro entry.
+
+    :param cur: Oracle cursor object
+    :return: dictionary
+    """
+    step = 1000
+    counts = {}
+
+    for i in range(0, len(swissprots), step):
+        chunk = swissprots[i:i+step]
+        placeholders = ",".join([f":{j+1}" for j in range(len(chunk))])
+        query = f"""
+            SELECT EM.ENTRY_AC, COUNT(DISTINCT P.PROTEIN_AC)
+            FROM INTERPRO.PROTEIN P
+            INNER JOIN INTERPRO.MATCH M ON P.PROTEIN_AC = M.PROTEIN_AC
+            INNER JOIN INTERPRO.ENTRY2METHOD EM ON EM.METHOD_AC = M.METHOD_AC
+            WHERE P.FRAGMENT = 'N'
+              AND P.PROTEIN_AC IN ({placeholders})
+            GROUP BY EM.ENTRY_AC
+        """
+        cur.execute(query, chunk)
+        for entry_ac, count in cur.fetchall():
+            counts[entry_ac] = counts.get(entry_ac, 0) + count
 
     return counts
 
