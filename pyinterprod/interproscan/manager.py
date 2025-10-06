@@ -522,7 +522,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 if keep_files not in ("all", "failed"):
                     try_rmtree(task.get_run_dir())
 
-        logger.info(f"(num_completed + num_failed) < num_tasks: {num_completed} + {num_failed} < {num_tasks}. skipped: {num_skipped}")
+        logger.debug(f"Total: {num_tasks}. Completed: {num_completed}. Failed: {num_failed}. Skipped: {num_skipped}")
         progress = (num_completed + num_failed) * 100 / num_tasks
         if progress >= milestone:
             while progress >= milestone:
