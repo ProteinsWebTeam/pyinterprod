@@ -1037,16 +1037,9 @@ def _get_swissprots(uri: str) -> list[str]:
     cur = con.cursor()
     cur.execute(
         """
-        SELECT DISTINCT E.ACCESSION
-        FROM SPTR.DBENTRY E
-        INNER JOIN SPTR.DBENTRY_2_DESC D
-          ON E.DBENTRY_ID = D.DBENTRY_ID
-        INNER JOIN SPTR.CV_DESC C
-          ON D.DESC_ID = C.DESC_ID
-        WHERE E.ENTRY_TYPE = 0            -- Swiss-Prot
-          AND E.MERGE_STATUS != 'R'       -- not 'Redundant'
-          AND E.DELETED = 'N'             -- not deleted
-          AND E.FIRST_PUBLIC IS NOT NULL  -- published
+            SELECT accessions
+            FROM INTERPRO.protein P
+            WHERE P.is_reviewed
         """
     )
     swissprots = [row[0] for row in cur]
