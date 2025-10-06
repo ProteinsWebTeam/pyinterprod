@@ -472,12 +472,12 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
     # Write entries with protein count changes (total + per superkingdom)
     with open(os.path.join(tmpdir, "entries_count_changes.tsv"), "wt") as fh:
-        changes = track_entry_changes(cur, data_dir, MIN_ENTRY_CHANGE)
+        changes = track_entry_changes(cur, pg_url, data_dir, MIN_ENTRY_CHANGE)
         superkingdoms = sorted({sk for e in changes for sk in e[4]})
 
         # Header
         line = ["Accession", "Link", "Type", "Name", "Checked", "Source origin",
-                "DE changes", "Previous count", "New count", "Change (%)"]
+                "DE changes", "Previous count", "New count", "Change (%)", "New SwissProt count"]
         for sk in superkingdoms:
             line += [sk, '']
 
@@ -494,6 +494,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             new_total = obj[2]
             change = obj[3]
             entry_superkingdoms = obj[4]
+            swissprot_count = obj[5]
             try:
                 type_code, name, is_checked, origin = entries[entry_acc]
             except KeyError:
@@ -510,7 +511,8 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                 "Yes" if entry_acc in entries_changes else "No",
                 str(old_total),
                 str(new_total),
-                f"{change*100:.0f}"
+                f"{change*100:.0f}",
+                swissprot_count
             ]
 
             for sk in superkingdoms:
