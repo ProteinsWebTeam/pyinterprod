@@ -16,15 +16,6 @@ At least 50% of the shortest match must overlap with the other match
 """
 _MIN_OVERLAP = 0.5
 
-"""
-One of the signatures must hit at least 50% of the proteins hit by the other
-signature
-"""
-_MIN_COLLOCATION = 0.5
-
-# Threshold for Jaccard index/coefficients
-_MIN_SIMILARITY = 0.75
-
 
 def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
     signatures = {}
@@ -43,24 +34,30 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                         hits = sorted(merge_overlapping(hits))
                         matches[signature_acc] = hits
 
+                # Make sure all signatures are initiated first
                 for signature_acc in matches:
-                    """
-                    Count the number of proteins,
-                    regardless of the sequence status
-                    """
-                    try:
-                        sig = signatures[signature_acc]
-                    except KeyError:
-                        sig = signatures[signature_acc] = [
-                            0,  # number of proteins
-                            0,  # number of reviewed proteins
-                            0,  # number of complete proteins
-                            0,  # number of complete reviewed proteins
-                            0,  # number of complete single-domain proteins
-                            0,  # number of residues in complete proteins
+                    if signature_acc not in signatures:
+                        signatures[signature_acc] = [
+                            0,  # proteins
+                            0,  # reviewed proteins
+                            0,  # complete proteins
+                            0,  # complete reviewed proteins
+                            0,  # complete single-domain proteins
+                            0,  # residues in complete proteins
+                            0,  # complete proteins with an overlap
+                            0,  # complete reviewed proteins with an overlap
                         ]
                         comparisons[signature_acc] = {}
 
+                """
+                Keep track of various stats for each signature, and compare
+                pairs of signatures. To save time, we only compare signatures
+                when accession_1 < accession_2 (half matrix), so we need to 
+                make sure to update the counters for accession_2 as well.
+                """
+                with_overlaps = set()
+                for signature_acc in matches:
+                    sig = signatures[signature_acc]
                     sig[0] += 1
                     if is_rev:
                         sig[1] += 1
@@ -112,26 +109,39 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                             cmp = comparisons[signature_acc][other_acc]
                         except KeyError:
                             cmp = comparisons[signature_acc][other_acc] = [
-                                0,  # number of collocations (all proteins)
-                                0,  # number of collocations (reviewed proteins)
+                                0,  # number of shared proteins
+                                0,  # number of shared reviewed proteins
                                 0,  # number of proteins with overlaps
+                                0,  # number of reviewed proteins with overlaps
                                 0,  # number of overlapping residues
                                 0,  # number of overlapping reviewed residues
                             ]
 
                         cmp[0] += 1
+                        if is_rev:
+                            cmp[1] += 1
 
                         # Overlapping proteins
                         shortest = min(residues_1, residues_2)
                         if residues >= _MIN_OVERLAP * shortest:
+                            with_overlaps.add(signature_acc)
+                            with_overlaps.add(other_acc)
                             cmp[2] += 1
 
-                        # Overlapping residues
-                        cmp[3] += residues
+                            if is_rev:
+                                cmp[3] += 1
 
+                        # Overlapping residues
+                        cmp[4] += residues
                         if is_rev:
-                            cmp[1] += 1
-                            cmp[4] += residues
+                            cmp[5] += residues
+
+                for signature_acc in with_overlaps:
+                    sig = signatures[signature_acc]
+                    sig[6] += 1
+
+                    if is_rev:
+                        sig[7] += 1
 
             dst.put(count)
 
@@ -267,7 +277,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 row[7] or row[8],               # abstract
                 row[9],                         # llm abstract
                 signature_acc in amr_models,    # is_amr
-                *signatures.get(signature_acc, [0] * 6)
+                *signatures.get(signature_acc, [0] * 8)
             ))
 
         cur.execute("DROP TABLE IF EXISTS signature")
@@ -290,16 +300,17 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 num_complete_sequences INTEGER NOT NULL,
                 num_complete_reviewed_sequences INTEGER NOT NULL,
                 num_complete_single_domain_sequences INTEGER NOT NULL,
-                num_residues BIGINT NOT NULL
+                num_residues BIGINT NOT NULL,
+                num_overlapped_complete_sequences INTEGER NOT NULL,
+                num_overlapped_complete_reviewed_sequences INTEGER NOT NULL
             )
             """
         )
 
         sql = """
             INSERT INTO signature
-            VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+                    %s, %s, %s, %s)
         """
 
         records = []
@@ -326,6 +337,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
 
         logger.info("inserting comparisons")
         cur.execute("DROP TABLE IF EXISTS comparison")
+        cur.execute("DROP TABLE IF EXISTS prediction")
         cur.execute(
             """
             CREATE TABLE comparison (
@@ -334,16 +346,16 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 num_collocations INTEGER NOT NULL,
                 num_reviewed_collocations INTEGER NOT NULL,
                 num_overlaps INTEGER NOT NULL,
+                num_reviewed_overlaps INTEGER NOT NULL,
+                num_res_overlaps INTEGER NOT NULL,
                 num_reviewed_res_overlaps INTEGER NOT NULL
             )
             """
         )
 
         sql = """
-            INSERT INTO comparison (signature_acc_1, signature_acc_2, 
-                                    num_collocations, num_reviewed_collocations,
-                                    num_overlaps, num_reviewed_res_overlaps) 
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO comparison
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         records = []
@@ -370,74 +382,15 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
         cur.execute("CLUSTER comparison USING comparison_idx")
         con.commit()
 
-        logger.info("inserting predictions")
-        cur.execute("DROP TABLE IF EXISTS prediction")
-        cur.execute(
-            """
-            CREATE TABLE prediction (
-                signature_acc_1 VARCHAR(25) NOT NULL,
-                signature_acc_2 VARCHAR(25) NOT NULL,
-                num_collocations INTEGER NOT NULL,
-                num_protein_overlaps INTEGER NOT NULL,
-                num_residue_overlaps BIGINT NOT NULL
-            )
-            """
-        )
-
-        sql = """
-            INSERT INTO prediction (
-                signature_acc_1, signature_acc_2, num_collocations, 
-                num_protein_overlaps, num_residue_overlaps
-            ) 
-            VALUES (%s, %s, %s, %s, %s)
-        """
-
-        records = []
-        for row in _iter_predictions(comparisons, signatures):
-            records.append(row)
-            if len(records) == 1000:
-                cur.executemany(sql, records)
-                con.commit()
-                records.clear()
-
-        if records:
-            cur.executemany(sql, records)
-            con.commit()
-            records.clear()
-
-        cur.execute(
-            """
-            CREATE INDEX prediction_idx
-            ON prediction (signature_acc_1)
-            """
-        )
-        con.commit()
-
-        cur.execute("CLUSTER prediction USING prediction_idx")
-        con.commit()
-
     con.close()
     logger.info("done")
 
 
-def _iter_comparisons(comps: dict[str, dict[str, list[int, int, int, int, int]]]):
+def _iter_comparisons(comps: dict[str, dict[str, list[int]]]):
     for acc1, others in comps.items():
-        for acc2, (collocs, rev_collocs, prot_ovrs, _, rev_res_ovrs) in others.items():
-            yield acc1, acc2, collocs, rev_collocs, prot_ovrs, rev_res_ovrs
-            yield acc2, acc1, collocs, rev_collocs, prot_ovrs, rev_res_ovrs
-
-
-def _iter_predictions(comps: dict[str, dict[str, list[int, int, int, int, int]]],
-                      sigs: dict[str, list[int, int, int, int, int]]):
-    for acc1, others in comps.items():
-        for acc2, (collocs, _, prot_overlaps, res_overlaps, _) in others.items():
-            _, _, num_proteins1, num_reviewed1, _, num_residues1 = sigs[acc1]
-            _, _, num_proteins2, num_reviewed2, _, num_residues2 = sigs[acc2]
-
-            num_proteins = min(num_proteins1, num_proteins2)
-            if collocs / num_proteins >= _MIN_COLLOCATION:
-                yield acc1, acc2, collocs, prot_overlaps, res_overlaps
-                yield acc2, acc1, collocs, prot_overlaps, res_overlaps
+        for acc2, values in others.items():
+            yield acc1, acc2, *values
+            yield acc2, acc1, *values
 
 
 def get_swissprot_descriptions(pg_url: str) -> dict[str, list[tuple[str, str]]]:
