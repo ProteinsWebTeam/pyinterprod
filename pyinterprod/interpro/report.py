@@ -160,7 +160,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 continue
 
             proteins = sig2swiss[acc]
-            lost, gained = compare_descriptions(proteins)
+            lost, gained = compare_descriptions(proteins, check_highest_de=False)
             if not lost and not gained:
                 continue
             elif type_code == "F":
@@ -419,7 +419,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             continue
 
         proteins = entry2swiss[entry_acc]
-        lost, gained = compare_descriptions(proteins)
+        lost, gained = compare_descriptions(proteins, check_highest_de=False)
         if not lost and not gained:
             continue
         elif type_code == "F":
@@ -445,7 +445,11 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                  f"{' | '.join(lost)}\t"
                  f"{' | '.join(gained)}\n")
 
-        lost, gained = compare_descriptions(proteins, ignore_renamed=True)
+        lost, gained, highest_de_changed = compare_descriptions(
+            proteins,
+            ignore_renamed=True,
+            check_highest_de=True
+        )
         if not lost and not gained:
             continue
 
@@ -477,7 +481,8 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
         # Header
         line = ["Accession", "Link", "Type", "Name", "Checked", "Source origin",
-                "DE changes", "Previous count", "New count", "Change (%)", "New SwissProt count"]
+                "DE changes", "Previous count", "New count", "Change (%)",
+                "New SwissProt count", "Highest DE changed"]
         for sk in superkingdoms:
             line += [sk, '']
 
@@ -512,7 +517,8 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                 str(old_total),
                 str(new_total),
                 f"{change*100:.0f}",
-                swissprot_count
+                swissprot_count,
+                highest_de_changed
             ]
 
             for sk in superkingdoms:
@@ -555,10 +561,13 @@ The InterPro Production Team
 
 def compare_descriptions(
         proteins: dict[str, list[str | None]],
-        ignore_renamed: bool = False
-) -> tuple[list[str], list[str]]:
+        ignore_renamed: bool = False,
+        check_highest_de: bool = False
+) -> tuple[list[str], list[str], bool]:
     descrs_old = {}
     descrs_new = {}
+    old_counts = {}
+    new_counts = {}
     # Never ignore proteins whose name contained or contains these strings:
     never_ignore = [
         "unknown",
@@ -580,14 +589,15 @@ def compare_descriptions(
                 if s in descr_old.lower() or s in descr_new.lower():
                     break
             else:
-                # We can safely ignore protein being renamed
                 continue
 
-        if descr_old and descr_old not in descrs_old:
+        if descr_old:
             descrs_old[descr_old] = protein_acc
+            old_counts[descr_old] = old_counts.get(descr_old, 0) + 1
 
-        if descr_new and descr_new not in descrs_new:
+        if descr_new:
             descrs_new[descr_new] = protein_acc
+            new_counts[descr_new] = new_counts.get(descr_new, 0) + 1
 
     lost = []
     for descr in sorted(set(descrs_old.keys()) - set(descrs_new.keys())):
@@ -599,4 +609,9 @@ def compare_descriptions(
         protein_acc = descrs_new[descr]
         gained.append(f"{descr} ({protein_acc})")
 
+    if check_highest_de:
+        old_highest_de = max(old_counts, key=old_counts.get) if old_counts else None
+        new_highest_de = max(new_counts, key=new_counts.get) if new_counts else None
+        highest_de_changed = old_highest_de != new_highest_de
+        return lost, gained, highest_de_changed
     return lost, gained
