@@ -331,7 +331,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     submit_queue = Queue()
     for _ in range(8):
         t = Thread(
-            target=export_sequences_worker, args=(uri, fasta_queue, submit_queue, skip_queue)
+            target=export_sequences_worker, args=(uri, fasta_queue, submit_queue)
         )
         t.start()
         fasta_workers.append(t)
@@ -553,7 +553,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         logger.info("complete")
 
 
-def export_sequences_worker(uri: str, inqueue: Queue, outqueue: Queue, skipqueue: Queue):
+def export_sequences_worker(uri: str, inqueue: Queue, outqueue: Queue):
     con = oracledb.connect(uri)
     cur = con.cursor()
 
