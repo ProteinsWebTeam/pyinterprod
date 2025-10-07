@@ -911,19 +911,22 @@ def track_entry_changes(
         old_counts = pickle.load(fh)
 
     new_counts = _get_entries_protein_counts(cur)
-    swissprots = _get_swissprots(uniprot_uri)
-    swissprot_counts = _get_entries_swissprot_counts(cur, swissprots)
+    swissprot_counts = _get_entries_swissprot_counts(cur, uniprot_uri)
     changes = []
     for acc in sorted(old_counts):
         entry_old_counts = old_counts[acc]
-        entry_new_counts = new_counts.pop(acc, {})
+        entry_new_counts = new_counts.pop(acc, {"total": {}, "pdb_mapped": {}})
         entry_new_swissprot_counts = swissprot_counts[acc]
 
         # Total number of proteins matched
-        entry_old_total = sum(entry_old_counts.values())
-        entry_new_total = sum(entry_new_counts.values())
-
+        entry_old_total = sum(entry_old_counts["total"].values())
+        entry_new_total = sum(entry_new_counts["total"].values())
         change = (entry_new_total - entry_old_total) / entry_old_total
+
+        # Total number of PDB-mapped proteins matched
+        entry_old_pdb = sum(entry_old_counts["pdb_mapped"].values())
+        entry_new_pdb = sum(entry_new_counts["pdb_mapped"].values())
+        change_pdb = (entry_new_pdb - entry_old_pdb) / entry_old_pdb
 
         # If the entry does not have any matches anymore,
         # we want to report it
@@ -944,6 +947,9 @@ def track_entry_changes(
             entry_old_total,
             entry_new_total,
             change,
+            entry_old_pdb,
+            entry_new_pdb,
+            change_pdb,
             entry_superkingdoms,
             entry_new_swissprot_counts
         ))
@@ -988,12 +994,33 @@ def _get_taxon2superkingdom(cur: oracledb.Cursor) -> dict[int, str]:
 
     return taxon2superkingdom
 
+def _get_pdb_mapped_proteins(cur: oracledb.Cursor) -> set[str]:
+    """
+    Return a set of protein accessions that are mapped to at least
+    one PDB structure
+
+    :param cur: Oracle cursor object
+    :return: set of protein accessions
+    """
+    cur.execute(
+        """
+        SELECT DISTINCT P.PROTEIN_AC
+        FROM INTERPRO.PROTEIN P
+        INNER JOIN INTERPRO.PROTEIN2PDB PP
+          ON P.PROTEIN_AC = PP.PROTEIN_AC
+        WHERE P.FRAGMENT = 'N'
+        """
+    )
+    return {row[0] for row in cur}
+
 
 def _get_entries_protein_counts(
         cur: oracledb.Cursor
-) -> dict[str, dict[str, int]]:
+) -> dict[str, dict[str, dict[str, int]]]:
     """
-    Return the number of protein matched by each InterPro entry.
+    Return the number of protein matched by each InterPro entry,
+    total and for only those proteins are associated with at least
+    one PDB structure.
     Only complete sequences are considered.
 
     :param cur: Oracle cursor object
@@ -1015,13 +1042,36 @@ def _get_entries_protein_counts(
         try:
             e = counts[entry_acc]
         except KeyError:
-            e = counts[entry_acc] = {}
+            e = counts[entry_acc] = {"total": {}, "pdb_mapped": {}}
 
         superkingdom = taxon2superkingdom[tax_id]
         try:
-            e[superkingdom] += n_proteins
+            e["total"][superkingdom] += n_proteins
         except KeyError:
-            e[superkingdom] = n_proteins
+            e["total"][superkingdom] = n_proteins
+
+    all_pdb_mapped_proteins = _get_pdb_mapped_proteins(cur)
+    steps = 1000
+    for i in range(0, len(all_pdb_mapped_proteins), steps):
+        chunk = list(all_pdb_mapped_proteins)[i:i+steps]
+        placeholders = ",".join([f":{j+1}" for j in range(len(chunk))])
+        query = f"""
+            SELECT EM.ENTRY_AC, P.TAX_ID, COUNT(DISTINCT P.PROTEIN_AC)
+            FROM INTERPRO.PROTEIN P
+            INNER JOIN INTERPRO.MATCH M ON P.PROTEIN_AC = M.PROTEIN_AC
+            INNER JOIN INTERPRO.ENTRY2METHOD EM ON EM.METHOD_AC = M.METHOD_AC
+            WHERE P.FRAGMENT = 'N'
+              AND P.PROTEIN_AC IN ({placeholders})
+            GROUP BY EM.ENTRY_AC, P.TAX_ID
+        """
+        cur.execute(query, chunk)
+        for entry_acc, tax_id, n_proteins in cur:
+            e_pdb_mapped = counts[entry_acc]["pdb_mapped"]
+            superkingdom = taxon2superkingdom[tax_id]
+            try:
+                e_pdb_mapped[superkingdom] += n_proteins
+            except KeyError:
+                e_pdb_mapped[superkingdom] = n_proteins
 
     return counts
 
@@ -1048,13 +1098,15 @@ def _get_swissprots(uri: str) -> list[str]:
     return swissprots
 
 
-def _get_entries_swissprot_counts(cur: oracledb.Cursor, swissprots: list[str]) -> dict[str, int]:
+def _get_entries_swissprot_counts(cur: oracledb.Cursor, uniprot_uri: str) -> dict[str, int]:
     """
     Return the number of Swiss-Prot proteins matched by each InterPro entry.
 
     :param cur: Oracle cursor object
     :return: dictionary
     """
+    swissprots = _get_swissprots(uniprot_uri)
+
     step = 1000
     counts = {}
 
