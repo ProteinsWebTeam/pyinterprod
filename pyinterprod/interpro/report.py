@@ -482,6 +482,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
         # Header
         line = ["Accession", "Link", "Type", "Name", "Checked", "Source origin",
                 "DE changes", "Previous count", "New count", "Change (%)",
+                "Previous PDB count", "New PDB count", "PDB change (%)",
                 "New SwissProt count", "Highest DE changed"]
         for sk in superkingdoms:
             line += [sk, '']
@@ -498,8 +499,11 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             old_total = obj[1]
             new_total = obj[2]
             change = obj[3]
-            entry_superkingdoms = obj[4]
-            swissprot_count = obj[5]
+            old_pdb_total = obj[4]
+            new_pdb_total = obj[5]
+            pdb_change = obj[6]
+            entry_superkingdoms = obj[7]
+            swissprot_count = obj[8]
             try:
                 type_code, name, is_checked, origin = entries[entry_acc]
             except KeyError:
@@ -517,7 +521,10 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                 str(old_total),
                 str(new_total),
                 f"{change*100:.0f}",
-                swissprot_count,
+                str(old_pdb_total),
+                str(new_pdb_total),
+                f"{pdb_change*100:.0f}",
+                str(swissprot_count),
                 highest_de_changed
             ]
 
