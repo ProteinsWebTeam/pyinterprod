@@ -329,7 +329,6 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     fasta_workers = []
     fasta_queue = Queue()
     submit_queue = Queue()
-    skip_queue = Queue()
     for _ in range(8):
         t = Thread(
             target=export_sequences_worker, args=(uri, fasta_queue, submit_queue, skip_queue)
@@ -364,19 +363,28 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     # Persist successful tasks
     con = oracledb.connect(uri)
     cur = con.cursor()
-    num_completed = num_failed = num_skipped = 0
+    num_completed = num_failed = 0
     milestone = step = 5
     retries = {}
 
-    while (num_completed + num_failed) < num_tasks or not skip_queue.empty():
-        if not skip_queue.empty():
-            skip_queue.get()
-            skip_queue.task_done()
+    while (num_completed + num_failed) < num_tasks:
+        task, num_sequences = collect_queue.get()
+
+        if num_sequences == 0:
+            # No sequences: it won't be necessary to run the task, but we need to count as completed
+            task.rmdir()
+            task.set_successful()
+            jobs.update_job(
+                cur,
+                task.analysis_id,
+                task.upi_from,
+                task.upi_to,
+                success=True,
+            )
             num_completed += 1
-            num_skipped += 1
+            logger.debug(f"{task.name}: skipped")
             continue
 
-        task, num_sequences = collect_queue.get()
         collect_queue.task_done()
 
         logfile = os.path.join(temp_dir, f"{task.name}.log")
@@ -522,12 +530,11 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 if keep_files not in ("all", "failed"):
                     try_rmtree(task.get_run_dir())
 
-        logger.debug(f"Total: {num_tasks}. Completed: {num_completed}. Failed: {num_failed}. Skipped: {num_skipped}")
         progress = (num_completed + num_failed) * 100 / num_tasks
         if progress >= milestone:
             while progress >= milestone:
                 milestone += step
-
+            logger.debug(f"Total: {num_tasks}. Completed: {num_completed}. Failed: {num_failed}")
             logger.info(f"progress: {progress:>3.0f}%")
 
     cur.close()
@@ -572,20 +579,8 @@ def export_sequences_worker(uri: str, inqueue: Queue, outqueue: Queue, skipqueue
                         cur, task.analysis_id, task.upi_from, task.upi_to, num_sequences
                     )
 
-                    if num_sequences > 0:
-                        outqueue.put((task, num_sequences))
-                    else:
-                        # No sequences: it won't be necessary to run the task
-                        task.rmdir()
-                        task.set_successful()
-                        jobs.update_job(
-                            cur,
-                            task.analysis_id,
-                            task.upi_from,
-                            task.upi_to,
-                            success=True,
-                        )
-                        skipqueue.put(task)
+                    outqueue.put((task, num_sequences))
+
                 else:
                     # Not new task: we assume the input file already exists
                     outqueue.put((task, num_sequences))
