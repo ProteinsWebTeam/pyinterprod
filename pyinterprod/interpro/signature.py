@@ -755,7 +755,7 @@ def populate_method2pub_stg(cur: oracledb.Cursor, method2pub: dict[str, set]):
 def update_llm_citations(uri: str) -> None:
     con = oracledb.connect(uri)
     cur = con.cursor()
-    cur.execute("""
+    cur.execute(r"""
         SELECT METHOD_AC,ABSTRACT
         FROM INTERPRO.METHOD_LLM
         WHERE REGEXP_LIKE(ABSTRACT, '\[PMID')
