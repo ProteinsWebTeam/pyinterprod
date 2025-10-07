@@ -368,7 +368,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     milestone = step = 5
     retries = {}
 
-    while (num_completed + num_failed) < num_tasks:
+    while (num_completed + num_failed) < num_tasks or not skip_queue.empty():
         if not skip_queue.empty():
             skip_queue.get()
             skip_queue.task_done()
