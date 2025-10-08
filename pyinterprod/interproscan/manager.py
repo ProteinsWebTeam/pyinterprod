@@ -369,6 +369,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
 
     while (num_completed + num_failed) < num_tasks:
         task, num_sequences = collect_queue.get()
+        collect_queue.task_done()
 
         if num_sequences == 0:
             # No sequences: it won't be necessary to run the task, but we need to count as completed
@@ -384,8 +385,6 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             num_completed += 1
             logger.debug(f"{task.name}: skipped")
             continue
-
-        collect_queue.task_done()
 
         logfile = os.path.join(temp_dir, f"{task.name}.log")
         failed = False
