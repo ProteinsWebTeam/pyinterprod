@@ -568,8 +568,19 @@ def export_sequences_worker(uri: str, inqueue: Queue, outqueue: Queue):
                         cur, task.analysis_id, task.upi_from, task.upi_to, num_sequences
                     )
 
-                    outqueue.put((task, num_sequences))
+                    if num_sequences == 0:
+                        # No sequences: the task won't be submitted
+                        task.rmdir()
+                        task.set_successful()
+                        jobs.update_job(
+                            cur,
+                            task.analysis_id,
+                            task.upi_from,
+                            task.upi_to,
+                            success=True,
+                        )
 
+                    outqueue.put((task, num_sequences))
                 else:
                     # Not new task: we assume the input file already exists
                     outqueue.put((task, num_sequences))
