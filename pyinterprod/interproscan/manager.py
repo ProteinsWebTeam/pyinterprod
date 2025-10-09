@@ -372,16 +372,6 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         collect_queue.task_done()
 
         if num_sequences == 0:
-            # No sequences: it won't be necessary to run the task, but we need to count as completed
-            task.rmdir()
-            task.set_successful()
-            jobs.update_job(
-                cur,
-                task.analysis_id,
-                task.upi_from,
-                task.upi_to,
-                success=True,
-            )
             num_completed += 1
             logger.debug(f"{task.name}: skipped")
             continue
