@@ -634,7 +634,10 @@ def task_worker(inqueue: Queue, max_running: int, workdir: str, outqueue: Queue)
             else:
                 # Task to submit
                 task, num_sequences = item
-                pending.append((task, num_sequences))
+                if num_sequences == 0:
+                    outqueue.put((task, num_sequences))
+                else:
+                    pending.append((task, num_sequences))
                 inqueue.task_done()
 
         # Monitor running tasks
