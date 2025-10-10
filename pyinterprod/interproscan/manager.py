@@ -579,8 +579,8 @@ def export_sequences_worker(uri: str, inqueue: Queue, outqueue: Queue):
                             task.upi_to,
                             success=True,
                         )
-                    else:
-                        outqueue.put((task, num_sequences))
+
+                    outqueue.put((task, num_sequences))
                 else:
                     # Not new task: we assume the input file already exists
                     outqueue.put((task, num_sequences))
