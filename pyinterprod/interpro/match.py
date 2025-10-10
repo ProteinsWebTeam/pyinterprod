@@ -2,6 +2,7 @@ import os
 import pickle
 
 import oracledb
+import psycopg
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
@@ -12,9 +13,9 @@ from .database import Database
 FILE_ENTRY_PROT_COUNTS = "entries.prot.counts.pickle"
 
 
-def export_entries_protein_counts(cur: oracledb.Cursor, data_dir: str):
+def export_entries_protein_counts(cur: oracledb.Cursor, pg_url: str, data_dir: str):
     with open(os.path.join(data_dir, FILE_ENTRY_PROT_COUNTS), "wb") as fh:
-        pickle.dump(_get_entries_protein_counts(cur), fh)
+        pickle.dump(_get_entries_protein_counts(cur, pg_url), fh)
 
 
 def update_database_matches(uri: str, databases: list[Database]):
@@ -892,6 +893,7 @@ def _insert_matches(con: oracledb.Connection):
 
 def track_entry_changes(
     cur: oracledb.Cursor,
+    pg_uri: str,
     uniprot_uri: str,
     data_dir: str,
     threshold: float
@@ -910,7 +912,7 @@ def track_entry_changes(
     with open(os.path.join(data_dir, FILE_ENTRY_PROT_COUNTS), "rb") as fh:
         old_counts = pickle.load(fh)
 
-    new_counts = _get_entries_protein_counts(cur)
+    new_counts = _get_entries_protein_counts(cur, pg_uri)
     swissprot_counts = _get_entries_swissprot_counts(cur, uniprot_uri)
     changes = []
     for acc in sorted(old_counts):
@@ -994,28 +996,31 @@ def _get_taxon2superkingdom(cur: oracledb.Cursor) -> dict[int, str]:
 
     return taxon2superkingdom
 
-def _get_pdb_mapped_proteins(cur: oracledb.Cursor) -> set[str]:
+def _get_pdb_mapped_proteins(pg_url: str) -> set[str]:
     """
     Return a set of protein accessions that are mapped to at least
     one PDB structure
 
-    :param cur: Oracle cursor object
+    :param pg_url: PostgreSQL Pronto connection string
     :return: set of protein accessions
     """
+    pg_con = psycopg.connect(pg_url)
+    cur = pg_con.cursor()
     cur.execute(
         """
-        SELECT DISTINCT P.PROTEIN_AC
-        FROM INTERPRO.PROTEIN P
-        INNER JOIN INTERPRO.PROTEIN2PDB PP
-          ON P.PROTEIN_AC = PP.PROTEIN_AC
-        WHERE P.FRAGMENT = 'N'
+        SELECT S.PROTEIN_ACC
+        FROM INTERPRO.SIGNATURE2STRUCTURE S
         """
     )
-    return {row[0] for row in cur}
+    proteins = {row[0].split("-")[0] for row in cur}
+    cur.close()
+    pg_con.close()
+    return proteins
 
 
 def _get_entries_protein_counts(
-        cur: oracledb.Cursor
+        cur: oracledb.Cursor,
+        pg_url: str
 ) -> dict[str, dict[str, dict[str, int]]]:
     """
     Return the number of protein matched by each InterPro entry,
@@ -1027,51 +1032,27 @@ def _get_entries_protein_counts(
     :return: dictionary
     """
     taxon2superkingdom = _get_taxon2superkingdom(cur)
+    all_pdb_mapped_proteins = _get_pdb_mapped_proteins(pg_url)
     cur.execute(
         """
-        SELECT EM.ENTRY_AC, P.TAX_ID, COUNT(DISTINCT P.PROTEIN_AC)
+        SELECT EM.ENTRY_AC, P.TAX_ID, P.PROTEIN_AC
         FROM INTERPRO.PROTEIN P
         INNER JOIN INTERPRO.MATCH M ON P.PROTEIN_AC = M.PROTEIN_AC
         INNER JOIN INTERPRO.ENTRY2METHOD EM ON EM.METHOD_AC = M.METHOD_AC
         WHERE P.FRAGMENT = 'N'
-        GROUP BY EM.ENTRY_AC, P.TAX_ID
         """
     )
     counts = {}
-    for entry_acc, tax_id, n_proteins in cur:
-        try:
-            e = counts[entry_acc]
-        except KeyError:
-            e = counts[entry_acc] = {"total": {}, "pdb_mapped": {}}
-
+    for entry_acc, tax_id, protein_ac in cur:
+        e = counts.setdefault(entry_acc, {"total": {}, "pdb_mapped": {}})
         superkingdom = taxon2superkingdom[tax_id]
-        try:
-            e["total"][superkingdom] += n_proteins
-        except KeyError:
-            e["total"][superkingdom] = n_proteins
 
-    all_pdb_mapped_proteins = _get_pdb_mapped_proteins(cur)
-    steps = 1000
-    for i in range(0, len(all_pdb_mapped_proteins), steps):
-        chunk = list(all_pdb_mapped_proteins)[i:i+steps]
-        placeholders = ",".join([f":{j+1}" for j in range(len(chunk))])
-        query = f"""
-            SELECT EM.ENTRY_AC, P.TAX_ID, COUNT(DISTINCT P.PROTEIN_AC)
-            FROM INTERPRO.PROTEIN P
-            INNER JOIN INTERPRO.MATCH M ON P.PROTEIN_AC = M.PROTEIN_AC
-            INNER JOIN INTERPRO.ENTRY2METHOD EM ON EM.METHOD_AC = M.METHOD_AC
-            WHERE P.FRAGMENT = 'N'
-              AND P.PROTEIN_AC IN ({placeholders})
-            GROUP BY EM.ENTRY_AC, P.TAX_ID
-        """
-        cur.execute(query, chunk)
-        for entry_acc, tax_id, n_proteins in cur:
-            e_pdb_mapped = counts[entry_acc]["pdb_mapped"]
-            superkingdom = taxon2superkingdom[tax_id]
-            try:
-                e_pdb_mapped[superkingdom] += n_proteins
-            except KeyError:
-                e_pdb_mapped[superkingdom] = n_proteins
+        e["total"][superkingdom] = e["total"].get(superkingdom, 0) + 1
+        if protein_ac in all_pdb_mapped_proteins:
+            e["pdb_mapped"][superkingdom] = e["pdb_mapped"].get(superkingdom, 0) + 1
+        
+        if len(counts) % 1000 == 0:
+            break
 
     return counts
 
