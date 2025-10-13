@@ -6,6 +6,7 @@ import psycopg
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
+from pyinterprod.utils.pg import url2dict
 from .contrib import toad
 from .database import Database
 
@@ -1004,8 +1005,8 @@ def _get_pdb_mapped_proteins(pg_url: str) -> set[str]:
     :param pg_url: PostgreSQL Pronto connection string
     :return: set of protein accessions
     """
-    pg_con = psycopg.connect(pg_url)
-    cur = pg_con.cursor()
+    con = psycopg.connect(**url2dict(pg_url))
+    cur = con.cursor()
     cur.execute(
         """
         SELECT S.PROTEIN_ACC
@@ -1014,7 +1015,7 @@ def _get_pdb_mapped_proteins(pg_url: str) -> set[str]:
     )
     proteins = {row[0].split("-")[0] for row in cur}
     cur.close()
-    pg_con.close()
+    con.close()
     return proteins
 
 
@@ -1050,7 +1051,7 @@ def _get_entries_protein_counts(
         e["total"][superkingdom] = e["total"].get(superkingdom, 0) + 1
         if protein_ac in all_pdb_mapped_proteins:
             e["pdb_mapped"][superkingdom] = e["pdb_mapped"].get(superkingdom, 0) + 1
-        
+
         if len(counts) % 1000 == 0:
             break
 
