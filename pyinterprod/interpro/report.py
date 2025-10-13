@@ -329,7 +329,7 @@ The InterPro Production Team
     )
 
 
-def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
+def send_prot_update_report(ora_url: str, pg_url: str, uniprot_url:str, data_dir: str,
                             pronto_link: str, emails: dict):
     pronto_link = pronto_link.rstrip('/')
 
@@ -476,7 +476,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
     # Write entries with protein count changes (total + per superkingdom)
     with open(os.path.join(tmpdir, "entries_count_changes.tsv"), "wt") as fh:
-        changes = track_entry_changes(cur, pg_url, data_dir, MIN_ENTRY_CHANGE)
+        changes = track_entry_changes(cur, pg_url, uniprot_url, data_dir, MIN_ENTRY_CHANGE)
         superkingdoms = sorted({sk for e in changes for sk in e[4]})
 
         # Header

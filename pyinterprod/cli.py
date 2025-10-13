@@ -830,7 +830,7 @@ def run_uniprot_update():
         # Generate and send report to curators
         Task(
             fn=interpro.report.send_prot_update_report,
-            args=(ora_interpro_uri, pg_uri, data_dir, pronto_url, emails),
+            args=(ora_interpro_uri, pg_uri, ora_swpread_uri, data_dir, pronto_url, emails),
             name="send-report",
             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=4),
             requires=after_pronto
