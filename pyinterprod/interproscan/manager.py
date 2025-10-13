@@ -371,6 +371,11 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         task, num_sequences = collect_queue.get()
         collect_queue.task_done()
 
+        if num_sequences == 0:
+            num_completed += 1
+            logger.debug(f"{task.name}: skipped")
+            continue
+
         logfile = os.path.join(temp_dir, f"{task.name}.log")
         failed = False
 
@@ -518,7 +523,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         if progress >= milestone:
             while progress >= milestone:
                 milestone += step
-
+            logger.debug(f"Total: {num_tasks}. Completed: {num_completed}. Failed: {num_failed}")
             logger.info(f"progress: {progress:>3.0f}%")
 
     cur.close()
@@ -563,10 +568,8 @@ def export_sequences_worker(uri: str, inqueue: Queue, outqueue: Queue):
                         cur, task.analysis_id, task.upi_from, task.upi_to, num_sequences
                     )
 
-                    if num_sequences > 0:
-                        outqueue.put((task, num_sequences))
-                    else:
-                        # No sequences: it won't be necessary to run the task
+                    if num_sequences == 0:
+                        # No sequences: the task won't be submitted
                         task.rmdir()
                         task.set_successful()
                         jobs.update_job(
@@ -576,6 +579,8 @@ def export_sequences_worker(uri: str, inqueue: Queue, outqueue: Queue):
                             task.upi_to,
                             success=True,
                         )
+
+                    outqueue.put((task, num_sequences))
                 else:
                     # Not new task: we assume the input file already exists
                     outqueue.put((task, num_sequences))
@@ -629,7 +634,10 @@ def task_worker(inqueue: Queue, max_running: int, workdir: str, outqueue: Queue)
             else:
                 # Task to submit
                 task, num_sequences = item
-                pending.append((task, num_sequences))
+                if num_sequences == 0:
+                    outqueue.put((task, num_sequences))
+                else:
+                    pending.append((task, num_sequences))
                 inqueue.task_done()
 
         # Monitor running tasks
