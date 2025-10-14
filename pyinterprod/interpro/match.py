@@ -895,7 +895,6 @@ def _insert_matches(con: oracledb.Connection):
 def track_entry_changes(
     cur: oracledb.Cursor,
     pg_uri: str,
-    uniprot_uri: str,
     data_dir: str,
     threshold: float
 ) -> list:
@@ -914,7 +913,7 @@ def track_entry_changes(
         old_counts = pickle.load(fh)
 
     new_counts = _get_entries_protein_counts(cur, pg_uri)
-    swissprot_counts = _get_entries_swissprot_counts(cur, uniprot_uri)
+    swissprot_counts = _get_entries_swissprot_counts(cur, pg_uri)
     changes = []
     for acc in sorted(old_counts):
         entry_old_counts = old_counts[acc]
@@ -1058,14 +1057,15 @@ def _get_entries_protein_counts(
     return counts
 
 
-def _get_swissprots(uri: str) -> list[str]:
+def _get_swissprots(pg_url: str) -> list[str]:
     """
     Return a list of Swiss-Prot protein accessions
 
-    :param uri: Oracle connection string
+    :param uri: Pronot postgre-sql uri
     :return: list of Swiss-Prot accessions
     """
-    con = oracledb.connect(uri)
+    con = psycopg.connect(**url2dict(pg_url))
+    oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -1080,14 +1080,14 @@ def _get_swissprots(uri: str) -> list[str]:
     return swissprots
 
 
-def _get_entries_swissprot_counts(cur: oracledb.Cursor, uniprot_uri: str) -> dict[str, int]:
+def _get_entries_swissprot_counts(cur: oracledb.Cursor, pg_url: str) -> dict[str, int]:
     """
     Return the number of Swiss-Prot proteins matched by each InterPro entry.
 
     :param cur: Oracle cursor object
     :return: dictionary
     """
-    swissprots = _get_swissprots(uniprot_uri)
+    swissprots = _get_swissprots(pg_url)
 
     step = 1000
     counts = {}
