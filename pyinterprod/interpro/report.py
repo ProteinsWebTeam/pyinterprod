@@ -151,52 +151,10 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                     except KeyError:
                         sig_swiss[protein_acc] = [None, description]
 
-        files = {}  # file objects
-        sig_changes = set()
-        for acc in sorted(sig2swiss):
-            try:
-                _, entry_acc, type_code, entry_name, origin = integrated[acc]
-            except KeyError:
-                continue
-
-            proteins = sig2swiss[acc]
-            lost, gained = compare_descriptions(proteins, check_highest_de=False)
-            if not lost and not gained:
-                continue
-            elif type_code == "F":
-                filename = "swiss_de_families.tsv"
-            elif type_code == "D":
-                filename = "swiss_de_domains.tsv"
-            else:
-                filename = "swiss_de_others.tsv"
-
-            try:
-                fh = files[filename]
-            except KeyError:
-                filepath = os.path.join(dst, filename)
-                fh = files[filename] = open(filepath, "wt")
-                fh.write(f"Signature\tLink\tEntry\tType\t"
-                         f"Source origin\t# Swiss-Prot\tName\t"
-                         f"# Lost\t# Gained\tLost\tGained\n")
-
-            cnt_protein = sum(1 for _, descr in proteins.values() if descr)
-            link = f"{pronto_link}/signatures/{acc}/descriptions/?reviewed"
-            fh.write(f"{acc}\t{link}\t{entry_acc}\t{types[type_code]}\t"
-                     f"{origin}\t{cnt_protein}\t{entry_name}\t"
-                     f"{len(lost)}\t{len(gained)}\t"
-                     f"{' | '.join(lost)}\t"
-                     f"{' | '.join(gained)}\n")
-
-            # Keep track of signatures with Swiss-Prot description changes
-            sig_changes.add(acc)
-
-        for fh in files.values():
-            fh.close()
-
         # Protein count changes (total + per superkingdom)
         old_counts = data["proteins"]
         new_counts = get_sig_protein_counts(cur, db_id)
-        changes = []
+        changes = {}
         superkingdoms = set()
         for acc in sorted(old_counts):  # sort by accession
             sig_old_cnts = old_counts[acc]
@@ -229,7 +187,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 sig_superkingdoms[superkingdom] = (0, new_cnt)
                 superkingdoms.add(superkingdom)
 
-            changes.append((
+            changes[acc] = (
                 acc,
                 entry_acc,
                 entry_name,
@@ -239,7 +197,52 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 sig_new_tot,
                 change,
                 sig_superkingdoms
-            ))
+            )
+
+        files = {}  # file objects
+        sig_changes = set()
+        for acc in sorted(sig2swiss):
+            try:
+                _, entry_acc, type_code, entry_name, origin = integrated[acc]
+            except KeyError:
+                continue
+
+            proteins = sig2swiss[acc]
+            total_changes = changes[acc][7]
+            # Retrieve lists of sissprot protein desc that have been lost or gained
+            lost, gained = compare_descriptions(proteins, check_highest_de=False)
+            if not lost and not gained:
+                continue
+            elif type_code == "F":
+                filename = "swiss_de_families.tsv"
+            elif type_code == "D":
+                filename = "swiss_de_domains.tsv"
+            else:
+                filename = "swiss_de_others.tsv"
+
+            try:
+                fh = files[filename]
+            except KeyError:
+                filepath = os.path.join(dst, filename)
+                fh = files[filename] = open(filepath, "wt")
+                fh.write(f"Signature\tLink\tEntry\tType\t"
+                         f"Source origin\t# Swiss-Prot\tName\t"
+                         f"# Lost\t# Gained\tLost\tGained\tChange (%)\n")
+
+            cnt_protein = sum(1 for _, descr in proteins.values() if descr)
+            link = f"{pronto_link}/signatures/{acc}/descriptions/?reviewed"
+            fh.write(f"{acc}\t{link}\t{entry_acc}\t{types[type_code]}\t"
+                     f"{origin}\t{cnt_protein}\t{entry_name}\t"
+                     f"{len(lost)}\t{len(gained)}\t"
+                     f"{' | '.join(lost)}\t"
+                     f"{' | '.join(gained)}\t"
+                     f"{' | '.join(total_changes)}\n")
+
+            # Keep track of signatures with Swiss-Prot description changes
+            sig_changes.add(acc)
+
+        for fh in files.values():
+            fh.close()
 
         superkingdoms = sorted(superkingdoms)
         with open(os.path.join(dst, "protein_counts.tsv"), "wt") as fh:
@@ -256,7 +259,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             fh.write('\t'.join(line) + '\n')
 
             # Body
-            for obj in changes:
+            for obj in changes.values():
                 acc = obj[0]
                 entry_acc = obj[1]
                 entry_name = obj[2]
@@ -408,6 +411,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
     tmpdir = mkdtemp()
     files = {}
     entries_changes = set()
+    entries_highest_de_changed = set()
     header = ("Accession\tLink\tName\tChecked\tSource origin\t# Swiss-Prot"
               "\t# Lost\t# Gained\tLost\tGained\n")
     for entry_acc in sorted(entry2swiss):
@@ -470,6 +474,8 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                  f"{' | '.join(gained)}\n")
 
         entries_changes.add(entry_acc)
+        if highest_de_changed:
+            entries_highest_de_changed.add(entry_acc)
 
     for fh in files.values():
         fh.close()
@@ -481,9 +487,10 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
         # Header
         line = ["Accession", "Link", "Type", "Name", "Checked", "Source origin",
-                "DE changes", "Previous count", "New count", "Change (%)",
+                "DE changes", "Highest DE changes", "Previous count",
+                "New count", "Change (%)",
                 "Previous PDB count", "New PDB count", "PDB change (%)",
-                "New SwissProt count", "Highest DE changed"]
+                "New SwissProt count"]
         for sk in superkingdoms:
             line += [sk, '']
 
@@ -518,14 +525,14 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                 "Yes" if is_checked else "No",
                 origin,
                 "Yes" if entry_acc in entries_changes else "No",
+                "Yes" if entry_acc in entries_highest_de_changed else "No",
                 str(old_total),
                 str(new_total),
                 f"{change*100:.0f}",
                 str(old_pdb_total),
                 str(new_pdb_total),
                 f"{pdb_change*100:.0f}",
-                str(swissprot_count),
-                highest_de_changed
+                str(swissprot_count)
             ]
 
             for sk in superkingdoms:
