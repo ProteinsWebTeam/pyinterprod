@@ -79,6 +79,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                              f"{entry_acc}\n")
 
         # Signatures with a different name
+        name_changes = set()
         with open(os.path.join(dst, "name_changes.tsv"), "wt") as fh:
             fh.write("Signature\tEntry\tLink\tPrevious name\tNew name\n")
 
@@ -91,6 +92,9 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 link = f"{pronto_link}/entry/{entry_acc}/"
                 fh.write(f"{acc}\t{entry_acc}\t{link}\t"
                          f"{old_val or 'N/A'}\t{new_val or 'N/A'}\n")
+
+                if old_val != new_val:
+                    name_changes.add(acc)
 
         # Signatures with a different descriptions
         with open(os.path.join(dst, "description_changes.tsv"), "wt") as fh:
@@ -108,6 +112,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                          f"{old_val or 'N/A'}\t{new_val or 'N/A'}\n")
 
         # Signatures with a different type (if provided by member DB)
+        type_changes = set()
         with open(os.path.join(dst, "type_changes.tsv"), "wt") as fh:
             fh.write("Signature\tEntry\tLink\tPrevious type\tNew type\n")
 
@@ -120,6 +125,9 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 link = f"{pronto_link}/entry/{entry_acc}/"
                 fh.write(f"{acc}\t{entry_acc}\t{link}\t{old_val}"
                          f"\t{new_val}\n")
+                
+                if old_val != new_val:
+                    type_changes.add(acc)
 
         # Swiss-Prot descriptions before the update
         sig2swiss = {}
@@ -208,7 +216,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 continue
 
             proteins = sig2swiss[acc]
-            total_changes = changes[acc][7]
+            total_change = changes[acc][7]
             # Retrieve lists of sissprot protein desc that have been lost or gained
             lost, gained = compare_descriptions(proteins, check_highest_de=False)
             if not lost and not gained:
@@ -236,7 +244,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                      f"{len(lost)}\t{len(gained)}\t"
                      f"{' | '.join(lost)}\t"
                      f"{' | '.join(gained)}\t"
-                     f"{' | '.join(total_changes)}\n")
+                     f"{' | '.join(total_change)}\n")
 
             # Keep track of signatures with Swiss-Prot description changes
             sig_changes.add(acc)
@@ -247,8 +255,11 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
         superkingdoms = sorted(superkingdoms)
         with open(os.path.join(dst, "protein_counts.tsv"), "wt") as fh:
             # Header
-            line = ["Signature", "Link", "DE changes", "Entry", "Type",
-                    "Source origin", "Name", "Previous count", "New count",
+            line = ["Signature", "Link", "DE changes", "Entry",
+                    "Type", "Type changes",
+                    "Source origin",
+                    "Name", "Name changes"
+                    "Previous count", "New count",
                     "Change (%)"]
             for sk in superkingdoms:
                 line += [sk, '']
@@ -276,8 +287,10 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                     "Yes" if acc in sig_changes else "No",
                     entry_acc,
                     entry_type,
+                    "Yes" if acc in type_changes else "No",
                     origin,
                     entry_name,
+                    "Yes" if acc in name_changes else "No",
                     str(sig_old_tot),
                     str(sig_new_tot),
                     f"{change * 100:.0f}"
