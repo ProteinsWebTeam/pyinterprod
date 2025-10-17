@@ -11,12 +11,6 @@ from pyinterprod.utils.pg import url2dict
 from .match import load_index, merge_overlapping
 
 
-"""
-At least 50% of the shortest match must overlap with the other match
-"""
-_MIN_OVERLAP = 0.5
-
-
 def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
     signatures = {}
     comparisons = {}
@@ -109,12 +103,14 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                             cmp = comparisons[signature_acc][other_acc]
                         except KeyError:
                             cmp = comparisons[signature_acc][other_acc] = [
-                                0,  # number of shared proteins
-                                0,  # number of shared reviewed proteins
-                                0,  # number of proteins with overlaps
-                                0,  # number of reviewed proteins with overlaps
-                                0,  # number of overlapping residues
-                                0,  # number of overlapping reviewed residues
+                                0,  # shared proteins
+                                0,  # shared reviewed proteins
+                                0,  # proteins with >=50% overlap
+                                0,  # reviewed proteins with >=50% overlap
+                                0,  # proteins with >=80% overlap
+                                0,  # reviewed proteins with >=80% overlap
+                                0,  # overlapping residues
+                                0,  # overlapping reviewed residues
                             ]
 
                         cmp[0] += 1
@@ -123,7 +119,8 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
 
                         # Overlapping proteins
                         shortest = min(residues_1, residues_2)
-                        if residues >= _MIN_OVERLAP * shortest:
+                        if residues >= 0.5 * shortest:
+                            # overlap >= 50% of the shortest
                             with_overlaps.add(signature_acc)
                             with_overlaps.add(other_acc)
                             cmp[2] += 1
@@ -131,10 +128,18 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                             if is_rev:
                                 cmp[3] += 1
 
+                        if (residues >= 0.8 * residues_1
+                                and residues >= 0.8 * residues_2):
+                            # overlap >= 80% of each hit
+                            cmd[4] += 1
+
+                            if is_rev:
+                                cmp[5] += 1
+
                         # Overlapping residues
-                        cmp[4] += residues
+                        cmp[6] += residues
                         if is_rev:
-                            cmp[5] += residues
+                            cmp[7] += residues
 
                 for signature_acc in with_overlaps:
                     sig = signatures[signature_acc]
@@ -301,8 +306,8 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 num_complete_reviewed_sequences INTEGER NOT NULL,
                 num_complete_single_domain_sequences INTEGER NOT NULL,
                 num_residues BIGINT NOT NULL,
-                num_overlapped_complete_sequences INTEGER NOT NULL,
-                num_overlapped_complete_reviewed_sequences INTEGER NOT NULL
+                num_50pc_overlapped_complete_sequences INTEGER NOT NULL,
+                num_50pc_overlapped_complete_reviewed_sequences INTEGER NOT NULL
             )
             """
         )
@@ -345,8 +350,10 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 signature_acc_2 VARCHAR(25) NOT NULL,
                 num_collocations INTEGER NOT NULL,
                 num_reviewed_collocations INTEGER NOT NULL,
-                num_overlaps INTEGER NOT NULL,
-                num_reviewed_overlaps INTEGER NOT NULL,
+                num_50pc_overlaps INTEGER NOT NULL,
+                num_reviewed_50pc_overlaps INTEGER NOT NULL,
+                num_80pc_overlaps INTEGER NOT NULL,
+                num_reviewed_80pc_overlaps INTEGER NOT NULL,
                 num_res_overlaps INTEGER NOT NULL,
                 num_reviewed_res_overlaps INTEGER NOT NULL
             )
@@ -355,7 +362,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
 
         sql = """
             INSERT INTO comparison
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         records = []
