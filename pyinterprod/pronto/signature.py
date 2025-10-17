@@ -131,7 +131,7 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                         if (residues >= 0.8 * residues_1
                                 and residues >= 0.8 * residues_2):
                             # overlap >= 80% of each hit
-                            cmd[4] += 1
+                            cmp[4] += 1
 
                             if is_rev:
                                 cmp[5] += 1
