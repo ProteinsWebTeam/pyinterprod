@@ -307,7 +307,7 @@ def import_go_constraints(go_url: str, pg_url: str):
                 for taxon_id in constraints:
                     if taxon_id == 131567:
                         """
-                        meta-superkingdom (131567) includes three superkingdoms
+                        cellular organisms (131567) includes three domains
                             * Bacteria (2)
                             * Archaea (2157)
                             * Eukaryota (2759)

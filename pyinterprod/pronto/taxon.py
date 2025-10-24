@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import json
 
 import oracledb
@@ -9,7 +7,7 @@ from pyinterprod import logger
 from pyinterprod.utils.pg import url2dict
 
 
-RANKS = {"superkingdom", "kingdom", "phylum", "class", "order", "family",
+RANKS = {"domain", "kingdom", "phylum", "class", "order", "family",
          "genus", "species"}
 
 
@@ -58,14 +56,14 @@ def import_taxonomy(ora_url: str, pg_url: str):
     for tax_id, name, rank, left_num, right_num, parent_id in ora_cur:
         if tax_id in (1, 131567):
             """
-            Skip root and meta-superkingdom (131567) which contains:
+            Skip root and cellular organisms (131567) which contains:
                 * Bacteria (2)
                 * Archaea (2157)
                 * Eukaryota (2759)
             """
             continue
         elif parent_id in (1, 131567):
-            rank = "superkingdom"
+            rank = "domain"
             parent_id = None
 
         taxa[tax_id] = (name, rank, left_num, right_num, parent_id)

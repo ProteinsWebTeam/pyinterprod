@@ -955,14 +955,14 @@ def _get_taxon2superkingdom(cur: oracledb.Cursor) -> dict[int, str]:
     for tax_id, name, rank, parent_id in cur:
         if tax_id in (1, 131567):
             """
-            Skip root and meta-superkingdom (131567) which contains:
+            Skip root and cellular organisms (131567) which contains:
                 * Bacteria (2)
                 * Archaea (2157)
                 * Eukaryota (2759)
             """
             continue
         elif parent_id in (1, 131567):
-            rank = "superkingdom"
+            rank = "domain"
             parent_id = None
 
         taxa[tax_id] = (name, rank, parent_id)
@@ -974,7 +974,7 @@ def _get_taxon2superkingdom(cur: oracledb.Cursor) -> dict[int, str]:
 
         while parent_id is not None:
             name, rank, parent_id = taxa[parent_id]
-            if rank == "superkingdom":
+            if rank == "domain":
                 taxon2superkingdom[tax_id] = name
                 break
 
