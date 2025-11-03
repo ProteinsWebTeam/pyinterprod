@@ -7,13 +7,54 @@ from datetime import datetime
 import oracledb
 
 from pyinterprod import logger
+from pyinterprod.uniprot.uniparc import upi_to_int, int_to_upi
 
 
 # String printed by I5 on successful completion
 _I5_SUCCESS = "100% done:  InterProScan analyses completed"
 
 
-def get_incomplete_jobs(cur: oracledb.Cursor) -> dict[int, tuple]:
+def get_missing_jobs(cur: oracledb.Cursor) -> dict[int, list[tuple]]:
+    cur.execute(
+        """
+        SELECT A.ID, J.UPI_FROM, J.UPI_TO
+        FROM IPRSCAN.ANALYSIS A
+        INNER JOIN IPRSCAN.ANALYSIS_JOBS J on A.ID = J.ANALYSIS_ID
+        WHERE A.ACTIVE = 'Y' AND J.SUCCESS = 'Y'
+        """
+    )
+
+    analyses = {}
+    for analysis_id, upi_from, upi_to in cur:
+        try:
+            analyses[analysis_id].append((upi_from, upi_to))
+        except KeyError:
+            analyses[analysis_id] = [(upi_from, upi_to)]
+
+    missing_jobs = {}
+    for analysis_id, jobs in analyses.items():
+        jobs.sort()
+        for i in range(1, len(jobs)):
+            _, prev_to = jobs[i-1]
+            upi_from, upi_to = jobs[i]
+
+            p = upi_to_int(prev_to)
+            s = upi_to_int(upi_from)
+            if (s - p) > 1:
+                missing_start = int_to_upi(p + 1)
+                missing_end = int_to_upi(s - 1)
+
+                try:
+                    obj = missing_jobs[analysis_id]
+                except KeyError:
+                    obj = missing_jobs[analysis_id] = []
+                finally:
+                    obj.append((missing_start, missing_end))
+
+    return missing_jobs
+
+
+def get_incomplete_jobs(cur: oracledb.Cursor) -> dict[int, list[tuple]]:
     cur.execute(
         """
         SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, SEQUENCES

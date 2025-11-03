@@ -234,6 +234,9 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     """
     incomplete_jobs = jobs.get_incomplete_jobs(cur)
 
+    # Find range of UniParc entries not in a job
+    missing_jobs = jobs.get_missing_jobs(cur)
+
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     (max_upi,) = cur.fetchone()
     cur.close()
@@ -287,6 +290,23 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 # Unknown fate: resubmit
                 task.set_pending()
                 tasks.append((task, True, num_sequences))
+
+        # Submit missing jobs
+        for upi_from, upi_to in missing_jobs.get(analysis_id, []):
+            task = InterProScanTask(
+                analysis_id=analysis_id,
+                upi_from=upi_from,
+                upi_to=upi_to,
+                i5_dir=analysis["i5_dir"],
+                work_dir=work_dir,
+                appl=appl,
+                version=analysis_version,
+                config=config,
+                has_sites=has_sites,
+                scheduler=scheduler,
+                queue=queue,
+            )
+            tasks.append((task, True, 0))  # 0 -> we don't know yet
 
         # Submit new jobs
         if analysis["max_upi"]:
