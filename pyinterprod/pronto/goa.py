@@ -60,7 +60,7 @@ def import_annotations(ora_url: str, pg_url: str):
         """
         ora_cur.execute(
             """
-            SELECT A.ENTITY_ID, A.GO_ID, A.REF_DB_CODE, A.REF_DB_ID
+            SELECT DISTINCT A.ENTITY_ID, A.GO_ID, A.REF_DB_CODE, A.REF_DB_ID
             FROM GO.ANNOTATIONS A
             INNER JOIN GO.ECO2EVIDENCE E ON A.ECO_ID = E.ECO_ID
             INNER JOIN GO.CV_SOURCES S ON S.CODE = A.SOURCE
