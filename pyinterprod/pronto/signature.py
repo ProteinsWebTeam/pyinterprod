@@ -38,8 +38,8 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                             0,  # complete reviewed proteins
                             0,  # complete single-domain proteins
                             0,  # residues in complete proteins
-                            0,  # complete proteins with an overlap
-                            0,  # complete reviewed proteins with an overlap
+                            0,  # complete proteins with an overlap (50%)
+                            0,  # complete reviewed proteins with an overlap (50%)
                         ]
                         comparisons[signature_acc] = {}
 
@@ -49,7 +49,7 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                 when accession_1 < accession_2 (half matrix), so we need to 
                 make sure to update the counters for accession_2 as well.
                 """
-                with_overlaps = set()
+                with_50pc_overlaps = set()
                 for signature_acc in matches:
                     sig = signatures[signature_acc]
                     sig[0] += 1
@@ -120,16 +120,6 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                             cmp[1] += 1
 
                         # Overlapping proteins
-                        shortest = min(residues_1, residues_2)
-                        if residues >= 0.5 * shortest:
-                            # overlap >= 50% of the shortest
-                            with_overlaps.add(signature_acc)
-                            with_overlaps.add(other_acc)
-                            cmp[2] += 1
-
-                            if is_rev:
-                                cmp[3] += 1
-
                         for i, threshold in enumerate([0.5, 0.65, 0.8]):
                             if (residues >= threshold * residues_1
                                     and residues >= threshold * residues_2):
@@ -138,12 +128,16 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                                 if is_rev:
                                     cmp[i*2+3] += 1
 
+                                if i == 0:
+                                    with_50pc_overlaps.add(signature_acc)
+                                    with_50pc_overlaps.add(other_acc)
+
                         # Overlapping residues
                         cmp[6] += residues
                         if is_rev:
                             cmp[7] += residues
 
-                for signature_acc in with_overlaps:
+                for signature_acc in with_50pc_overlaps:
                     sig = signatures[signature_acc]
                     sig[6] += 1
 
@@ -354,6 +348,8 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
                 num_reviewed_collocations INTEGER NOT NULL,
                 num_50pc_overlaps INTEGER NOT NULL,
                 num_reviewed_50pc_overlaps INTEGER NOT NULL,
+                num_65pc_overlaps INTEGER NOT NULL,
+                num_reviewed_65pc_overlaps INTEGER NOT NULL,
                 num_80pc_overlaps INTEGER NOT NULL,
                 num_reviewed_80pc_overlaps INTEGER NOT NULL,
                 num_res_overlaps INTEGER NOT NULL,
@@ -364,7 +360,7 @@ def insert_signatures(ora_uri: str, pg_uri: str, matches_file: str,
 
         sql = """
             INSERT INTO comparison
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s,%s)
         """
 
         records = []
