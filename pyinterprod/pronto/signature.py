@@ -107,6 +107,8 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                                 0,  # shared reviewed proteins
                                 0,  # proteins with >=50% overlap
                                 0,  # reviewed proteins with >=50% overlap
+                                0,  # proteins with >=65% overlap
+                                0,  # reviewed proteins with >=65% overlap
                                 0,  # proteins with >=80% overlap
                                 0,  # reviewed proteins with >=80% overlap
                                 0,  # overlapping residues
@@ -128,13 +130,13 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                             if is_rev:
                                 cmp[3] += 1
 
-                        if (residues >= 0.8 * residues_1
-                                and residues >= 0.8 * residues_2):
-                            # overlap >= 80% of each hit
-                            cmp[4] += 1
+                        for i, threshold in enumerate([0.5, 0.65, 0.8]):
+                            if (residues >= threshold * residues_1
+                                    and residues >= threshold * residues_2):
+                                cmp[i*2+2] += 1
 
-                            if is_rev:
-                                cmp[5] += 1
+                                if is_rev:
+                                    cmp[i*2+3] += 1
 
                         # Overlapping residues
                         cmp[6] += residues
