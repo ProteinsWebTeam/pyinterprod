@@ -11,7 +11,7 @@ from pyinterprod.interpro.clan import update_cdd_clans, update_hmm_clans
 
 def get_pronto_tasks(ora_ipr_uri: str,
                      ora_swp_uri: str | None,
-                     ora_goa_uri: str,
+                     ora_goa_uri: str | None,
                      ora_pdbe_uri: str,
                      pg_ipr_uri: str,
                      data_dir: str,
@@ -40,20 +40,6 @@ def get_pronto_tasks(ora_ipr_uri: str,
             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1)
         ),
 
-        # Data from GOAPRO
-        Task(
-            fn=pronto.goa.import_annotations,
-            args=(ora_goa_uri, pg_ipr_uri),
-            name="go-terms",
-            scheduler=dict(type=scheduler, queue=queue, mem=500, hours=1)
-        ),
-        Task(
-            fn=pronto.goa.import_go_constraints,
-            args=(ora_goa_uri, pg_ipr_uri),
-            name="go-constraints",
-            scheduler=dict(type=scheduler, queue=queue, mem=500, hours=1)
-        ),
-
         # Data from PDBE
         Task(
             fn=pronto.match.import_pdb_matches,
@@ -62,6 +48,25 @@ def get_pronto_tasks(ora_ipr_uri: str,
             scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=6)
         ),
     ]
+
+    if ora_goa_uri:
+        # Import data from GOA database
+        goa_tasks = [
+            Task(
+                fn=pronto.goa.import_annotations,
+                args=(ora_goa_uri, pg_ipr_uri),
+                name="go-terms",
+                scheduler=dict(type=scheduler, queue=queue, mem=500, hours=1)
+            ),
+            Task(
+                fn=pronto.goa.import_go_constraints,
+                args=(ora_goa_uri, pg_ipr_uri),
+                name="go-constraints",
+                scheduler=dict(type=scheduler, queue=queue, mem=500, hours=1)
+            ),
+        ]
+    else:
+        goa_tasks = []
 
     if ora_swp_uri:
         # Import data from Swiss-Prot database
@@ -95,7 +100,7 @@ def get_pronto_tasks(ora_ipr_uri: str,
     else:
         swp_tasks = []
 
-    return tasks + swp_tasks + [
+    return tasks + swp_tasks + goa_tasks + [
         # Data from IPPRO
         Task(
             fn=pronto.database.import_databases,
@@ -178,8 +183,9 @@ def get_pronto_tasks(ora_ipr_uri: str,
             args=(ora_ipr_uri,),
             name="ready",
             requires=["taxonomy", "index-signature2proteins", "index-matches",
-                      "proteins",  "go-terms", "go-constraints", "signatures",
-                      "structures"] + [t.name for t in swp_tasks]
+                      "proteins",  "signatures", "structures"] +
+                     [t.name for t in swp_tasks] +
+                     [t.name for t in goa_tasks]
         ),
     ]
 
