@@ -1,6 +1,8 @@
 import os
 import pickle
 
+from collections import defaultdict
+
 import oracledb
 import psycopg
 
@@ -996,27 +998,6 @@ def _get_taxon2superkingdom(cur: oracledb.Cursor) -> dict[int, str]:
 
     return taxon2superkingdom
 
-def _get_pdb_mapped_proteins(pg_url: str) -> set[str]:
-    """
-    Return a set of protein accessions that are mapped to at least
-    one PDB structure
-
-    :param pg_url: PostgreSQL Pronto connection string
-    :return: set of protein accessions
-    """
-    con = psycopg.connect(**url2dict(pg_url))
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT S.PROTEIN_ACC
-        FROM INTERPRO.SIGNATURE2STRUCTURE S
-        """
-    )
-    proteins = {row[0].split("-")[0] for row in cur}
-    cur.close()
-    con.close()
-    return proteins
-
 
 def _get_entries_protein_counts(
         cur: oracledb.Cursor,
@@ -1032,27 +1013,62 @@ def _get_entries_protein_counts(
     :return: dictionary
     """
     taxon2superkingdom = _get_taxon2superkingdom(cur)
-    all_pdb_mapped_proteins = _get_pdb_mapped_proteins(pg_url)
+
+    # Get total protein counts per entry per superkingdom
     cur.execute(
         """
-        SELECT EM.ENTRY_AC, P.TAX_ID, P.PROTEIN_AC
+        SELECT EM.ENTRY_AC, P.TAX_ID, COUNT(DISTINCT P.PROTEIN_AC)
         FROM INTERPRO.PROTEIN P
         INNER JOIN INTERPRO.MATCH M ON P.PROTEIN_AC = M.PROTEIN_AC
         INNER JOIN INTERPRO.ENTRY2METHOD EM ON EM.METHOD_AC = M.METHOD_AC
         WHERE P.FRAGMENT = 'N'
+        GROUP BY EM.ENTRY_AC, P.TAX_ID
         """
     )
     counts = {}
-    for entry_acc, tax_id, protein_ac in cur:
-        e = counts.setdefault(entry_acc, {"total": {}, "pdb_mapped": {}})
+    for entry_acc, tax_id, n_proteins in cur:
+        try:
+            e = counts[entry_acc]
+        except KeyError:
+            e = counts[entry_acc] = {"total": {}, "pdb": 0}
+
         superkingdom = taxon2superkingdom[tax_id]
+        try:
+            e["total"][superkingdom] += n_proteins
+        except KeyError:
+            e["total"][superkingdom] = n_proteins
 
-        e["total"][superkingdom] = e["total"].get(superkingdom, 0) + 1
-        if protein_ac in all_pdb_mapped_proteins:
-            e["pdb_mapped"][superkingdom] = e["pdb_mapped"].get(superkingdom, 0) + 1
+    # Get number of assoiated UniProt entries with at least one PDB
+    pg_con = psycopg.connect(**url2dict(pg_url))
+    pg_cur = pg_con.cursor()
+    pg_cur.execute(
+        """
+        SELECT S.PROTEIN_ACC
+        FROM INTERPRO.SIGNATURE2STRUCTURE S
+        """
+    )
+    pdb_mapped_proteins = {row[0].split("-")[0] for row in pg_cur}
 
-        if len(counts) % 1000 == 0:
-            break
+    integrated = defaultdict(set)
+    cur.execute("SELECT ENTRY_AC, METHOD_AC FROM INTERPRO.ENTRY2METHOD")
+    for entry_acc, method_acc in cur:
+        if entry_acc in counts:
+            integrated[entry_acc].add(method_acc)
+
+    for entry_acc in integrated:
+        pg_cur.execute(
+            """
+            SELECT COUNT(DISTINCT S.PROTEIN_ACC)
+            FROM SIGNATURE2STRUCTURE S
+            WHERE S.SIGNATURE_ACC = ANY(%s)
+            """,
+            (list(integrated[entry_acc]),)
+        )
+        cnt, = pg_cur.fetchone()
+        counts[entry_acc]["pdb"] = cnt
+
+    pg_cur.close()
+    pg_con.close()
 
     return counts
 
@@ -1061,11 +1077,10 @@ def _get_swissprots(pg_url: str) -> list[str]:
     """
     Return a list of Swiss-Prot protein accessions
 
-    :param uri: Pronot postgre-sql uri
+    :param pg_url: Pronto PostgreSQL connection string
     :return: list of Swiss-Prot accessions
     """
     con = psycopg.connect(**url2dict(pg_url))
-    oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -1080,7 +1095,8 @@ def _get_swissprots(pg_url: str) -> list[str]:
     return swissprots
 
 
-def _get_entries_swissprot_counts(cur: oracledb.Cursor, pg_url: str) -> dict[str, int]:
+def _get_entries_swissprot_counts(cur: oracledb.Cursor,
+                                  pg_url: str) -> dict[str, int]:
     """
     Return the number of Swiss-Prot proteins matched by each InterPro entry.
 
