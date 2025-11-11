@@ -1084,7 +1084,7 @@ def _get_swissprots(pg_url: str) -> list[str]:
     cur = con.cursor()
     cur.execute(
         """
-            SELECT accessions
+            SELECT P.accessions
             FROM INTERPRO.protein P
             WHERE P.is_reviewed
         """
