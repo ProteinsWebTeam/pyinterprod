@@ -572,7 +572,7 @@ def run_member_db_update():
         # Adding Pronto tasks
         after_pronto = []
         for t in get_pronto_tasks(ora_interpro_uri, None,
-                                  ora_goa_uri, ora_pdbe_uri, pg_uri,
+                                  None, ora_pdbe_uri, pg_uri,
                                   data_dir, temp_dir, scheduler, queue):
             # Adding 'pronto-' prefix
             t.name = f"pronto-{t.name}"
