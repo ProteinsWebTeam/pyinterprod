@@ -2,8 +2,10 @@ from dataclasses import dataclass
 from datetime import datetime
 
 import oracledb
+import psycopg
 
 from pyinterprod.utils.oracle import get_partitions
+from pyinterprod.utils.pg import url2dict
 
 
 _NOT_IN_ISPRO = ["ELM", "Pfam-N"]
@@ -21,11 +23,24 @@ class Database:
     is_feature_db: bool
 
 
-def get_databases(uri: str, names: list[str],
+def get_databases(ora_uri: str, pg_uri: str, names: list[str],
                   expects_new: bool = False) -> dict[str, Database]:
     names = {name.lower(): name for name in names}
 
-    con = oracledb.connect(uri)
+    con = psycopg.connect(**url2dict(pg_uri))
+    with con.cursor() as cur:
+        cur.execute(
+            """
+            SELECT a.id
+            FROM iprscan.analysis a
+            INNER JOIN iprscan.analysis_tables t ON a.name = t.name
+            WHERE t.site_table IS NOT NULL
+            """
+        )
+        with_sites = {row[0] for row in cur.fetchall()}
+    con.close()
+
+    con = oracledb.connect(ora_uri)
     cur = con.cursor()
 
     cur.execute(
@@ -60,16 +75,12 @@ def get_databases(uri: str, names: list[str],
     cur.execute(
         f"""
         SELECT D.DBCODE, LOWER(D.DBSHORT), D.DBNAME, V.VERSION, V.FILE_DATE,
-                I2C.IPRSCAN_SIG_LIB_REL_ID, I2C.PREV_ID, T.SITE_TABLE
+                I2C.IPRSCAN_SIG_LIB_REL_ID, I2C.PREV_ID
         FROM INTERPRO.CV_DATABASE D
         LEFT OUTER JOIN INTERPRO.DB_VERSION V 
             ON D.DBCODE = V.DBCODE
         LEFT OUTER JOIN INTERPRO.IPRSCAN2DBCODE I2C 
             ON D.DBCODE = I2C.DBCODE
-        LEFT OUTER JOIN IPRSCAN.ANALYSIS@ISPRO A 
-            ON I2C.IPRSCAN_SIG_LIB_REL_ID = A.ID
-        LEFT OUTER JOIN IPRSCAN.ANALYSIS_TABLES@ISPRO T 
-            ON A.NAME = T.NAME
         WHERE LOWER(D.DBSHORT) IN ({','.join(args)})
         """,
         list(names.keys())
@@ -84,7 +95,7 @@ def get_databases(uri: str, names: list[str],
                       version=row[3],
                       date=row[4],
                       analysis_id=row[5],
-                      has_site_matches=row[7] is not None,
+                      has_site_matches=row[5] in with_sites,
                       is_member_db=(cnt_signatures.get(row[0], 0) > 0
                                     or row[0] in match_databases),
                       is_feature_db=(cnt_features.get(row[0], 0) > 0
@@ -123,9 +134,10 @@ def get_databases(uri: str, names: list[str],
     return databases
 
 
-def update_database(uri: str, name: str, version: str, date: str,
+def update_database(ora_uri: str, pg_uri: str,
+                    name: str, version: str, date: str,
                     by_name: bool = False, confirm: bool = True):
-    con = oracledb.connect(uri)
+    con = oracledb.connect(ora_uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -146,38 +158,42 @@ def update_database(uri: str, name: str, version: str, date: str,
         raise RuntimeError(f"No database matching '{name}'")
 
     dbcode, name, current_version, current_date, current_id, prev_id = row
-
-    # Find the 'active' analysis in ISPRO
-    if by_name or current_id is None:
-        # Use name instead of analysis ID
-        cur.execute(
-            """
-            SELECT ID, NAME, VERSION
-            FROM IPRSCAN.ANALYSIS@ISPRO
-            WHERE LOWER(NAME) = LOWER(:1)
-            AND ACTIVE = 'Y'
-            ORDER BY ID
-            """,
-            [name]
-        )
-    else:
-        cur.execute(
-            """
-            SELECT ID, NAME, VERSION
-            FROM IPRSCAN.ANALYSIS@ISPRO
-            WHERE NAME = (
-                SELECT NAME
-                FROM IPRSCAN.ANALYSIS@ISPRO
-                WHERE ID = :1
-            )
-            AND ACTIVE = 'Y'
-            ORDER BY ID
-            """,
-            [current_id]
-        )
-
-    rows = cur.fetchall()
     cur.close()
+    con.close()
+
+    # Find the 'active' analysis
+    con = psycopg.connect(**url2dict(pg_uri))
+    with con.cursor() as cur:
+        if by_name or current_id is None:
+            # Use name instead of analysis ID
+            cur.execute(
+                """
+                SELECT id, name, version
+                FROM iprscan.analysis
+                WHERE LOWER(name) = LOWER(%s)
+                  AND active = true
+                ORDER BY id
+                """,
+                [name]
+            )
+        else:
+            cur.execute(
+                """
+                SELECT id, name, version
+                FROM iprscan.analysis
+                WHERE name = (
+                    SELECT name
+                    FROM iprscan.analysis
+                    WHERE id = %s
+                )
+                  AND active = true
+                ORDER BY id
+                """,
+                [current_id]
+            )
+
+        rows = cur.fetchall()
+
     con.close()
 
     if name in _NOT_IN_ISPRO:
@@ -206,7 +222,7 @@ def update_database(uri: str, name: str, version: str, date: str,
         print("Abort.")
         return
 
-    con = oracledb.connect(uri)
+    con = oracledb.connect(ora_uri)
     cur = con.cursor()
 
     if (current_version, current_date) != (version, date):
