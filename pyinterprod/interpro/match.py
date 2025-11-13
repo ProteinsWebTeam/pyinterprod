@@ -913,28 +913,35 @@ def track_entry_changes(
 
     with open(os.path.join(data_dir, FILE_ENTRY_PROT_COUNTS), "rb") as fh:
         old_counts = pickle.load(fh)
+    print("loaded old counts")
 
     new_counts = _get_entries_protein_counts(cur, pg_uri)
-    swissprot_counts = _get_entries_swissprot_counts(cur, pg_uri)
+    print("loaded new counts")
+    # swissprot_counts = _get_entries_swissprot_counts(cur, pg_uri)
+    # print("loaded swissprot counts")
     changes = []
     for acc in sorted(old_counts):
         entry_old_counts = old_counts[acc]
-        entry_new_counts = new_counts.pop(acc, {"total": {}, "pdb_mapped": {}})
-        entry_new_swissprot_counts = swissprot_counts[acc]
+        entry_new_counts = new_counts.pop(acc, {"total": {}, "swissprot": 0, "pdb_mapped": 0})
 
         # Total number of proteins matched
         entry_old_total = sum(entry_old_counts["total"].values())
         entry_new_total = sum(entry_new_counts["total"].values())
-        change = (entry_new_total - entry_old_total) / entry_old_total
+        change_total = (entry_new_total - entry_old_total) / entry_old_total
 
         # Total number of PDB-mapped proteins matched
-        entry_old_pdb = sum(entry_old_counts["pdb_mapped"].values())
-        entry_new_pdb = sum(entry_new_counts["pdb_mapped"].values())
+        entry_old_pdb = entry_old_counts["pdb_mapped"]
+        entry_new_pdb = entry_new_counts["pdb_mapped"]
         change_pdb = (entry_new_pdb - entry_old_pdb) / entry_old_pdb
+
+        # Total number of swissprot proteins
+        entry_old_swiss = entry_old_counts["swissprot"]
+        entry_new_swiss = entry_old_counts["swissprot"]
+        change_swiss = (entry_new_swiss - entry_old_swiss) / entry_old_swiss
 
         # If the entry does not have any matches anymore,
         # we want to report it
-        if entry_new_total != 0 and abs(change) < threshold:
+        if entry_new_total != 0 and abs(change_total) < threshold:
             continue
 
         entry_superkingdoms = {}
@@ -950,12 +957,14 @@ def track_entry_changes(
             acc,
             entry_old_total,
             entry_new_total,
-            change,
+            change_total,
             entry_old_pdb,
             entry_new_pdb,
             change_pdb,
-            entry_superkingdoms,
-            entry_new_swissprot_counts
+            entry_old_swiss,
+            entry_new_swiss,
+            change_swiss,
+            entry_superkingdoms
         ))
 
     return changes
@@ -1012,6 +1021,9 @@ def _get_entries_protein_counts(
     :param cur: Oracle cursor object
     :return: dictionary
     """
+    def default_counts():
+        return {"total": {}, "swissprot": 0, "pdb": 0}
+
     taxon2superkingdom = _get_taxon2superkingdom(cur)
 
     # Get total protein counts per entry per superkingdom
@@ -1025,13 +1037,9 @@ def _get_entries_protein_counts(
         GROUP BY EM.ENTRY_AC, P.TAX_ID
         """
     )
-    counts = {}
+    counts = defaultdict(default_counts)
     for entry_acc, tax_id, n_proteins in cur:
-        try:
-            e = counts[entry_acc]
-        except KeyError:
-            e = counts[entry_acc] = {"total": {}, "pdb": 0}
-
+        e = counts[entry_acc]
         superkingdom = taxon2superkingdom[tax_id]
         try:
             e["total"][superkingdom] += n_proteins
@@ -1039,21 +1047,13 @@ def _get_entries_protein_counts(
             e["total"][superkingdom] = n_proteins
 
     # Get number of assoiated UniProt entries with at least one PDB
-    pg_con = psycopg.connect(**url2dict(pg_url))
-    pg_cur = pg_con.cursor()
-    pg_cur.execute(
-        """
-        SELECT S.PROTEIN_ACC
-        FROM INTERPRO.SIGNATURE2STRUCTURE S
-        """
-    )
-    pdb_mapped_proteins = {row[0].split("-")[0] for row in pg_cur}
-
     integrated = defaultdict(set)
     cur.execute("SELECT ENTRY_AC, METHOD_AC FROM INTERPRO.ENTRY2METHOD")
     for entry_acc, method_acc in cur:
-        if entry_acc in counts:
-            integrated[entry_acc].add(method_acc)
+        integrated[entry_acc].add(method_acc)
+
+    pg_con = psycopg.connect(**url2dict(pg_url))
+    pg_cur = pg_con.cursor()
 
     for entry_acc in integrated:
         pg_cur.execute(
@@ -1064,65 +1064,26 @@ def _get_entries_protein_counts(
             """,
             (list(integrated[entry_acc]),)
         )
-        cnt, = pg_cur.fetchone()
-        counts[entry_acc]["pdb"] = cnt
+        pdb_count, = pg_cur.fetchone()
+        e = counts[entry_acc]
+        e["pdb"] = pdb_count
+
+    # Get the number of specifically Swissprot proteins
+    for entry_acc in integrated:
+        pg_cur.execute(
+            """
+            SELECT COUNT(DISTINCT SP.PROTEIN_ACC)
+            FROM SIGNATURE2PROTEIN SP
+            WHERE SP.SIGNATURE_ACC = ANY(%s) AND IS_REVIEWED
+            """,
+            (list(integrated[entry_acc]),)
+        )
+        pdb_count, = pg_cur.fetchone()
+        e = counts[entry_acc]
+        e["swissprot"] = pdb_count
 
     pg_cur.close()
     pg_con.close()
-
-    return counts
-
-
-def _get_swissprots(pg_url: str) -> list[str]:
-    """
-    Return a list of Swiss-Prot protein accessions
-
-    :param pg_url: Pronto PostgreSQL connection string
-    :return: list of Swiss-Prot accessions
-    """
-    con = psycopg.connect(**url2dict(pg_url))
-    cur = con.cursor()
-    cur.execute(
-        """
-            SELECT P.accessions
-            FROM INTERPRO.protein P
-            WHERE P.is_reviewed
-        """
-    )
-    swissprots = [row[0] for row in cur]
-    cur.close()
-    con.close()
-    return swissprots
-
-
-def _get_entries_swissprot_counts(cur: oracledb.Cursor,
-                                  pg_url: str) -> dict[str, int]:
-    """
-    Return the number of Swiss-Prot proteins matched by each InterPro entry.
-
-    :param cur: Oracle cursor object
-    :return: dictionary
-    """
-    swissprots = _get_swissprots(pg_url)
-
-    step = 1000
-    counts = {}
-
-    for i in range(0, len(swissprots), step):
-        chunk = swissprots[i:i+step]
-        placeholders = ",".join([f":{j+1}" for j in range(len(chunk))])
-        query = f"""
-            SELECT EM.ENTRY_AC, COUNT(DISTINCT P.PROTEIN_AC)
-            FROM INTERPRO.PROTEIN P
-            INNER JOIN INTERPRO.MATCH M ON P.PROTEIN_AC = M.PROTEIN_AC
-            INNER JOIN INTERPRO.ENTRY2METHOD EM ON EM.METHOD_AC = M.METHOD_AC
-            WHERE P.FRAGMENT = 'N'
-              AND P.PROTEIN_AC IN ({placeholders})
-            GROUP BY EM.ENTRY_AC
-        """
-        cur.execute(query, chunk)
-        for entry_ac, count in cur.fetchall():
-            counts[entry_ac] = counts.get(entry_ac, 0) + count
 
     return counts
 
