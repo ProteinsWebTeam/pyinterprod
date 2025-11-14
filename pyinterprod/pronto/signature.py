@@ -133,9 +133,9 @@ def _compare_signatures(matches_file: str, src: Queue, dst: Queue):
                                     with_50pc_overlaps.add(other_acc)
 
                         # Overlapping residues
-                        cmp[6] += residues
+                        cmp[8] += residues
                         if is_rev:
-                            cmp[7] += residues
+                            cmp[9] += residues
 
                 for signature_acc in with_50pc_overlaps:
                     sig = signatures[signature_acc]
