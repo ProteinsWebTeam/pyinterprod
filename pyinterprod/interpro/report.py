@@ -501,7 +501,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
     # Write entries with protein count changes (total + per superkingdom)
     with open(os.path.join(tmpdir, "entries_count_changes.tsv"), "wt") as fh:
         changes = track_entry_changes(cur, pg_url, data_dir, MIN_ENTRY_CHANGE)
-        superkingdoms = sorted({sk for e in changes for sk in e[4]["total"]})
+        superkingdoms = sorted({sk for e in changes for sk in e[10]})
 
         # Header
         line = ["Accession", "Link", "Type", "Name", "Checked", "Source origin",
@@ -514,7 +514,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
 
         fh.write('\t'.join(line) + '\n')
 
-        line = [''] * 10
+        line = [''] * 16
         line += ["Previous count", "New count"] * len(superkingdoms)
         fh.write('\t'.join(line) + '\n')
 
@@ -547,12 +547,12 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                 "Yes" if entry_acc in entries_highest_de_changed else "No",
                 str(old_total),
                 str(new_total),
-                f"{change_total*100:.0f}",
+                f"{change_total*100:.0f}" if isinstance(change_total, int) else "NA",
                 str(old_pdb_total),
                 str(new_pdb_total),
-                f"{change_pdb*100:.0f}",
+                f"{change_pdb*100:.0f}" if isinstance(change_pdb, int) else "NA",
                 str(new_swiss),
-                f"{change_swiss*100:.0f}"
+                f"{change_swiss*100:.0f}" if isinstance(change_swiss, int) else "NA"
             ]
 
             for sk in superkingdoms:

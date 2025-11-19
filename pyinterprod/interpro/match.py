@@ -904,6 +904,7 @@ def track_entry_changes(
     Find entries with significant protein count changes
 
     :param cur: Oracle cursor object
+    :param pg_uri: PostgreSQL connection string
     :param data_dir: directory containing the file for protein counts
                      before the update
     :param threshold: report entries with at least (threshold/100)% change
@@ -913,31 +914,28 @@ def track_entry_changes(
 
     with open(os.path.join(data_dir, FILE_ENTRY_PROT_COUNTS), "rb") as fh:
         old_counts = pickle.load(fh)
-    print("loaded old counts")
 
     new_counts = _get_entries_protein_counts(cur, pg_uri)
-    print("loaded new counts")
-    # swissprot_counts = _get_entries_swissprot_counts(cur, pg_uri)
-    # print("loaded swissprot counts")
+
     changes = []
     for acc in sorted(old_counts):
         entry_old_counts = old_counts[acc]
-        entry_new_counts = new_counts.pop(acc, {"total": {}, "swissprot": 0, "pdb_mapped": 0})
+        entry_new_counts = new_counts.pop(acc, {"total": {}, "swissprot": 0, "pdb": 0})
 
         # Total number of proteins matched
         entry_old_total = sum(entry_old_counts["total"].values())
         entry_new_total = sum(entry_new_counts["total"].values())
-        change_total = (entry_new_total - entry_old_total) / entry_old_total
+        change_total = (entry_new_total - entry_old_total) / entry_old_total if entry_old_total else "NA"
 
         # Total number of PDB-mapped proteins matched
-        entry_old_pdb = entry_old_counts["pdb_mapped"]
-        entry_new_pdb = entry_new_counts["pdb_mapped"]
-        change_pdb = (entry_new_pdb - entry_old_pdb) / entry_old_pdb
+        entry_old_pdb = entry_old_counts["pdb"]
+        entry_new_pdb = entry_new_counts["pdb"]
+        change_pdb = (entry_new_pdb - entry_old_pdb) / entry_old_pdb if entry_old_pdb else "NA"
 
         # Total number of swissprot proteins
         entry_old_swiss = entry_old_counts["swissprot"]
         entry_new_swiss = entry_old_counts["swissprot"]
-        change_swiss = (entry_new_swiss - entry_old_swiss) / entry_old_swiss
+        change_swiss = (entry_new_swiss - entry_old_swiss) / entry_old_swiss if entry_old_swiss else "NA"
 
         # If the entry does not have any matches anymore,
         # we want to report it
@@ -945,12 +943,12 @@ def track_entry_changes(
             continue
 
         entry_superkingdoms = {}
-        for superkingdom, old_cnt in entry_old_counts.items():
-            new_cnt = entry_new_counts.pop(superkingdom, 0)
+        for superkingdom, old_cnt in entry_old_counts["total"].items():
+            new_cnt = entry_new_counts["total"].pop(superkingdom, 0)
             entry_superkingdoms[superkingdom] = (old_cnt, new_cnt)
 
         # superkingdoms with proteins only matched in new UniProt release
-        for superkingdom, new_cnt in entry_new_counts.items():
+        for superkingdom, new_cnt in entry_new_counts["total"].items():
             entry_superkingdoms[superkingdom] = (0, new_cnt)
 
         changes.append((
@@ -1013,17 +1011,17 @@ def _get_entries_protein_counts(
         pg_url: str
 ) -> dict[str, dict[str, dict[str, int]]]:
     """
-    Return the number of protein matched by each InterPro entry,
-    total and for only those proteins are associated with at least
-    one PDB structure.
+    Return a dict with the 'total' number of proteins matched
+    by each InterPro entry per superkingdom, the number of
+    `swissprot` proteins that match the entry, and the number of
+    proteins with at least one 'pdb' structure.
+
     Only complete sequences are considered.
 
     :param cur: Oracle cursor object
+    :param pg_url: PostgreSQL connection string
     :return: dictionary
     """
-    def default_counts():
-        return {"total": {}, "swissprot": 0, "pdb": 0}
-
     taxon2superkingdom = _get_taxon2superkingdom(cur)
 
     # Get total protein counts per entry per superkingdom
@@ -1037,9 +1035,12 @@ def _get_entries_protein_counts(
         GROUP BY EM.ENTRY_AC, P.TAX_ID
         """
     )
-    counts = defaultdict(default_counts)
+    counts = {}
     for entry_acc, tax_id, n_proteins in cur:
-        e = counts[entry_acc]
+        try:
+            e = counts[entry_acc]
+        except KeyError:
+            e = counts[entry_acc] = {"total": {}, "swissprot": 0, "pdb": 0}
         superkingdom = taxon2superkingdom[tax_id]
         try:
             e["total"][superkingdom] += n_proteins
@@ -1056,6 +1057,10 @@ def _get_entries_protein_counts(
     pg_cur = pg_con.cursor()
 
     for entry_acc in integrated:
+        try:
+            e = counts[entry_acc]
+        except KeyError:
+            e = counts[entry_acc] = {"total": {}, "swissprot": 0, "pdb": 0}
         pg_cur.execute(
             """
             SELECT COUNT(DISTINCT S.PROTEIN_ACC)
@@ -1065,7 +1070,6 @@ def _get_entries_protein_counts(
             (list(integrated[entry_acc]),)
         )
         pdb_count, = pg_cur.fetchone()
-        e = counts[entry_acc]
         e["pdb"] = pdb_count
 
     # Get the number of specifically Swissprot proteins
