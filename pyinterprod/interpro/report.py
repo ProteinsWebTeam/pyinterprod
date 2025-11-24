@@ -119,7 +119,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             sig_old_tot = sum(sig_old_cnts.values())
             sig_new_tot = sum(sig_new_cnts.values())
 
-            change = (sig_new_tot - sig_old_tot) / sig_old_tot
+            change = (sig_new_tot - sig_old_tot) / sig_old_tot if sig_old_tot else "NA"
 
             # If the signature does not have any matches anymore,
             # we want to report it (it is integrated in InterPro)
@@ -166,11 +166,12 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             for acc, old_val, new_val in data["changes"]["names"]:
                 try:
                     _, entry_acc, _, _, _ = integrated[acc]
+                    change_list = changes[acc]
                 except KeyError:
                     continue
 
                 link = f"{pronto_link}/entry/{entry_acc}/"
-                de_changes = "Yes" if changes[acc][7] else "No"
+                de_changes = "Yes" if change_list[7] else "No"
                 fh.write(f"{acc}\t{entry_acc}\t{link}\t"
                          f"{old_val or 'N/A'}\t{new_val or 'N/A'}\t{de_changes}\n")
 
@@ -185,11 +186,12 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             for acc, old_val, new_val in data["changes"]["descriptions"]:
                 try:
                     _, entry_acc, _, _, _ = integrated[acc]
+                    change_list = changes[acc]
                 except KeyError:
                     continue
 
                 link = f"{pronto_link}/entry/{entry_acc}/"
-                de_changes = "Yes" if changes[acc][7] else "No"
+                de_changes = "Yes" if change_list[7] else "No"
                 fh.write(f"{acc}\t{entry_acc}\t{link}\t"
                          f"{old_val or 'N/A'}\t{new_val or 'N/A'}\t{de_changes}\n")
 
@@ -201,11 +203,12 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             for acc, old_val, new_val in data["changes"]["types"]:
                 try:
                     _, entry_acc, _, _, _ = integrated[acc]
+                    change_list = changes[acc]
                 except KeyError:
                     continue
 
                 link = f"{pronto_link}/entry/{entry_acc}/"
-                de_changes = "Yes" if changes[acc][7] else "No"
+                de_changes = "Yes" if change_list[7] else "No"
                 fh.write(f"{acc}\t{entry_acc}\t{link}\t{old_val}"
                          f"\t{new_val}\t{de_changes}\n")
 
@@ -218,6 +221,9 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             try:
                 _, entry_acc, type_code, entry_name, origin = integrated[acc]
             except KeyError:
+                continue
+
+            if acc not in changes:
                 continue
 
             proteins = sig2swiss[acc]
@@ -249,7 +255,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                      f"{len(lost)}\t{len(gained)}\t"
                      f"{' | '.join(lost)}\t"
                      f"{' | '.join(gained)}\t"
-                     f"{' | '.join(total_change)}\n")
+                     f"{total_change}\n")
 
             # Keep track of signatures with Swiss-Prot description changes
             sig_changes.add(acc)
