@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyinterprod"
-version = "2.16.5"
+version = "2.17.0"
 description = "InterPro production procedures."
 readme = "README.md"
 license = {file = "LICENSE"}
