@@ -229,7 +229,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             proteins = sig2swiss[acc]
             total_change = changes[acc][7]
             # Retrieve lists of sissprot protein desc that have been lost or gained
-            lost, gained = compare_descriptions(proteins)
+            lost, gained, _ = compare_descriptions(proteins)
             if not lost and not gained:
                 continue
             elif type_code == "F":
@@ -447,7 +447,7 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
             continue
 
         proteins = entry2swiss[entry_acc]
-        lost, gained = compare_descriptions(proteins)
+        lost, gained, _ = compare_descriptions(proteins)
         if not lost and not gained:
             continue
         elif type_code == "F":
@@ -655,4 +655,4 @@ def compare_descriptions(
         highest_de_changed = old_highest_de != new_highest_de
         return lost, gained, highest_de_changed
 
-    return lost, gained
+    return lost, gained, False
