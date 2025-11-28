@@ -925,17 +925,17 @@ def track_entry_changes(
         # Total number of proteins matched
         entry_old_total = sum(entry_old_counts["total"].values())
         entry_new_total = sum(entry_new_counts["total"].values())
-        change_total = (entry_new_total - entry_old_total) / entry_old_total if entry_old_total else "NA"
+        change_total = (entry_new_total - entry_old_total) / entry_old_total if entry_old_total else None
 
         # Total number of PDB-mapped proteins matched
         entry_old_pdb = entry_old_counts["pdb"]
         entry_new_pdb = entry_new_counts["pdb"]
-        change_pdb = (entry_new_pdb - entry_old_pdb) / entry_old_pdb if entry_old_pdb else "NA"
+        change_pdb = (entry_new_pdb - entry_old_pdb) / entry_old_pdb if entry_old_pdb else None
 
         # Total number of swissprot proteins
         entry_old_swiss = entry_old_counts["swissprot"]
         entry_new_swiss = entry_old_counts["swissprot"]
-        change_swiss = (entry_new_swiss - entry_old_swiss) / entry_old_swiss if entry_old_swiss else "NA"
+        change_swiss = (entry_new_swiss - entry_old_swiss) / entry_old_swiss if entry_old_swiss else None
 
         # If the entry does not have any matches anymore,
         # we want to report it
@@ -1048,10 +1048,10 @@ def _get_entries_protein_counts(
             e["total"][superkingdom] = n_proteins
 
     # Get number of assoiated UniProt entries with at least one PDB
-    integrated = defaultdict(set)
+    integrated = defaultdict(list)
     cur.execute("SELECT ENTRY_AC, METHOD_AC FROM INTERPRO.ENTRY2METHOD")
     for entry_acc, method_acc in cur:
-        integrated[entry_acc].add(method_acc)
+        integrated[entry_acc].append(method_acc)
 
     pg_con = psycopg.connect(**url2dict(pg_url))
     pg_cur = pg_con.cursor()
@@ -1067,7 +1067,7 @@ def _get_entries_protein_counts(
             FROM SIGNATURE2STRUCTURE S
             WHERE S.SIGNATURE_ACC = ANY(%s)
             """,
-            (list(integrated[entry_acc]),)
+            (integrated[entry_acc],)
         )
         pdb_count, = pg_cur.fetchone()
         e["pdb"] = pdb_count

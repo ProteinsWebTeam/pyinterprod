@@ -553,12 +553,12 @@ def send_prot_update_report(ora_url: str, pg_url: str, data_dir: str,
                 "Yes" if entry_acc in entries_highest_de_changed else "No",
                 str(old_total),
                 str(new_total),
-                f"{change_total*100:.0f}" if isinstance(change_total, int) else "NA",
+                f"{change_total*100:.0f}" if change_total else "NA",
                 str(old_pdb_total),
                 str(new_pdb_total),
-                f"{change_pdb*100:.0f}" if isinstance(change_pdb, int) else "NA",
+                f"{change_pdb*100:.0f}" if change_pdb else "NA",
                 str(new_swiss),
-                f"{change_swiss*100:.0f}" if isinstance(change_swiss, int) else "NA"
+                f"{change_swiss*100:.0f}" if change_swiss else "NA"
             ]
 
             for sk in superkingdoms:
