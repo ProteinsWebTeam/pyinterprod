@@ -925,21 +925,26 @@ def track_entry_changes(
         # Total number of proteins matched
         entry_old_total = sum(entry_old_counts["total"].values())
         entry_new_total = sum(entry_new_counts["total"].values())
-        change_total = (entry_new_total - entry_old_total) / entry_old_total if entry_old_total else None
+        change_total = (entry_new_total - entry_old_total) / entry_old_total if entry_old_total else 0
 
         # Total number of PDB-mapped proteins matched
         entry_old_pdb = entry_old_counts["pdb"]
         entry_new_pdb = entry_new_counts["pdb"]
-        change_pdb = (entry_new_pdb - entry_old_pdb) / entry_old_pdb if entry_old_pdb else None
+        change_pdb = (entry_new_pdb - entry_old_pdb) / entry_old_pdb if entry_old_pdb else 0
 
         # Total number of swissprot proteins
         entry_old_swiss = entry_old_counts["swissprot"]
         entry_new_swiss = entry_old_counts["swissprot"]
-        change_swiss = (entry_new_swiss - entry_old_swiss) / entry_old_swiss if entry_old_swiss else None
+        change_swiss = (entry_new_swiss - entry_old_swiss) / entry_old_swiss if entry_old_swiss else 0
 
         # If the entry does not have any matches anymore,
         # we want to report it
         if entry_new_total != 0 and abs(change_total) < threshold:
+            continue
+
+        # If there were not matches before and no matches now
+        # we don't want to report it
+        if not entry_old_total and not entry_new_total:
             continue
 
         entry_superkingdoms = {}
