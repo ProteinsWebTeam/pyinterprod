@@ -79,6 +79,7 @@ def get_signatures(tsvfile: str,
             )
             """
         )
+        cur.execute("GRANT SELECT ON INTERPRO.NCBIFAM_AMR TO INTERPRO_SELECT")
         if amr_models:
             cur.executemany("INSERT INTO INTERPRO.NCBIFAM_AMR VALUES (:1)",
                             amr_models)
