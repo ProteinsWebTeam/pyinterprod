@@ -83,7 +83,7 @@ def export_proteins(url: str, outdir: str, buffer_size: int = 1000000) -> list[s
     return files
 
 
-def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
+def track_changes(url: str, pg_url: str, swissp: str, trembl: str, version: str, date: str,
                   data_dir: str, tmpdir: str | None = None):
     os.makedirs(data_dir, exist_ok=True)
     workdir = mkdtemp(dir=tmpdir)
@@ -94,7 +94,7 @@ def track_changes(url: str, swissp: str, trembl: str, version: str, date: str,
     old_version, = cur.fetchone()
 
     logger.info(f"exporting protein counts per entry (UniProt {old_version})")
-    export_entries_protein_counts(cur, data_dir)
+    export_entries_protein_counts(cur, pg_url, data_dir)
 
     cur.close()
     con.close()

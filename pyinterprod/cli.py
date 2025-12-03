@@ -763,6 +763,7 @@ def run_uniprot_update():
         Task(
             fn=interpro.protein.track_changes,
             args=(ora_interpro_uri,
+                  pg_uri,
                   config["uniprot"]["swiss-prot"],
                   config["uniprot"]["trembl"],
                   uniprot_version,
