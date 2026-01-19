@@ -234,7 +234,7 @@ SITE_SELECT = ["ANALYSIS_ID", "UPI_RANGE", "UPI", "METHOD_AC", "LOC_START",
                "LOC_END", "NUM_SITES", "RESIDUE", "RES_START", "RES_END",
                "DESCRIPTION"]
 
-SITE_PARITIONS = {
+SITE_PARTITIONS = {
     "CDD": {
         "columns": SITE_SELECT,
         "partition": "CDD"
@@ -345,7 +345,7 @@ def import_matches_or_sites(ora_uri: str, pg_uri: str, data_type: str = "matches
         partitions = MATCH_PARTITIONS
         partitioned_table = "MV_IPRSCAN"
     elif data_type == "sites":
-        partitions = SITE_PARITIONS
+        partitions = SITE_PARTITIONS
         partitioned_table = "SITE"
     else:
         raise ValueError(f"invalid data type '{data_type}'")
