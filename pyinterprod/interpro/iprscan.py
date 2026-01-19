@@ -3,10 +3,11 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import oracledb
-from oracledb import Cursor
+import psycopg
 
 from pyinterprod import logger
 from pyinterprod.utils import oracle
+from pyinterprod.utils.pg import url2dict
 
 
 """
@@ -257,16 +258,15 @@ class Analysis:
     is_active: bool
     table: str
 
-    def is_ready(self, cur: Cursor, max_upi: str) -> bool:
+    def is_ready(self, cur: psycopg.Cursor, max_upi: str) -> bool:
         # Check for incomplete jobs that are required (<= max UPI)
         cur.execute(
             """
-            SELECT COUNT(*) AS CNT
-            FROM IPRSCAN.ANALYSIS_JOBS@ISPRO
-            WHERE ANALYSIS_ID = :1
-              AND UPI_FROM <= :2
-              AND END_TIME IS NULL
-              AND SUCCESS = 'N'
+            SELECT COUNT(*)
+            FROM iprscan.analysis_jobs
+            WHERE analysis_id = %s
+              AND upi_from <= %s
+              AND success IS NOT TRUE
             """,
             [self.id, max_upi]
         )
@@ -276,10 +276,10 @@ class Analysis:
         # Check that the highest completed job is >= max UPI
         cur.execute(
             """
-            SELECT MAX(UPI_TO)
-            FROM IPRSCAN.ANALYSIS_JOBS@ISPRO
-            WHERE ANALYSIS_ID = :1
-              AND END_TIME IS NOT NULL
+            SELECT MAX(upi_to)
+            FROM iprscan.analysis_jobs
+            WHERE analysis_id = %s
+              AND end_time IS NOT NULL
             """,
             [self.id]
         )
@@ -287,48 +287,41 @@ class Analysis:
         return row[0] is not None and row[0] >= max_upi
 
 
-def get_analyses(cur: Cursor, **kwargs) -> list[Analysis]:
+def get_analyses(cur: psycopg.Cursor, **kwargs) -> list[Analysis]:
     ids = kwargs.get("ids", [])
+    inactive = kwargs.get("inactive", False)
     match_type = kwargs.get("type", "matches")
-    status = kwargs.get("status", "production")
 
     if match_type not in ("matches", "sites"):
         raise ValueError("supported values for type: matches, sites")
-    elif status not in ("production", "active", "all"):
-        raise ValueError("supported values for status: production, active, all")
-
-    if ids:
-        params = [':' + str(i+1) for i in range(len(ids))]
-        sql_filter = f"WHERE A.ID IN ({','.join(params)})"
-        params = tuple(ids)
-    elif status == "production":
-        sql_filter = ("WHERE  A.ID IN (SELECT IPRSCAN_SIG_LIB_REL_ID "
-                      "FROM INTERPRO.IPRSCAN2DBCODE)")
-        params = tuple()
-    elif status == "active":
-        sql_filter = "WHERE A.ACTIVE = 'Y'"
-        params = tuple()
-    else:
+    elif ids:
+        sql_filter = f"WHERE a.id IN ({','.join(['%s' for _ in ids])})"
+        params = ids
+    elif inactive:
         sql_filter = ""
-        params = tuple()
+        params = []
+    else:
+        sql_filter = "WHERE a.active IS TRUE"
+        params = []
 
     cur.execute(
         f"""
-        SELECT A.ID, A.NAME, A.VERSION, A.ACTIVE, T.MATCH_TABLE, T.SITE_TABLE
-        FROM IPRSCAN.ANALYSIS@ISPRO A
-        INNER JOIN IPRSCAN.ANALYSIS_TABLES@ISPRO T 
-            ON LOWER(A.NAME) = LOWER(T.NAME)
+        SELECT a.id, a.name, a.version, a.active, t.match_table, t.site_table
+        FROM iprscan.analysis AS a
+        INNER JOIN iprscan.analysis_tables AS t 
+            ON LOWER(a.name) = LOWER(t.name)
         {sql_filter}
-        ORDER BY A.NAME
-        """, params
+        ORDER BY a.name
+        """,
+        params
     )
 
     analyses = []
     for a_id, a_name, a_version, a_active, match_table, site_table in cur:
         if match_type == "matches":
-            table = match_table.upper()
+            table = match_table
         elif site_table:
-            table = site_table.upper()
+            table = site_table
         else:
             continue
 
@@ -336,14 +329,14 @@ def get_analyses(cur: Cursor, **kwargs) -> list[Analysis]:
             id=a_id,
             name=a_name,
             version=a_version,
-            is_active=a_active == "Y",
+            is_active=a_active,
             table=table
         ))
 
     return analyses
 
 
-def import_matches_or_sites(uri: str, data_type: str = "matches", **kwargs):
+def import_matches_or_sites(ora_uri: str, pg_uri: str, data_type: str = "matches", **kwargs):
     databases = kwargs.get("databases", [])
     force = kwargs.get("force", True)
     threads = kwargs.get("threads", 1)
@@ -367,31 +360,37 @@ def import_matches_or_sites(uri: str, data_type: str = "matches", **kwargs):
 
     logger.info("starting")
 
-    con = oracledb.connect(uri)
+    con = oracledb.connect(ora_uri)
     cur = con.cursor()
-
-    pending = {}
-    for analysis in get_analyses(cur, type=data_type):
-        if databases and analysis.id not in databases:
-            continue
-
-        # adds partition information to pending analysis
-        try:
-            obj = partitions[analysis.name]
-        except KeyError:
-            logger.warning(f"ignoring {analysis.name} {analysis.version}")
-            continue
-
-        item = (analysis, obj["partition"], obj["columns"])
-
-        try:
-            pending[analysis.table].append(item)
-        except KeyError:
-            pending[analysis.table] = [item]
-
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     max_upi, = cur.fetchone()
+
+    cur.execute("SELECT IPRSCAN_SIG_LIB_REL_ID FROM INTERPRO.IPRSCAN2DBCODE")
+    analysis_ids = [row[0] for row in cur.fetchall()]
+
     cur.close()
+    con.close()
+
+    con = psycopg.connect(**url2dict(pg_uri))
+    with con.cursor() as cur:
+        pending = {}
+        for analysis in get_analyses(cur, ids=analysis_ids, type=data_type):
+            if databases and analysis.id not in databases:
+                continue
+
+            # adds partition information to pending analysis
+            try:
+                obj = partitions[analysis.name]
+            except KeyError:
+                logger.warning(f"ignoring {analysis.name} {analysis.version}")
+                continue
+
+            item = (analysis, obj["partition"], obj["columns"])
+            try:
+                pending[analysis.table].append(item)
+            except KeyError:
+                pending[analysis.table] = [item]
+
     con.close()
 
     if not pending:
@@ -405,57 +404,55 @@ def import_matches_or_sites(uri: str, data_type: str = "matches", **kwargs):
         failed = 0
 
         while True:
-            con = oracledb.connect(uri)
-            cur = con.cursor()
+            con = psycopg.connect(**url2dict(pg_uri))
+            with con.cursor() as cur:
+                tmp = []
+                for f, table, names in running:
+                    if not f.done():
+                        tmp.append((f, table, names))
+                        continue
 
-            tmp = []
-            for f, table, names in running:
-                if not f.done():
-                    tmp.append((f, table, names))
-                    continue
+                    try:
+                        f.result()
+                    except Exception as exc:
+                        for name in names:
+                            logger.error(f"{name:<38} failed: {exc}")
+                        failed += 1
+                    else:
+                        for name in names:
+                            logger.info(f"{name:<40} done")
 
-                try:
-                    f.result()
-                except Exception as exc:
-                    for name in names:
-                        logger.error(f"{name:<38} failed: {exc}")
-                    failed += 1
-                else:
-                    for name in names:
-                        logger.info(f"{name:<40} done")
+                running = tmp
+                tmp = {}
+                for table, analyses in pending.items():
+                    ready = []
+                    for analysis, _, _ in analyses:
+                        if analysis.is_ready(cur, max_upi):
+                            ready.append(analysis)
 
-            running = tmp
+                    if len(ready) < len(analyses):
+                        # Not ready
+                        tmp[table] = analyses
+                        continue
 
-            tmp = {}
-            for table, analyses in pending.items():
-                ready = []
-                for analysis, _, _ in analyses:
-                    if analysis.is_ready(cur, max_upi):
-                        ready.append(analysis)
+                    args = (
+                        pg_uri,
+                        ora_uri,
+                        table,
+                        partitioned_table,
+                        [
+                            (analysis.id, partition, columns)
+                            for analysis, partition, columns in analyses
+                        ],
+                        force
+                    )
 
-                if len(ready) < len(analyses):
-                    # Not ready
-                    tmp[table] = analyses
-                    continue
+                    f = executor.submit(_update_table, *args)
+                    running.append((f, table, [f"{analysis.name} {analysis.version}"
+                                               for analysis, _, _ in analyses]))
 
-                args = (
-                    uri,
-                    table,
-                    partitioned_table,
-                    [
-                        (analysis.id, partition, columns)
-                        for analysis, partition, columns in analyses
-                    ],
-                    force
-                )
+                pending = tmp
 
-                f = executor.submit(_update_table, *args)
-                running.append((f, table, [f"{analysis.name} {analysis.version}"
-                                           for analysis, _, _ in analyses]))
-
-            pending = tmp
-
-            cur.close()
             con.close()
 
             if pending or running:
@@ -466,7 +463,7 @@ def import_matches_or_sites(uri: str, data_type: str = "matches", **kwargs):
     if failed:
         raise RuntimeError(f"{failed} errors")
 
-    con = oracledb.connect(uri)
+    con = oracledb.connect(ora_uri)
     cur = con.cursor()
 
     index = f"I_{partitioned_table}$UPI"
@@ -489,34 +486,34 @@ def import_matches_or_sites(uri: str, data_type: str = "matches", **kwargs):
     logger.info("done")
 
 
-def _update_table(uri: str, remote_table: str, partitioned_table: str,
+def _update_table(pg_uri: str, ora_uri: str, remote_table: str, partitioned_table: str,
                   analyses: list[tuple[int, str, list[str]]],
                   force: bool = True):
     """
     Update partitioned table with matches
-    :param uri: Oracle connection string
+    :param pg_uri: PostgreSQL connection string
+    :param ora_uri: Oracle connection string
     :param remote_table: Match table
     :param partitioned_table: Partitioned table
     :param analyses: list of analyses to update (analysis ID, partition name
                      in `partitioned_table`, columns to select from `table`)
     :param force: If True, update partition even if up-to-date
     """
-    con = oracledb.connect(uri)
-    cur = con.cursor()
+    ora_con = oracledb.connect(ora_uri)
+    ora_cur = ora_con.cursor()
+    pg_con = psycopg.connect(**url2dict(pg_uri))
+    pg_cur = pg_con.cursor()
 
     if not force:
         # Check if the data is already up-to-date
         up_to_date = 0
         for analysis_id, partition, columns in analyses:
-            cur.execute(
-                f"""
-                SELECT MAX(UPI)
-                FROM IPRSCAN.{remote_table}@ISPRO
-                """
+            pg_cur.execute(
+                f"SELECT MAX(UPI) FROM IPRSCAN.{remote_table}"
             )
-            max_upi_1, = cur.fetchone()
+            max_upi_1, = pg_cur.fetchone()
 
-            cur.execute(
+            ora_cur.execute(
                 f"""
                 SELECT MAX(UPI)
                 FROM IPRSCAN.{partitioned_table} PARTITION ({partition})
@@ -524,7 +521,7 @@ def _update_table(uri: str, remote_table: str, partitioned_table: str,
                 """,
                 [analysis_id]
             )
-            max_upi_2, = cur.fetchone()
+            max_upi_2, = ora_cur.fetchone()
 
             if max_upi_1 == max_upi_2:
                 # This partition is already up-to-date
@@ -532,18 +529,25 @@ def _update_table(uri: str, remote_table: str, partitioned_table: str,
 
         if up_to_date == len(analyses):
             # All analyses are up-to-date
-            cur.close()
-            con.close()
+            ora_cur.close()
+            ora_con.close()
+            pg_cur.close()
+            pg_con.close()
             return
 
-    tmp_table = f"IPRSCAN.{remote_table}_TMP"
+    """
+    Close the PG cursor since we need to create a named cursor
+    so it's a server-side cursor and not all records are returned
+    """
+    pg_cur.close()
 
+    tmp_table = f"IPRSCAN.{remote_table}_TMP"
     for analysis_id, partition, columns in analyses:
         # Create temporary table for the partition exchange
-        oracle.drop_table(cur, tmp_table, purge=True)
+        oracle.drop_table(ora_cur, tmp_table, purge=True)
 
         sql = f"CREATE TABLE {tmp_table}"
-        subparts = oracle.get_subpartitions(cur, schema="IPRSCAN",
+        subparts = oracle.get_subpartitions(ora_cur, schema="IPRSCAN",
                                             table=partitioned_table,
                                             partition=partition)
 
@@ -560,7 +564,7 @@ def _update_table(uri: str, remote_table: str, partitioned_table: str,
 
             sql += f" PARTITION BY LIST ({col}) ({', '.join(subparts)})"
 
-        cur.execute(
+        ora_cur.execute(
             f"""{sql}
             NOLOGGING
             AS
@@ -570,27 +574,39 @@ def _update_table(uri: str, remote_table: str, partitioned_table: str,
             """
         )
 
-        # Insert only one analysis ID
-        cur.execute(
-            f"""
-            INSERT /*+ APPEND */ INTO {tmp_table}
-            SELECT {', '.join(columns)}
-            FROM IPRSCAN.{remote_table}@ISPRO
-            WHERE ANALYSIS_ID = :1
-            """,
-            [analysis_id]
-        )
-        con.commit()
+        with pg_con.cursor(name=str(analysis_id)) as pg_cur:
+            pg_cur.execute(
+                f"""
+                SELECT {', '.join(columns)}
+                FROM iprscan.{remote_table}
+                WHERE analysis_id = %s
+                """,
+                [analysis_id]
+            )
+
+            pg_cur: psycopg.ServerCursor
+            while rows := pg_cur.fetchmany(size=1000):
+                ora_cur.executemany(
+                    f"""
+                    INSERT /*+ APPEND */ 
+                    INTO {tmp_table}
+                    VALUES ({','.join([':1' for _ in columns])})
+                    """,
+                    rows
+                )
+
+        ora_con.commit()
 
         high_value = None
-        for p in oracle.get_partitions(cur, "IPRSCAN", partitioned_table):
+        for p in oracle.get_partitions(ora_cur, "IPRSCAN", partitioned_table):
             if p["name"].lower() == partition.lower():
                 high_value = int(p["value"])
                 break
 
         if high_value is None:
-            cur.close()
-            con.close()
+            ora_cur.close()
+            ora_con.close()
+            pg_con.close()
             raise RuntimeError(f"Partition {partition} not found "
                                f"in {partitioned_table}")
 
@@ -598,20 +614,20 @@ def _update_table(uri: str, remote_table: str, partitioned_table: str,
             """
             Different ANALYSIS_ID -> database update:
             1. TRUNCATE the partition, to remove rows with the old ANALYSIS_ID
-            2. Modify the partition (remove old value)
-            3. Modify the partition (add new value)
+            2. Modify the partition (add new value)
+            3. Modify the partition (remove old value) 
             """
-            oracle.truncate_partition(cur=cur,
+            oracle.truncate_partition(cur=ora_cur,
                                       table=f"IPRSCAN.{partitioned_table}",
                                       partition=partition)
-            cur.execute(
+            ora_cur.execute(
                 f"""
                 ALTER TABLE IPRSCAN.{partitioned_table}
                 MODIFY PARTITION {partition}
                 ADD VALUES ({analysis_id})
                 """
             )
-            cur.execute(
+            ora_cur.execute(
                 f"""
                 ALTER TABLE IPRSCAN.{partitioned_table}
                 MODIFY PARTITION {partition}
@@ -620,7 +636,7 @@ def _update_table(uri: str, remote_table: str, partitioned_table: str,
             )
 
         # Exchange partition with temp table
-        cur.execute(
+        ora_cur.execute(
             f"""
             ALTER TABLE IPRSCAN.{partitioned_table}
             EXCHANGE PARTITION {partition}
@@ -629,32 +645,46 @@ def _update_table(uri: str, remote_table: str, partitioned_table: str,
         )
 
         # Drop temporary table
-        oracle.drop_table(cur, tmp_table, purge=True)
+        oracle.drop_table(ora_cur, tmp_table, purge=True)
+
+    ora_cur.close()
+    ora_con.close()
+    pg_con.close()
+
+
+def check_ispro(ora_uri: str, pg_uri: str,
+                match_type: str = "matches",
+                status: str = "production"):
+    kwargs = {
+        "type": match_type,
+    }
+    con = oracledb.connect(ora_uri)
+    cur = con.cursor()
+    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
+    max_upi, = cur.fetchone()
+
+    if status == "production":
+        cur.execute("SELECT IPRSCAN_SIG_LIB_REL_ID FROM INTERPRO.IPRSCAN2DBCODE")
+        kwargs["ids"] = [row[0] for row in cur.fetchall()]
+    elif status == "all":
+        kwargs["inactive"] = True
 
     cur.close()
     con.close()
 
+    con = psycopg.connect(**url2dict(pg_uri))
+    with con.cursor() as cur:
+        analyses = {}
+        for analysis in get_analyses(cur, **kwargs):
+            try:
+                analyses[analysis.table].append(analysis)
+            except KeyError:
+                analyses[analysis.table] = [analysis]
 
-def check_ispro(url: str, match_type: str = "matches",
-                status: str = "production"):
-    con = oracledb.connect(url)
-    cur = con.cursor()
+        for table in sorted(analyses):
+            for a in analyses[table]:
+                status = "ready" if a.is_ready(cur, max_upi) else "pending"
+                print(f"{a.id:<3} {a.name:<40} {a.version:<30} {table:<30} "
+                      f"{status}")
 
-    analyses = {}
-    for analysis in get_analyses(cur, type=match_type, status=status):
-        try:
-            analyses[analysis.table].append(analysis)
-        except KeyError:
-            analyses[analysis.table] = [analysis]
-
-    cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
-    max_upi, = cur.fetchone()
-
-    for table in sorted(analyses):
-        for a in analyses[table]:
-            status = "ready" if a.is_ready(cur, max_upi) else "pending"
-            print(f"{a.id:<3} {a.name:<40} {a.version:<30} {table:<30} "
-                  f"{status}")
-
-    cur.close()
     con.close()
