@@ -208,7 +208,9 @@ def check_ispro():
     config.read(args.config)
 
     ora_iprscan_uri = config["oracle"]["ipro-iprscan"]
-    interpro.iprscan.check_ispro(ora_iprscan_uri, args.type, args.status)
+    pg_iprscan_uri = config["postgresql"]["iprscan"]
+    interpro.iprscan.check_ispro(ora_iprscan_uri, pg_iprscan_uri,
+                                 args.type, args.status)
 
 
 def run_clan_update():
