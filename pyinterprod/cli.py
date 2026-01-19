@@ -184,8 +184,8 @@ def get_pronto_tasks(ora_ipr_uri: str,
     ]
 
 
-def check_ispro():
-    parser = ArgumentParser(description="Check matches/sites status in ISPRO")
+def check_ipm():
+    parser = ArgumentParser(description="Check matches/sites status in the InterProScan Production Manager")
     parser.add_argument("config",
                         metavar="main.conf",
                         help="configuration file")
@@ -209,8 +209,8 @@ def check_ispro():
 
     ora_iprscan_uri = config["oracle"]["ipro-iprscan"]
     pg_iprscan_uri = config["postgresql"]["iprscan"]
-    interpro.iprscan.check_ispro(ora_iprscan_uri, pg_iprscan_uri,
-                                 args.type, args.status)
+    interpro.iprscan.check_ipm(ora_iprscan_uri, pg_iprscan_uri,
+                               args.type, args.status)
 
 
 def run_clan_update():

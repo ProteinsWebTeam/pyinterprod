@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-ipr-ispro = "pyinterprod.cli:check_ispro"
+ipr-check-ipm = "pyinterprod.cli:check_ipm"
 ipr-uniprot = "pyinterprod.cli:run_uniprot_update"
 ipr-pre-memdb = "pyinterprod.cli:update_database"
 ipr-memdb = "pyinterprod.cli:run_member_db_update"

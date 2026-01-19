@@ -652,9 +652,9 @@ def _update_table(pg_uri: str, ora_uri: str, remote_table: str, partitioned_tabl
     pg_con.close()
 
 
-def check_ispro(ora_uri: str, pg_uri: str,
-                match_type: str = "matches",
-                status: str = "production"):
+def check_ipm(ora_uri: str, pg_uri: str,
+              match_type: str = "matches",
+              status: str = "production"):
     kwargs = {
         "type": match_type,
     }
