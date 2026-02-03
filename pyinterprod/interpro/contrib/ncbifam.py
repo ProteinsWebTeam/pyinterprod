@@ -16,6 +16,7 @@ def parse_tsv(tsvfile: str):
 
 
 def get_signatures(tsvfile: str,
+                   hmmfile: str,
                    cur: oracledb.Cursor | None = None) -> list[Method]:
     """Parse NCBIFAM TSV file
     https://ftp.ncbi.nlm.nih.gov/hmm/current/hmm_PGAP.tsv
@@ -24,10 +25,17 @@ def get_signatures(tsvfile: str,
     :param cur: Oracle cursor or None
     :return:
     """
+    hmm_accs = get_hmm_accessions(hmmfile)
     methods = []
     amr_models = []
+
     for values in parse_tsv(tsvfile):
         model_acc = values[0]
+
+        # Skip models with no HMM profile
+        if model_acc not in hmm_accs:
+            continue
+
         signature_acc, model_version = model_acc.split(".")
 
         name = values[2]
@@ -86,6 +94,15 @@ def get_signatures(tsvfile: str,
             cur.connection.commit()
 
     return methods
+
+def get_hmm_accessions(hmmfile: str) -> set[str]:
+    accs = set()
+    with open(hmmfile, "rt") as fh:
+        for line in fh:
+            if line.startswith("ACC"):
+                # ACC   NF047905.1
+                accs.add(line.split()[1])
+    return accs
 
 
 def create_custom_hmm(tsvfile: str, hmmfile: str):
