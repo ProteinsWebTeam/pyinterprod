@@ -269,14 +269,14 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             line = ["Signature", "Link", "DE changes", "Entry",
                     "Type", "Type changes",
                     "Source origin",
-                    "Name", "Name changes"
+                    "Name", "Name changes",
                     "Previous count", "New count",
                     "Change (%)"]
             for sk in superkingdoms:
                 line += [sk, '']
             fh.write('\t'.join(line) + '\n')
 
-            line = [''] * 10
+            line = [''] * 12
             line += ["Previous count", "New count"] * len(superkingdoms)
             fh.write('\t'.join(line) + '\n')
 
