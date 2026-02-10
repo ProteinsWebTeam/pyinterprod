@@ -106,7 +106,7 @@ def get_hmm_accessions(hmmfile: str) -> set[str]:
 
 
 def create_custom_hmm(tsvfile: str, hmmfile: str):
-    models = {m.model: m for m in get_signatures(tsvfile)}
+    models = {m.model: m for m in get_signatures(tsvfile, hmmfile)}
 
     reg_acc = re.compile(r"^ACC\s+(\w+\.\d+)$", flags=re.M)
     reg_desc = re.compile(r"^(DESC\s+)(.+)$", flags=re.M)
