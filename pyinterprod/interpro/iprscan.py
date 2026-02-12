@@ -11,17 +11,17 @@ from pyinterprod.utils.pg import url2dict
 
 
 """
-Keys: analysis names in ISPRO
-Values: columns to select when inserting matches in MV_IPRSCAN (IPPRO)
+Keys: analysis names in intproscan (PostgreSQL)
+Values: columns to select when inserting matches in MV_IPRSCAN (Oracle)
         and partitions in MV_IPRSCAN
 """
 MATCH_PARTITIONS = {
     "AntiFam": {
         "columns": [
-            'ANALYSIS_ID', 'UPI', 'METHOD_AC', 'RELNO_MAJOR', 'RELNO_MINOR',
-            'SEQ_START', 'SEQ_END', 'HMM_START', 'HMM_END', 'HMM_LENGTH',
-            'HMM_BOUNDS', 'SCORE', 'SEQSCORE', 'EVALUE', 'SEQEVALUE',
-            'ENV_START', 'ENV_END', 'MODEL_AC', 'NULL', 'FRAGMENTS'
+            "analysis_id", "upi", "method_ac",
+            "seq_start", "seq_end", "hmm_start", "hmm_end", "hmm_length",
+            "hmm_bounds", "score", "seq_score", "evalue", "seq_evalue",
+            "env_start", "env_end", "model_ac", "NULL", "fragments"
         ],
         "partition": "ANTIFAM"
     },
@@ -509,9 +509,9 @@ def _update_table(pg_uri: str, ora_uri: str, remote_table: str, partitioned_tabl
         up_to_date = 0
         for analysis_id, partition, columns in analyses:
             pg_cur.execute(
-                f"SELECT MAX(UPI) FROM IPRSCAN.{remote_table}"
+                f"SELECT MAX(UPI) FROM iprscan.{remote_table}"
             )
-            max_upi_1, = pg_cur.fetchone()
+            remote_max_upi, = pg_cur.fetchone()
 
             ora_cur.execute(
                 f"""
@@ -521,9 +521,9 @@ def _update_table(pg_uri: str, ora_uri: str, remote_table: str, partitioned_tabl
                 """,
                 [analysis_id]
             )
-            max_upi_2, = ora_cur.fetchone()
+            local_max_upi, = ora_cur.fetchone()
 
-            if max_upi_1 == max_upi_2:
+            if local_max_upi == remote_max_upi:
                 # This partition is already up-to-date
                 up_to_date += 1
 
@@ -547,7 +547,8 @@ def _update_table(pg_uri: str, ora_uri: str, remote_table: str, partitioned_tabl
         oracle.drop_table(ora_cur, tmp_table, purge=True)
 
         sql = f"CREATE TABLE {tmp_table}"
-        subparts = oracle.get_subpartitions(ora_cur, schema="IPRSCAN",
+        subparts = oracle.get_subpartitions(ora_cur,
+                                            schema="IPRSCAN",
                                             table=partitioned_table,
                                             partition=partition)
 
@@ -584,7 +585,6 @@ def _update_table(pg_uri: str, ora_uri: str, remote_table: str, partitioned_tabl
                 [analysis_id]
             )
 
-            pg_cur: psycopg.ServerCursor
             while rows := pg_cur.fetchmany(size=1000):
                 ora_cur.executemany(
                     f"""
