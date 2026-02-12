@@ -541,6 +541,9 @@ def _update_table(pg_uri: str, ora_uri: str, remote_table: str, partitioned_tabl
     """
     pg_cur.close()
 
+    # input type handler: forces all Python floats to BINARY_DOUBLE
+    ora_cur.inputtypehandler = ith
+
     tmp_table = f"IPRSCAN.{remote_table}_TMP"
     for analysis_id, partition, columns in analyses:
         # Create temporary table for the partition exchange
@@ -650,6 +653,11 @@ def _update_table(pg_uri: str, ora_uri: str, remote_table: str, partitioned_tabl
     ora_cur.close()
     ora_con.close()
     pg_con.close()
+
+
+def ith(cursor, value, arraysize):
+    if isinstance(value, float):
+        return cursor.var(oracledb.DB_TYPE_BINARY_DOUBLE, arraysize=arraysize)
 
 
 def check_ipm(ora_uri: str, pg_uri: str,
