@@ -1097,13 +1097,15 @@ def _get_entries_protein_counts(
     return counts
 
 
-def get_sig_protein_counts(cur: oracledb.Cursor,
+def get_sig_protein_counts(cur: oracledb.Cursor, pg_url: str,
                            dbcode: str) -> dict[str, dict[str, int]]:
     """
-    Return the number of protein matches by each member database signature.
+    Return the number of protein matches and the number of proteins with
+    at least one 'pdb' structure by each member database signature.
     Only complete sequences are considered
 
     :param cur: Oracle cursor object
+    :param pg_url: PostgreSQL connection string
     :param dbcode: member database code
     :return: dictionary
     """
@@ -1125,13 +1127,39 @@ def get_sig_protein_counts(cur: oracledb.Cursor,
         try:
             sig = counts[sig_acc]
         except KeyError:
-            sig = counts[sig_acc] = {}
+            sig = counts[sig_acc] = {"total": {}, "pdb": 0}
 
         superkingdom = taxon2superkingdom[tax_id]
         try:
-            sig[superkingdom] += n_proteins
+            sig["total"][superkingdom] += n_proteins
         except KeyError:
-            sig[superkingdom] = n_proteins
+            sig["total"][superkingdom] = n_proteins
+
+    pg_con = psycopg.connect(**url2dict(pg_url))
+    pg_cur = pg_con.cursor()
+
+    signatures = list(counts.keys())
+    if signatures:
+        pg_cur.execute(
+            """
+            SELECT SIGNATURE_ACC, COUNT(DISTINCT PROTEIN_ACC)
+            FROM SIGNATURE2STRUCTURE
+            WHERE SIGNATURE_ACC = ANY(%s)
+            GROUP BY SIGNATURE_ACC
+            """,
+            (signatures,)
+        )
+
+    for sig_acc, pdb_count in pg_cur:
+        try:
+            sig = counts[sig_acc]
+        except KeyError:
+            sig = counts[sig_acc] = {"total": {}, "pdb": 0}
+
+        sig["pdb"] = pdb_count
+
+    pg_cur.close()
+    pg_con.close()
 
     return counts
 

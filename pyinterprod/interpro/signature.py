@@ -254,7 +254,7 @@ def track_signature_changes(
                 "descriptions": descr_changes,
                 "types": type_changes,
             },
-            "proteins": get_sig_protein_counts(cur, db.identifier),
+            "proteins": get_sig_protein_counts(cur, pg_uri, db.identifier),
             "descriptions": {
                 acc: all_sig2descs[acc]
                 for acc in all_sig2descs

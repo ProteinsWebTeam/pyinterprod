@@ -103,12 +103,17 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
 
         # Protein count changes (total + per superkingdom)
         old_counts = data["proteins"]
-        new_counts = get_sig_protein_counts(cur, db_id)
+        new_counts = get_sig_protein_counts(cur, pg_url, db_id)
         changes = {}
         superkingdoms = set()
         for acc in sorted(old_counts):  # sort by accession
             sig_old_cnts = old_counts[acc]
-            sig_new_cnts = new_counts.get(acc, {})
+            sig_new = new_counts.get(acc, {"total": {}, "pdb": 0})
+            sig_new_cnts = sig_new["total"]
+
+            new_pdb = sig_new["pdb"]
+            old_pdb = sig_old_cnts.get("pdb", 0)
+            pdb_change = (new_pdb - old_pdb) / old_pdb if old_pdb else "NA"
 
             try:
                 _, entry_acc, type_code, entry_name, origin = integrated[acc]
@@ -146,7 +151,10 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 sig_old_tot,
                 sig_new_tot,
                 change,
-                sig_superkingdoms
+                sig_superkingdoms,
+                old_pdb,
+                new_pdb,
+                pdb_change
             )
 
         # Deleted signatures
@@ -228,7 +236,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
 
             proteins = sig2swiss[acc]
             total_change = changes[acc][7]
-            # Retrieve lists of sissprot protein desc that have been lost or gained
+            # Retrieve lists of Swiss-Prot protein desc that have been lost or gained
             lost, gained, _ = compare_descriptions(proteins)
             if not lost and not gained:
                 continue
@@ -270,8 +278,8 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                     "Type", "Type changes",
                     "Source origin",
                     "Name", "Name changes",
-                    "Previous count", "New count",
-                    "Change (%)"]
+                    "Previous count", "New count", "Change (%)",
+                    "Previous PDB count", "New PDB count", "PDB change (%)"]
             for sk in superkingdoms:
                 line += [sk, '']
             fh.write('\t'.join(line) + '\n')
@@ -291,6 +299,9 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                 sig_new_tot = obj[6]
                 change = obj[7]
                 sig_superkingdoms = obj[8]
+                old_pdb_tot = obj[9]
+                new_pdb_tot = obj[10]
+                pdb_change = obj[11]
 
                 line = [
                     acc,
@@ -304,7 +315,10 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
                     "Yes" if acc in name_changes else "No",
                     str(sig_old_tot),
                     str(sig_new_tot),
-                    f"{change * 100:.0f}"
+                    f"{change * 100:.0f}",
+                    str(old_pdb_tot),
+                    str(new_pdb_tot),
+                    f"{pdb_change * 100:.0f}"
                 ]
                 for superkingdom in superkingdoms:
                     try:
