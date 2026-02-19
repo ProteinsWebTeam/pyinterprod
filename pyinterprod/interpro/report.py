@@ -336,7 +336,8 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
             for acc, name, descr, _type in data["new"]:
                 # Ignore PANTHER subfamilies (won't be integrated)
                 if not re.fullmatch(r"PTHR\d+:SF\d+", acc):
-                    sig_cnts = sum(new_counts.get(acc, {}).values())
+                    sig = new_counts.get(acc)
+                    sig_cnts = sum(sig["total"].values()) if sig else 0
                     fh.write(f"{acc}\t{name or 'N/A'}\t{descr or 'N/A'}\t"
                              f"{sig_cnts}\n")
 
