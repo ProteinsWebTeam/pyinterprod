@@ -113,7 +113,7 @@ def send_db_update_report(ora_url: str, pg_url: str, dbs: list[Database],
 
             new_pdb = sig_new["pdb"]
             old_pdb = sig_old_cnts.get("pdb", 0)
-            pdb_change = (new_pdb - old_pdb) / old_pdb if old_pdb else "NA"
+            pdb_change = (new_pdb - old_pdb) / old_pdb if old_pdb else 0
 
             try:
                 _, entry_acc, type_code, entry_name, origin = integrated[acc]
