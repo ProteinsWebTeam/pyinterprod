@@ -1,5 +1,4 @@
 from argparse import ArgumentParser
-from configparser import ConfigParser
 import re
 
 import oracledb
@@ -38,7 +37,6 @@ def get_signatures(tsvfile: str,
 
         signature_acc, model_version = model_acc.split(".")
 
-        name = values[2]
         _type = values[6]
         for_AMRFinder = values[9] == "Y"
 
@@ -48,6 +46,9 @@ def get_signatures(tsvfile: str,
             references = []
 
         source = values[20]
+        gene_symbol = values[11]
+        name = gene_symbol if source == "NCBI Protein Cluster (PRK)" and gene_symbol else values[2]
+
         hmm_name = values[22]
         comment = values[23].strip()
 
