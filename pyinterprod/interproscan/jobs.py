@@ -7,59 +7,18 @@ from datetime import datetime
 import oracledb
 
 from pyinterprod import logger
-from pyinterprod.uniprot.uniparc import upi_to_int, int_to_upi
 
 
 # String printed by I5 on successful completion
 _I5_SUCCESS = "100% done:  InterProScan analyses completed"
 
 
-def get_missing_jobs(cur: oracledb.Cursor) -> dict[int, list[tuple]]:
-    cur.execute(
-        """
-        SELECT A.ID, J.UPI_FROM, J.UPI_TO
-        FROM IPRSCAN.ANALYSIS A
-        INNER JOIN IPRSCAN.ANALYSIS_JOBS J on A.ID = J.ANALYSIS_ID
-        WHERE A.ACTIVE = 'Y' AND J.SUCCESS = 'Y'
-        """
-    )
-
-    analyses = {}
-    for analysis_id, upi_from, upi_to in cur:
-        try:
-            analyses[analysis_id].append((upi_from, upi_to))
-        except KeyError:
-            analyses[analysis_id] = [(upi_from, upi_to)]
-
-    missing_jobs = {}
-    for analysis_id, jobs in analyses.items():
-        jobs.sort()
-        for i in range(1, len(jobs)):
-            _, prev_to = jobs[i-1]
-            upi_from, upi_to = jobs[i]
-
-            p = upi_to_int(prev_to)
-            s = upi_to_int(upi_from)
-            if (s - p) > 1:
-                missing_start = int_to_upi(p + 1)
-                missing_end = int_to_upi(s - 1)
-
-                try:
-                    obj = missing_jobs[analysis_id]
-                except KeyError:
-                    obj = missing_jobs[analysis_id] = []
-                finally:
-                    obj.append((missing_start, missing_end))
-
-    return missing_jobs
-
-
 def get_incomplete_jobs(cur: oracledb.Cursor) -> dict[int, list[tuple]]:
     cur.execute(
         """
-        SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, SEQUENCES
+        SELECT ANALYSIS_ID, UPI_FROM, UPI_TO
         FROM (
-            SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, SEQUENCES, SUCCESS, 
+            SELECT ANALYSIS_ID, UPI_FROM, UPI_TO, SUCCESS, 
                    ROW_NUMBER() OVER (
                        PARTITION BY ANALYSIS_ID, UPI_FROM, UPI_TO 
                        ORDER BY CREATED_TIME DESC
@@ -72,13 +31,13 @@ def get_incomplete_jobs(cur: oracledb.Cursor) -> dict[int, list[tuple]]:
     )
 
     incomplete_jobs = {}
-    for analysis_id, upi_from, upi_to, sequences in cur:
+    for analysis_id, upi_from, upi_to in cur:
         try:
             analysis_jobs = incomplete_jobs[analysis_id]
         except KeyError:
             analysis_jobs = incomplete_jobs[analysis_id] = []
         finally:
-            analysis_jobs.append((upi_from, upi_to, sequences))
+            analysis_jobs.append((upi_from, upi_to))
 
     return incomplete_jobs
 
@@ -86,8 +45,7 @@ def get_incomplete_jobs(cur: oracledb.Cursor) -> dict[int, list[tuple]]:
 def add_job(cur: oracledb.Cursor,
             analysis_id: int,
             upi_from: str,
-            upi_to: str,
-            num_sequences: int):
+            upi_to: str):
     cur.execute(
         """
         UPDATE IPRSCAN.ANALYSIS
@@ -99,10 +57,10 @@ def add_job(cur: oracledb.Cursor,
     cur.execute(
         """
         INSERT INTO IPRSCAN.ANALYSIS_JOBS 
-            (ANALYSIS_ID, UPI_FROM, UPI_TO, SEQUENCES)
-        VALUES (:1, :2, :3, :4)
+            (ANALYSIS_ID, UPI_FROM, UPI_TO)
+        VALUES (:1, :2, :3)
         """,
-        [analysis_id, upi_from, upi_to, num_sequences]
+        [analysis_id, upi_from, upi_to]
     )
     cur.connection.commit()
 
@@ -116,7 +74,8 @@ def update_job(cur: oracledb.Cursor,
                max_mem: int | None = None,
                lim_mem: int | None = None,
                cpu_time: int | None = None,
-               success: bool | None = None):
+               success: bool | None = None,
+               sequences: int | None = None):
     columns = []
     params = []
     if start_time is not None:
@@ -137,6 +96,9 @@ def update_job(cur: oracledb.Cursor,
     if success is not None:
         columns.append("SUCCESS = :success")
         params.append("Y" if success else "N")
+    if sequences is not None:
+        columns.append("SEQUENCES = :sequences")
+        params.append(sequences)
 
     if columns:
         cur.execute(
@@ -144,9 +106,8 @@ def update_job(cur: oracledb.Cursor,
             UPDATE IPRSCAN.ANALYSIS_JOBS
             SET {','.join(columns)}
             WHERE ANALYSIS_ID = :analysisid
-                AND UPI_FROM = :upifrom
-                AND UPI_TO = :upito
-                AND END_TIME IS NULL
+              AND UPI_FROM = :upifrom
+              AND UPI_TO = :upito
             """,
             params + [analysis_id, upi_from, upi_to]
         )

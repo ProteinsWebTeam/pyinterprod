@@ -234,15 +234,12 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
     """
     incomplete_jobs = jobs.get_incomplete_jobs(cur)
 
-    # Find range of UniParc entries not in a job
-    missing_jobs = jobs.get_missing_jobs(cur)
-
     cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
     (max_upi,) = cur.fetchone()
     cur.close()
     con.close()
 
-    tasks = []  # list of tuple (task, is_new, num_sequences)
+    tasks = []  # list of tuple (task, is_new)
     num_jobs_per_analysis = {}
 
     for analysis_id, analysis in analyses_info.items():
@@ -255,7 +252,7 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         config = configs[analysis_id]
 
         # Check jobs that were already submitted
-        for upi_from, upi_to, num_sequences in incomplete_jobs.pop(analysis_id, []):
+        for upi_from, upi_to in incomplete_jobs.pop(analysis_id, []):
             task = InterProScanTask(
                 analysis_id=analysis_id,
                 upi_from=upi_from,
@@ -278,35 +275,18 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
             if task.name in name2id:
                 # There is an associated job running on the cluster
                 task.executor.id = name2id.pop(task.name)
-                tasks.append((task, False, num_sequences))
+                tasks.append((task, False))
                 continue
 
             # Checks if output exists
             task.poll()
             if task.is_done():
                 # Completed, failed, or cancelled, but at least it ran
-                tasks.append((task, False, num_sequences))
+                tasks.append((task, False))
             else:
                 # Unknown fate: resubmit
                 task.set_pending()
-                tasks.append((task, True, num_sequences))
-
-        # Submit missing jobs
-        for upi_from, upi_to in missing_jobs.get(analysis_id, []):
-            task = InterProScanTask(
-                analysis_id=analysis_id,
-                upi_from=upi_from,
-                upi_to=upi_to,
-                i5_dir=analysis["i5_dir"],
-                work_dir=work_dir,
-                appl=appl,
-                version=analysis_version,
-                config=config,
-                has_sites=has_sites,
-                scheduler=scheduler,
-                queue=queue,
-            )
-            tasks.append((task, True, 0))  # 0 -> we don't know yet
+                tasks.append((task, False))
 
         # Submit new jobs
         if analysis["max_upi"]:
@@ -329,14 +309,14 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 scheduler=scheduler,
                 queue=queue,
             )
-            tasks.append((task, True, 0))  # 0 -> we don't know yet
+            tasks.append((task, True))
 
     tmp_tasks = []
-    for task, is_new, num_sequences in tasks:
+    for task, is_new in tasks:
         analysis_id = task.analysis_id
         if (max_jobs_per_analysis < 0 or
                 0 <= num_jobs_per_analysis[analysis_id] < max_jobs_per_analysis):
-            tmp_tasks.append((task, is_new, num_sequences))
+            tmp_tasks.append((task, is_new))
             num_jobs_per_analysis[analysis_id] += 1
 
     tasks = tmp_tasks
@@ -356,9 +336,17 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
         t.start()
         fasta_workers.append(t)
 
+    con = oracledb.connect(uri)
+    cur = con.cursor()
     while tasks:
-        task, is_new, num_sequences = tasks.pop(0)
-        fasta_queue.put((task, is_new, num_sequences))
+        task, is_new = tasks.pop(0)
+        if is_new:
+            jobs.add_job(cur, task.analysis_id, task.upi_from, task.upi_to)
+
+        fasta_queue.put((task, is_new))
+
+    cur.close()
+    con.close()
 
     # Add sentinel value to terminate pool when all FASTA have been exported
     for _ in fasta_workers:
@@ -429,11 +417,11 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                     task.analysis_id,
                     task.upi_from,
                     task.upi_to,
-                    task.start_time,
-                    task.end_time,
-                    task.maxmem,
-                    task.executor.memory,
-                    task.cputime,
+                    start_time=task.start_time,
+                    end_time=task.end_time,
+                    max_mem=task.maxmem,
+                    lim_mem=task.executor.memory,
+                    cpu_time=task.cputime,
                     success=True,
                 )
 
@@ -484,20 +472,6 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 task_limit = task.executor.limit.total_seconds() / 3600
                 time_err = runtime >= task_limit
 
-            # Update job
-            jobs.update_job(
-                cur,
-                task.analysis_id,
-                task.upi_from,
-                task.upi_to,
-                starttime,
-                endtime,
-                task.maxmem,
-                task.executor.memory,
-                task.cputime,
-                success=False,
-            )
-
             if (auto_retry and (mem_err or time_err)) or num_retries < max_retries:
                 # Task allowed to be re-submitted
 
@@ -519,15 +493,6 @@ def run(uri: str, work_dir: str, temp_dir: str, **kwargs):
                 # Resubmit task
                 task.set_pending()
                 submit_queue.put((task, num_sequences))
-
-                # Add new job
-                jobs.add_job(
-                    cur,
-                    task.analysis_id,
-                    task.upi_from,
-                    task.upi_to,
-                    num_sequences,
-                )
 
                 # Increment retries counter
                 retries[task.name] = num_retries + 1
@@ -574,22 +539,24 @@ def export_sequences_worker(uri: str, inqueue: Queue, outqueue: Queue):
                 inqueue.task_done()
                 break
             else:
-                task, is_new, num_sequences = item
+                task, is_new = item
+
+                task.mkdir()
+                num_sequences = export_sequences(
+                    cur, task.upi_from, task.upi_to, task.get_fasta_path()
+                )
 
                 if is_new:
-                    # New task: we need to export the input FASTA file
-                    task.mkdir()
-                    num_sequences = export_sequences(
-                        cur, task.upi_from, task.upi_to, task.get_fasta_path()
-                    )
-
-                    # Add a (placeholder/inactive) job
-                    jobs.add_job(
-                        cur, task.analysis_id, task.upi_from, task.upi_to, num_sequences
-                    )
-
-                    if num_sequences == 0:
-                        # No sequences: the task won't be submitted
+                    # Update the number of sequences
+                    if num_sequences > 0:
+                        jobs.update_job(
+                            cur,
+                            task.analysis_id,
+                            task.upi_from,
+                            task.upi_to,
+                            sequences=num_sequences
+                        )
+                    else:
                         task.rmdir()
                         task.set_successful()
                         jobs.update_job(
@@ -598,13 +565,10 @@ def export_sequences_worker(uri: str, inqueue: Queue, outqueue: Queue):
                             task.upi_from,
                             task.upi_to,
                             success=True,
+                            sequences=0
                         )
 
-                    outqueue.put((task, num_sequences))
-                else:
-                    # Not new task: we assume the input file already exists
-                    outqueue.put((task, num_sequences))
-
+                outqueue.put((task, num_sequences))
                 inqueue.task_done()
     finally:
         cur.close()
